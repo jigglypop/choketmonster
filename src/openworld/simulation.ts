@@ -1,8 +1,8 @@
 import { Brain, validateGraph, type BrainState, type Graph } from '../core/brain';
 import { Random, clamp } from '../core/random';
-import { POKEMON, getSpecies } from '../data/pokemon';
+import { POKEMON, getMove, getSpecies } from '../data/pokemon';
 import { ConnectomeController } from '../game/connectome';
-import { actBattle, availableEvolutions, createMonster, evolve, validateGame, type BallItem, type BattleAction, type BattleTurnResult, type GameState } from '../game/engine';
+import { actBattle, availableEvolutions, createMonster, evolve, validateGame, type BallItem, type BattleAction, type BattleTurnResult, type GameState, type Monster } from '../game/engine';
 import type { FieldPolicy } from '../game/field';
 
 export const OPEN_WORLD_MODEL = 'pokemon-open-world-recurrent-v1' as const;
@@ -13,6 +13,7 @@ export type WorldBiome = 'meadow' | 'forest' | 'lake' | 'rock';
 export type WorldSample = { height: number; biome: WorldBiome; blocked: boolean };
 export type WorldPosition = { x: number; z: number; heading: number };
 export type WorldFood = { id: number; x: number; z: number };
+export type WorldRespawn = { id: string; speciesId: number; level: number; biome: WorldBiome; originX: number; originZ: number; remainingSeconds: number };
 export type WorldTarget = { kind: 'food' | 'player' | 'wild'; id: string; x: number; z: number };
 export type WorldBrainState = Omit<BrainState, 'graph'> & { graphId: string };
 export type OpenWorldEntity = {
@@ -24,9 +25,11 @@ export type OpenWorldEntity = {
 export type OpenWorldEntitySnapshot = Omit<OpenWorldEntity, 'brain'> & { brain: WorldBrainState };
 export type OpenWorldSnapshot = {
   schema: 1; model: typeof OPEN_WORLD_MODEL; graphId: string; seed: number; rng: number; tick: number;
-  player: WorldPosition; selectedWildId?: string; autoCapture: boolean; battleWildId?: string;
+  player: WorldPosition; selectedWildId?: string; autoCapture: boolean; autoHunt?: boolean; battleWildId?: string;
   battleElapsed: number; pendingCapture: boolean; pendingBall?: BallItem; lastPlayerReward: number | null; lastEnemyReward: number | null;
-  spawnSerial: number; nextFoodId: number; foods: WorldFood[]; entities: OpenWorldEntitySnapshot[];
+  pendingAction?: BattleAction;
+  manualControlRemaining?: number;
+  spawnSerial: number; nextFoodId: number; foods: WorldFood[]; respawnQueue?: WorldRespawn[]; entities: OpenWorldEntitySnapshot[]; companionMemories?: OpenWorldEntitySnapshot[];
 };
 export type OpenWorldEvent =
   | { type: 'move' | 'wait' | 'collision' | 'food'; entityId: string; x: number; z: number; reward: number }
@@ -36,7 +39,8 @@ export type OpenWorldEvent =
 export type OpenWorldStep = { tick: number; events: OpenWorldEvent[]; battleActive: boolean };
 export type OpenWorldSave = { schema: 1; model: typeof OPEN_WORLD_MODEL; graphId: string; game: unknown; world: OpenWorldSnapshot };
 
-const STEP_DISTANCE = 1.15;
+const PATH_SAMPLE_DISTANCE = .45;
+const MANUAL_CONTROL_HOLD = .3;
 const BATTLE_INTERVAL = 0.9;
 const DIRECTIONS = [{ x: 0, z: -1 }, { x: 1, z: 0 }, { x: 0, z: 1 }, { x: -1, z: 0 }] as const;
 const finite = (value: number) => typeof value === 'number' && Number.isFinite(value);
@@ -70,6 +74,18 @@ export function biomeForSpecies(speciesId: number): WorldBiome {
   return 'meadow';
 }
 
+/** Engineered mapping from Pokemon base Speed to open-world units per second. */
+export function movementSpeed(speciesId: number): number {
+  const baseSpeed = getSpecies(speciesId).baseStats.speed;
+  return 1.2 + baseSpeed * .018;
+}
+
+export function nextSpeciesInBiome(speciesId: number): number {
+  const biome = biomeForSpecies(speciesId), candidates = POKEMON.map(species => species.id).filter(id => biomeForSpecies(id) === biome);
+  const index = candidates.indexOf(speciesId); if (index < 0) throw new Error('Species is missing from its biome');
+  return candidates[(index + 1) % candidates.length];
+}
+
 export function speciesForSpawn(serial: number): number {
   if (!Number.isSafeInteger(serial) || serial < 1) throw new Error('Spawn serial must be a positive integer');
   return ((serial - 1) % 151) + 1;
@@ -86,22 +102,28 @@ export class OpenWorldSimulation {
   entities: OpenWorldEntity[] = [];
   selectedWildId?: string;
   autoCapture = false;
+  autoHunt = true;
   battleWildId?: string;
   battleElapsed = 0;
   spawnSerial = 1;
   nextFoodId = 1;
+  respawnQueue: WorldRespawn[] = [];
+  manualControlRemaining = 0;
   private pendingCapture = false;
   private pendingBall?: BallItem;
+  private pendingAction?: BattleAction;
   private lastPlayerReward: number | null = null;
   private lastEnemyReward: number | null = null;
   private readonly brains = new Map<string, Brain>();
+  private readonly companionMemories = new Map<string, OpenWorldEntity>();
   private readonly battleController: ConnectomeController;
   private readonly policy?: FieldPolicy;
 
   constructor(graph: Graph, game: GameState, seed: number, checkpoint?: OpenWorldSnapshot, policy?: FieldPolicy, wildCount = DEFAULT_WILD_COUNT) {
     validateGraph(graph); if (graph.kind !== 'connectome-subset') throw new Error('Open world requires a real connectome subset');
     validateGame(game); if (!Number.isSafeInteger(seed) || seed < 0 || seed > 0xffffffff) throw new Error('Open-world seed must be uint32');
-    if (!Number.isInteger(wildCount) || wildCount < 12 || wildCount > 18) throw new Error('Open world requires 12..18 wild Pokemon');
+    const rosterCount = checkpoint ? checkpoint.entities.filter(entity => entity.kind === 'wild').length + (checkpoint.respawnQueue?.length ?? 0) : wildCount;
+    if (!Number.isInteger(rosterCount) || rosterCount < 12 || rosterCount > 18) throw new Error('Open world requires 12..18 alive or pending wild Pokemon');
     this.graph = structuredClone(graph); this.game = game; this.seed = seed >>> 0; this.rng = new Random(this.seed);
     this.battleController = new ConnectomeController(this.graph); this.policy = policy ? structuredClone(policy) : undefined;
     if (this.policy && (this.policy.graphId !== graph.id || this.policy.schema !== 1)) throw new Error('Open-world field policy does not match graph');
@@ -120,6 +142,21 @@ export class OpenWorldSimulation {
     this.player = next; return true;
   }
 
+  movePartner(position: WorldPosition): boolean {
+    if (this.game.battle || ![position.x, position.z, position.heading].every(finite) || !Number.isInteger(position.heading) || position.heading < 0 || position.heading > 4) return false;
+    const companion = this.entities.find(entity => entity.kind === 'companion'); if (!companion) return false;
+    const maximum = movementSpeed(companion.speciesId) * .35;
+    if (distance(companion, position) > maximum || this.pathBlocked(companion, position.x, position.z, this.entities.filter(entity => entity !== companion).map(entity => ({ x: entity.x, z: entity.z })))) return false;
+    companion.x = position.x; companion.z = position.z; companion.heading = position.heading; companion.action = position.heading; companion.reward = 0;
+    const brain = this.brain(companion.id); brain.state.previous = null;
+    this.player = structuredClone(position); this.manualControlRemaining = MANUAL_CONTROL_HOLD; return true;
+  }
+
+  syncPlayerToCompanion(): WorldPosition {
+    const companion = this.entities.find(entity => entity.kind === 'companion'); if (!companion) return structuredClone(this.player);
+    this.player = { x: companion.x, z: companion.z, heading: companion.heading }; return structuredClone(this.player);
+  }
+
   selectWild(id: string | null): void {
     if (id === null) { this.selectedWildId = undefined; return; }
     const entity = this.entities.find(item => item.kind === 'wild' && item.id === id); if (!entity) throw new Error('Unknown wild Pokemon');
@@ -127,11 +164,19 @@ export class OpenWorldSimulation {
   }
 
   setAutoCapture(enabled: boolean): void { if (typeof enabled !== 'boolean') throw new Error('Auto-capture flag must be boolean'); this.autoCapture = enabled; }
+  setAutoHunt(enabled: boolean): void { if (typeof enabled !== 'boolean') throw new Error('Auto-hunt flag must be boolean'); this.autoHunt = enabled; if (!enabled && !this.game.battle) this.selectedWildId = undefined; }
 
   requestCapture(ball?: BallItem): boolean {
     if (!this.game.battle || !this.battleWildId) return false;
     const selected = ball ?? this.bestBall(); if (!selected || this.game.inventory[selected] <= 0) return false;
     this.pendingCapture = true; this.pendingBall = selected; return true;
+  }
+
+  /** Queues one player-selected action while preserving the simulation's battle reward and cleanup path. */
+  requestAction(action: BattleAction): boolean {
+    if (!this.game.battle || !this.validRequestedAction(action)) return false;
+    if (action.type === 'catch') return this.requestCapture(action.ball);
+    this.pendingAction = structuredClone(action); return true;
   }
 
   startEncounter(id: string): boolean {
@@ -142,19 +187,28 @@ export class OpenWorldSimulation {
     this.game.dex.seen = [...new Set([...this.game.dex.seen, entity.speciesId])].sort((a, b) => a - b);
     this.game.battle = { kind: 'wild', regionId: this.game.regionId, player: { team: this.game.player.team, activeIndex: healthy }, enemy: { team: [wild], activeIndex: 0 }, turn: 1, canRun: true };
     this.game.logs.push(`오픈월드에서 ${getSpecies(entity.speciesId).name}을(를) 만났다.`); if (this.game.logs.length > 200) this.game.logs.shift();
-    this.battleWildId = id; this.battleElapsed = 0; this.pendingCapture = false; this.pendingBall = undefined; this.lastPlayerReward = null; this.lastEnemyReward = null;
+    this.battleWildId = id; this.battleElapsed = 0; this.pendingCapture = false; this.pendingBall = undefined; this.pendingAction = undefined; this.lastPlayerReward = null; this.lastEnemyReward = null;
     return true;
   }
 
-  step(options: { deltaSeconds?: number; learning?: boolean } = {}): OpenWorldStep {
-    const deltaSeconds = options.deltaSeconds ?? .25, learning = options.learning ?? false;
-    if (!finite(deltaSeconds) || deltaSeconds < 0 || deltaSeconds > 5 || typeof learning !== 'boolean') throw new Error('Invalid open-world step options');
+  step(options: { deltaSeconds?: number; learning?: boolean; epsilon?: number } = {}): OpenWorldStep {
+    const deltaSeconds = options.deltaSeconds ?? .25, learning = options.learning ?? false, epsilon = options.epsilon ?? (learning ? .12 : 0);
+    if (!finite(deltaSeconds) || deltaSeconds < 0 || deltaSeconds > 5 || typeof learning !== 'boolean' || !finite(epsilon) || epsilon < 0 || epsilon > 1) throw new Error('Invalid open-world step options');
     const events: OpenWorldEvent[] = [];
+    const manualControlActive = this.manualControlRemaining > 0; this.manualControlRemaining = Math.max(0, this.manualControlRemaining - deltaSeconds);
     this.syncCompanion();
     if (!this.game.battle) {
-      this.stepMovement(learning, events);
+      this.advanceRespawns(deltaSeconds);
+      if (this.autoHunt) {
+        const companion = this.entities.find(entity => entity.kind === 'companion'), nearest = this.nearestWildToCompanion();
+        const current = this.selectedWildId ? this.entities.find(entity => entity.id === this.selectedWildId && entity.kind === 'wild') : undefined;
+        if (nearest && (!current || !companion || distance(nearest, companion) + 2 < distance(current, companion))) this.selectedWildId = nearest.id;
+      }
+      this.stepMovement(deltaSeconds, learning, epsilon, manualControlActive, events);
       const selected = this.selectedWildId ? this.entities.find(entity => entity.id === this.selectedWildId) : undefined;
-      const contact = selected && distance(selected, this.player) <= 4 ? selected : this.wildEntities().find(entity => distance(entity, this.player) <= 1.4);
+      const companion = this.entities.find(entity => entity.kind === 'companion');
+      const selectedContact = selected && (distance(selected, this.player) <= 4 || (!!companion && distance(selected, companion) <= 2.8));
+      const contact = selectedContact ? selected : this.wildEntities().find(entity => distance(entity, this.player) <= 1.4);
       if (contact && this.startEncounter(contact.id)) events.push({ type: 'encounter', entityId: contact.id, speciesId: contact.speciesId, level: contact.level });
     } else if (!this.battleWildId) throw new Error('Open-world battle is missing its wild entity');
 
@@ -176,27 +230,36 @@ export class OpenWorldSimulation {
   snapshot(): OpenWorldSnapshot {
     const pack = (entity: OpenWorldEntity): OpenWorldEntitySnapshot => { const { brain: _brain, ...rest } = entity; return { ...structuredClone(rest), brain: stripGraph(this.brain(entity.id).state) }; };
     return { schema: 1, model: OPEN_WORLD_MODEL, graphId: this.graph.id, seed: this.seed, rng: this.rng.state, tick: this.tick,
-      player: structuredClone(this.player), selectedWildId: this.selectedWildId, autoCapture: this.autoCapture, battleWildId: this.battleWildId,
+      player: structuredClone(this.player), selectedWildId: this.selectedWildId, autoCapture: this.autoCapture, autoHunt: this.autoHunt, battleWildId: this.battleWildId,
       battleElapsed: this.battleElapsed, pendingCapture: this.pendingCapture, pendingBall: this.pendingBall, lastPlayerReward: this.lastPlayerReward, lastEnemyReward: this.lastEnemyReward,
-      spawnSerial: this.spawnSerial, nextFoodId: this.nextFoodId, foods: structuredClone(this.foods), entities: this.entities.map(pack) };
+      pendingAction: structuredClone(this.pendingAction), manualControlRemaining: this.manualControlRemaining,
+      spawnSerial: this.spawnSerial, nextFoodId: this.nextFoodId, foods: structuredClone(this.foods), respawnQueue: structuredClone(this.respawnQueue), entities: this.entities.map(pack), companionMemories: [...this.companionMemories.values()].map(pack) };
   }
 
   spawnCatalog(): Array<{ speciesId: number; biome: WorldBiome }> { return POKEMON.map((_, index) => { const speciesId = speciesForSpawn(index + 1); return { speciesId, biome: biomeForSpecies(speciesId) }; }); }
+  rosterStatus(): { alive: number; pending: number; total: number } { const alive = this.wildEntities().length, pending = this.respawnQueue.length; return { alive, pending, total: alive + pending }; }
 
-  private stepMovement(learning: boolean, events: OpenWorldEvent[]): void {
+  private stepMovement(deltaSeconds: number, learning: boolean, epsilon: number, manualControlActive: boolean, events: OpenWorldEvent[]): void {
     const occupied: Array<{ x: number; z: number }> = [];
     for (const entity of this.entities) {
       const target = this.targetFor(entity); entity.target = target;
-      const before = target ? distance(entity, target) : 0; entity.observation = this.observe(entity, target, occupied);
-      const brain = this.brain(entity.id), action = brain.act(entity.observation, this.tick ? entity.reward : null, learning, learning ? .12 : 0, 4);
+      const before = target ? distance(entity, target) : 0; entity.observation = this.observe(entity, target, occupied, deltaSeconds);
+      if (entity.kind === 'companion' && manualControlActive) {
+        entity.reward = 0; occupied.push({ x: entity.x, z: entity.z }); events.push({ type: 'wait', entityId: entity.id, x: entity.x, z: entity.z, reward: 0 }); continue;
+      }
+      const brain = this.brain(entity.id), action = brain.act(entity.observation, this.tick ? entity.reward : null, learning, epsilon, 4);
       let reward = -.005, type: 'move' | 'wait' | 'collision' | 'food' = 'wait';
-      if (action < 4) {
-        const direction = DIRECTIONS[action as 0 | 1 | 2 | 3], x = entity.x + direction.x * STEP_DISTANCE, z = entity.z + direction.z * STEP_DISTANCE;
+      if (action < 4 && deltaSeconds > 0) {
+        const direction = DIRECTIONS[action as 0 | 1 | 2 | 3], stepDistance = movementSpeed(entity.speciesId) * deltaSeconds;
+        const x = entity.x + direction.x * stepDistance, z = entity.z + direction.z * stepDistance;
         entity.heading = action;
-        if (sampleWorld(x, z).blocked || occupied.some(point => Math.hypot(point.x - x, point.z - z) < 1)) { reward -= .2; entity.collisions++; type = 'collision'; }
-        else { entity.x = x; entity.z = z; entity.energy = Math.max(0, entity.energy - .04); type = 'move'; }
+        if (this.pathBlocked(entity, x, z, occupied)) { reward -= .2; entity.collisions++; type = 'collision'; }
+        else { entity.x = x; entity.z = z; entity.energy = Math.max(0, entity.energy - .035 * stepDistance); type = 'move'; }
       } else entity.energy = Math.min(100, entity.energy + .025);
-      if (target) reward += clamp(before - distance(entity, target), -STEP_DISTANCE, STEP_DISTANCE) * .05;
+      if (target) {
+        const maxProgress = movementSpeed(entity.speciesId) * deltaSeconds;
+        reward += clamp(before - distance(entity, target), -maxProgress, maxProgress) * .05;
+      }
       if (entity.kind === 'wild') {
         const foodIndex = this.foods.findIndex(food => distance(food, entity) < 1.25);
         if (foodIndex >= 0) { this.foods.splice(foodIndex, 1); entity.foods++; entity.energy = Math.min(100, entity.energy + 20); reward += 1.5; type = 'food'; this.spawnFood(); }
@@ -209,20 +272,28 @@ export class OpenWorldSimulation {
   private advanceBattle(learning: boolean, events: OpenWorldEvent[]): Extract<OpenWorldEvent, { type: 'battle-turn' }> | undefined {
     const battle = this.game.battle, entityId = this.battleWildId; if (!battle || !entityId) return undefined;
     const player = battle.player.team[battle.player.activeIndex], enemy = battle.enemy.team[battle.enemy.activeIndex];
-    let action: BattleAction;
+    let action: BattleAction, learnedPlayerAction = false;
     if (battle.awaitingSwitch) {
-      const index = battle.player.team.findIndex(monster => monster.hp > 0); action = { type: 'switch', index };
+      const requested = this.pendingAction; this.pendingAction = undefined;
+      const index = requested?.type === 'switch' ? requested.index : battle.player.team.findIndex(monster => monster.hp > 0);
+      action = { type: 'switch', index };
+    } else if (this.pendingAction) {
+      action = this.pendingAction; this.pendingAction = undefined;
     } else if ((this.pendingCapture || (this.autoCapture && enemy.hp / enemy.stats.hp <= .35)) && (this.pendingBall ?? this.bestBall())) {
       action = { type: 'catch', ball: (this.pendingBall ?? this.bestBall())! }; this.pendingCapture = false; this.pendingBall = undefined;
     } else {
-      const decision = this.battleController.choose(player, enemy, battle.turn, this.lastPlayerReward, learning);
-      action = decision.action < 4 ? { type: 'move', index: decision.action } : { type: 'wait' };
+      const decision = this.chooseBattle(player, enemy, battle, this.lastPlayerReward, learning);
+      if (decision.action < 4 && (!this.autoHunt || this.isDamagingAttack(player, battle, decision.action))) { action = { type: 'move', index: decision.action }; learnedPlayerAction = true; }
+      else if (this.autoHunt) action = { type: 'move', index: this.fallbackAttack(player, battle) };
+      else { action = { type: 'wait' }; learnedPlayerAction = true; }
     }
+    if (!learnedPlayerAction) this.clearPendingLearning(player);
     const playerHp = player.hp, enemyHp = enemy.hp;
-    const enemyDecision = this.battleController.choose(enemy, player, battle.turn, this.lastEnemyReward, learning);
+    const enemyDecision = this.chooseBattle(enemy, player, battle, this.lastEnemyReward, learning);
     const result = actBattle(this.game, action, enemyDecision.action);
-    this.lastPlayerReward = clamp((enemyHp - enemy.hp) / Math.max(1, enemy.stats.hp) - (playerHp - player.hp) / Math.max(1, player.stats.hp), -1, 1);
-    this.lastEnemyReward = -this.lastPlayerReward;
+    const playerMaxHp = battle.transformations?.[player.instanceId]?.stats.hp ?? player.stats.hp, enemyMaxHp = battle.transformations?.[enemy.instanceId]?.stats.hp ?? enemy.stats.hp;
+    const turnReward = clamp((enemyHp - enemy.hp) / Math.max(1, enemyMaxHp) - (playerHp - player.hp) / Math.max(1, playerMaxHp), -1, 1);
+    this.lastPlayerReward = learnedPlayerAction ? turnReward : null; this.lastEnemyReward = -turnReward;
     if (result.battleEnded) {
       this.battleController.finish(player, result.outcome === 'won' ? 1 : result.outcome === 'lost' ? -1 : .25, learning);
       this.battleController.finish(enemy, result.outcome === 'lost' ? 1 : result.outcome === 'won' ? -1 : 0, learning);
@@ -230,8 +301,31 @@ export class OpenWorldSimulation {
       if (removed) this.removeWild(entityId);
       if (result.outcome === 'won') this.autoEvolve(events);
       this.battleWildId = undefined; this.selectedWildId = undefined; this.battleElapsed = 0; this.pendingCapture = false; this.pendingBall = undefined; this.lastPlayerReward = null; this.lastEnemyReward = null;
+      this.pendingAction = undefined;
     }
     return { type: 'battle-turn', entityId, result };
+  }
+
+  private chooseBattle(monster: Monster, other: Monster, battle: NonNullable<GameState['battle']>, reward: number | null, learning: boolean) {
+    const selfForm = battle.transformations?.[monster.instanceId], otherForm = battle.transformations?.[other.instanceId];
+    const self = { ...monster, ...(selfForm ?? {}), brain: monster.brain }, foe = { ...other, ...(otherForm ?? {}), brain: other.brain };
+    const decision = this.battleController.choose(self, foe, battle.turn, reward, learning); monster.brain = self.brain; return decision;
+  }
+
+  private clearPendingLearning(monster: Monster): void {
+    const brain = this.battleController.ensure(monster); brain.state.previous = null; monster.brain = brain.snapshot(); this.lastPlayerReward = null;
+  }
+
+  private fallbackAttack(monster: Monster, battle: NonNullable<GameState['battle']>): number {
+    const moves = battle.transformations?.[monster.instanceId]?.moves ?? monster.moves;
+    const damaging = moves.map((slot, index) => ({ index, slot, move: getMove(slot.moveId) })).filter(candidate => candidate.slot.pp > 0 && (candidate.move.power > 0 || [12, 32, 49, 69, 82, 90, 101, 149, 162].includes(candidate.move.id)));
+    damaging.sort((a, b) => b.move.power - a.move.power || a.index - b.index);
+    return damaging[0]?.index ?? moves.findIndex(slot => slot.pp > 0) ?? 0;
+  }
+
+  private isDamagingAttack(monster: Monster, battle: NonNullable<GameState['battle']>, index: number): boolean {
+    const slot = (battle.transformations?.[monster.instanceId]?.moves ?? monster.moves)[index]; if (!slot || slot.pp <= 0) return false;
+    const move = getMove(slot.moveId); return move.power > 0 || [12, 32, 49, 69, 82, 90, 101, 149, 162].includes(move.id);
   }
 
   private autoEvolve(events: OpenWorldEvent[]): void {
@@ -248,7 +342,7 @@ export class OpenWorldSimulation {
 
   private makeCompanion(): OpenWorldEntity {
     const lead = this.game.player.team[0], id = `companion:${lead.instanceId}`;
-    return this.makeEntity(id, 'companion', lead.speciesId, lead.level, { x: -2, z: 2 });
+    return this.makeEntity(id, 'companion', lead.speciesId, lead.level, this.companionPosition());
   }
 
   private syncCompanion(): void {
@@ -256,22 +350,43 @@ export class OpenWorldSimulation {
     let companion = this.entities.find(entity => entity.kind === 'companion');
     const expectedId = `companion:${lead.instanceId}`;
     if (!companion || companion.id !== expectedId) {
-      if (companion) { this.entities.splice(this.entities.indexOf(companion), 1); this.brains.delete(companion.id); }
-      companion = this.makeEntity(expectedId, 'companion', lead.speciesId, lead.level, { x: this.player.x - 2, z: this.player.z + 2 }); this.entities.unshift(companion);
+      if (companion) { this.entities.splice(this.entities.indexOf(companion), 1); this.companionMemories.set(companion.id, companion); }
+      companion = this.companionMemories.get(expectedId);
+      const position = this.companionPosition();
+      if (companion) { this.companionMemories.delete(expectedId); companion.x = position.x; companion.z = position.z; }
+      else companion = this.makeEntity(expectedId, 'companion', lead.speciesId, lead.level, position);
+      this.entities.unshift(companion);
     }
     companion.speciesId = lead.speciesId; companion.level = lead.level;
   }
 
   private spawnWild(): OpenWorldEntity {
     const speciesId = speciesForSpawn(this.spawnSerial), id = `wild-${this.spawnSerial++}`, biome = biomeForSpecies(speciesId);
-    const position = this.openPosition(biome, 10), radial = Math.hypot(position.x, position.z);
-    const level = Math.max(2, Math.min(85, 2 + Math.floor((radial / 170) ** 1.6 * 78) + this.rng.int(4)));
+    const beginner = this.spawnSerial <= 4;
+    const position = beginner ? this.openBeginnerPosition() : this.openPosition(biome, 10), radial = Math.hypot(position.x, position.z);
+    const level = beginner ? 2 + this.rng.int(2) : Math.max(2, Math.min(85, 2 + Math.floor((radial / 170) ** 1.6 * 78) + this.rng.int(4)));
     const entity = this.makeEntity(id, 'wild', speciesId, level, position); this.entities.push(entity); return entity;
   }
 
   private removeWild(id: string): void {
-    const index = this.entities.findIndex(entity => entity.id === id); if (index >= 0) this.entities.splice(index, 1);
-    this.brains.delete(id); this.spawnWild();
+    const index = this.entities.findIndex(entity => entity.id === id && entity.kind === 'wild'); if (index < 0) return;
+    const [removed] = this.entities.splice(index, 1); this.brains.delete(id);
+    const speciesId = nextSpeciesInBiome(removed.speciesId);
+    this.respawnQueue.push({ id: `respawn:${id}`, speciesId, level: removed.level, biome: biomeForSpecies(speciesId), originX: removed.x, originZ: removed.z, remainingSeconds: 4 + this.rng.next() * 2 });
+  }
+
+  private advanceRespawns(deltaSeconds: number): void {
+    for (const pending of this.respawnQueue) pending.remainingSeconds = Math.max(0, pending.remainingSeconds - deltaSeconds);
+    const ready = this.respawnQueue.filter(pending => pending.remainingSeconds === 0);
+    this.respawnQueue = this.respawnQueue.filter(pending => pending.remainingSeconds > 0);
+    for (const pending of ready) this.spawnReplacement(pending);
+  }
+
+  private spawnReplacement(pending: WorldRespawn): OpenWorldEntity {
+    const id = `wild-${this.spawnSerial++}`, position = this.openRespawnPosition(pending);
+    const leadLevel = this.game.player.team.find(monster => monster.hp > 0)?.level ?? this.game.player.team[0].level;
+    const level = Math.max(2, Math.min(pending.level, leadLevel + 2));
+    const entity = this.makeEntity(id, 'wild', pending.speciesId, level, position); this.entities.push(entity); return entity;
   }
 
   private makeEntity(id: string, kind: OpenWorldEntity['kind'], speciesId: number, level: number, position: { x: number; z: number }): OpenWorldEntity {
@@ -292,13 +407,23 @@ export class OpenWorldSimulation {
     return food ? { kind: 'food', id: String(food.id), x: food.x, z: food.z } : undefined;
   }
 
-  private observe(entity: OpenWorldEntity, target: WorldTarget | undefined, occupied: Array<{ x: number; z: number }>): number[] {
+  private observe(entity: OpenWorldEntity, target: WorldTarget | undefined, occupied: Array<{ x: number; z: number }>, deltaSeconds: number): number[] {
     const dx = target ? target.x - entity.x : 0, dz = target ? target.z - entity.z : 0;
     const blocked = DIRECTIONS.map(direction => {
-      const x = entity.x + direction.x * STEP_DISTANCE, z = entity.z + direction.z * STEP_DISTANCE;
-      return sampleWorld(x, z).blocked || occupied.some(point => Math.hypot(point.x - x, point.z - z) < 1) ? 1 : 0;
+      const lookahead = movementSpeed(entity.speciesId) * deltaSeconds;
+      const x = entity.x + direction.x * lookahead, z = entity.z + direction.z * lookahead;
+      return this.pathBlocked(entity, x, z, occupied) ? 1 : 0;
     });
-    return [1, dx / 240, dz / 240, Math.sign(dx), Math.sign(dz), Math.abs(dx) / 240, Math.abs(dz) / 240, ...blocked, entity.energy / 100];
+    return [1, clamp(dx / 16, -1, 1), clamp(dz / 10, -1, 1), Math.sign(dx), Math.sign(dz), Math.min(Math.abs(dx) / 16, 1), Math.min(Math.abs(dz) / 10, 1), ...blocked, entity.energy / 100];
+  }
+
+  private pathBlocked(from: { x: number; z: number }, x: number, z: number, occupied: Array<{ x: number; z: number }>): boolean {
+    const length = Math.hypot(x - from.x, z - from.z), samples = Math.max(1, Math.ceil(length / PATH_SAMPLE_DISTANCE));
+    for (let sample = 1; sample <= samples; sample++) {
+      const ratio = sample / samples, px = from.x + (x - from.x) * ratio, pz = from.z + (z - from.z) * ratio;
+      if (sampleWorld(px, pz).blocked || occupied.some(point => Math.hypot(point.x - px, point.z - pz) < 1)) return true;
+    }
+    return false;
   }
 
   private openPosition(biome: WorldBiome, awayFromPlayer: number): { x: number; z: number } {
@@ -310,6 +435,34 @@ export class OpenWorldSimulation {
     throw new Error(`No open ${biome} position`);
   }
 
+  private openBeginnerPosition(): { x: number; z: number } {
+    for (let attempt = 0; attempt < 1000; attempt++) {
+      const angle = this.rng.next() * Math.PI * 2, radius = 8 + this.rng.next() * 7;
+      const x = this.player.x + Math.cos(angle) * radius, z = this.player.z + Math.sin(angle) * radius;
+      if (!sampleWorld(x, z).blocked && !this.entities.some(entity => Math.hypot(entity.x - x, entity.z - z) < 3)) return { x, z };
+    }
+    throw new Error('No open beginner position');
+  }
+
+  private openRespawnPosition(pending: WorldRespawn): { x: number; z: number } {
+    for (let attempt = 0; attempt < 2000; attempt++) {
+      const center = attempt % 2 === 0 ? { x: pending.originX, z: pending.originZ } : this.player;
+      const minimum = center === this.player ? 8 : 5, radius = minimum + this.rng.next() * 13, angle = this.rng.next() * Math.PI * 2;
+      const x = clamp(center.x + Math.cos(angle) * radius, WORLD_MIN + 2, WORLD_MAX - 2), z = clamp(center.z + Math.sin(angle) * radius, WORLD_MIN + 2, WORLD_MAX - 2);
+      const sample = sampleWorld(x, z);
+      if (!sample.blocked && sample.biome === pending.biome && distance({ x, z }, this.player) >= 6 && !this.entities.some(entity => distance(entity, { x, z }) < 3) && !this.foods.some(food => distance(food, { x, z }) < 2)) return { x, z };
+    }
+    return this.openPosition(pending.biome, 8);
+  }
+
+  private companionPosition(): { x: number; z: number } {
+    for (const offset of [{ x: -2, z: 2 }, { x: 2, z: 2 }, { x: -2, z: -2 }, { x: 2, z: -2 }, { x: 0, z: 0 }]) {
+      const position = { x: this.player.x + offset.x, z: this.player.z + offset.z };
+      if (!sampleWorld(position.x, position.z).blocked) return position;
+    }
+    return { x: this.player.x, z: this.player.z };
+  }
+
   private spawnFood(): void {
     const biomes: WorldBiome[] = ['meadow', 'forest', 'lake', 'rock']; const position = this.openPosition(biomes[this.rng.int(biomes.length)], 4);
     this.foods.push({ id: this.nextFoodId++, ...position });
@@ -317,26 +470,44 @@ export class OpenWorldSimulation {
 
   private brain(id: string): Brain { const brain = this.brains.get(id); if (!brain) throw new Error(`Missing open-world brain ${id}`); return brain; }
   private wildEntities(): OpenWorldEntity[] { return this.entities.filter(entity => entity.kind === 'wild'); }
+  private nearestWildToCompanion(): OpenWorldEntity | undefined { const companion = this.entities.find(entity => entity.kind === 'companion'); return companion ? [...this.wildEntities()].sort((a, b) => distance(a, companion) - distance(b, companion) || a.id.localeCompare(b.id))[0] : undefined; }
   private bestBall(): BallItem | undefined { return (['ultra-ball', 'great-ball', 'poke-ball'] as BallItem[]).find(ball => this.game.inventory[ball] > 0); }
+  private validRequestedAction(action: BattleAction): boolean {
+    if (!action || typeof action !== 'object') return false;
+    if (action.type === 'move') return Number.isInteger(action.index) && action.index >= 0 && action.index < 4;
+    if (action.type === 'switch') return Number.isInteger(action.index) && action.index >= 0 && action.index < this.game.player.team.length;
+    if (action.type === 'item') return ['potion', 'super-potion'].includes(action.item) && (action.targetInstanceId === undefined || typeof action.targetInstanceId === 'string');
+    if (action.type === 'catch') return ['poke-ball', 'great-ball', 'ultra-ball'].includes(action.ball);
+    return action.type === 'wait' || action.type === 'run';
+  }
   private priority(entity: OpenWorldEntity): number { return entity.id === this.battleWildId ? 0 : entity.id === this.selectedWildId ? 1 : entity.kind === 'companion' ? 2 : 3; }
 
   private restore(checkpoint: OpenWorldSnapshot): void {
-    if (!checkpoint || checkpoint.schema !== 1 || checkpoint.model !== OPEN_WORLD_MODEL || checkpoint.graphId !== this.graph.id || checkpoint.seed !== this.seed || !Number.isInteger(checkpoint.rng) || checkpoint.rng < 0 || checkpoint.rng > 0xffffffff || !Number.isSafeInteger(checkpoint.tick) || checkpoint.tick < 0 || !finite(checkpoint.battleElapsed) || checkpoint.battleElapsed < 0 || checkpoint.battleElapsed >= BATTLE_INTERVAL || typeof checkpoint.autoCapture !== 'boolean' || typeof checkpoint.pendingCapture !== 'boolean' || (checkpoint.pendingBall !== undefined && !['poke-ball', 'great-ball', 'ultra-ball'].includes(checkpoint.pendingBall)) || ![checkpoint.lastPlayerReward, checkpoint.lastEnemyReward].every(value => value === null || (finite(value) && Math.abs(value) <= 1)) || !Number.isSafeInteger(checkpoint.spawnSerial) || checkpoint.spawnSerial < 1 || !Number.isSafeInteger(checkpoint.nextFoodId) || checkpoint.nextFoodId < 1 || !Array.isArray(checkpoint.foods) || !Array.isArray(checkpoint.entities)) throw new Error('Invalid open-world checkpoint');
+    if (!checkpoint || checkpoint.schema !== 1 || checkpoint.model !== OPEN_WORLD_MODEL || checkpoint.graphId !== this.graph.id || checkpoint.seed !== this.seed || !Number.isInteger(checkpoint.rng) || checkpoint.rng < 0 || checkpoint.rng > 0xffffffff || !Number.isSafeInteger(checkpoint.tick) || checkpoint.tick < 0 || !finite(checkpoint.battleElapsed) || checkpoint.battleElapsed < 0 || checkpoint.battleElapsed >= BATTLE_INTERVAL || typeof checkpoint.autoCapture !== 'boolean' || typeof checkpoint.pendingCapture !== 'boolean' || (checkpoint.pendingBall !== undefined && !['poke-ball', 'great-ball', 'ultra-ball'].includes(checkpoint.pendingBall)) || (checkpoint.pendingAction !== undefined && !this.validRequestedAction(checkpoint.pendingAction)) || ![checkpoint.lastPlayerReward, checkpoint.lastEnemyReward].every(value => value === null || (finite(value) && Math.abs(value) <= 1)) || !Number.isSafeInteger(checkpoint.spawnSerial) || checkpoint.spawnSerial < 1 || !Number.isSafeInteger(checkpoint.nextFoodId) || checkpoint.nextFoodId < 1 || !Array.isArray(checkpoint.foods) || !Array.isArray(checkpoint.entities) || (checkpoint.companionMemories !== undefined && !Array.isArray(checkpoint.companionMemories))) throw new Error('Invalid open-world checkpoint');
+    if ((checkpoint.autoHunt !== undefined && typeof checkpoint.autoHunt !== 'boolean') || (checkpoint.respawnQueue !== undefined && !Array.isArray(checkpoint.respawnQueue))) throw new Error('Invalid open-world automation checkpoint');
+    if (checkpoint.manualControlRemaining !== undefined && (!finite(checkpoint.manualControlRemaining) || checkpoint.manualControlRemaining < 0 || checkpoint.manualControlRemaining > MANUAL_CONTROL_HOLD)) throw new Error('Invalid manual-control hold');
     if (![checkpoint.player?.x, checkpoint.player?.z, checkpoint.player?.heading].every(finite) || !Number.isInteger(checkpoint.player.heading) || checkpoint.player.heading < 0 || checkpoint.player.heading > 4 || sampleWorld(checkpoint.player.x, checkpoint.player.z).blocked) throw new Error('Invalid open-world player');
-    if (checkpoint.entities.filter(entity => entity.kind === 'wild').length < 12 || checkpoint.entities.filter(entity => entity.kind === 'wild').length > 18 || checkpoint.entities.filter(entity => entity.kind === 'companion').length !== 1 || new Set(checkpoint.entities.map(entity => entity.id)).size !== checkpoint.entities.length) throw new Error('Invalid open-world roster');
+    const memories = checkpoint.companionMemories ?? [], respawns = checkpoint.respawnQueue ?? [], savedEntities = [...checkpoint.entities, ...memories];
+    const wildCount = checkpoint.entities.filter(entity => entity.kind === 'wild').length;
+    if (wildCount + respawns.length < 12 || wildCount + respawns.length > 18 || checkpoint.entities.filter(entity => entity.kind === 'companion').length !== 1 || memories.some(entity => entity.kind !== 'companion') || new Set(savedEntities.map(entity => entity.id)).size !== savedEntities.length) throw new Error('Invalid open-world roster');
+    if (new Set(respawns.map(respawn => respawn.id)).size !== respawns.length || respawns.some(respawn => !respawn || typeof respawn.id !== 'string' || !respawn.id || !Number.isInteger(respawn.speciesId) || respawn.speciesId < 1 || respawn.speciesId > 151 || !Number.isInteger(respawn.level) || respawn.level < 1 || respawn.level > 100 || respawn.biome !== biomeForSpecies(respawn.speciesId) || !finite(respawn.originX) || !finite(respawn.originZ) || sampleWorld(respawn.originX, respawn.originZ).blocked || !finite(respawn.remainingSeconds) || respawn.remainingSeconds <= 0 || respawn.remainingSeconds > 6)) throw new Error('Invalid open-world respawn queue');
+    const ownedIds = new Set([...this.game.player.team, ...this.game.player.box].map(monster => `companion:${monster.instanceId}`));
+    if (savedEntities.filter(entity => entity.kind === 'companion').some(entity => !ownedIds.has(entity.id))) throw new Error('Open-world companion memory is not owned');
     for (const food of checkpoint.foods) if (!Number.isSafeInteger(food.id) || food.id < 1 || food.id >= checkpoint.nextFoodId || !finite(food.x) || !finite(food.z) || sampleWorld(food.x, food.z).blocked) throw new Error('Invalid open-world food');
     if (new Set(checkpoint.foods.map(food => food.id)).size !== checkpoint.foods.length || new Set(checkpoint.foods.map(food => key(food.x, food.z))).size !== checkpoint.foods.length) throw new Error('Duplicate open-world food');
-    for (const saved of checkpoint.entities) {
+    for (const saved of savedEntities) {
       if (!saved || typeof saved.id !== 'string' || !saved.id || !['wild', 'companion'].includes(saved.kind) || !Number.isInteger(saved.speciesId) || saved.speciesId < 1 || saved.speciesId > 151 || !Number.isInteger(saved.level) || saved.level < 1 || saved.level > 100 || !finite(saved.x) || !finite(saved.z) || sampleWorld(saved.x, saved.z).blocked || !Number.isInteger(saved.heading) || saved.heading < 0 || saved.heading > 4 || !Number.isInteger(saved.action) || saved.action < 0 || saved.action > 4 || !finite(saved.energy) || saved.energy < 0 || saved.energy > 100 || !finite(saved.reward) || Math.abs(saved.reward) > 10 || !Number.isSafeInteger(saved.foods) || saved.foods < 0 || !Number.isSafeInteger(saved.collisions) || saved.collisions < 0 || !Array.isArray(saved.observation) || saved.observation.length !== 12 || !saved.observation.every(finite) || saved.brain?.graphId !== this.graph.id || saved.brain.sensoryBypass !== false) throw new Error('Invalid open-world entity');
       const { graphId: _graphId, ...state } = structuredClone(saved.brain), brain = Brain.restore({ ...state, graph: this.graph }); brain.state.graph = this.graph; this.brains.set(saved.id, brain);
-      const { brain: _savedBrain, ...rest } = structuredClone(saved); this.entities.push({ ...rest, brain: brain.state });
+      const { brain: _savedBrain, ...rest } = structuredClone(saved), entity = { ...rest, brain: brain.state };
+      if (memories.includes(saved)) this.companionMemories.set(entity.id, entity); else this.entities.push(entity);
     }
     if (checkpoint.selectedWildId !== undefined && !this.entities.some(entity => entity.kind === 'wild' && entity.id === checkpoint.selectedWildId)) throw new Error('Invalid selected wild Pokemon');
     if ((checkpoint.battleWildId !== undefined) !== !!this.game.battle || (checkpoint.battleWildId && !this.entities.some(entity => entity.kind === 'wild' && entity.id === checkpoint.battleWildId))) throw new Error('Open-world battle does not match game');
     this.rng = new Random(checkpoint.rng); this.tick = checkpoint.tick; this.player = structuredClone(checkpoint.player); this.foods = structuredClone(checkpoint.foods);
-    this.selectedWildId = checkpoint.selectedWildId; this.autoCapture = checkpoint.autoCapture; this.battleWildId = checkpoint.battleWildId; this.battleElapsed = checkpoint.battleElapsed;
+    this.selectedWildId = checkpoint.selectedWildId; this.autoCapture = checkpoint.autoCapture; this.autoHunt = checkpoint.autoHunt ?? true; this.battleWildId = checkpoint.battleWildId; this.battleElapsed = checkpoint.battleElapsed;
     this.pendingCapture = checkpoint.pendingCapture; this.pendingBall = checkpoint.pendingBall; this.lastPlayerReward = checkpoint.lastPlayerReward; this.lastEnemyReward = checkpoint.lastEnemyReward;
-    this.spawnSerial = checkpoint.spawnSerial; this.nextFoodId = checkpoint.nextFoodId;
+    this.pendingAction = structuredClone(checkpoint.pendingAction);
+    this.spawnSerial = checkpoint.spawnSerial; this.nextFoodId = checkpoint.nextFoodId; this.respawnQueue = structuredClone(respawns); this.manualControlRemaining = checkpoint.manualControlRemaining ?? 0;
   }
 }
 

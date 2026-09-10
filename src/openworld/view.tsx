@@ -1,25 +1,29 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { Physics, RigidBody } from '@react-three/rapier';
-import { GaesupWorld, GaesupWorldContent, createCameraPlugin } from 'gaesup-world';
+import { GaesupWorld, createCameraPlugin } from 'gaesup-world';
 import { createGaesupRuntime } from 'gaesup-world/runtime';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import {
-  AnimationClip,
   AnimationMixer,
-  Box3,
   BufferAttribute,
+  BufferGeometry,
   CanvasTexture,
   Color,
+  Float32BufferAttribute,
   Group,
   InstancedMesh,
+  Material,
+  Matrix4,
   MathUtils,
   Mesh,
   MeshStandardMaterial,
   Object3D,
   PlaneGeometry,
+  Quaternion,
   SRGBColorSpace,
+  Spherical,
   Texture,
   TextureLoader,
   Vector3,
@@ -35,6 +39,9 @@ import type {
   WorldCreature,
   WorldSample,
 } from './types';
+import { createSceneryPlacements, SCENERY_ASSETS, TRAIL_POINTS, type SceneryPlacement } from './scenery';
+import { createGrounding, terrainSurfaceHeight, TERRAIN_SEGMENTS } from './grounding';
+import { normalizePokemonModel } from './model-normalization';
 import './view.css';
 
 const WORLD_MIN = -120;
@@ -43,6 +50,10 @@ const MAX_VISIBLE = 12;
 const MODEL_LOD_DISTANCE = 54;
 const MODEL_CACHE_LIMIT = 16;
 const loader = new GLTFLoader();
+const DEFAULT_CAMERA_OFFSET = new Vector3(12, 18, 16);
+
+type CameraAction = 'left' | 'right' | 'up' | 'down' | 'zoom-in' | 'zoom-out' | 'reset';
+type CameraCommand = { id: number; action: CameraAction };
 
 type CachedModel = {
   promise: Promise<GLTF>;
@@ -150,7 +161,7 @@ function fallbackSample(x: number, z: number): WorldSample {
 
 function Terrain({ sampleWorld, visual = true }: { sampleWorld: (x: number, z: number) => WorldSample; visual?: boolean }) {
   const geometry = useMemo(() => {
-    const plane = new PlaneGeometry(240, 240, 72, 72);
+    const plane = new PlaneGeometry(240, 240, TERRAIN_SEGMENTS, TERRAIN_SEGMENTS);
     plane.rotateX(-Math.PI / 2);
     const positions = plane.attributes.position;
     const colors = new Float32Array(positions.count * 3);
@@ -184,56 +195,125 @@ function Terrain({ sampleWorld, visual = true }: { sampleWorld: (x: number, z: n
   );
 }
 
-function Nature({ sampleWorld }: { sampleWorld: (x: number, z: number) => WorldSample }) {
-  const trunks = useRef<InstancedMesh>(null);
-  const crowns = useRef<InstancedMesh>(null);
-  const rocks = useRef<InstancedMesh>(null);
-  const placements = useMemo(() => {
-    const forest: Array<[number, number, number, number]> = [];
-    const rock: Array<[number, number, number, number]> = [];
-    for (let gridX = -112; gridX <= 112; gridX += 8) {
-      for (let gridZ = -112; gridZ <= 112; gridZ += 8) {
-        const jitterX = Math.sin(gridX * 12.9898 + gridZ * 78.233) * 2.4;
-        const jitterZ = Math.cos(gridX * 39.346 + gridZ * 11.135) * 2.4;
-        const x = gridX + jitterX;
-        const z = gridZ + jitterZ;
-        const sample = sampleWorld(x, z);
-        if (!sample.blocked) continue;
-        const scale = .72 + Math.abs(Math.sin(x * .71 + z * .37)) * .68;
-        (sample.biome === 'forest' ? forest : rock).push([x, sample.height, z, scale]);
-      }
-    }
-    return { forest: forest.slice(0, 180), rock: rock.slice(0, 140) };
-  }, [sampleWorld]);
+function InstancedPart({ geometry, material, sourceMatrix, placements, shadows }: {
+  geometry: BufferGeometry;
+  material: Material | Material[];
+  sourceMatrix: Matrix4;
+  placements: readonly SceneryPlacement[];
+  shadows: boolean;
+}) {
+  const mesh = useRef<InstancedMesh>(null);
   useLayoutEffect(() => {
-    const dummy = new Object3D();
-    placements.forest.forEach(([x, y, z, scale], index) => {
-      dummy.position.set(x, y + 1.25 * scale, z);
-      dummy.rotation.set(0, (x * .17 + z * .11) % Math.PI, 0);
-      dummy.scale.set(scale, scale, scale);
-      dummy.updateMatrix();
-      trunks.current?.setMatrixAt(index, dummy.matrix);
-      dummy.position.y = y + 3.2 * scale;
-      dummy.scale.set(1.55 * scale, 2.1 * scale, 1.55 * scale);
-      dummy.updateMatrix();
-      crowns.current?.setMatrixAt(index, dummy.matrix);
+    if (!mesh.current) return;
+    const placementMatrix = new Matrix4();
+    const result = new Matrix4();
+    const position = new Vector3();
+    const scale = new Vector3();
+    const rotation = new Quaternion();
+    const axis = new Vector3(0, 1, 0);
+    placements.forEach((item, index) => {
+      position.set(item.x, item.y, item.z);
+      scale.setScalar(item.scale);
+      rotation.setFromAxisAngle(axis, item.rotationY);
+      placementMatrix.compose(position, rotation, scale);
+      result.multiplyMatrices(placementMatrix, sourceMatrix);
+      mesh.current!.setMatrixAt(index, result);
     });
-    placements.rock.forEach(([x, y, z, scale], index) => {
-      dummy.position.set(x, y + .55 * scale, z);
-      dummy.rotation.set(z * .13, x * .19, (x + z) * .07);
-      dummy.scale.set(1.15 * scale, .75 * scale, scale);
-      dummy.updateMatrix();
-      rocks.current?.setMatrixAt(index, dummy.matrix);
+    mesh.current.instanceMatrix.needsUpdate = true;
+    mesh.current.computeBoundingSphere();
+  }, [placements, sourceMatrix]);
+  return <instancedMesh ref={mesh} args={[geometry, material, placements.length]} castShadow={shadows} receiveShadow dispose={null} />;
+}
+
+function InstancedAsset({ url, placements, shadows }: { url: string; placements: readonly SceneryPlacement[]; shadows: boolean }) {
+  const gltf = useCachedModel(url);
+  const parts = useMemo(() => {
+    if (!gltf) return [];
+    gltf.scene.updateMatrixWorld(true);
+    const meshes: Array<{ geometry: BufferGeometry; material: Material | Material[]; matrix: Matrix4 }> = [];
+    gltf.scene.traverse(object => {
+      if (!(object instanceof Mesh)) return;
+      const source = Array.isArray(object.material) ? object.material : [object.material];
+      const normalized = source.map(material => {
+        const clone = material.clone();
+        if (clone instanceof MeshStandardMaterial) {
+          clone.metalness = 0;
+          clone.roughness = .95;
+          clone.needsUpdate = true;
+        }
+        return clone;
+      });
+      meshes.push({ geometry: object.geometry, material: Array.isArray(object.material) ? normalized : normalized[0], matrix: object.matrixWorld.clone() });
     });
-    if (trunks.current) trunks.current.instanceMatrix.needsUpdate = true;
-    if (crowns.current) crowns.current.instanceMatrix.needsUpdate = true;
-    if (rocks.current) rocks.current.instanceMatrix.needsUpdate = true;
-  }, [placements]);
+    return meshes;
+  }, [gltf]);
+  useEffect(() => () => {
+    for (const part of parts) {
+      const materials = Array.isArray(part.material) ? part.material : [part.material];
+      for (const material of materials) material.dispose();
+    }
+  }, [parts]);
+  if (!placements.length) return null;
+  return <>{parts.map((part, index) => <InstancedPart key={index} geometry={part.geometry} material={part.material} sourceMatrix={part.matrix} placements={placements} shadows={shadows} />)}</>;
+}
+
+function Nature({ sampleWorld }: { sampleWorld: (x: number, z: number) => WorldSample }) {
+  const placements = useMemo(() => createSceneryPlacements(sampleWorld), [sampleWorld]);
   return (
-    <group userData={{ gaesupWorldObject: 'nature-lod' }}>
-      <instancedMesh ref={trunks} args={[undefined, undefined, placements.forest.length]} castShadow receiveShadow><cylinderGeometry args={[.24, .38, 2.5, 7]} /><meshStandardMaterial color="#604934" roughness={1} /></instancedMesh>
-      <instancedMesh ref={crowns} args={[undefined, undefined, placements.forest.length]} castShadow receiveShadow><coneGeometry args={[1.1, 3, 8]} /><meshStandardMaterial color="#2e6940" roughness={.96} /></instancedMesh>
-      <instancedMesh ref={rocks} args={[undefined, undefined, placements.rock.length]} castShadow receiveShadow><dodecahedronGeometry args={[.9, 0]} /><meshStandardMaterial color="#746f63" roughness={.94} /></instancedMesh>
+    <group userData={{ gaesupWorldObject: 'kenney-nature-instances' }}>
+      {SCENERY_ASSETS.map(asset => <InstancedAsset
+        key={asset.id}
+        url={asset.url}
+        placements={placements[asset.id]}
+        shadows={!asset.id.startsWith('flower') && asset.id !== 'grass-tuft'}
+      />)}
+    </group>
+  );
+}
+
+function TrailAndWater({ sampleWorld }: { sampleWorld: (x: number, z: number) => WorldSample }) {
+  const trail = useMemo(() => {
+    const vertices: number[] = [];
+    const indices: number[] = [];
+    TRAIL_POINTS.forEach(([x, z], index) => {
+      const before = TRAIL_POINTS[Math.max(0, index - 1)];
+      const after = TRAIL_POINTS[Math.min(TRAIL_POINTS.length - 1, index + 1)];
+      const dx = after[0] - before[0];
+      const dz = after[1] - before[1];
+      const length = Math.hypot(dx, dz) || 1;
+      const sideX = -dz / length * 2.15;
+      const sideZ = dx / length * 2.15;
+      for (const direction of [-1, 1]) {
+        const px = x + sideX * direction;
+        const pz = z + sideZ * direction;
+        vertices.push(px, sampleWorld(px, pz).height + .035, pz);
+      }
+      if (index < TRAIL_POINTS.length - 1) {
+        const base = index * 2;
+        indices.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
+      }
+    });
+    const geometry = new BufferGeometry();
+    geometry.setAttribute('position', new Float32BufferAttribute(vertices, 3));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    return geometry;
+  }, [sampleWorld]);
+  useEffect(() => () => trail.dispose(), [trail]);
+  const lakeVisible = sampleWorld(42, -28).biome === 'lake';
+  return (
+    <group userData={{ gaesupWorldObject: 'landmarks' }}>
+      <mesh geometry={trail} receiveShadow><meshStandardMaterial color="#b89a68" roughness={1} polygonOffset polygonOffsetFactor={-1} /></mesh>
+      {lakeVisible && <>
+        <mesh position={[42, -.52, -28]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}>
+          <circleGeometry args={[19, 64]} />
+          <meshStandardMaterial color="#4cacc0" emissive="#1d5f74" emissiveIntensity={.16} roughness={.28} metalness={.04} transparent opacity={.82} depthWrite={false} />
+        </mesh>
+        <mesh position={[42, -.5, -28]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[18.7, 19.35, 64]} />
+          <meshBasicMaterial color="#a9d9c2" transparent opacity={.7} />
+        </mesh>
+      </>}
     </group>
   );
 }
@@ -255,78 +335,85 @@ function StaticModel({ item }: { item: OpenWorldProp }) {
 function PokemonModel({ creature, url }: { creature: WorldCreature; url: string }) {
   const gltf = useCachedModel(url);
   const root = useRef<Group>(null);
+  const mixer = useRef<AnimationMixer | null>(null);
+  const ground = useRef<((groundY: number) => number) | undefined>(undefined);
+  const worldPosition = useRef(new Vector3());
   const normalized = useMemo(() => {
     if (!gltf) return null;
     const scene = cloneSkinned(gltf.scene);
-    const bounds = new Box3().setFromObject(scene);
-    const size = bounds.getSize(new Vector3());
-    const scale = 2.4 / Math.max(size.y, size.x * .7, size.z * .7, .01);
-    scene.scale.setScalar(scale);
-    scene.position.set(-(bounds.min.x + bounds.max.x) * .5 * scale, -bounds.min.y * scale, -(bounds.min.z + bounds.max.z) * .5 * scale);
     scene.traverse(object => {
       if (object instanceof Mesh) {
         object.castShadow = true;
         object.receiveShadow = true;
       }
     });
-    return scene;
-  }, [gltf]);
-  useFrame(({ clock }) => {
+    return normalizePokemonModel(scene, gltf.animations, creature.displayHeight ?? 1.2);
+  }, [creature.displayHeight, gltf]);
+  useFrame(({ clock }, delta) => {
+    mixer.current?.update(Math.min(delta, .05) * MathUtils.clamp((creature.movementSpeed ?? 2.4) / 2.4, .65, 1.8));
     if (!root.current) return;
-    const phase = clock.elapsedTime * (creature.action === 'walk' ? 7 : 2.4) + creature.speciesId;
-    root.current.position.y = creature.action === 'fainted' ? .08 : Math.max(0, Math.sin(phase)) * (creature.action === 'walk' ? .13 : .045);
+    const gait = MathUtils.clamp(creature.movementSpeed ?? 2.4, 1.2, 5.2);
+    const phase = clock.elapsedTime * (creature.action === 'walk' ? gait * 2.7 : 2.4) + creature.speciesId;
+    root.current.position.y = 0;
     const pulse = creature.action === 'attack' ? 1 + Math.max(0, Math.sin(phase * 1.8)) * .12 : 1;
     root.current.scale.set(pulse, creature.action === 'hurt' ? .88 : 1, pulse);
     root.current.rotation.z = creature.action === 'fainted' ? Math.PI / 2 : 0;
-  });
+    if (!ground.current && normalized) ground.current = createGrounding(normalized.visual, root.current);
+    root.current.parent?.getWorldPosition(worldPosition.current);
+    ground.current?.(worldPosition.current.y);
+  }, -1);
+  useEffect(() => { ground.current = undefined; }, [normalized]);
 
   useEffect(() => {
     if (!normalized || !gltf?.animations.length) return;
-    const mixer = new AnimationMixer(normalized);
+    const nextMixer = new AnimationMixer(normalized.animatedRoot);
+    mixer.current = nextMixer;
     const wanted = creature.action === 'attack' ? /attack|bite|skill/i : creature.action === 'walk' ? /walk|run/i : /idle/i;
     const clip = gltf.animations.find(candidate => wanted.test(candidate.name)) ?? gltf.animations[0];
-    mixer.clipAction(clip).play();
-    let frame = 0;
-    let before = performance.now();
-    const animate = (now: number) => {
-      mixer.update(Math.min((now - before) / 1000, .05));
-      before = now;
-      frame = requestAnimationFrame(animate);
-    };
-    frame = requestAnimationFrame(animate);
+    nextMixer.clipAction(clip).play();
     return () => {
-      cancelAnimationFrame(frame);
-      mixer.stopAllAction();
-      mixer.uncacheRoot(normalized);
+      mixer.current = null;
+      nextMixer.stopAllAction();
+      nextMixer.uncacheRoot(normalized.animatedRoot);
     };
   }, [creature.action, gltf, normalized]);
 
-  if (!normalized) return <FallbackCreature />;
-  return <group ref={root}><primitive object={normalized} /></group>;
+  if (!normalized) return <FallbackCreature displayHeight={creature.displayHeight} />;
+  return <group ref={root}><primitive object={normalized.visual} /></group>;
 }
 
-function FallbackCreature() {
+function FallbackCreature({ displayHeight = 1.2 }: { displayHeight?: number }) {
   return (
-    <group>
+    <group scale={displayHeight / 1.8}>
       <mesh position={[0, 1.05, 0]} castShadow><sphereGeometry args={[.72, 20, 14]} /><meshStandardMaterial color="#e5cc67" /></mesh>
       <mesh position={[0, .38, 0]} castShadow><sphereGeometry args={[.46, 18, 12]} /><meshStandardMaterial color="#f2e9bd" /></mesh>
     </group>
   );
 }
 
-function SpriteCreature({ url }: { url: string }) {
+function SpriteCreature({ url, displayHeight = 1.2 }: { url: string; displayHeight?: number }) {
   const [texture, setTexture] = useState<ReturnType<TextureLoader['load']> | null>(null);
   useEffect(() => {
     let active = true;
     const loaded = new TextureLoader().load(url, value => { if (active) setTexture(value); }, undefined, () => {});
     return () => { active = false; loaded.dispose(); };
   }, [url]);
-  if (!texture) return <FallbackCreature />;
-  return <sprite position={[0, 1.4, 0]} scale={[2.8, 2.8, 1]}><spriteMaterial map={texture} transparent alphaTest={.08} /></sprite>;
+  if (!texture) return <FallbackCreature displayHeight={displayHeight} />;
+  return <sprite position={[0, displayHeight * .55, 0]} scale={[displayHeight, displayHeight, 1]}><spriteMaterial map={texture} transparent alphaTest={.08} /></sprite>;
 }
 
-function AttackEffect({ active }: { active: boolean }) {
+const MOVE_COLORS: Record<string, [string, string]> = {
+  fire: ['#ff7b36', '#b92716'], water: ['#54c7ff', '#176fb5'], electric: ['#ffe74d', '#ca8b00'],
+  grass: ['#7cda58', '#267b35'], ice: ['#b8f2ff', '#4a9fbd'], psychic: ['#ff67bd', '#9b2e8f'],
+  ghost: ['#9e83e8', '#49377f'], dark: ['#756580', '#292130'], dragon: ['#7c75ff', '#382dba'],
+  poison: ['#c96be2', '#6f2785'], fighting: ['#e46c4f', '#873424'], ground: ['#d9ad63', '#77542c'],
+  rock: ['#bdad6f', '#65572b'], bug: ['#a9ca48', '#50691c'], flying: ['#92bdf0', '#49689e'],
+  steel: ['#b8c4ce', '#66717d'], fairy: ['#ffa7d9', '#ad4f82'], normal: ['#eadfc9', '#827463'],
+};
+
+function AttackEffect({ active, moveType }: { active: boolean; moveType?: string }) {
   const ref = useRef<Mesh>(null);
+  const colors = MOVE_COLORS[moveType?.toLowerCase() ?? 'normal'] ?? MOVE_COLORS.normal;
   useFrame(({ clock }) => {
     if (!ref.current || !active) return;
     const phase = (clock.elapsedTime * 3.5) % 1;
@@ -335,10 +422,10 @@ function AttackEffect({ active }: { active: boolean }) {
     material.opacity = 1 - phase;
   });
   if (!active) return null;
-  return <mesh ref={ref} rotation={[-Math.PI / 2, 0, 0]} position={[0, .08, 0]}><ringGeometry args={[.75, .92, 32]} /><meshStandardMaterial color="#ffd85d" transparent opacity={1} emissive="#d7782f" /></mesh>;
+  return <mesh ref={ref} rotation={[-Math.PI / 2, 0, 0]} position={[0, .08, 0]}><ringGeometry args={[.72, .98, 32]} /><meshStandardMaterial color={colors[0]} transparent opacity={1} emissive={colors[1]} emissiveIntensity={1.1} /></mesh>;
 }
 
-function CreatureBillboard({ creature, hp }: { creature: WorldCreature; hp: number }) {
+function CreatureBillboard({ creature, hp, distance, emphasized }: { creature: WorldCreature; hp: number; distance: number; emphasized: boolean }) {
   const texture = useMemo(() => {
     const canvas = document.createElement('canvas');
     canvas.width = 512;
@@ -370,7 +457,9 @@ function CreatureBillboard({ creature, hp }: { creature: WorldCreature; hp: numb
     return result;
   }, [creature.hp, creature.level, creature.maxHp, creature.name, hp]);
   useEffect(() => () => texture.dispose(), [texture]);
-  return <sprite position={[0, 3.35, 0]} scale={[5.4, 1.35, 1]} renderOrder={20}><spriteMaterial map={texture} transparent depthTest={false} depthWrite={false} /></sprite>;
+  if (distance > 34 && !emphasized) return null;
+  const width = emphasized ? 3.15 : distance < 5 ? 2.25 : 2.7;
+  return <sprite position={[0, (creature.displayHeight ?? 1.2) + .62, 0]} scale={[width, width * .25, 1]} renderOrder={20}><spriteMaterial map={texture} transparent depthTest={false} depthWrite={false} /></sprite>;
 }
 
 function Creature({ creature, selected, distance, options }: {
@@ -380,11 +469,26 @@ function Creature({ creature, selected, distance, options }: {
   options: OpenWorldViewOptions;
 }) {
   const sample = options.sampleWorld ?? fallbackSample;
-  const y = creature.y ?? sample(creature.x, creature.z).height;
+  const y = terrainSurfaceHeight(sample, creature.x, creature.z);
   const hp = MathUtils.clamp(creature.maxHp > 0 ? creature.hp / creature.maxHp : 0, 0, 1);
   const yaw = [Math.PI, -Math.PI / 2, 0, Math.PI / 2, 0][creature.heading ?? 4];
+  const root = useRef<Group>(null);
+  const target = useRef(new Vector3(creature.x, y, creature.z));
+  const visual = useRef(new Vector3(creature.x, y, creature.z));
+  useEffect(() => { target.current.set(creature.x, y, creature.z); }, [creature.x, creature.z, y]);
+  useFrame((_, delta) => {
+    if (!root.current) return;
+    const remaining = visual.current.distanceTo(target.current);
+    const speed = MathUtils.clamp(creature.movementSpeed ?? 2.4, .5, 8);
+    const step = Math.max(speed * Math.min(delta, .05) * 1.2, remaining * Math.min(1, delta * 4));
+    if (remaining > 0) visual.current.lerp(target.current, Math.min(1, step / remaining));
+    visual.current.y = terrainSurfaceHeight(sample, visual.current.x, visual.current.z);
+    root.current.position.copy(visual.current);
+    root.current.rotation.y = MathUtils.damp(root.current.rotation.y, yaw, 14, delta);
+  }, -2);
   return (
     <group
+      ref={root}
       position={[creature.x, y, creature.z]}
       rotation={[0, yaw, 0]}
       onClick={event => { event.stopPropagation(); options.onSelect(creature.id); }}
@@ -392,72 +496,143 @@ function Creature({ creature, selected, distance, options }: {
     >
       {distance <= MODEL_LOD_DISTANCE
         ? <PokemonModel creature={creature} url={(options.modelUrl ?? (id => `/models/pokemon/${id}.glb`))(creature.speciesId)} />
-        : <SpriteCreature url={(options.spriteUrl ?? (id => `/pokemon/${id}.png`))(creature.speciesId)} />}
+        : <SpriteCreature displayHeight={creature.displayHeight} url={(options.spriteUrl ?? (id => `/pokemon/${id}.png`))(creature.speciesId)} />}
       {(selected || creature.inBattle) && <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, .04, 0]}><ringGeometry args={[1.1, 1.34, 40]} /><meshBasicMaterial color={creature.inBattle ? '#f09155' : '#f6dd67'} transparent opacity={.86} /></mesh>}
-      <AttackEffect active={creature.action === 'attack'} />
-      <CreatureBillboard creature={creature} hp={hp} />
+      <AttackEffect active={creature.action === 'attack'} moveType={creature.moveType} />
+      <CreatureBillboard creature={creature} hp={hp} distance={distance} emphasized={selected || !!creature.inBattle} />
     </group>
   );
 }
 
-function PlayerCamera({ snapshot, options }: { snapshot: OpenWorldRenderSnapshot; options: OpenWorldViewOptions }) {
+function isTypingTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
+}
+
+function PlayerCamera({ snapshot, options, command }: { snapshot: OpenWorldRenderSnapshot; options: OpenWorldViewOptions; command: CameraCommand }) {
   const controls = useRef<OrbitControlsImpl>(null);
   const keys = useRef(new Set<string>());
-  const position = useRef(new Vector3(snapshot.player.x, snapshot.player.y ?? 0, snapshot.player.z));
+  const position = useRef(new Vector3(snapshot.player.x, terrainSurfaceHeight(options.sampleWorld ?? fallbackSample, snapshot.player.x, snapshot.player.z), snapshot.player.z));
+  const external = useRef(position.current.clone());
+  const forward = useRef(new Vector3());
+  const right = useRef(new Vector3());
+  const movement = useRef(new Vector3());
+  const cameraTarget = useRef(new Vector3());
+  const orbitOffset = useRef(new Vector3());
+  const spherical = useRef(new Spherical());
+  const listenersReady = useRef(false);
+  const announcedReady = useRef(false);
   const { camera } = useThree();
   const sample = options.sampleWorld ?? fallbackSample;
 
   useEffect(() => {
-    position.current.set(snapshot.player.x, snapshot.player.y ?? sample(snapshot.player.x, snapshot.player.z).height, snapshot.player.z);
-  }, [sample, snapshot.player.x, snapshot.player.y, snapshot.player.z]);
+    external.current.set(snapshot.player.x, terrainSurfaceHeight(sample, snapshot.player.x, snapshot.player.z), snapshot.player.z);
+    if (position.current.distanceTo(external.current) > 3 || !keys.current.size) {
+      const dx = external.current.x - position.current.x;
+      const dy = external.current.y - position.current.y;
+      const dz = external.current.z - position.current.z;
+      position.current.copy(external.current);
+      camera.position.x += dx;
+      camera.position.y += dy;
+      camera.position.z += dz;
+    }
+  }, [camera, sample, snapshot.player.heading, snapshot.player.x, snapshot.player.y, snapshot.player.z]);
   useEffect(() => {
-    camera.position.set(position.current.x + 8, position.current.y + 7, position.current.z + 10);
+    const initialTarget = cameraTarget.current.set(position.current.x, position.current.y + 1.2, position.current.z);
+    controls.current?.target.copy(initialTarget);
+    camera.position.copy(initialTarget).add(DEFAULT_CAMERA_OFFSET);
+    controls.current?.update();
   }, [camera]);
   useEffect(() => {
-    const down = (event: KeyboardEvent) => keys.current.add(event.code);
+    const control = controls.current;
+    if (!control || command.id === 0) return;
+    if (command.action === 'reset') {
+      control.target.set(position.current.x, position.current.y + 1.2, position.current.z);
+      camera.position.copy(control.target).add(DEFAULT_CAMERA_OFFSET);
+      control.update();
+      return;
+    }
+    orbitOffset.current.copy(camera.position).sub(control.target);
+    spherical.current.setFromVector3(orbitOffset.current);
+    if (command.action === 'left') spherical.current.theta += .22;
+    if (command.action === 'right') spherical.current.theta -= .22;
+    if (command.action === 'up') spherical.current.phi = Math.max(.38, spherical.current.phi - .14);
+    if (command.action === 'down') spherical.current.phi = Math.min(1.18, spherical.current.phi + .14);
+    if (command.action === 'zoom-in') spherical.current.radius = Math.max(10, spherical.current.radius * .84);
+    if (command.action === 'zoom-out') spherical.current.radius = Math.min(42, spherical.current.radius * 1.18);
+    orbitOffset.current.setFromSpherical(spherical.current);
+    camera.position.copy(control.target).add(orbitOffset.current);
+    control.update();
+  }, [camera, command]);
+  useEffect(() => {
+    const down = (event: KeyboardEvent) => {
+      if (isTypingTarget(event.target)) return;
+      if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowRight', 'ArrowDown', 'ArrowLeft'].includes(event.code)) {
+        event.preventDefault();
+        keys.current.add(event.code);
+      }
+    };
     const up = (event: KeyboardEvent) => keys.current.delete(event.code);
+    const clear = () => keys.current.clear();
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
-    return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
+    window.addEventListener('blur', clear);
+    document.addEventListener('visibilitychange', clear);
+    listenersReady.current = true;
+    return () => {
+      listenersReady.current = false;
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', clear);
+      document.removeEventListener('visibilitychange', clear);
+    };
   }, []);
 
   useFrame((_, delta) => {
+    if (listenersReady.current && !announcedReady.current) {
+      announcedReady.current = true;
+      options.onReady?.();
+    }
     const pressed = keys.current;
     let forwardAxis = Number(pressed.has('KeyW') || pressed.has('ArrowUp')) - Number(pressed.has('KeyS') || pressed.has('ArrowDown'));
     let sideAxis = Number(pressed.has('KeyD') || pressed.has('ArrowRight')) - Number(pressed.has('KeyA') || pressed.has('ArrowLeft'));
     const target = position.current;
     if (forwardAxis || sideAxis) {
-      const forward = new Vector3();
-      camera.getWorldDirection(forward);
-      forward.y = 0;
-      forward.normalize();
-      const right = new Vector3(-forward.z, 0, forward.x);
-      const movement = forward.multiplyScalar(forwardAxis).add(right.multiplyScalar(sideAxis)).normalize().multiplyScalar(Math.min(delta, .05) * 10);
-      const x = MathUtils.clamp(target.x + movement.x, WORLD_MIN, WORLD_MAX);
-      const z = MathUtils.clamp(target.z + movement.z, WORLD_MIN, WORLD_MAX);
+      camera.getWorldDirection(forward.current);
+      forward.current.y = 0;
+      forward.current.normalize();
+      right.current.set(-forward.current.z, 0, forward.current.x);
+      movement.current.copy(forward.current).multiplyScalar(forwardAxis).addScaledVector(right.current, sideAxis).normalize().multiplyScalar(Math.min(delta, .05) * (snapshot.entities.find(entity => entity.id.startsWith('companion:'))?.movementSpeed ?? 2.2));
+      const x = MathUtils.clamp(target.x + movement.current.x, WORLD_MIN, WORLD_MAX);
+      const z = MathUtils.clamp(target.z + movement.current.z, WORLD_MIN, WORLD_MAX);
       const terrain = sample(x, z);
       if (!terrain.blocked) {
-        const heading = Math.abs(movement.x) > Math.abs(movement.z)
-          ? (movement.x > 0 ? 1 : 3)
-          : (movement.z > 0 ? 2 : 0);
-        const accepted = options.onPlayerMove({ x, z, heading });
+        const nextHeading = Math.abs(movement.current.x) > Math.abs(movement.current.z)
+          ? (movement.current.x > 0 ? 1 : 3)
+          : (movement.current.z > 0 ? 2 : 0);
+        const accepted = options.onPlayerMove({ x, z, heading: nextHeading });
         if (accepted !== false) {
           camera.position.x += x - target.x;
+          const groundY = terrainSurfaceHeight(sample, x, z);
+          camera.position.y += groundY - target.y;
           camera.position.z += z - target.z;
-          target.set(x, terrain.height, z);
+          target.set(x, groundY, z);
+          external.current.copy(target);
         }
       }
     }
     if (controls.current) {
-      controls.current.target.lerp(new Vector3(target.x, target.y + 1.2, target.z), .28);
+      cameraTarget.current.set(target.x, target.y + 1.2, target.z);
+      controls.current.target.lerp(cameraTarget.current, 1 - Math.exp(-delta * 12));
       controls.current.update();
+      const cameraFloor = terrainSurfaceHeight(sample, camera.position.x, camera.position.z) + 2;
+      if (camera.position.y < cameraFloor) { camera.position.y = cameraFloor; camera.lookAt(controls.current.target); }
     }
   });
 
-  return <OrbitControls ref={controls} makeDefault enablePan={false} enableDamping dampingFactor={.08} minDistance={4} maxDistance={28} minPolarAngle={.25} maxPolarAngle={1.42} />;
+  return <OrbitControls ref={controls} makeDefault enablePan={false} enableDamping dampingFactor={.08} minDistance={10} maxDistance={42} minPolarAngle={.38} maxPolarAngle={1.18} />;
 }
 
-function Scene({ snapshot, options }: { snapshot: OpenWorldRenderSnapshot; options: OpenWorldViewOptions }) {
+function Scene({ snapshot, options, cameraCommand }: { snapshot: OpenWorldRenderSnapshot; options: OpenWorldViewOptions; cameraCommand: CameraCommand }) {
   const sample = options.sampleWorld ?? fallbackSample;
   const visible = useMemo(() => [...snapshot.entities]
     .sort((a, b) => {
@@ -475,6 +650,7 @@ function Scene({ snapshot, options }: { snapshot: OpenWorldRenderSnapshot; optio
       <Physics gravity={[0, -18, 0]} timeStep="vary">
         <Terrain sampleWorld={sample} />
         <Nature sampleWorld={sample} />
+        <TrailAndWater sampleWorld={sample} />
         {options.terrainUrl && <StaticModel item={{
           id: 'openworld-terrain',
           url: options.terrainUrl,
@@ -492,7 +668,7 @@ function Scene({ snapshot, options }: { snapshot: OpenWorldRenderSnapshot; optio
         })}
       </Physics>
       {visible.map(creature => <Creature key={creature.id} creature={creature} selected={creature.id === snapshot.selectedWildId} distance={Math.hypot(creature.x - snapshot.player.x, creature.z - snapshot.player.z)} options={options} />)}
-      <PlayerCamera snapshot={snapshot} options={options} />
+      <PlayerCamera snapshot={snapshot} options={options} command={cameraCommand} />
     </>
   );
 }
@@ -501,6 +677,8 @@ function OpenWorldApp({ store, options }: { store: SnapshotStore; options: OpenW
   const snapshot = useSyncExternalStore(store.subscribe, store.get, store.get);
   const runtime = useMemo(() => createGaesupRuntime({ plugins: [createCameraPlugin()], pluginRuntime: 'client' }), []);
   const [ready, setReady] = useState(false);
+  const [cameraCommand, setCameraCommand] = useState<CameraCommand>({ id: 0, action: 'reset' });
+  const moveCamera = (action: CameraAction) => setCameraCommand(previous => ({ id: previous.id + 1, action }));
   useEffect(() => {
     let active = true;
     runtime.setup().then(() => { if (active) setReady(true); });
@@ -516,12 +694,21 @@ function OpenWorldApp({ store, options }: { store: SnapshotStore; options: OpenW
       enablePhysics
       gravity={[0, -18, 0]}
     >
-      <Canvas shadows dpr={[1, 1.65]} camera={{ position: [8, 8, 12], fov: 48, near: .1, far: 320 }} gl={{ antialias: true, powerPreference: 'high-performance' }} onPointerMissed={() => options.onSelect(null)}>
-        <GaesupWorldContent showGrid={false} showAxes={false}>
-          <Scene snapshot={snapshot} options={options} />
-        </GaesupWorldContent>
+      <Canvas shadows dpr={[1, 1.65]} camera={{ position: [12, 18, 16], fov: 48, near: .1, far: 320 }} gl={{ antialias: true, powerPreference: 'high-performance' }} onPointerMissed={() => options.onSelect(null)}>
+        <group name="gaesup-world">
+          <Scene snapshot={snapshot} options={options} cameraCommand={cameraCommand} />
+        </group>
       </Canvas>
       {!ready && <div className="ow-loading">Gaesup World 준비 중…</div>}
+      <div className="ow-camera-controls" aria-label="카메라 시점 조절">
+        <button type="button" onClick={() => moveCamera('left')} aria-label="카메라 왼쪽 회전">↶</button>
+        <button type="button" onClick={() => moveCamera('right')} aria-label="카메라 오른쪽 회전">↷</button>
+        <button type="button" onClick={() => moveCamera('up')} aria-label="카메라 위로 회전">↑</button>
+        <button type="button" onClick={() => moveCamera('down')} aria-label="카메라 아래로 회전">↓</button>
+        <button type="button" onClick={() => moveCamera('zoom-in')} aria-label="카메라 확대">＋</button>
+        <button type="button" onClick={() => moveCamera('zoom-out')} aria-label="카메라 축소">－</button>
+        <button type="button" className="ow-camera-reset" onClick={() => moveCamera('reset')}>시점 초기화</button>
+      </div>
       <div className="ow-help">WASD / 방향키 이동 · 드래그 시점 · 휠 확대 · 포켓몬 선택</div>
     </GaesupWorld>
   );

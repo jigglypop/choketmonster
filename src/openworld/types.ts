@@ -15,6 +15,12 @@ export type WorldCreature = WorldPoint & {
   maxHp: number;
   heading?: WorldHeading;
   action?: WorldCreatureAction;
+  /** Display-space model height in world metres, derived from canonical species height. */
+  displayHeight?: number;
+  /** Engine-provided world units per second, used only for visual interpolation. */
+  movementSpeed?: number;
+  /** Type of the currently presented move, used to choose a readable battle effect. */
+  moveType?: string;
   inBattle?: boolean;
 };
 
@@ -52,6 +58,8 @@ export type OpenWorldViewOptions = {
   modelUrl?: (speciesId: number) => string;
   spriteUrl?: (speciesId: number) => string;
   sampleWorld?: (x: number, z: number) => WorldSample;
+  /** Fired once keyboard listeners are installed and the Canvas has rendered a frame. */
+  onReady?: () => void;
   terrainUrl?: string;
   terrainTransform?: Partial<Pick<OpenWorldProp, 'x' | 'y' | 'z' | 'rotationY' | 'scale'>>;
   props?: readonly OpenWorldProp[];

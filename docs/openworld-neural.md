@@ -37,17 +37,61 @@
 ```ts
 new OpenWorldSimulation(graph, game, seed, checkpoint?, fieldPolicy?, wildCount?)
 simulation.movePlayer({ x, z, heading })
+simulation.movePartner({ x, z, heading })
+simulation.syncPlayerToCompanion()
 simulation.selectWild(instanceId | null)
 simulation.startEncounter(instanceId)
 simulation.requestCapture(ball?)
+simulation.requestAction({ type: 'move' | 'item' | 'switch' | 'run' | 'wait', ... })
 simulation.setAutoCapture(enabled)
-simulation.step({ deltaSeconds?, learning? })
+simulation.setAutoHunt(enabled)
+simulation.step({ deltaSeconds?, learning?, epsilon? })
 simulation.visibleEntities(max?)
 simulation.snapshot()
+simulation.rosterStatus()
 sampleWorld(x, z)
+movementSpeed(speciesId)
+nextSpeciesInBiome(speciesId)
 serializeOpenWorld(game, simulation)
 restoreOpenWorld(graph, json, fieldPolicy?)
 ```
+
+## Open-world Speed and player actions
+
+`movementSpeed(speciesId)` maps the Pokedex base Speed stat to world units per second with the engineered formula `1.2 + baseSpeed * 0.018`. Movement is multiplied by `deltaSeconds`. A zero delta produces no displacement, and longer paths are sampled every 0.45 world units so a fast Pokemon cannot skip across blocked terrain. This mapping is a game rule and is separate from the battle engine's Speed stat and turn order.
+
+The first three serial spawns remain species 1, 2, and 3, but they are placed 8 to 15 units from the origin at level 2 or 3. Later spawns keep the habitat-biome placement and radial level rule. This provides a playable first encounter without changing the 1-to-151 serial provenance.
+
+`requestAction(action)` queues a manual move, item, switch, run, or wait for the next 0.9-second battle turn. Catch actions delegate to `requestCapture`. All queued actions still pass through `advanceBattle` and `actBattle`, preserving enemy connectome decisions, battle rewards, evolution, entity replacement, and save/replay state. The queued action is included in checkpoints. A manual player turn clears the previous automatic decision before `actBattle`, so its reward cannot update or be counted as learning from the automatic policy.
+
+Transform battle forms use their effective species, stats, and move slots for connectome observations and action validity. The resulting brain state is written back to the original owned instance. Switching the lead also moves the previous companion field brain into `companionMemories`; its weights and update counter survive later lead changes and save restoration.
+
+## Automatic hunting and delayed respawn
+
+Automatic hunting starts enabled. The nearest wild Pokemon is selected, and the companion receives its relative position through the same 12-input recurrent policy used for ordinary movement. The local coordinate inputs are clamped `dx / 16` and `dz / 10`; the previous `/240` scale was too small for the deployed readout. A battle starts when the companion physically approaches within 2.8 world units, or through the existing close player-contact rule. The player is not moved to manufacture an encounter.
+
+In automatic hunting, a connectome output that selects wait, an empty move, or a non-damaging status move is replaced with the strongest usable damaging move. This is an engineered product rule. Because the executed action differs from the policy output, that fallback turn clears pending player learning and does not assign its reward to the connectome choice.
+
+After a win, capture, loss, or escape, the removed wild instance enters `respawnQueue` for 4 to 6 simulated seconds. `alive + pending` remains between 12 and 18. The replacement uses a walkable point near the former habitat or current play area, keeps the same biome, and is capped at the active lead's level plus two. `nextSpeciesInBiome` advances deterministically through every species assigned to that biome, so repeated replacement retains an actual spawn path for all 151 species. The queue, remaining timers, and `autoHunt` flag are saved and replayed.
+
+The trainer and companion share one visible world position. `movePartner` accepts at most 0.35 seconds of the species-specific movement distance, samples the whole path for terrain and entity collisions, moves the companion, and updates the player/camera anchor. It clears the companion's pending neural transition and sets `manualControlRemaining` to 0.3 seconds, during which only that companion's autonomous movement is paused. Wild brains, respawn timers, and battles continue. `syncPlayerToCompanion` copies the current companion coordinates to the player anchor after autonomous ticks. The hold timer is part of the checkpoint and exact replay.
+
+## Bounded validation (2026-09-10)
+
+Run:
+
+```powershell
+npm test -- --run tests/openworld.test.ts
+npx tsx scripts/verify-openworld.ts
+```
+
+The eleven focused tests passed. The saved report is `artifacts/openworld-validation-2026-09-10/report.json`, with its checkpoint, replay trace, and policy beside it. Two fixed evaluation seeds were run for 100 ticks per condition with learning disabled. Random action selection collected 1 food, the pre-training policy 2, the 2,000-tick trained policy 28, and the trained policy with every recurrent edge weight zeroed 1. These short descriptive totals are not statistical evidence of learning.
+
+The public `openworld-policy.json` was trained with automatic hunting disabled, then frozen for three held-out automatic-hunt seeds. Each seed simulated 150 seconds with learning disabled. The runs produced 9/5/4 encounters, 8/3/2 wins, and 9/5/4 completed replacements. Across the three runs, victory rewards added 592 money before defeat recovery costs and experience increased by 702. The overall money delta was -869 because five losses invoked the existing recovery penalty.
+
+The validation also confirmed that evaluation left all input/readout weights and update counters unchanged, each entity owns separate activity/readout state, two restores of one checkpoint replay exactly, and checkpoints do not duplicate the 3,623 graph edges. The edge ablation changed the action trace, showing that the imported recurrent edges participate computationally in this run.
+
+The real-data path is limited to a 128-neuron, 3,623-edge induced MaleCNS v1.0 subset around bilateral DNa02 seeds. The sensory projection, recurrent update equation, action readout, base-Speed mapping, reward, and Q-learning rule are engineered. The comparison does not establish an anatomical sensorimotor mapping, a whole fly brain, biological learning, or Pokemon intelligence.
 
 `visibleEntities(12)`는 전투 상대, 선택 대상, 동행 포켓몬, 플레이어와 가까운 야생 포켓몬 순으로 최대 12개를 반환한다. 시뮬레이션에는 기본 15개 야생 개체가 계속 남아 있으며 이 함수는 렌더 부하를 제한하는 보기 선택일 뿐이다.
 

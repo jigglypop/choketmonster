@@ -3,7 +3,7 @@ export type BaseStats = { hp: number; attack: number; defense: number; specialAt
 export type Evolution = { target: number; method: 'level' | 'stone' | 'trade'; level?: number; item?: string };
 export type PokemonSpecies = {
   id: number; name: string; englishName: string; types: PokemonType[];
-  baseStats: BaseStats; catchRate: number; baseExperience: number; growthRate: string;
+  baseStats: BaseStats; catchRate: number; baseExperience: number; growthRate: string; heightMeters?: number;
   frontSprite: string; backSprite: string; evolutions: Evolution[];
   moves: { level: number; moveId: number }[]; habitat: string;
 };

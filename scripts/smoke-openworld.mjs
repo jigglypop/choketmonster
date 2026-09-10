@@ -1,0 +1,55 @@
+import { chromium } from 'playwright';
+import { mkdir, writeFile } from 'node:fs/promises';
+
+const url = process.argv[2] ?? 'http://127.0.0.1:5173';
+const label = process.argv[3] ?? 'local';
+const directory = `artifacts/openworld-smoke-${label}`;
+await mkdir(directory, { recursive: true });
+const browser = await chromium.launch({ headless: true });
+const page = await browser.newPage({ viewport: { width: 1440, height: 950 } });
+const errors = [], failed = [], models = new Set();
+page.on('pageerror', error => errors.push(error.message));
+page.on('response', response => {
+  if (response.status() >= 400) failed.push({ url: response.url(), status: response.status() });
+  if (response.ok() && response.url().endsWith('.glb')) models.add(response.url());
+});
+try {
+  await page.goto(url);
+  await page.locator(`[data-starter="${Number(process.argv[4] ?? 4)}"]`).click();
+  await page.locator('#ow-host[data-ready=true] canvas').waitFor({ timeout: 30000 });
+  const before = await page.locator('#world-position').innerText();
+  await page.keyboard.down('w'); await page.waitForTimeout(500); await page.keyboard.up('w');
+  await page.waitForTimeout(350);
+  const moved = await page.locator('#world-position').innerText();
+  await page.locator('#world-pause').click();
+  const after = await page.locator('#world-position').innerText();
+  await page.waitForTimeout(2500);
+  await page.screenshot({ path: `${directory}/desktop.png` });
+  await page.getByRole('button', { name: '카메라 왼쪽 회전', exact: true }).click();
+  await page.getByRole('button', { name: '카메라 위로 회전', exact: true }).click();
+  await page.getByRole('button', { name: '카메라 확대', exact: true }).click();
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: `${directory}/camera-adjusted.png` });
+  await page.getByRole('button', { name: '시점 초기화', exact: true }).click();
+  await page.locator('#save-now').click();
+  await page.getByRole('status').filter({ hasText: '저장했습니다' }).waitFor();
+  await page.reload();
+  await page.locator('#ow-host canvas').waitFor();
+  const restored = await page.locator('#world-position').innerText();
+  await page.locator('[data-tab="team"]').click();
+  await page.locator('.detail-title').waitFor();
+  const team = await page.locator('.detail-card').innerText();
+  await page.locator('[data-tab="dex"]').click();
+  const dexCount = await page.locator('.dex-card').count();
+  await page.locator('#dex-search').fill('피카츄');
+  const searchCount = await page.locator('.dex-card').count();
+  await page.locator('[data-tab="map"]').click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(2000);
+  await page.screenshot({ path: `${directory}/mobile.png` });
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+  const result = { url, before, moved, after, restored, moves: await page.locator('.world-move').count(), dexCount, searchCount, team, errors, failed, models: [...models], mobileOverflow: overflow };
+  await writeFile(`${directory}/result.json`, JSON.stringify(result, null, 2));
+  console.log(JSON.stringify(result, null, 2));
+  if (errors.length || failed.length || before === moved || after !== restored || dexCount !== 151 || searchCount !== 1 || overflow) throw new Error('Open-world smoke verification failed');
+} finally { await browser.close(); }

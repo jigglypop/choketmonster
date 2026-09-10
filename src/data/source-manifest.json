@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-10T12:40:28.691Z",
+  "generatedAt": "2026-09-10T14:37:37.437Z",
   "repository": "https://github.com/PokeAPI/pokeapi",
   "resolvedCommit": "8fe210b21c9abbe73de93670f3d5a346c80a3625",
   "license": "https://github.com/PokeAPI/pokeapi/blob/master/LICENSE.md",
@@ -296,6 +296,6 @@
   "output": {
     "species": 151,
     "moves": 390,
-    "sha256": "76d3aa06597f4cc8cd0956c7bced1148a533be01de22175d64df4e2e5a261382"
+    "sha256": "ec7f4dbbcb22be27b23bf424d28c6cd1334263622c8292e85e86f075a3192306"
   }
 }

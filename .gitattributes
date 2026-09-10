@@ -6,3 +6,5 @@
 *.css text eol=lf
 *.glb binary
 *.blend binary
+# Preserve the downloaded license bytes, including the author's whitespace.
+public/models/openworld/LICENSE-KENNEY.txt -text -whitespace

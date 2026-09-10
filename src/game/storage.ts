@@ -4,8 +4,9 @@ import { validateGame, type GameState } from './engine';
 import { BRAIN_MODEL } from './connectome';
 import { startPosition, tileAt, type MapPosition } from './map';
 import { FieldSimulation, type FieldSnapshot } from './field';
+import { OpenWorldSimulation, type OpenWorldSnapshot } from '../openworld/simulation';
 
-export type ViewState = { position: MapPosition; learning: boolean; rewards?: Record<string, number>; field?: FieldSnapshot; fieldPreferences?: { paused: boolean; learning: boolean; selectedId: string } };
+export type ViewState = { position: MapPosition; learning: boolean; rewards?: Record<string, number>; field?: FieldSnapshot; fieldPreferences?: { paused: boolean; learning: boolean; selectedId: string }; openWorld?: OpenWorldSnapshot; openWorldPaused?: boolean };
 export type SaveEnvelope = { format: 'choketmon'; version: 2; model: string; savedAt: string; graph: Graph; game: unknown; view: ViewState };
 const monsters = (game: GameState) => [...game.player.team, ...game.player.box, ...(game.battle?.enemy.team ?? []), ...(game.battle?.player.team ?? [])];
 const computationalGraph = (graph: Graph) => JSON.stringify({ kind: graph.kind, id: graph.id, nodes: graph.nodes,
@@ -43,6 +44,8 @@ export function unpackSave(input: unknown, expectedGraph?: Graph): { game: GameS
   }
   const preferences = view.fieldPreferences;
   if (preferences !== undefined && (!preferences || typeof preferences.paused !== 'boolean' || typeof preferences.learning !== 'boolean' || typeof preferences.selectedId !== 'string')) throw new Error('들판 설정이 올바르지 않습니다.');
+  if (view.openWorldPaused !== undefined && typeof view.openWorldPaused !== 'boolean') throw new Error('월드 정지 설정이 올바르지 않습니다.');
+  if (view.openWorld !== undefined) new OpenWorldSimulation(graph, game, view.openWorld.seed, view.openWorld);
   return { game, graph, view };
 }
 

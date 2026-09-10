@@ -11,7 +11,16 @@
 - 런타임 구현: https://github.com/jigglypop/gaesup-world/blob/main/src/core/runtime/createGaesupRuntime.ts
 - 라이선스: 저장소 `LICENSE.txt`와 npm 패키지 메타데이터가 MIT로 명시한다.
 
-이 프로젝트는 `1.0.30`을 사용하며 기존 vanilla Three 렌더러는 그대로 둔다.
+이 프로젝트는 `1.0.30`을 사용한다. 필드 시뮬레이션의 고정 주기 실행은 아래 runtime adapter가 맡고,
+실제 오픈월드 화면은 `GaesupWorld` 안의 React Three Fiber `Canvas`가 렌더링한다.
+지형, 직접 조작하는 파트너 포켓몬, 야생 포켓몬과 Kenney 자연 에셋 인스턴스는 `src/openworld/view.tsx`에서 한 장면으로 구성한다. 원통형 트레이너 아바타는 제거했다.
+
+`gaesup-world@1.0.30`의 `GaesupWorldContent`는 내부에서 `Camera`를 조건 없이 마운트하고 매 frame
+활성 캐릭터 상태를 기준으로 Canvas 카메라를 갱신한다. 현재 플레이어 좌표의 정본은 Choketmon
+시뮬레이션이며 뷰도 자체 `OrbitControls`로 그 좌표를 추적한다. 두 controller가 같은 카메라를
+동시에 쓰지 않도록 이 화면은 `GaesupWorldContent` 대신 명시적인 scene group을 사용한다.
+Gaesup runtime, world config와 camera plugin 등록은 유지하되 plugin camera system component는
+마운트하지 않는다.
 
 ## 공개 런타임 API에서 확인한 범위
 
@@ -51,6 +60,10 @@ await fieldRuntime.dispose();
 `elapsedMs`도 실제 벽시계가 아니라 누적 simulation time이다. Three 렌더링 RAF와 분리되어
 있고, 화면 숨김 처리에서는 `pause()`/`resume()`을 호출한다.
 
+화면의 위치 보간과 걷기 clip 재생은 Canvas의 frame delta만 사용한다. 시뮬레이션 스냅샷이
+전달한 종별 `movementSpeed`를 표현 속도에 반영하지만 정책 step이나 RNG를 실행하지 않는다.
+자연환경 배치는 좌표 기반 결정 함수가 `sampleWorld`를 읽어 만들며 시뮬레이션 RNG와 분리된다.
+
 ## peer dependency와 번들 영향
 
 `gaesup-world/runtime` 배포 ESM은 runtime-only 사용에서도 React, React Three Fiber,
@@ -72,3 +85,17 @@ npx tsx scripts/probe-gaesup.mjs
 probe는 실제 runtime setup과 system 등록, 200ms 자동 step, pause 중 정지, 수동 한 step,
 resume, dispose를 확인한다. 이어 Vite가 adapter와 `gaesup-world/runtime`을 브라우저용 ESM으로
 bundle하고, headless Chromium에서 해당 bundle을 import해 실제 callback 실행까지 검사한다.
+
+## 오픈월드 뷰의 역할
+
+`src/openworld/view.tsx`도 동일한 `createGaesupRuntime` lifecycle 안에서 `GaesupWorld`를
+사용한다. `GaesupWorldContent`의 자동 카메라와 중복 갱신하지 않도록 장면은 일반 group으로
+구성한다. 지형 표면은 게임의 `sampleWorld`에서 생성한 삼각형이며 캐릭터 접지는 그 삼각형의
+보간 높이를 사용한다. 선택적으로 넘길 수 있는 `terrainUrl`은 장면 장식용이며 기본값은 없고,
+물리 collider도 만들지 않는다.
+
+키보드 컨트롤러는 카메라가 보는 수평 방향을 기준으로 파트너 포켓몬을 움직이고 같은 연속 좌표로
+미니맵과 카메라 target을 갱신한다. `input`, `textarea`, `select` 또는
+contenteditable 요소에 포커스가 있으면 이동 키를 받지 않고, 창 blur와 탭 visibility 변경 때
+눌린 키를 비운다. 외부 snapshot은 큰 위치 이동만 순간이동으로 처리하므로 주기적 snapshot이
+사용자 카메라 방향과 프레임 사이의 현재 위치를 되감지 않는다.

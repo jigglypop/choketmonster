@@ -17,7 +17,7 @@ ARCHIVE_URL = (
     "https://kenney.nl/media/pages/assets/nature-kit/"
     "37ac38a37b-1677698939/kenney_nature-kit.zip"
 )
-EXPECTED_SHA256 = ""
+EXPECTED_SHA256 = "fa7974a0d342bfe63c38664ba9f8ec1a4aab8ea25f099bdc56870e33588c4d9d"
 
 
 def sha256(path: Path) -> str:
@@ -34,7 +34,7 @@ def main() -> None:
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
 
-    source_dir = args.root / "assets" / "source-world" / "kenney-nature-kit-1.0"
+    source_dir = args.root / "assets" / "source-world" / "kenney-nature-kit-2.1"
     archive = source_dir / "kenney_nature-kit.zip"
     extracted = source_dir / "extracted"
     source_dir.mkdir(parents=True, exist_ok=True)
@@ -67,7 +67,7 @@ def main() -> None:
     )
     receipt = {
         "package": "Kenney Nature Kit",
-        "version": "1.0",
+        "version": "2.1",
         "author": "Kenney",
         "sourcePage": SOURCE_PAGE,
         "archiveUrl": ARCHIVE_URL,

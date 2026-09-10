@@ -23,3 +23,5 @@ sprites 저장소 README는 애플리케이션용 다운로드 방법과 이미�
 재생성은 `npm run data:pokemon`으로 실행한다. 다운로드는 동시 요청 6개로 제한하며 `src/data/.cache/pokeapi`와 이미 존재하는 PNG를 체크섬 검증 후 재사용한다. 두 manifest에 기록된 불변 커밋을 사용하므로 실행할 때마다 최신 master를 섞지 않는다. 캐시 내용이 체크섬과 다르면 기존 원본을 덮어쓰지 않고 실패한다. `npm run data:pokemon -- --verify-upstream`은 커밋을 고정한 원본과 모든 CSV·PNG 캐시를 다시 내려받아 바이트 단위 해시로 대조한다. 2026-09-10에 이 대조를 실행해 통과했다.
 
 기술의 변화량·회복률·흡수/반동률·대상·효과 식별자·연타 횟수는 원본 `move_meta.csv`, `move_meta_stat_changes.csv`, `moves.csv`에서 가져온다. 이 필드는 게임 규칙에서 지원하는 효과를 계산하는 근거이며, 데이터가 있다는 사실만으로 본가의 모든 기술 효과를 재현했다고 주장하지 않는다. 원본 데이터 라이선스 전문은 `public/data/POKEAPI-LICENSE.txt`에 보존한다.
+
+2026-09-10 오픈월드에서는 원본 `pokemon.csv`의 `height`(decimetres)를 `heightMeters`로 보존한다. 표시 높이는 시야 확보를 위해 원본 키의 1.25배를 0.65~2.8m로 제한한다. 이는 원본 크기와 별개의 게임 표시 규칙이다. 포켓몬별 원본 기술 습득 레벨, 종족 스피드, 실제 키는 서로 다른 필드로 유지한다.

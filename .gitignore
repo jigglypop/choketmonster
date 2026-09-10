@@ -18,3 +18,5 @@ assets/source-world/
 *.pem
 *.key
 src/data/.cache/
+__pycache__/
+*.pyc

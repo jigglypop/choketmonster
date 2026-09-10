@@ -223,7 +223,7 @@ const species = Array.from({ length: 151 }, (_, index) => {
       hp: statValues.hp, attack: statValues.attack, defense: statValues.defense,
       specialAttack: statValues['special-attack'], specialDefense: statValues['special-defense'], speed: statValues.speed,
     },
-    catchRate: Number(speciesRow.capture_rate), baseExperience: Number(pokemonRow.base_experience),
+    catchRate: Number(speciesRow.capture_rate), baseExperience: Number(pokemonRow.base_experience), heightMeters: Number(pokemonRow.height) / 10,
     growthRate: growthById.get(Number(speciesRow.growth_rate_id))?.identifier,
     frontSprite: `/pokemon/${id}.png`, backSprite: `/pokemon/back/${id}.png`,
     evolutions, moves: movesForSpecies,

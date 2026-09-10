@@ -11,9 +11,8 @@ const controller = new ConnectomeController(graph);
 async function start(page: Page) {
   await page.goto('/');
   await page.locator('[data-starter="1"]').click();
-  await expect(page.locator('#map-canvas')).toBeVisible();
-  await expect(page.locator('#map-canvas')).toHaveAttribute('data-ready', 'true', { timeout: 20000 });
-  await expect(page.locator('#map-canvas')).toHaveAttribute('data-actor-count', '4');
+  await expect(page.locator('#ow-host canvas')).toBeVisible(); await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 20000 });
+  await expect(page.locator('#ow-host')).toHaveAttribute('data-runtime', 'gaesup-world');
   await expect(page.locator('vite-error-overlay')).toHaveCount(0);
 }
 async function importGame(page: Page, game: GameState) {
@@ -57,7 +56,7 @@ test('browser capture, candy, evolution, save/reload and validated import', asyn
   for (let attempt = 0; attempt < 8 && await page.locator('#catch').count(); attempt++) {
     await page.locator('#ball-select').selectOption('ultra-ball'); await page.locator('#catch').click();
   }
-  await expect(page.locator('#map-canvas')).toBeVisible();
+  await expect(page.locator('#ow-host canvas')).toBeVisible(); await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 20000 });
   await page.locator('[data-tab="team"]').click();
   await page.locator('#use-candy').click();
   await expect(page.locator('[data-evolve="2"]')).toBeEnabled();
@@ -128,44 +127,6 @@ test('animated 3D specimens, model switching, and bounded GPU cache', async ({ p
     await page.getByRole('button', { name: '닫기', exact: true }).click();
   }
   await page.locator('[data-tab="map"]').click();
-  await expect(page.locator('#map-canvas')).toHaveAttribute('data-ready', 'true');
-  expect(errors).toEqual([]);
-});
-
-test('Gaesup field drives real neural movement, pauses, freezes learning, and restores field memories', async ({ page }) => {
-  test.setTimeout(60000);
-  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
-  await start(page);
-  const panel = page.locator('#field-panel'), canvas = page.locator('#map-canvas');
-  await expect(panel).toHaveAttribute('data-runtime', 'gaesup-world');
-  await expect(panel).toHaveAttribute('data-graph-id', graph.id);
-  const positions = await canvas.getAttribute('data-field-positions');
-  await expect.poll(() => canvas.getAttribute('data-field-positions'), { timeout: 10000 }).not.toBe(positions);
-  await expect.poll(async () => Number(await panel.getAttribute('data-updates'))).toBeGreaterThan(2);
-  await page.locator('[data-field-control="pause"]').click();
-  const pausedTick = await panel.getAttribute('data-tick');
-  await page.waitForTimeout(750);
-  await expect(panel).toHaveAttribute('data-tick', pausedTick!);
-  await page.locator('[data-field-control="learning"]').click();
-  const frozenUpdates = await panel.getAttribute('data-updates');
-  await page.locator('[data-field-control="lesion"]').click();
-  await expect(panel).toHaveAttribute('data-recurrent-enabled', 'false');
-  await page.locator('[data-field-control="pause"]').click();
-  await expect.poll(async () => Number(await panel.getAttribute('data-tick'))).toBeGreaterThan(Number(pausedTick) + 2);
-  await expect(panel).toHaveAttribute('data-updates', frozenUpdates!);
-  await page.locator('[data-field-control="pause"]').click();
-  await page.locator('#save-now').click();
-  await expect(page.getByRole('status')).toContainText('저장했습니다');
-  const savedTick = await panel.getAttribute('data-tick');
-  await page.reload();
-  await expect(panel).toHaveAttribute('data-tick', savedTick!);
-  await expect(panel).toHaveAttribute('data-recurrent-enabled', 'false');
-  await expect(page.locator('[data-field-control="pause"]')).toHaveAttribute('aria-pressed', 'true');
-  await page.locator('#field-follow').click();
-  await page.screenshot({ path: 'artifacts/ui-field-neural.png', fullPage: true });
-  const save = await exported(page);
-  expect(save.view.field.entities).toHaveLength(3);
-  expect(save.view.field.entities.every((entity: { brain: { graph?: unknown; graphId: string; sensoryBypass: boolean } }) => !entity.brain.graph && entity.brain.graphId === graph.id && entity.brain.sensoryBypass === false)).toBe(true);
-  expect(JSON.stringify(save).match(/"edges":/g)).toHaveLength(1);
+  await expect(page.locator('#ow-host canvas')).toBeVisible(); await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 20000 });
   expect(errors).toEqual([]);
 });

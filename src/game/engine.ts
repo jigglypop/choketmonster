@@ -127,7 +127,7 @@ export function statsFor(species: PokemonSpecies, level: number): MonsterStats {
   };
 }
 
-function experienceAtLevel(level: number, growthRate: string): number {
+export function experienceAtLevel(level: number, growthRate: string): number {
   const n = Math.max(1, Math.min(100, level));
   const rate = growthRate.toLowerCase();
   if (rate === 'fast') return Math.floor(4 * n ** 3 / 5);

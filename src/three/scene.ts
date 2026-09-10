@@ -306,3 +306,4 @@ export class PokemonScene {
 
 let singleton: PokemonScene | undefined;
 export function getPokemonScene() { return singleton ??= new PokemonScene(); }
+export function detachPokemonScene() { singleton?.detach(); }
