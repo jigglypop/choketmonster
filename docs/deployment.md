@@ -2,6 +2,12 @@
 
 초켓몬스터 웹 앱은 서울 리전의 비공개 S3 버킷과 CloudFront로 제공한다. CloudFormation 스택 이름은 `choketmonster-web`, 버킷 이름은 `choketmonster-960243570517-apne2`다.
 
+운영 주소: **https://d3b0jo8g1tseoa.cloudfront.net**
+
+2026-09-11 KST에 코드 커밋 `0a438206f812994a07f30c6be5a0c08d949ca6ea`를 GitHub `main`에 푸시한 뒤 배포했다. 준비한 27개 파일(6,169,800바이트)을 운영 URL에서 다시 내려받아 SHA-256이 모두 일치함을 확인했다. CloudFront 캐시 무효화 `IDJMF6VG3YRR529XKCU3AUQUC0`는 `Completed`다. 루트 페이지는 HTTPS 200, 없는 GLB는 XML 403으로 응답했다.
+
+운영 주소의 브라우저 검사에서는 원통형 트레이너가 없는 파트너 이동, 수평·수직 카메라 조작, 저장·좌표 복원, 네 기술 슬롯, 151종 검색과 모바일 화면을 확인했다. 브라우저 오류와 실패한 자산 요청은 0개였다. 화면은 `artifacts/openworld-smoke-aws-release/`, 파일 검증 결과는 `artifacts/aws-release-verification.json`에 저장했다.
+
 ## 구성
 
 - S3 퍼블릭 액세스 차단 네 옵션을 모두 켠다.
