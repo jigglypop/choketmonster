@@ -24,37 +24,87 @@ SOURCE_MODELS = SOURCE / "Models" / "GLTF format"
 OUTPUT = ROOT / "public" / "models" / "openworld" / "props"
 ARTIFACTS = ROOT / "artifacts"
 BLEND = ROOT / "assets" / "blender" / "openworld-props-study.blend"
+ASSET_VERSION = "20260911-woodland"
 
 # name, source file, desired world height, collider shape
 ASSETS = [
-    ("tree-round", "tree_default.glb", 4.8, "capsule"),
+    ("tree-round", "tree_detailed.glb", 5.4, "capsule"),
     ("tree-oak", "tree_oak.glb", 5.5, "capsule"),
-    ("tree-pine", "tree_pineTallA.glb", 6.2, "capsule"),
+    ("tree-pine", "tree_pineTallA_detailed.glb", 6.2, "capsule"),
+    ("tree-fat", "tree_fat.glb", 4.3, "capsule"),
+    ("tree-thin", "tree_thin.glb", 6.0, "capsule"),
     ("rock-large", "rock_largeA.glb", 1.15, "box"),
+    ("rock-moss", "rock_largeE.glb", 0.95, "box"),
     ("rock-small", "rock_smallC.glb", 0.52, "box"),
-    ("grass-tuft", "grass_large.glb", 0.72, "none"),
+    ("rock-flat", "rock_smallFlatA.glb", 0.28, "none"),
+    ("grass-tuft", "grass_leafsLarge.glb", 0.72, "none"),
+    ("grass-soft", "grass_large.glb", 0.58, "none"),
     ("flower-red", "flower_redA.glb", 0.55, "none"),
     ("flower-yellow", "flower_yellowB.glb", 0.55, "none"),
-    ("bush", "plant_bush.glb", 0.95, "sphere"),
+    ("flower-purple", "flower_purpleB.glb", 0.52, "none"),
+    ("bush", "plant_bushDetailed.glb", 1.05, "sphere"),
+    ("mushroom-cluster", "mushroom_redGroup.glb", 0.48, "none"),
+    ("lily", "lily_large.glb", 0.12, "none"),
     ("stump", "stump_roundDetailed.glb", 0.72, "cylinder"),
-    ("fence", "fence_simple.glb", 1.15, "box"),
     ("fallen-log", "log_large.glb", 0.72, "box"),
+    ("fence", "fence_simple.glb", 1.15, "box"),
 ]
 
 PLACEMENT = {
     "tree-round": {"biomes": ["meadow", "forest-edge"], "scaleRange": [0.85, 1.2], "minSpacing": 4.0, "collider": {"shape": "capsule", "radius": 0.28, "height": 2.8, "centerY": 1.4}},
     "tree-oak": {"biomes": ["forest", "meadow"], "scaleRange": [0.8, 1.15], "minSpacing": 5.0, "collider": {"shape": "capsule", "radius": 0.36, "height": 3.0, "centerY": 1.5}},
     "tree-pine": {"biomes": ["forest", "highland"], "scaleRange": [0.85, 1.2], "minSpacing": 4.0, "collider": {"shape": "capsule", "radius": 0.3, "height": 3.4, "centerY": 1.7}},
+    "tree-fat": {"biomes": ["forest", "meadow"], "scaleRange": [0.8, 1.15], "minSpacing": 4.5, "collider": {"shape": "capsule", "radius": 0.34, "height": 2.6, "centerY": 1.3}},
+    "tree-thin": {"biomes": ["forest", "forest-edge"], "scaleRange": [0.85, 1.18], "minSpacing": 4.0, "collider": {"shape": "capsule", "radius": 0.25, "height": 3.5, "centerY": 1.75}},
     "rock-large": {"biomes": ["meadow", "highland", "shore"], "scaleRange": [0.7, 1.25], "minSpacing": 3.0, "collider": {"shape": "box", "halfExtents": [1.56, 0.52, 2.02], "centerY": 0.52}},
+    "rock-moss": {"biomes": ["forest", "shore", "highland"], "scaleRange": [0.72, 1.2], "minSpacing": 3.0, "collider": {"shape": "box", "halfExtents": [1.4, 0.44, 1.7], "centerY": 0.44}},
     "rock-small": {"biomes": ["meadow", "highland", "shore"], "scaleRange": [0.65, 1.35], "minSpacing": 1.5, "collider": {"shape": "box", "halfExtents": [0.61, 0.22, 0.61], "centerY": 0.22}},
+    "rock-flat": {"biomes": ["meadow", "highland", "shore"], "scaleRange": [0.7, 1.3], "minSpacing": 0.8, "collider": None},
     "grass-tuft": {"biomes": ["meadow", "forest-edge"], "scaleRange": [0.65, 1.2], "minSpacing": 0.7, "collider": None},
+    "grass-soft": {"biomes": ["meadow", "forest-edge"], "scaleRange": [0.65, 1.25], "minSpacing": 0.65, "collider": None},
     "flower-red": {"biomes": ["meadow"], "scaleRange": [0.75, 1.25], "minSpacing": 0.45, "collider": None},
     "flower-yellow": {"biomes": ["meadow", "forest-edge"], "scaleRange": [0.7, 1.2], "minSpacing": 0.55, "collider": None},
+    "flower-purple": {"biomes": ["meadow", "forest-edge"], "scaleRange": [0.72, 1.18], "minSpacing": 0.55, "collider": None},
     "bush": {"biomes": ["forest", "forest-edge"], "scaleRange": [0.75, 1.25], "minSpacing": 1.5, "collider": {"shape": "sphere", "radius": 0.62, "centerY": 0.48}},
+    "mushroom-cluster": {"biomes": ["forest"], "scaleRange": [0.75, 1.2], "minSpacing": 0.8, "collider": None},
+    "lily": {"biomes": ["lake"], "scaleRange": [0.7, 1.2], "minSpacing": 1.2, "collider": None},
     "stump": {"biomes": ["forest", "forest-edge"], "scaleRange": [0.85, 1.2], "minSpacing": 2.0, "collider": {"shape": "cylinder", "radius": 0.5, "height": 0.65, "centerY": 0.325}},
     "fence": {"biomes": ["settlement", "meadow"], "scaleRange": [1.0, 1.0], "minSpacing": 3.33, "collider": {"shape": "box", "halfExtents": [1.67, 0.58, 0.12], "centerY": 0.58}},
     "fallen-log": {"biomes": ["forest", "forest-edge"], "scaleRange": [0.85, 1.25], "minSpacing": 2.2, "collider": {"shape": "box", "halfExtents": [0.78, 0.32, 0.43], "centerY": 0.32}},
 }
+
+
+def tune_material(material: bpy.types.Material) -> None:
+    """Convert stylized source colors to a richer, non-metallic woodland palette."""
+    name = material.name.lower()
+    color = None
+    if "leafsdark" in name:
+        color = (0.025, 0.16, 0.045, 1)
+    elif "leaf" in name:
+        color = (0.055, 0.30, 0.075, 1)
+    elif "grass" in name:
+        color = (0.08, 0.34, 0.09, 1)
+    elif "woodinner" in name:
+        color = (0.43, 0.24, 0.10, 1)
+    elif "wood" in name:
+        color = (0.22, 0.105, 0.045, 1)
+    elif "dirt" in name:
+        color = (0.25, 0.23, 0.18, 1)
+    elif "stone" in name or "rock" in name:
+        color = (0.31, 0.34, 0.31, 1)
+    material.metallic = 0
+    material.roughness = 0.9
+    if color:
+        material.diffuse_color = color
+    if material.use_nodes and material.node_tree:
+        node = next((item for item in material.node_tree.nodes if item.type == "BSDF_PRINCIPLED"), None)
+        if node:
+            if "Metallic" in node.inputs:
+                node.inputs["Metallic"].default_value = 0
+            if "Roughness" in node.inputs:
+                node.inputs["Roughness"].default_value = 0.9
+            if color and "Base Color" in node.inputs:
+                node.inputs["Base Color"].default_value = color
 
 
 def clean_scene() -> None:
@@ -123,8 +173,8 @@ def import_normalized(asset_name: str, source_name: str, target_height: float) -
     material_names = sorted({slot.material.name for obj in meshes for slot in obj.material_slots if slot.material})
     for material_name in material_names:
         material = bpy.data.materials.get(material_name)
-        if material and hasattr(material, "roughness"):
-            material.roughness = max(0.72, material.roughness)
+        if material:
+            tune_material(material)
     for index, obj in enumerate(imported):
         obj.name = asset_name if index == 0 else f"{asset_name}-{index:02d}"
         obj.select_set(True)
@@ -183,7 +233,7 @@ def validate_export(output_path: Path) -> dict:
 
 
 def add_ground() -> None:
-    bpy.ops.mesh.primitive_plane_add(size=24, location=(0, 0, -0.025))
+    bpy.ops.mesh.primitive_plane_add(size=34, location=(0, 0, -0.025))
     ground = bpy.context.object
     ground.name = "InspectionGround"
     material = bpy.data.materials.new("Inspection meadow")
@@ -193,11 +243,11 @@ def add_ground() -> None:
 
 
 def add_camera_and_lights() -> None:
-    bpy.ops.object.camera_add(location=(15.8, -24.5, 15.5))
+    bpy.ops.object.camera_add(location=(20.5, -31.5, 20.5))
     camera = bpy.context.object
     camera.name = "InspectionCamera"
     bpy.context.scene.camera = camera
-    target = Vector((0, 1.0, 1.8))
+    target = Vector((0, 0, 2.0))
     camera.rotation_euler = (target - camera.location).to_track_quat("-Z", "Y").to_euler()
     camera.data.lens = 48
     bpy.ops.object.light_add(type="AREA", location=(-6, -8, 14))
@@ -227,7 +277,7 @@ def main() -> None:
         delivered_validation = validate_export(output_path)
         report.update({
             "id": asset_name,
-            "url": f"/models/openworld/props/{asset_name}.glb",
+            "url": f"/models/openworld/props/{asset_name}.glb?v={ASSET_VERSION}",
             "file": str(output_path.relative_to(ROOT)).replace("\\", "/"),
             "bytes": output_path.stat().st_size,
             "sha256": sha256(output_path),
@@ -240,10 +290,10 @@ def main() -> None:
         report_assets.append(report)
         imported_groups.append(imported)
 
-        column = index % 4
-        row = index // 4
-        x = (column - 1.5) * 4.4
-        y = row * 4.3 - 3.6
+        column = index % 5
+        row = index // 5
+        x = (column - 2) * 4.6
+        y = (row - 1.5) * 5.2
         for obj in imported:
             if obj.parent not in imported:
                 obj.location.x += x
@@ -253,8 +303,8 @@ def main() -> None:
     add_camera_and_lights()
     scene = bpy.context.scene
     scene.render.engine = "BLENDER_EEVEE"
-    scene.render.resolution_x = 1280
-    scene.render.resolution_y = 800
+    scene.render.resolution_x = 1500
+    scene.render.resolution_y = 900
     scene.render.resolution_percentage = 100
     scene.render.image_settings.file_format = "PNG"
     scene.render.filepath = str(ARTIFACTS / "openworld-props-preview.png")
@@ -265,7 +315,7 @@ def main() -> None:
 
     total_bytes = sum(item["bytes"] for item in report_assets)
     manifest = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "package": "Kenney Nature Kit",
         "packageVersion": "2.1",
         "author": "Kenney",
@@ -277,6 +327,7 @@ def main() -> None:
         "sourceRevision": "official-media-path-37ac38a37b-1677698939",
         "generatedBy": "scripts/normalize-world-assets.py with Blender 5.2.1 LTS",
         "coordinateSystem": "glTF Y-up; bottom-center pivot; dimensions are Three.js x/y/z metres",
+        "materialTransform": "non-metallic woodland palette; roughness 0.9; source meshes unchanged",
         "totalBytes": total_bytes,
         "assets": report_assets,
     }

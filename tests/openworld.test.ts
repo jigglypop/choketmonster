@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { Brain, type Graph } from '../src/core/brain.ts';
 import { createGame, createMonster } from '../src/game/engine.ts';
 import type { FieldPolicy } from '../src/game/field.ts';
-import { OPEN_WORLD_MODEL, OpenWorldSimulation, biomeForSpecies, movementSpeed, nextSpeciesInBiome, restoreOpenWorld, sampleWorld, serializeOpenWorld, speciesForSpawn } from '../src/openworld/simulation.ts';
+import { OPEN_WORLD_MODEL, OpenWorldSimulation, biomeForSpecies, initialSpawnSpecies, movementSpeed, nextSpeciesInBiome, restoreOpenWorld, sampleWorld, serializeOpenWorld, speciesForSpawn } from '../src/openworld/simulation.ts';
 
 const loadGraph = async () => JSON.parse(await readFile(new URL('../public/data/connectome.json', import.meta.url), 'utf8')) as Graph;
 const loadPolicy = async () => JSON.parse(await readFile(new URL('../public/data/field-policy.json', import.meta.url), 'utf8')) as FieldPolicy;
@@ -20,7 +20,9 @@ describe('connectome open world', () => {
     const graph = await loadGraph(), policy = await loadPolicy(), game = createGame(1, 'open-world-roster');
     const world = new OpenWorldSimulation(graph, game, 1001, undefined, policy);
     expect(world.entities.filter(entity => entity.kind === 'wild')).toHaveLength(15);
-    expect(world.entities.filter(entity => entity.kind === 'wild').slice(0, 3).every(entity => Math.hypot(entity.x, entity.z) <= 15 && entity.level >= 2 && entity.level <= 3)).toBe(true);
+    expect(world.entities.filter(entity => entity.kind === 'wild').slice(0, 3).every(entity => Math.hypot(entity.x, entity.z) <= 18 && entity.level >= 2 && entity.level <= 3)).toBe(true);
+    expect(world.nearbyWildCount(18)).toBeGreaterThanOrEqual(7);
+    expect(new Set(Array.from({ length: 15 }, (_, index) => initialSpawnSpecies(index + 1))).size).toBe(15);
     expect(world.visibleEntities()).toHaveLength(12);
     expect(world.spawnCatalog().map(entry => entry.speciesId)).toEqual(Array.from({ length: 151 }, (_, index) => index + 1));
     expect(Array.from({ length: 151 }, (_, index) => speciesForSpawn(index + 1))).toEqual(Array.from({ length: 151 }, (_, index) => index + 1));
@@ -65,6 +67,26 @@ describe('connectome open world', () => {
     const stopped = blocked.entities.find(entity => entity.id === tracked.id)!;
     expect(stopped.x).toBe(20); expect(stopped.z).toBe(-28); expect(stopped.collisions).toBeGreaterThan(tracked.collisions);
   });
+
+  it('streams distant same-biome wilds near a traveling player without changing brains', async () => {
+    const graph = await loadGraph(), policy = await loadOpenWorldPolicy();
+    for (const seed of [4_401, 4_501, 4_601]) {
+      const game = createGame(1, `open-world-density-${seed}`), world = new OpenWorldSimulation(graph, game, seed, undefined, policy); world.setAutoHunt(false);
+      const before = new Map(world.entities.filter(entity => entity.kind === 'wild').map(entity => [entity.id, { x: entity.x, z: entity.z, readout: structuredClone(entity.brain.readout), updates: entity.brain.updates }]));
+      expect(world.movePlayer({ x: 0, z: -60, heading: 2 })).toBe(true);
+      for (let tick = 0; tick < 7; tick++) world.step({ deltaSeconds: .5, learning: false });
+      expect(world.nearbyWildCount(25)).toBeGreaterThanOrEqual(4);
+      const nearby = world.entities.filter(entity => entity.kind === 'wild' && Math.hypot(entity.x - world.player.x, entity.z - world.player.z) <= 25);
+      expect(nearby.every(entity => !sampleWorld(entity.x, entity.z).blocked && sampleWorld(entity.x, entity.z).biome === biomeForSpecies(entity.speciesId))).toBe(true);
+      const relocated = nearby.filter(entity => before.has(entity.id) && Math.hypot(entity.x - before.get(entity.id)!.x, entity.z - before.get(entity.id)!.z) > 20);
+      expect(relocated.length).toBeGreaterThanOrEqual(4);
+      for (const entity of relocated.filter(entity => before.has(entity.id))) { expect(entity.brain.readout).toEqual(before.get(entity.id)!.readout); expect(entity.brain.updates).toBe(before.get(entity.id)!.updates); }
+      for (const biome of ['forest', 'lake', 'rock'] as const) expect(world.entities.some(entity => entity.kind === 'wild' && biomeForSpecies(entity.speciesId) === biome && Math.hypot(entity.x - world.player.x, entity.z - world.player.z) > 25)).toBe(true);
+      const json = serializeOpenWorld(game, world), a = restoreOpenWorld(graph, json, policy), b = restoreOpenWorld(graph, json, policy);
+      const traceA = Array.from({ length: 8 }, () => a.simulation.step({ deltaSeconds: .4, learning: false })), traceB = Array.from({ length: 8 }, () => b.simulation.step({ deltaSeconds: .4, learning: false }));
+      expect(traceA).toEqual(traceB); expect(a.simulation.snapshot()).toEqual(b.simulation.snapshot());
+    }
+  }, 15_000);
 
   it('keeps per-instance learning state isolated and freezes weights during evaluation', async () => {
     const graph = await loadGraph(), policy = await loadPolicy(), game = createGame(1, 'open-world-frozen');
@@ -194,7 +216,6 @@ describe('connectome open world', () => {
   it('repeats autonomous hunts and rewards on a held-out seed with the deployed frozen policy', async () => {
     const graph = await loadGraph(), policy = await loadOpenWorldPolicy(), game = createGame(1, 'open-world-heldout-6012044');
     const world = new OpenWorldSimulation(graph, game, 6_012_044, undefined, policy, 12);
-    const fieldWeights = world.entities.map(entity => ({ readout: entity.brain.readout, updates: entity.brain.updates }));
     const moneyBefore = game.player.money, xpBefore = game.player.team[0].xp; let encounters = 0, wins = 0, replacements = 0, previousPending = 0, moneyRewards = 0;
     for (let tick = 0; tick < 200; tick++) {
       const beforeStep = game.player.money, step = world.step({ deltaSeconds: .25, learning: false });
@@ -205,7 +226,7 @@ describe('connectome open world', () => {
     expect(encounters).toBeGreaterThanOrEqual(2); expect(wins).toBeGreaterThanOrEqual(1); expect(replacements).toBeGreaterThanOrEqual(2);
     expect(moneyRewards).toBeGreaterThan(0); expect(game.player.team[0].xp).toBeGreaterThan(xpBefore); expect(game.player.money).not.toBe(moneyBefore);
     expect(world.rosterStatus().total).toBe(12);
-    expect(world.entities.map(entity => ({ readout: entity.brain.readout, updates: entity.brain.updates }))).toEqual(fieldWeights);
+    expect(world.entities.every(entity => entity.brain.updates === 0 && JSON.stringify(entity.brain.readout) === JSON.stringify(policy.readout))).toBe(true);
   }, 15_000);
 
   it('round-trips a graph-deduplicated save and replays exactly during battle', async () => {

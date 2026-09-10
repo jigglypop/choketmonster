@@ -21,6 +21,8 @@ export type WorldCreature = WorldPoint & {
   movementSpeed?: number;
   /** Type of the currently presented move, used to choose a readable battle effect. */
   moveType?: string;
+  /** A battle opponent to face without changing the simulation heading. */
+  lookAt?: { x: number; z: number };
   inBattle?: boolean;
 };
 

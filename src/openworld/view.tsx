@@ -7,6 +7,9 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalS
 import { createRoot, type Root } from 'react-dom/client';
 import {
   AnimationMixer,
+  type AnimationAction,
+  LoopOnce,
+  LoopRepeat,
   BufferAttribute,
   BufferGeometry,
   CanvasTexture,
@@ -41,6 +44,7 @@ import type {
 } from './types';
 import { createSceneryPlacements, SCENERY_ASSETS, TRAIL_POINTS, type SceneryPlacement } from './scenery';
 import { createGrounding, terrainSurfaceHeight, TERRAIN_SEGMENTS } from './grounding';
+import { initialYaw, movementYaw, turnTowards } from './motion';
 import { normalizePokemonModel } from './model-normalization';
 import './view.css';
 
@@ -166,17 +170,22 @@ function Terrain({ sampleWorld, visual = true }: { sampleWorld: (x: number, z: n
     const positions = plane.attributes.position;
     const colors = new Float32Array(positions.count * 3);
     const palette: Record<WorldSample['biome'], Color> = {
-      meadow: new Color('#729951'),
-      forest: new Color('#315f3d'),
-      lake: new Color('#4d9195'),
-      rock: new Color('#877f69'),
+      meadow: new Color('#679447'),
+      forest: new Color('#285b35'),
+      lake: new Color('#438b94'),
+      rock: new Color('#777763'),
     };
+    const color = new Color();
     for (let index = 0; index < positions.count; index += 1) {
       const x = positions.getX(index);
       const z = positions.getZ(index);
       const sample = sampleWorld(x, z);
       positions.setY(index, sample.height);
-      const color = palette[sample.biome];
+      color.copy(palette[sample.biome]);
+      const broad = Math.sin(x * .12 + z * .07) * .045;
+      const fine = Math.sin(x * .73) * Math.cos(z * .61) * .025;
+      const moisture = sample.biome === 'meadow' ? Math.max(0, 1 - Math.hypot(x - 42, z + 28) / 48) * .055 : 0;
+      color.offsetHSL(broad * .14 - moisture, .015 + fine, broad + fine - moisture * .25);
       colors[index * 3] = color.r;
       colors[index * 3 + 1] = color.g;
       colors[index * 3 + 2] = color.b;
@@ -225,7 +234,7 @@ function InstancedPart({ geometry, material, sourceMatrix, placements, shadows }
   return <instancedMesh ref={mesh} args={[geometry, material, placements.length]} castShadow={shadows} receiveShadow dispose={null} />;
 }
 
-function InstancedAsset({ url, placements, shadows }: { url: string; placements: readonly SceneryPlacement[]; shadows: boolean }) {
+function InstancedAsset({ url, placements, shadows, wind }: { url: string; placements: readonly SceneryPlacement[]; shadows: boolean; wind: boolean }) {
   const gltf = useCachedModel(url);
   const parts = useMemo(() => {
     if (!gltf) return [];
@@ -239,6 +248,23 @@ function InstancedAsset({ url, placements, shadows }: { url: string; placements:
         if (clone instanceof MeshStandardMaterial) {
           clone.metalness = 0;
           clone.roughness = .95;
+          if (wind) {
+            clone.onBeforeCompile = shader => {
+              shader.uniforms.owWindTime = { value: 0 };
+              clone.userData.windTime = shader.uniforms.owWindTime;
+              shader.vertexShader = shader.vertexShader
+                .replace('#include <common>', '#include <common>\nuniform float owWindTime;')
+                .replace('#include <begin_vertex>', `#include <begin_vertex>
+                  float owTip = smoothstep(0.04, 0.7, position.y);
+                  float owPhase = position.x * 2.1 + position.z * 1.7;
+                  #ifdef USE_INSTANCING
+                    owPhase += instanceMatrix[3].x * 0.13 + instanceMatrix[3].z * 0.17;
+                  #endif
+                  transformed.x += sin(owWindTime * 1.35 + owPhase) * 0.035 * owTip;
+                  transformed.z += cos(owWindTime * 1.05 + owPhase) * 0.022 * owTip;`);
+            };
+            clone.customProgramCacheKey = () => 'openworld-soft-wind-v1';
+          }
           clone.needsUpdate = true;
         }
         return clone;
@@ -246,7 +272,17 @@ function InstancedAsset({ url, placements, shadows }: { url: string; placements:
       meshes.push({ geometry: object.geometry, material: Array.isArray(object.material) ? normalized : normalized[0], matrix: object.matrixWorld.clone() });
     });
     return meshes;
-  }, [gltf]);
+  }, [gltf, wind]);
+  useFrame(({ clock }) => {
+    if (!wind) return;
+    for (const part of parts) {
+      const materials = Array.isArray(part.material) ? part.material : [part.material];
+      for (const material of materials) {
+        const uniform = material.userData.windTime as { value: number } | undefined;
+        if (uniform) uniform.value = clock.elapsedTime;
+      }
+    }
+  });
   useEffect(() => () => {
     for (const part of parts) {
       const materials = Array.isArray(part.material) ? part.material : [part.material];
@@ -266,6 +302,7 @@ function Nature({ sampleWorld }: { sampleWorld: (x: number, z: number) => WorldS
         url={asset.url}
         placements={placements[asset.id]}
         shadows={!asset.id.startsWith('flower') && asset.id !== 'grass-tuft'}
+        wind={asset.id === 'grass-tuft' || asset.id === 'grass-soft' || asset.id.startsWith('flower') || asset.id === 'bush' || asset.id === 'lily'}
       />)}
     </group>
   );
@@ -336,6 +373,7 @@ function PokemonModel({ creature, url }: { creature: WorldCreature; url: string 
   const gltf = useCachedModel(url);
   const root = useRef<Group>(null);
   const mixer = useRef<AnimationMixer | null>(null);
+  const activeAction = useRef<AnimationAction | undefined>(undefined);
   const ground = useRef<((groundY: number) => number) | undefined>(undefined);
   const worldPosition = useRef(new Vector3());
   const normalized = useMemo(() => {
@@ -350,7 +388,7 @@ function PokemonModel({ creature, url }: { creature: WorldCreature; url: string 
     return normalizePokemonModel(scene, gltf.animations, creature.displayHeight ?? 1.2);
   }, [creature.displayHeight, gltf]);
   useFrame(({ clock }, delta) => {
-    mixer.current?.update(Math.min(delta, .05) * MathUtils.clamp((creature.movementSpeed ?? 2.4) / 2.4, .65, 1.8));
+    mixer.current?.update(Math.min(delta, .05) * (creature.action === 'walk' ? MathUtils.clamp((creature.movementSpeed ?? 2.4) / 2.4, .65, 1.8) : 1));
     if (!root.current) return;
     const gait = MathUtils.clamp(creature.movementSpeed ?? 2.4, 1.2, 5.2);
     const phase = clock.elapsedTime * (creature.action === 'walk' ? gait * 2.7 : 2.4) + creature.speciesId;
@@ -368,14 +406,26 @@ function PokemonModel({ creature, url }: { creature: WorldCreature; url: string 
     if (!normalized || !gltf?.animations.length) return;
     const nextMixer = new AnimationMixer(normalized.animatedRoot);
     mixer.current = nextMixer;
-    const wanted = creature.action === 'attack' ? /attack|bite|skill/i : creature.action === 'walk' ? /walk|run/i : /idle/i;
-    const clip = gltf.animations.find(candidate => wanted.test(candidate.name)) ?? gltf.animations[0];
-    nextMixer.clipAction(clip).play();
     return () => {
       mixer.current = null;
+      activeAction.current = undefined;
       nextMixer.stopAllAction();
       nextMixer.uncacheRoot(normalized.animatedRoot);
     };
+  }, [gltf, normalized]);
+
+  useEffect(() => {
+    if (!mixer.current || !gltf?.animations.length) return;
+    const wanted = creature.action === 'attack' ? /attack|bite|skill/i : creature.action === 'walk' ? /walk|run/i : /idle/i;
+    const clip = gltf.animations.find(candidate => wanted.test(candidate.name)) ?? gltf.animations[0];
+    const next = mixer.current.clipAction(clip), previous = activeAction.current;
+    if (next === previous && next.isRunning()) return;
+    next.reset().setEffectiveWeight(1).setEffectiveTimeScale(1);
+    next.setLoop(creature.action === 'attack' ? LoopOnce : LoopRepeat, creature.action === 'attack' ? 1 : Infinity);
+    next.clampWhenFinished = creature.action === 'attack';
+    next.play();
+    if (previous && previous !== next) next.crossFadeFrom(previous, .2, false);
+    activeAction.current = next;
   }, [creature.action, gltf, normalized]);
 
   if (!normalized) return <FallbackCreature displayHeight={creature.displayHeight} />;
@@ -471,11 +521,22 @@ function Creature({ creature, selected, distance, options }: {
   const sample = options.sampleWorld ?? fallbackSample;
   const y = terrainSurfaceHeight(sample, creature.x, creature.z);
   const hp = MathUtils.clamp(creature.maxHp > 0 ? creature.hp / creature.maxHp : 0, 0, 1);
-  const yaw = [Math.PI, -Math.PI / 2, 0, Math.PI / 2, 0][creature.heading ?? 4];
   const root = useRef<Group>(null);
   const target = useRef(new Vector3(creature.x, y, creature.z));
   const visual = useRef(new Vector3(creature.x, y, creature.z));
-  useEffect(() => { target.current.set(creature.x, y, creature.z); }, [creature.x, creature.z, y]);
+  const desiredYaw = useRef(initialYaw(creature.heading));
+  useLayoutEffect(() => {
+    if (!root.current) return;
+    root.current.position.copy(visual.current);
+    root.current.rotation.y = desiredYaw.current;
+  }, [creature.id]);
+  useLayoutEffect(() => {
+    const dx = creature.x - target.current.x, dz = creature.z - target.current.z;
+    // Offscreen population relocation is a new placement, not a very fast walk across the world.
+    if (Math.hypot(dx, dz) > 24) visual.current.set(creature.x, y, creature.z);
+    else desiredYaw.current = movementYaw(dx, dz, desiredYaw.current);
+    target.current.set(creature.x, y, creature.z);
+  }, [creature.x, creature.z, y]);
   useFrame((_, delta) => {
     if (!root.current) return;
     const remaining = visual.current.distanceTo(target.current);
@@ -484,13 +545,14 @@ function Creature({ creature, selected, distance, options }: {
     if (remaining > 0) visual.current.lerp(target.current, Math.min(1, step / remaining));
     visual.current.y = terrainSurfaceHeight(sample, visual.current.x, visual.current.z);
     root.current.position.copy(visual.current);
-    root.current.rotation.y = MathUtils.damp(root.current.rotation.y, yaw, 14, delta);
+    const lookAt = creature.lookAt;
+    if (lookAt) desiredYaw.current = movementYaw(lookAt.x - visual.current.x, lookAt.z - visual.current.z, desiredYaw.current);
+    root.current.rotation.y = turnTowards(root.current.rotation.y, desiredYaw.current, delta);
   }, -2);
   return (
     <group
       ref={root}
-      position={[creature.x, y, creature.z]}
-      rotation={[0, yaw, 0]}
+      name={`creature:${creature.id}`}
       onClick={event => { event.stopPropagation(); options.onSelect(creature.id); }}
       onDoubleClick={event => { event.stopPropagation(); options.onInteract?.(creature.id); }}
     >

@@ -29,6 +29,7 @@ export type OpenWorldSnapshot = {
   battleElapsed: number; pendingCapture: boolean; pendingBall?: BallItem; lastPlayerReward: number | null; lastEnemyReward: number | null;
   pendingAction?: BattleAction;
   manualControlRemaining?: number;
+  densityRemaining?: number;
   spawnSerial: number; nextFoodId: number; foods: WorldFood[]; respawnQueue?: WorldRespawn[]; entities: OpenWorldEntitySnapshot[]; companionMemories?: OpenWorldEntitySnapshot[];
 };
 export type OpenWorldEvent =
@@ -41,6 +42,9 @@ export type OpenWorldSave = { schema: 1; model: typeof OPEN_WORLD_MODEL; graphId
 
 const PATH_SAMPLE_DISTANCE = .45;
 const MANUAL_CONTROL_HOLD = .3;
+const DENSITY_MIN_RADIUS = 6;
+const DENSITY_MAX_RADIUS = 18;
+const DENSITY_TARGET = 6;
 const BATTLE_INTERVAL = 0.9;
 const DIRECTIONS = [{ x: 0, z: -1 }, { x: 1, z: 0 }, { x: 0, z: 1 }, { x: -1, z: 0 }] as const;
 const finite = (value: number) => typeof value === 'number' && Number.isFinite(value);
@@ -91,6 +95,15 @@ export function speciesForSpawn(serial: number): number {
   return ((serial - 1) % 151) + 1;
 }
 
+export function initialSpawnSpecies(serial: number): number {
+  if (!Number.isSafeInteger(serial) || serial < 1) throw new Error('Spawn serial must be a positive integer');
+  const grouped = (biome: WorldBiome) => POKEMON.map(species => species.id).filter(id => biomeForSpecies(id) === biome);
+  const meadow = grouped('meadow'), forest = grouped('forest'), lake = grouped('lake'), rock = grouped('rock');
+  const preferred = [...meadow.slice(0, 7), ...forest.slice(0, 3), ...lake.slice(0, 3), ...rock.slice(0, 2)];
+  const remaining = POKEMON.map(species => species.id).filter(id => !preferred.includes(id));
+  const sequence = [...preferred, ...remaining]; return sequence[(serial - 1) % sequence.length];
+}
+
 export class OpenWorldSimulation {
   readonly graph: Graph;
   readonly seed: number;
@@ -109,6 +122,7 @@ export class OpenWorldSimulation {
   nextFoodId = 1;
   respawnQueue: WorldRespawn[] = [];
   manualControlRemaining = 0;
+  densityRemaining = 2.5;
   private pendingCapture = false;
   private pendingBall?: BallItem;
   private pendingAction?: BattleAction;
@@ -198,6 +212,7 @@ export class OpenWorldSimulation {
     const manualControlActive = this.manualControlRemaining > 0; this.manualControlRemaining = Math.max(0, this.manualControlRemaining - deltaSeconds);
     this.syncCompanion();
     if (!this.game.battle) {
+      this.advanceDensity(deltaSeconds);
       this.advanceRespawns(deltaSeconds);
       if (this.autoHunt) {
         const companion = this.entities.find(entity => entity.kind === 'companion'), nearest = this.nearestWildToCompanion();
@@ -233,11 +248,13 @@ export class OpenWorldSimulation {
       player: structuredClone(this.player), selectedWildId: this.selectedWildId, autoCapture: this.autoCapture, autoHunt: this.autoHunt, battleWildId: this.battleWildId,
       battleElapsed: this.battleElapsed, pendingCapture: this.pendingCapture, pendingBall: this.pendingBall, lastPlayerReward: this.lastPlayerReward, lastEnemyReward: this.lastEnemyReward,
       pendingAction: structuredClone(this.pendingAction), manualControlRemaining: this.manualControlRemaining,
+      densityRemaining: this.densityRemaining,
       spawnSerial: this.spawnSerial, nextFoodId: this.nextFoodId, foods: structuredClone(this.foods), respawnQueue: structuredClone(this.respawnQueue), entities: this.entities.map(pack), companionMemories: [...this.companionMemories.values()].map(pack) };
   }
 
   spawnCatalog(): Array<{ speciesId: number; biome: WorldBiome }> { return POKEMON.map((_, index) => { const speciesId = speciesForSpawn(index + 1); return { speciesId, biome: biomeForSpecies(speciesId) }; }); }
   rosterStatus(): { alive: number; pending: number; total: number } { const alive = this.wildEntities().length, pending = this.respawnQueue.length; return { alive, pending, total: alive + pending }; }
+  nearbyWildCount(radius = 25): number { if (!finite(radius) || radius <= 0 || radius > 100) throw new Error('Nearby radius must be 0..100'); return this.wildEntities().filter(entity => distance(entity, this.player) <= radius).length; }
 
   private stepMovement(deltaSeconds: number, learning: boolean, epsilon: number, manualControlActive: boolean, events: OpenWorldEvent[]): void {
     const occupied: Array<{ x: number; z: number }> = [];
@@ -361,9 +378,9 @@ export class OpenWorldSimulation {
   }
 
   private spawnWild(): OpenWorldEntity {
-    const speciesId = speciesForSpawn(this.spawnSerial), id = `wild-${this.spawnSerial++}`, biome = biomeForSpecies(speciesId);
-    const beginner = this.spawnSerial <= 4;
-    const position = beginner ? this.openBeginnerPosition() : this.openPosition(biome, 10), radial = Math.hypot(position.x, position.z);
+    const serial = this.spawnSerial++, speciesId = initialSpawnSpecies(serial), id = `wild-${serial}`, biome = biomeForSpecies(speciesId);
+    const beginner = serial <= 3, nearby = serial <= 7;
+    const position = nearby ? this.openNearbyPosition(biome, 6, 18) : this.openPosition(biome, 10), radial = Math.hypot(position.x, position.z);
     const level = beginner ? 2 + this.rng.int(2) : Math.max(2, Math.min(85, 2 + Math.floor((radial / 170) ** 1.6 * 78) + this.rng.int(4)));
     const entity = this.makeEntity(id, 'wild', speciesId, level, position); this.entities.push(entity); return entity;
   }
@@ -380,6 +397,36 @@ export class OpenWorldSimulation {
     const ready = this.respawnQueue.filter(pending => pending.remainingSeconds === 0);
     this.respawnQueue = this.respawnQueue.filter(pending => pending.remainingSeconds > 0);
     for (const pending of ready) this.spawnReplacement(pending);
+  }
+
+  private advanceDensity(deltaSeconds: number): void {
+    this.densityRemaining -= deltaSeconds; if (this.densityRemaining > 0) return;
+    this.densityRemaining = 2 + this.rng.next(); this.rebalanceDensity();
+  }
+
+  private rebalanceDensity(): void {
+    const biome = sampleWorld(this.player.x, this.player.z).biome;
+    let nearby = this.wildEntities().filter(entity => distance(entity, this.player) <= 25);
+    const protectedIds = new Set([this.selectedWildId, this.battleWildId].filter((id): id is string => !!id));
+    const candidates = this.wildEntities().filter(entity => !protectedIds.has(entity.id) && biomeForSpecies(entity.speciesId) === biome && distance(entity, this.player) > 25)
+      .sort((a, b) => distance(b, this.player) - distance(a, this.player) || a.id.localeCompare(b.id));
+    const leadLevel = this.game.player.team.find(monster => monster.hp > 0)?.level ?? this.game.player.team[0].level;
+    while (nearby.length < DENSITY_TARGET && candidates.length) {
+      const entity = candidates.shift()!, position = this.openNearbyPosition(biome, DENSITY_MIN_RADIUS, DENSITY_MAX_RADIUS);
+      entity.x = position.x; entity.z = position.z; entity.level = Math.min(entity.level, leadLevel + 2); entity.target = undefined; entity.observation = Array(12).fill(0); entity.reward = 0;
+      const brain = this.brain(entity.id); brain.state.previous = null; nearby.push(entity);
+    }
+    const biomeCounts = new Map<WorldBiome, number>(); for (const entity of this.wildEntities()) { const keyName = biomeForSpecies(entity.speciesId); biomeCounts.set(keyName, (biomeCounts.get(keyName) ?? 0) + 1); }
+    const donors = this.wildEntities().filter(entity => !protectedIds.has(entity.id) && biomeForSpecies(entity.speciesId) !== biome && distance(entity, this.player) > 50 && (biomeCounts.get(biomeForSpecies(entity.speciesId)) ?? 0) > 1)
+      .sort((a, b) => distance(b, this.player) - distance(a, this.player) || a.id.localeCompare(b.id));
+    const pool = POKEMON.map(species => species.id).filter(speciesId => biomeForSpecies(speciesId) === biome);
+    while (nearby.length < DENSITY_TARGET && donors.length) {
+      const donor = donors.shift()!, donorBiome = biomeForSpecies(donor.speciesId); if ((biomeCounts.get(donorBiome) ?? 0) <= 1) continue;
+      const position = this.openNearbyPosition(biome, DENSITY_MIN_RADIUS, DENSITY_MAX_RADIUS), index = this.entities.indexOf(donor);
+      this.entities.splice(index, 1); this.brains.delete(donor.id); biomeCounts.set(donorBiome, (biomeCounts.get(donorBiome) ?? 1) - 1);
+      const serial = this.spawnSerial++, speciesId = pool[(serial - 1) % pool.length], entity = this.makeEntity(`wild-${serial}`, 'wild', speciesId, Math.max(2, Math.min(donor.level, leadLevel + 2)), position);
+      this.entities.push(entity); nearby.push(entity); biomeCounts.set(biome, (biomeCounts.get(biome) ?? 0) + 1);
+    }
   }
 
   private spawnReplacement(pending: WorldRespawn): OpenWorldEntity {
@@ -444,10 +491,20 @@ export class OpenWorldSimulation {
     throw new Error('No open beginner position');
   }
 
+  private openNearbyPosition(biome: WorldBiome, minimum: number, maximum: number): { x: number; z: number } {
+    for (let attempt = 0; attempt < 2000; attempt++) {
+      const angle = this.rng.next() * Math.PI * 2, radius = minimum + this.rng.next() * (maximum - minimum);
+      const x = this.player.x + Math.cos(angle) * radius, z = this.player.z + Math.sin(angle) * radius;
+      const sample = sampleWorld(x, z);
+      if (!sample.blocked && sample.biome === biome && !this.entities.some(entity => distance(entity, { x, z }) < 3) && !this.foods.some(food => distance(food, { x, z }) < 2)) return { x, z };
+    }
+    return this.openPosition(biome, minimum);
+  }
+
   private openRespawnPosition(pending: WorldRespawn): { x: number; z: number } {
     for (let attempt = 0; attempt < 2000; attempt++) {
-      const center = attempt % 2 === 0 ? { x: pending.originX, z: pending.originZ } : this.player;
-      const minimum = center === this.player ? 8 : 5, radius = minimum + this.rng.next() * 13, angle = this.rng.next() * Math.PI * 2;
+      const nearPlayer = attempt < 300, center = nearPlayer ? this.player : { x: pending.originX, z: pending.originZ };
+      const minimum = nearPlayer ? 6 : 5, maximum = nearPlayer ? 14 : 18, radius = minimum + this.rng.next() * (maximum - minimum), angle = this.rng.next() * Math.PI * 2;
       const x = clamp(center.x + Math.cos(angle) * radius, WORLD_MIN + 2, WORLD_MAX - 2), z = clamp(center.z + Math.sin(angle) * radius, WORLD_MIN + 2, WORLD_MAX - 2);
       const sample = sampleWorld(x, z);
       if (!sample.blocked && sample.biome === pending.biome && distance({ x, z }, this.player) >= 6 && !this.entities.some(entity => distance(entity, { x, z }) < 3) && !this.foods.some(food => distance(food, { x, z }) < 2)) return { x, z };
@@ -486,6 +543,7 @@ export class OpenWorldSimulation {
     if (!checkpoint || checkpoint.schema !== 1 || checkpoint.model !== OPEN_WORLD_MODEL || checkpoint.graphId !== this.graph.id || checkpoint.seed !== this.seed || !Number.isInteger(checkpoint.rng) || checkpoint.rng < 0 || checkpoint.rng > 0xffffffff || !Number.isSafeInteger(checkpoint.tick) || checkpoint.tick < 0 || !finite(checkpoint.battleElapsed) || checkpoint.battleElapsed < 0 || checkpoint.battleElapsed >= BATTLE_INTERVAL || typeof checkpoint.autoCapture !== 'boolean' || typeof checkpoint.pendingCapture !== 'boolean' || (checkpoint.pendingBall !== undefined && !['poke-ball', 'great-ball', 'ultra-ball'].includes(checkpoint.pendingBall)) || (checkpoint.pendingAction !== undefined && !this.validRequestedAction(checkpoint.pendingAction)) || ![checkpoint.lastPlayerReward, checkpoint.lastEnemyReward].every(value => value === null || (finite(value) && Math.abs(value) <= 1)) || !Number.isSafeInteger(checkpoint.spawnSerial) || checkpoint.spawnSerial < 1 || !Number.isSafeInteger(checkpoint.nextFoodId) || checkpoint.nextFoodId < 1 || !Array.isArray(checkpoint.foods) || !Array.isArray(checkpoint.entities) || (checkpoint.companionMemories !== undefined && !Array.isArray(checkpoint.companionMemories))) throw new Error('Invalid open-world checkpoint');
     if ((checkpoint.autoHunt !== undefined && typeof checkpoint.autoHunt !== 'boolean') || (checkpoint.respawnQueue !== undefined && !Array.isArray(checkpoint.respawnQueue))) throw new Error('Invalid open-world automation checkpoint');
     if (checkpoint.manualControlRemaining !== undefined && (!finite(checkpoint.manualControlRemaining) || checkpoint.manualControlRemaining < 0 || checkpoint.manualControlRemaining > MANUAL_CONTROL_HOLD)) throw new Error('Invalid manual-control hold');
+    if (checkpoint.densityRemaining !== undefined && (!finite(checkpoint.densityRemaining) || checkpoint.densityRemaining < 0 || checkpoint.densityRemaining > 3)) throw new Error('Invalid density timer');
     if (![checkpoint.player?.x, checkpoint.player?.z, checkpoint.player?.heading].every(finite) || !Number.isInteger(checkpoint.player.heading) || checkpoint.player.heading < 0 || checkpoint.player.heading > 4 || sampleWorld(checkpoint.player.x, checkpoint.player.z).blocked) throw new Error('Invalid open-world player');
     const memories = checkpoint.companionMemories ?? [], respawns = checkpoint.respawnQueue ?? [], savedEntities = [...checkpoint.entities, ...memories];
     const wildCount = checkpoint.entities.filter(entity => entity.kind === 'wild').length;
@@ -507,7 +565,7 @@ export class OpenWorldSimulation {
     this.selectedWildId = checkpoint.selectedWildId; this.autoCapture = checkpoint.autoCapture; this.autoHunt = checkpoint.autoHunt ?? true; this.battleWildId = checkpoint.battleWildId; this.battleElapsed = checkpoint.battleElapsed;
     this.pendingCapture = checkpoint.pendingCapture; this.pendingBall = checkpoint.pendingBall; this.lastPlayerReward = checkpoint.lastPlayerReward; this.lastEnemyReward = checkpoint.lastEnemyReward;
     this.pendingAction = structuredClone(checkpoint.pendingAction);
-    this.spawnSerial = checkpoint.spawnSerial; this.nextFoodId = checkpoint.nextFoodId; this.respawnQueue = structuredClone(respawns); this.manualControlRemaining = checkpoint.manualControlRemaining ?? 0;
+    this.spawnSerial = checkpoint.spawnSerial; this.nextFoodId = checkpoint.nextFoodId; this.respawnQueue = structuredClone(respawns); this.manualControlRemaining = checkpoint.manualControlRemaining ?? 0; this.densityRemaining = checkpoint.densityRemaining ?? 0;
   }
 }
 

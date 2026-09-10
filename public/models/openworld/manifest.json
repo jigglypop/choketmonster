@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "package": "Kenney Nature Kit",
   "packageVersion": "2.1",
   "author": "Kenney",
@@ -11,39 +11,41 @@
   "sourceRevision": "official-media-path-37ac38a37b-1677698939",
   "generatedBy": "scripts/normalize-world-assets.py with Blender 5.2.1 LTS",
   "coordinateSystem": "glTF Y-up; bottom-center pivot; dimensions are Three.js x/y/z metres",
-  "totalBytes": 98720,
+  "materialTransform": "non-metallic woodland palette; roughness 0.9; source meshes unchanged",
+  "totalBytes": 204396,
   "assets": [
     {
-      "sourceFile": "tree_default.glb",
-      "sourceSha256": "562d29638c902de3c7bee465d3a53bb77117efbc392ae04ed894faf6b5dc691d",
+      "sourceFile": "tree_detailed.glb",
+      "sourceSha256": "c041daf2f0fb1d49e4325227cbcd58667adbe51e9b55e8c1f0a94b74cc521b3b",
       "dimensions": {
-        "x": 2.1219,
-        "y": 4.8,
-        "z": 1.8376
+        "x": 3.4332,
+        "y": 5.4,
+        "z": 3.0866
       },
       "bounds": {
         "min": [
-          -1.061,
+          -1.7166,
           0.0,
-          -0.9188
+          -1.5433
         ],
         "max": [
-          1.061,
-          4.8,
-          0.9188
+          1.7166,
+          5.4,
+          1.5433
         ]
       },
-      "triangles": 114,
+      "triangles": 402,
       "meshCount": 1,
       "materials": [
+        "_defaultMat",
         "leafsGreen",
         "woodBark"
       ],
       "id": "tree-round",
-      "url": "/models/openworld/props/tree-round.glb",
+      "url": "/models/openworld/props/tree-round.glb?v=20260911-woodland",
       "file": "public/models/openworld/props/tree-round.glb",
-      "bytes": 8828,
-      "sha256": "21541edfb99ed84047da8dfc16caa6face1988ff57e1e494e2ffa3b37e1dc17b",
+      "bytes": 29912,
+      "sha256": "9980c988e64021fd9315028d70cf4c279dd2a636089cc218fd0cc612ac9d08ca",
       "collider": "capsule",
       "recommendedPlacement": {
         "biomes": [
@@ -64,13 +66,13 @@
       },
       "deliveredValidation": {
         "meshCount": 1,
-        "triangles": 114,
-        "materialCount": 2,
+        "triangles": 402,
+        "materialCount": 3,
         "bottomY": 0.0,
         "dimensions": {
-          "x": 2.1219,
-          "y": 4.8,
-          "z": 1.8376
+          "x": 3.4332,
+          "y": 5.4,
+          "z": 3.0866
         }
       }
     },
@@ -101,10 +103,10 @@
         "woodBark.002"
       ],
       "id": "tree-oak",
-      "url": "/models/openworld/props/tree-oak.glb",
+      "url": "/models/openworld/props/tree-oak.glb?v=20260911-woodland",
       "file": "public/models/openworld/props/tree-oak.glb",
-      "bytes": 13604,
-      "sha256": "82d072c09cd3be975f6da16dccc4d3a6c554a59b2edce4a2b57d801795e570ec",
+      "bytes": 13720,
+      "sha256": "ef753730b4eb9111fe7158c8748ca3d840d8265a0f8a4377496f4d003aa76e3b",
       "collider": "capsule",
       "recommendedPlacement": {
         "biomes": [
@@ -136,8 +138,8 @@
       }
     },
     {
-      "sourceFile": "tree_pineTallA.glb",
-      "sourceSha256": "e0a56eb196d8a64ba86c7304d607136e17e6f9ad748dffcf86bd53b18b91b196",
+      "sourceFile": "tree_pineTallA_detailed.glb",
+      "sourceSha256": "9ba6337460e718b8baf165b23c02f39455e3d5757b1911505410c46bc88a86b5",
       "dimensions": {
         "x": 1.5657,
         "y": 6.2,
@@ -155,17 +157,17 @@
           0.7944
         ]
       },
-      "triangles": 78,
+      "triangles": 134,
       "meshCount": 1,
       "materials": [
         "leafsDark",
         "woodBarkDark"
       ],
       "id": "tree-pine",
-      "url": "/models/openworld/props/tree-pine.glb",
+      "url": "/models/openworld/props/tree-pine.glb?v=20260911-woodland",
       "file": "public/models/openworld/props/tree-pine.glb",
-      "bytes": 6820,
-      "sha256": "2df5137ca9757ff7a78fdc1f229a1247b38b7566bb20213072dcc6ebd87cac9a",
+      "bytes": 10108,
+      "sha256": "19e07a285d00d311e3c0eab397a18fac8dc28aadcf72f9be306863f8648cd03d",
       "collider": "capsule",
       "recommendedPlacement": {
         "biomes": [
@@ -186,13 +188,135 @@
       },
       "deliveredValidation": {
         "meshCount": 1,
-        "triangles": 78,
+        "triangles": 134,
         "materialCount": 2,
         "bottomY": 0.0,
         "dimensions": {
           "x": 1.5657,
           "y": 6.2,
           "z": 1.5887
+        }
+      }
+    },
+    {
+      "sourceFile": "tree_fat.glb",
+      "sourceSha256": "84b262c5dda3a91ac6c95f9d8b23a0ebbb1951d678c0e1375d3e32623cc43ee2",
+      "dimensions": {
+        "x": 2.8221,
+        "y": 4.3,
+        "z": 2.444
+      },
+      "bounds": {
+        "min": [
+          -1.411,
+          0.0,
+          -1.222
+        ],
+        "max": [
+          1.411,
+          4.3,
+          1.222
+        ]
+      },
+      "triangles": 50,
+      "meshCount": 1,
+      "materials": [
+        "leafsGreen.004",
+        "woodBark.004"
+      ],
+      "id": "tree-fat",
+      "url": "/models/openworld/props/tree-fat.glb?v=20260911-woodland",
+      "file": "public/models/openworld/props/tree-fat.glb",
+      "bytes": 5676,
+      "sha256": "5ab450347a0e824ce390fd39f7bc730ca74bd74fac67c432119ae3a7836a9ddf",
+      "collider": "capsule",
+      "recommendedPlacement": {
+        "biomes": [
+          "forest",
+          "meadow"
+        ],
+        "scaleRange": [
+          0.8,
+          1.15
+        ],
+        "minSpacing": 4.5,
+        "collider": {
+          "shape": "capsule",
+          "radius": 0.34,
+          "height": 2.6,
+          "centerY": 1.3
+        }
+      },
+      "deliveredValidation": {
+        "meshCount": 1,
+        "triangles": 50,
+        "materialCount": 2,
+        "bottomY": 0.0,
+        "dimensions": {
+          "x": 2.8221,
+          "y": 4.3,
+          "z": 2.444
+        }
+      }
+    },
+    {
+      "sourceFile": "tree_thin.glb",
+      "sourceSha256": "f0f1f6861fe0446963d3be216cc628324f538bb0841bc9a8e14140313f64e2f3",
+      "dimensions": {
+        "x": 2.7395,
+        "y": 6.0,
+        "z": 2.4821
+      },
+      "bounds": {
+        "min": [
+          -1.3697,
+          0.0,
+          -1.2411
+        ],
+        "max": [
+          1.3697,
+          6.0,
+          1.2411
+        ]
+      },
+      "triangles": 228,
+      "meshCount": 1,
+      "materials": [
+        "leafsGreen.006",
+        "woodBark.006"
+      ],
+      "id": "tree-thin",
+      "url": "/models/openworld/props/tree-thin.glb?v=20260911-woodland",
+      "file": "public/models/openworld/props/tree-thin.glb",
+      "bytes": 16344,
+      "sha256": "bf32aabcd5742509a72b1567bbfb0ed2794ee2d1691785c78b65d9a8cadf65ad",
+      "collider": "capsule",
+      "recommendedPlacement": {
+        "biomes": [
+          "forest",
+          "forest-edge"
+        ],
+        "scaleRange": [
+          0.85,
+          1.18
+        ],
+        "minSpacing": 4.0,
+        "collider": {
+          "shape": "capsule",
+          "radius": 0.25,
+          "height": 3.5,
+          "centerY": 1.75
+        }
+      },
+      "deliveredValidation": {
+        "meshCount": 1,
+        "triangles": 228,
+        "materialCount": 2,
+        "bottomY": 0.0,
+        "dimensions": {
+          "x": 2.7395,
+          "y": 6.0,
+          "z": 2.4821
         }
       }
     },
@@ -223,10 +347,10 @@
         "grass"
       ],
       "id": "rock-large",
-      "url": "/models/openworld/props/rock-large.glb",
+      "url": "/models/openworld/props/rock-large.glb?v=20260911-woodland",
       "file": "public/models/openworld/props/rock-large.glb",
-      "bytes": 7160,
-      "sha256": "3ddd69290112532cdec7a4e7fc73f80be8c4aca6782315ec7b5d76b89a43a53c",
+      "bytes": 7260,
+      "sha256": "45dda024f8ab12e8e9f700e686749706c9df76a68d1cbf8b7f72a3f2d8c51377",
       "collider": "box",
       "recommendedPlacement": {
         "biomes": [
@@ -262,6 +386,71 @@
       }
     },
     {
+      "sourceFile": "rock_largeE.glb",
+      "sourceSha256": "8207ce8100b7c756e55e67bee030edadeb332d7d72220027b5818f1987039def",
+      "dimensions": {
+        "x": 3.561,
+        "y": 0.95,
+        "z": 2.9902
+      },
+      "bounds": {
+        "min": [
+          -1.7805,
+          -0.0,
+          -1.4951
+        ],
+        "max": [
+          1.7805,
+          0.95,
+          1.4951
+        ]
+      },
+      "triangles": 64,
+      "meshCount": 1,
+      "materials": [
+        "dirt.002",
+        "grass.002"
+      ],
+      "id": "rock-moss",
+      "url": "/models/openworld/props/rock-moss.glb?v=20260911-woodland",
+      "file": "public/models/openworld/props/rock-moss.glb",
+      "bytes": 6268,
+      "sha256": "aed77cb3338d0e1b178a911a9b69e73e8b4b2d0aaa7dd98beca6dcc0088feb03",
+      "collider": "box",
+      "recommendedPlacement": {
+        "biomes": [
+          "forest",
+          "shore",
+          "highland"
+        ],
+        "scaleRange": [
+          0.72,
+          1.2
+        ],
+        "minSpacing": 3.0,
+        "collider": {
+          "shape": "box",
+          "halfExtents": [
+            1.4,
+            0.44,
+            1.7
+          ],
+          "centerY": 0.44
+        }
+      },
+      "deliveredValidation": {
+        "meshCount": 1,
+        "triangles": 64,
+        "materialCount": 2,
+        "bottomY": -0.0,
+        "dimensions": {
+          "x": 3.561,
+          "y": 0.95,
+          "z": 2.9902
+        }
+      }
+    },
+    {
       "sourceFile": "rock_smallC.glb",
       "sourceSha256": "5cbc0a805f275771baf19165c7132288e4834ba97ec0fb16ce9cc37e1c2522e2",
       "dimensions": {
@@ -284,14 +473,14 @@
       "triangles": 16,
       "meshCount": 1,
       "materials": [
-        "dirt.002",
-        "grass.002"
+        "dirt.004",
+        "grass.004"
       ],
       "id": "rock-small",
-      "url": "/models/openworld/props/rock-small.glb",
+      "url": "/models/openworld/props/rock-small.glb?v=20260911-woodland",
       "file": "public/models/openworld/props/rock-small.glb",
-      "bytes": 3060,
-      "sha256": "e0756743f527cf6299aba6501ada28897f1d252bcdaa30060c5b1ba894478c97",
+      "bytes": 3160,
+      "sha256": "4e0de98e6a74baa2085880c729eefd7ea06239ad5638732353c3c91552c2f1ad",
       "collider": "box",
       "recommendedPlacement": {
         "biomes": [
@@ -327,35 +516,92 @@
       }
     },
     {
-      "sourceFile": "grass_large.glb",
-      "sourceSha256": "af49a595624abca7249824eeefb944d4baf974abeeb5b16110d175da3563d6cd",
+      "sourceFile": "rock_smallFlatA.glb",
+      "sourceSha256": "40ceafacfaabb0f04f93688fd8696c1464c65512bef219e1459c1f238cbbbe21",
       "dimensions": {
-        "x": 1.1594,
-        "y": 0.72,
-        "z": 1.1562
+        "x": 2.1376,
+        "y": 0.28,
+        "z": 1.8521
       },
       "bounds": {
         "min": [
-          -0.5797,
+          -1.0688,
           0.0,
-          -0.5781
+          -0.926
         ],
         "max": [
-          0.5797,
-          0.72,
-          0.5781
+          1.0688,
+          0.28,
+          0.926
         ]
       },
-      "triangles": 224,
+      "triangles": 20,
       "meshCount": 1,
       "materials": [
-        "grass.004"
+        "dirt.006",
+        "grass.006"
+      ],
+      "id": "rock-flat",
+      "url": "/models/openworld/props/rock-flat.glb?v=20260911-woodland",
+      "file": "public/models/openworld/props/rock-flat.glb",
+      "bytes": 3356,
+      "sha256": "8f553db52bf9c7e5a02d0ebb00d578e731d06b00dde8026d762efd1e2d969a4b",
+      "collider": "none",
+      "recommendedPlacement": {
+        "biomes": [
+          "meadow",
+          "highland",
+          "shore"
+        ],
+        "scaleRange": [
+          0.7,
+          1.3
+        ],
+        "minSpacing": 0.8,
+        "collider": null
+      },
+      "deliveredValidation": {
+        "meshCount": 1,
+        "triangles": 20,
+        "materialCount": 2,
+        "bottomY": 0.0,
+        "dimensions": {
+          "x": 2.1376,
+          "y": 0.28,
+          "z": 1.8521
+        }
+      }
+    },
+    {
+      "sourceFile": "grass_leafsLarge.glb",
+      "sourceSha256": "a68b9b3d9639afaeb4ace840d5a8e3f21ffc4e8afc1eab15566500fbb2bee3e3",
+      "dimensions": {
+        "x": 2.4045,
+        "y": 0.72,
+        "z": 2.4622
+      },
+      "bounds": {
+        "min": [
+          -1.2023,
+          -0.0,
+          -1.2311
+        ],
+        "max": [
+          1.2023,
+          0.72,
+          1.2311
+        ]
+      },
+      "triangles": 144,
+      "meshCount": 1,
+      "materials": [
+        "grass.008"
       ],
       "id": "grass-tuft",
-      "url": "/models/openworld/props/grass-tuft.glb",
+      "url": "/models/openworld/props/grass-tuft.glb?v=20260911-woodland",
       "file": "public/models/openworld/props/grass-tuft.glb",
-      "bytes": 16836,
-      "sha256": "503e9f74f75b9af78e438c2492538212c0558543dcf00cd00048caf45e139297",
+      "bytes": 12856,
+      "sha256": "ffe5efc56c9a65fcd22bb086658d756ee9060283e2bb0db79df488ea42b10346",
       "collider": "none",
       "recommendedPlacement": {
         "biomes": [
@@ -371,13 +617,68 @@
       },
       "deliveredValidation": {
         "meshCount": 1,
+        "triangles": 144,
+        "materialCount": 1,
+        "bottomY": -0.0,
+        "dimensions": {
+          "x": 2.4045,
+          "y": 0.72,
+          "z": 2.4622
+        }
+      }
+    },
+    {
+      "sourceFile": "grass_large.glb",
+      "sourceSha256": "af49a595624abca7249824eeefb944d4baf974abeeb5b16110d175da3563d6cd",
+      "dimensions": {
+        "x": 0.9339,
+        "y": 0.58,
+        "z": 0.9314
+      },
+      "bounds": {
+        "min": [
+          -0.467,
+          0.0,
+          -0.4657
+        ],
+        "max": [
+          0.467,
+          0.58,
+          0.4657
+        ]
+      },
+      "triangles": 224,
+      "meshCount": 1,
+      "materials": [
+        "grass.010"
+      ],
+      "id": "grass-soft",
+      "url": "/models/openworld/props/grass-soft.glb?v=20260911-woodland",
+      "file": "public/models/openworld/props/grass-soft.glb",
+      "bytes": 16900,
+      "sha256": "e3602ea7df46570f2b8f9a82186d2775018eabbd8c2560cf6a923dea34bfbf02",
+      "collider": "none",
+      "recommendedPlacement": {
+        "biomes": [
+          "meadow",
+          "forest-edge"
+        ],
+        "scaleRange": [
+          0.65,
+          1.25
+        ],
+        "minSpacing": 0.65,
+        "collider": null
+      },
+      "deliveredValidation": {
+        "meshCount": 1,
         "triangles": 224,
         "materialCount": 1,
         "bottomY": 0.0,
         "dimensions": {
-          "x": 1.1594,
-          "y": 0.72,
-          "z": 1.1562
+          "x": 0.9339,
+          "y": 0.58,
+          "z": 0.9314
         }
       }
     },
@@ -405,13 +706,13 @@
       "meshCount": 1,
       "materials": [
         "colorRed",
-        "grass.006"
+        "grass.012"
       ],
       "id": "flower-red",
-      "url": "/models/openworld/props/flower-red.glb",
+      "url": "/models/openworld/props/flower-red.glb?v=20260911-woodland",
       "file": "public/models/openworld/props/flower-red.glb",
-      "bytes": 6872,
-      "sha256": "518b87f87f57280f2f2952416b2a775a14cefca660383204e24b48a044054fb3",
+      "bytes": 6988,
+      "sha256": "9918a758a88490e3e791ce69c858520c252200990358a04e7d9b290ae25cf541",
       "collider": "none",
       "recommendedPlacement": {
         "biomes": [
@@ -460,13 +761,13 @@
       "meshCount": 1,
       "materials": [
         "colorYellow",
-        "grass.008"
+        "grass.014"
       ],
       "id": "flower-yellow",
-      "url": "/models/openworld/props/flower-yellow.glb",
+      "url": "/models/openworld/props/flower-yellow.glb?v=20260911-woodland",
       "file": "public/models/openworld/props/flower-yellow.glb",
-      "bytes": 10796,
-      "sha256": "9ea23e47a40cebf41e639cec0c5d1436d9e1c1f04a1528737911c7a49795ea86",
+      "bytes": 10908,
+      "sha256": "033936f756ac18a10e494804112cead12825cc85bb1571988bfa38098dee2bb5",
       "collider": "none",
       "recommendedPlacement": {
         "biomes": [
@@ -493,35 +794,91 @@
       }
     },
     {
-      "sourceFile": "plant_bush.glb",
-      "sourceSha256": "ae7b1beb39e242b13f5f29e3ec23ef21034b814f82297b8aa00a9bf4e1b09590",
+      "sourceFile": "flower_purpleB.glb",
+      "sourceSha256": "2afb10cd68a9a7b185fc46110be0da550ea2aef86ef9ac6b7339f217eb4b636a",
       "dimensions": {
-        "x": 1.539,
-        "y": 0.95,
-        "z": 1.539
+        "x": 0.5171,
+        "y": 0.52,
+        "z": 0.5965
       },
       "bounds": {
         "min": [
-          -0.7695,
+          -0.2585,
           0.0,
-          -0.7695
+          -0.2983
         ],
         "max": [
-          0.7695,
-          0.95,
-          0.7695
+          0.2585,
+          0.52,
+          0.2983
         ]
       },
-      "triangles": 32,
+      "triangles": 98,
       "meshCount": 1,
       "materials": [
-        "grass.010"
+        "colorPurple",
+        "grass.016"
+      ],
+      "id": "flower-purple",
+      "url": "/models/openworld/props/flower-purple.glb?v=20260911-woodland",
+      "file": "public/models/openworld/props/flower-purple.glb",
+      "bytes": 7848,
+      "sha256": "325a0e9d222a8222cf5bc1a985b0bdeacd95e0f31d32aaef18d6bc012bc56de7",
+      "collider": "none",
+      "recommendedPlacement": {
+        "biomes": [
+          "meadow",
+          "forest-edge"
+        ],
+        "scaleRange": [
+          0.72,
+          1.18
+        ],
+        "minSpacing": 0.55,
+        "collider": null
+      },
+      "deliveredValidation": {
+        "meshCount": 1,
+        "triangles": 98,
+        "materialCount": 2,
+        "bottomY": 0.0,
+        "dimensions": {
+          "x": 0.5171,
+          "y": 0.52,
+          "z": 0.5965
+        }
+      }
+    },
+    {
+      "sourceFile": "plant_bushDetailed.glb",
+      "sourceSha256": "2e0487020d68ccf664435db9d829c78ae00e6d2785ee3ec10b9f89cc70a10406",
+      "dimensions": {
+        "x": 1.7554,
+        "y": 1.05,
+        "z": 1.7554
+      },
+      "bounds": {
+        "min": [
+          -0.8777,
+          0.0,
+          -0.8777
+        ],
+        "max": [
+          0.8777,
+          1.05,
+          0.8777
+        ]
+      },
+      "triangles": 104,
+      "meshCount": 1,
+      "materials": [
+        "grass.018"
       ],
       "id": "bush",
-      "url": "/models/openworld/props/bush.glb",
+      "url": "/models/openworld/props/bush.glb?v=20260911-woodland",
       "file": "public/models/openworld/props/bush.glb",
-      "bytes": 3892,
-      "sha256": "0073bc1137b5cbbfc8a1b8201982aa69c06b4764ecf2efb6117b46c318a005a8",
+      "bytes": 9392,
+      "sha256": "7c735b6bff7b9af5531507bd8fb28bf2d76c4ce30126704dad871959a8c1581b",
       "collider": "sphere",
       "recommendedPlacement": {
         "biomes": [
@@ -541,13 +898,124 @@
       },
       "deliveredValidation": {
         "meshCount": 1,
-        "triangles": 32,
+        "triangles": 104,
         "materialCount": 1,
         "bottomY": 0.0,
         "dimensions": {
-          "x": 1.539,
-          "y": 0.95,
-          "z": 1.539
+          "x": 1.7554,
+          "y": 1.05,
+          "z": 1.7554
+        }
+      }
+    },
+    {
+      "sourceFile": "mushroom_redGroup.glb",
+      "sourceSha256": "29f02df0589dd2b09e8d2aff6a4662394dac5cfcf1fec701640dcbd6127e0802",
+      "dimensions": {
+        "x": 0.5167,
+        "y": 0.48,
+        "z": 0.4871
+      },
+      "bounds": {
+        "min": [
+          -0.2583,
+          0.0,
+          -0.2436
+        ],
+        "max": [
+          0.2583,
+          0.48,
+          0.2436
+        ]
+      },
+      "triangles": 144,
+      "meshCount": 1,
+      "materials": [
+        "_defaultMat.002",
+        "colorRed.002"
+      ],
+      "id": "mushroom-cluster",
+      "url": "/models/openworld/props/mushroom-cluster.glb?v=20260911-woodland",
+      "file": "public/models/openworld/props/mushroom-cluster.glb",
+      "bytes": 14256,
+      "sha256": "8512786a2fd98a8b56cea38fb27292e2875273b0c903b2ddbede80c8c18d0359",
+      "collider": "none",
+      "recommendedPlacement": {
+        "biomes": [
+          "forest"
+        ],
+        "scaleRange": [
+          0.75,
+          1.2
+        ],
+        "minSpacing": 0.8,
+        "collider": null
+      },
+      "deliveredValidation": {
+        "meshCount": 1,
+        "triangles": 144,
+        "materialCount": 2,
+        "bottomY": 0.0,
+        "dimensions": {
+          "x": 0.5167,
+          "y": 0.48,
+          "z": 0.4871
+        }
+      }
+    },
+    {
+      "sourceFile": "lily_large.glb",
+      "sourceSha256": "c8f7080df0ae3166e9d33f523b66360c2ac7556dff36cc9c8ee78b6a676c7db2",
+      "dimensions": {
+        "x": 0.3329,
+        "y": 0.12,
+        "z": 0.3844
+      },
+      "bounds": {
+        "min": [
+          -0.1664,
+          0.0,
+          -0.1922
+        ],
+        "max": [
+          0.1664,
+          0.12,
+          0.1922
+        ]
+      },
+      "triangles": 86,
+      "meshCount": 1,
+      "materials": [
+        "colorRed.004",
+        "leafsDark.002",
+        "leafsGreen.008"
+      ],
+      "id": "lily",
+      "url": "/models/openworld/props/lily.glb?v=20260911-woodland",
+      "file": "public/models/openworld/props/lily.glb",
+      "bytes": 8228,
+      "sha256": "44065d33cdfcd9b39b4902ed43c1d02fc56def79cdcb221571c1bdfe37c4ac2d",
+      "collider": "none",
+      "recommendedPlacement": {
+        "biomes": [
+          "lake"
+        ],
+        "scaleRange": [
+          0.7,
+          1.2
+        ],
+        "minSpacing": 1.2,
+        "collider": null
+      },
+      "deliveredValidation": {
+        "meshCount": 1,
+        "triangles": 86,
+        "materialCount": 3,
+        "bottomY": 0.0,
+        "dimensions": {
+          "x": 0.3329,
+          "y": 0.12,
+          "z": 0.3844
         }
       }
     },
@@ -574,14 +1042,14 @@
       "triangles": 96,
       "meshCount": 1,
       "materials": [
-        "woodBark.004",
+        "woodBark.008",
         "woodInner"
       ],
       "id": "stump",
-      "url": "/models/openworld/props/stump.glb",
+      "url": "/models/openworld/props/stump.glb?v=20260911-woodland",
       "file": "public/models/openworld/props/stump.glb",
-      "bytes": 7700,
-      "sha256": "24712678e9f0a3a04dffdccf816430c046261be34315e8a0116c919974baa0bb",
+      "bytes": 7816,
+      "sha256": "a9de575344c7932857d09649e1f05baba79a63a4fe2c0d17adc8eee7ed249105",
       "collider": "cylinder",
       "recommendedPlacement": {
         "biomes": [
@@ -613,70 +1081,6 @@
       }
     },
     {
-      "sourceFile": "fence_simple.glb",
-      "sourceSha256": "ecaf6c29532aa9fd305a8ef71df769d60748bd797f2eb1c63bdefc4edb8062a7",
-      "dimensions": {
-        "x": 3.3331,
-        "y": 1.15,
-        "z": 0.2333
-      },
-      "bounds": {
-        "min": [
-          -1.6665,
-          0.0,
-          -0.1167
-        ],
-        "max": [
-          1.6665,
-          1.15,
-          0.1167
-        ]
-      },
-      "triangles": 64,
-      "meshCount": 1,
-      "materials": [
-        "wood",
-        "woodDark"
-      ],
-      "id": "fence",
-      "url": "/models/openworld/props/fence.glb",
-      "file": "public/models/openworld/props/fence.glb",
-      "bytes": 5684,
-      "sha256": "da0e31ddbbbddb3732ae4a293d4e18c4940262a961cc32527f3b8fdd9951799b",
-      "collider": "box",
-      "recommendedPlacement": {
-        "biomes": [
-          "settlement",
-          "meadow"
-        ],
-        "scaleRange": [
-          1.0,
-          1.0
-        ],
-        "minSpacing": 3.33,
-        "collider": {
-          "shape": "box",
-          "halfExtents": [
-            1.67,
-            0.58,
-            0.12
-          ],
-          "centerY": 0.58
-        }
-      },
-      "deliveredValidation": {
-        "meshCount": 1,
-        "triangles": 64,
-        "materialCount": 2,
-        "bottomY": 0.0,
-        "dimensions": {
-          "x": 3.3331,
-          "y": 1.15,
-          "z": 0.2333
-        }
-      }
-    },
-    {
       "sourceFile": "log_large.glb",
       "sourceSha256": "e7a92369062d491e5a31a163d390e07db04ee573605bbfa84c00660d18896b4c",
       "dimensions": {
@@ -699,14 +1103,14 @@
       "triangles": 96,
       "meshCount": 1,
       "materials": [
-        "woodBark.006",
+        "woodBark.010",
         "woodInner.002"
       ],
       "id": "fallen-log",
-      "url": "/models/openworld/props/fallen-log.glb",
+      "url": "/models/openworld/props/fallen-log.glb?v=20260911-woodland",
       "file": "public/models/openworld/props/fallen-log.glb",
-      "bytes": 7468,
-      "sha256": "750ba33cc244a681d4d99e0fe5aebf817ee2dcc2e652c47c7a69a2f4cf5f6572",
+      "bytes": 7584,
+      "sha256": "099caa814fe2b944d1691ddf0de4127146ca6748c69c14bc45fee63c603cf0bc",
       "collider": "box",
       "recommendedPlacement": {
         "biomes": [
@@ -737,6 +1141,70 @@
           "x": 1.7278,
           "y": 0.72,
           "z": 0.9491
+        }
+      }
+    },
+    {
+      "sourceFile": "fence_simple.glb",
+      "sourceSha256": "ecaf6c29532aa9fd305a8ef71df769d60748bd797f2eb1c63bdefc4edb8062a7",
+      "dimensions": {
+        "x": 3.3331,
+        "y": 1.15,
+        "z": 0.2333
+      },
+      "bounds": {
+        "min": [
+          -1.6665,
+          0.0,
+          -0.1167
+        ],
+        "max": [
+          1.6665,
+          1.15,
+          0.1167
+        ]
+      },
+      "triangles": 64,
+      "meshCount": 1,
+      "materials": [
+        "wood",
+        "woodDark"
+      ],
+      "id": "fence",
+      "url": "/models/openworld/props/fence.glb?v=20260911-woodland",
+      "file": "public/models/openworld/props/fence.glb",
+      "bytes": 5816,
+      "sha256": "9e53f8af8a4232b57d3189fc64dc68eefb4dd99e6ec5006a59b20789e2b52870",
+      "collider": "box",
+      "recommendedPlacement": {
+        "biomes": [
+          "settlement",
+          "meadow"
+        ],
+        "scaleRange": [
+          1.0,
+          1.0
+        ],
+        "minSpacing": 3.33,
+        "collider": {
+          "shape": "box",
+          "halfExtents": [
+            1.67,
+            0.58,
+            0.12
+          ],
+          "centerY": 0.58
+        }
+      },
+      "deliveredValidation": {
+        "meshCount": 1,
+        "triangles": 64,
+        "materialCount": 2,
+        "bottomY": 0.0,
+        "dimensions": {
+          "x": 3.3331,
+          "y": 1.15,
+          "z": 0.2333
         }
       }
     }

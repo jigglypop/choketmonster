@@ -129,6 +129,10 @@ export class OpenWorldPanel {
           heading: entity.heading as WorldHeading, inBattle,
           action: monster?.hp === 0 ? 'fainted' : inBattle ? (performance.now() < this.attackUntil ? 'attack' : 'idle') : entity.action < 4 ? 'walk' : 'idle',
           moveType: this.attackTypes[entity.kind === 'companion' ? 0 : 1],
+          lookAt: inBattle ? (() => {
+            const target = this.simulation.entities.find(other => entity.kind === 'companion' ? other.id === this.simulation.battleWildId : other.kind === 'companion');
+            return target ? { x: target.x, z: target.z } : undefined;
+          })() : undefined,
           movementSpeed: movementSpeed(speciesId),
           displayHeight: Math.min(2.8, Math.max(.65, (getSpecies(speciesId).heightMeters ?? 1) * 1.25)),
         } as WorldCreature;

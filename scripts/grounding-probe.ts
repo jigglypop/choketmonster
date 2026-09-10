@@ -15,7 +15,7 @@ export async function verifyGrounding() {
   const ray = new Raycaster(), bounds = new Box3(), records: { speciesId: number; displayHeight: number; animation: string; frames: number; maxGap: number; maxHeight: number; maxHorizontalSpan: number }[] = [];
   const loader = new GLTFLoader();
   let surfaceError = 0;
-  for (const speciesId of [1, 4, 7, 10, 13, 25, 129, 150]) {
+  for (const speciesId of [1, 3, 4, 7, 10, 13, 23, 24, 25, 95, 129, 130, 150]) {
     const gltf = await loader.loadAsync(`/models/pokemon/${speciesId}.glb`);
     const displayHeight = Math.min(2.8, Math.max(.65, (getSpecies(speciesId).heightMeters ?? 1) * 1.25));
     const normalized = normalizePokemonModel(gltf.scene, gltf.animations, displayHeight);

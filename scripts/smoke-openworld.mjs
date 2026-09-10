@@ -11,7 +11,7 @@ const errors = [], failed = [], models = new Set();
 page.on('pageerror', error => errors.push(error.message));
 page.on('response', response => {
   if (response.status() >= 400) failed.push({ url: response.url(), status: response.status() });
-  if (response.ok() && response.url().endsWith('.glb')) models.add(response.url());
+  if (response.ok() && new URL(response.url()).pathname.endsWith('.glb')) models.add(response.url());
 });
 try {
   await page.goto(url);
