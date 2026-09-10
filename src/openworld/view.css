@@ -1,0 +1,87 @@
+.choketmon-openworld {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 28rem;
+  overflow: hidden;
+  isolation: isolate;
+  background: linear-gradient(#9dd8d0 0 44%, #71995b 44% 100%);
+  border-radius: inherit;
+  touch-action: none;
+}
+
+.choketmon-openworld canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  outline: 0;
+}
+
+.ow-creature-label {
+  min-width: 7.5rem;
+  padding: .42rem .55rem;
+  color: #f8f3d7;
+  font: 700 .72rem/1.15 system-ui, sans-serif;
+  text-align: center;
+  text-shadow: 0 1px 2px #132f27;
+  background: color-mix(in srgb, #163c33 88%, transparent);
+  border: 1px solid rgba(240, 227, 164, .55);
+  border-radius: .7rem;
+  box-shadow: 0 .3rem .8rem rgba(14, 36, 29, .28);
+  pointer-events: none;
+  transform: translateY(-.45rem);
+}
+
+.ow-creature-label strong,
+.ow-creature-label span { display: block; }
+
+.ow-creature-label span { margin-top: .14rem; font-size: .63rem; opacity: .9; }
+
+.ow-hp-track {
+  height: .28rem;
+  margin-top: .3rem;
+  overflow: hidden;
+  background: #102b25;
+  border-radius: 999px;
+}
+
+.ow-hp-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #e5ca55, #81d179);
+  border-radius: inherit;
+  transition: width .2s ease;
+}
+
+.ow-help {
+  position: absolute;
+  z-index: 3;
+  left: .8rem;
+  bottom: .8rem;
+  padding: .5rem .7rem;
+  color: #f8f2d5;
+  font: 700 .72rem/1.2 system-ui, sans-serif;
+  background: rgba(20, 58, 48, .82);
+  border: 1px solid rgba(241, 226, 157, .48);
+  border-radius: .7rem;
+  pointer-events: none;
+  backdrop-filter: blur(7px);
+}
+
+.ow-loading {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #f7efd1;
+  font: 800 .9rem system-ui, sans-serif;
+  background: rgba(24, 62, 51, .25);
+  pointer-events: none;
+}
+
+@media (max-width: 720px) {
+  .choketmon-openworld { min-height: 23rem; }
+  .ow-help { left: .55rem; bottom: .55rem; max-width: calc(100% - 1.1rem); font-size: .65rem; }
+  .ow-creature-label { min-width: 6.5rem; transform: scale(.88) translateY(-.35rem); }
+}
