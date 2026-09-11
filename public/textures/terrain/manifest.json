@@ -1,0 +1,85 @@
+{
+  "version": "20260911",
+  "assets": [
+    {
+      "asset": "aerial_grass_rock",
+      "channel": "diff",
+      "license": "CC0-1.0",
+      "sourcePage": "https://polyhaven.com/a/aerial_grass_rock",
+      "licenseUrl": "https://polyhaven.com/license",
+      "sourceUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/aerial_grass_rock/aerial_grass_rock_diff_1k.jpg",
+      "sourceSha256": "57b8041bfe0d0f01430e4dbaad45e7ddddf0a9fc97317f90dbc51f7b0d9e1b5d",
+      "serverSha1": "2e6308b3a8ab81fe77739c403f720d7ae8157077",
+      "sourceBytes": 666655,
+      "file": "aerial_grass_rock_diff.webp",
+      "bytes": 164382,
+      "sha256": "e45c617410ca00162268bc70e0bd796f3e4f836a62702ae3ca02ba9767d47cf4",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorSpace": "sRGB",
+      "conversion": "WebP quality 78"
+    },
+    {
+      "asset": "aerial_grass_rock",
+      "channel": "nor_gl",
+      "license": "CC0-1.0",
+      "sourcePage": "https://polyhaven.com/a/aerial_grass_rock",
+      "licenseUrl": "https://polyhaven.com/license",
+      "sourceUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/aerial_grass_rock/aerial_grass_rock_nor_gl_1k.jpg",
+      "sourceSha256": "1aa3e23bff453f152e089b9f83aa36b4901651e019f7e2ca01d5331a9bbbda78",
+      "serverSha1": "88590d895081a30dfd38db16724d3d2664d7b2dd",
+      "sourceBytes": 904956,
+      "file": "aerial_grass_rock_nor_gl.webp",
+      "bytes": 491094,
+      "sha256": "18b038af3f37d8755a1ae4e160421d03993fdbd25fdadfd1b7a7716ce85eef74",
+      "size": [
+        512,
+        512
+      ],
+      "colorSpace": "linear",
+      "conversion": "512px Lanczos, lossless WebP; normalize sampled normals in shader"
+    },
+    {
+      "asset": "rock_boulder_dry",
+      "channel": "diff",
+      "license": "CC0-1.0",
+      "sourcePage": "https://polyhaven.com/a/rock_boulder_dry",
+      "licenseUrl": "https://polyhaven.com/license",
+      "sourceUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rock_boulder_dry/rock_boulder_dry_diff_1k.jpg",
+      "sourceSha256": "20f653a42fb24f42aa40641663070d578678da49af18cc1049dbdd4ed8679f3c",
+      "serverSha1": "792de605e4d1102ee427fef91af472f1954ea7a1",
+      "sourceBytes": 859211,
+      "file": "rock_boulder_dry_diff.webp",
+      "bytes": 160452,
+      "sha256": "55ed26d97eb1e0f1ae25d4696c374e0920620e0c3de0c340bc303e5d39b5844f",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorSpace": "sRGB",
+      "conversion": "WebP quality 78"
+    },
+    {
+      "asset": "rock_boulder_dry",
+      "channel": "nor_gl",
+      "license": "CC0-1.0",
+      "sourcePage": "https://polyhaven.com/a/rock_boulder_dry",
+      "licenseUrl": "https://polyhaven.com/license",
+      "sourceUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rock_boulder_dry/rock_boulder_dry_nor_gl_1k.jpg",
+      "sourceSha256": "5915fea28a97357c78a04fb31c2516f1f7ed1b3a9cef4ae25aa93e4655e6c595",
+      "serverSha1": "71ca11bb5df0c581397d45707140e22355e9090b",
+      "sourceBytes": 802497,
+      "file": "rock_boulder_dry_nor_gl.webp",
+      "bytes": 359952,
+      "sha256": "ac8159c2206cb87bd9c13f07d5499faf5a3f7962eef5666d6c497849d39e4722",
+      "size": [
+        512,
+        512
+      ],
+      "colorSpace": "linear",
+      "conversion": "512px Lanczos, lossless WebP; normalize sampled normals in shader"
+    }
+  ]
+}

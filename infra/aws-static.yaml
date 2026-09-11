@@ -6,6 +6,13 @@ Parameters:
     Type: String
     Default: choketmonster-960243570517-apne2
     AllowedPattern: '^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$'
+  WebAclArn:
+    Type: String
+    Default: ''
+    Description: Optional us-east-1 CLOUDFRONT WebACL ARN used by a flat-rate plan.
+
+Conditions:
+  HasWebAcl: !Not [!Equals [!Ref WebAclArn, '']]
 
 Resources:
   SiteBucket:
@@ -18,6 +25,16 @@ Resources:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireRollbackVersions
+            Status: Enabled
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 30
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
       OwnershipControls:
         Rules:
           - ObjectOwnership: BucketOwnerEnforced
@@ -125,7 +142,10 @@ Resources:
         Enabled: true
         HttpVersion: http2and3
         IPV6Enabled: true
-        PriceClass: PriceClass_100
+        # Flat-rate plans cover the global edge network and require the full
+        # price class. Preserve the lower-cost regional class on pay-as-you-go.
+        PriceClass: !If [HasWebAcl, PriceClass_All, PriceClass_100]
+        WebACLId: !If [HasWebAcl, !Ref WebAclArn, !Ref AWS::NoValue]
         Origins:
           - Id: private-s3-origin
             DomainName: !GetAtt SiteBucket.RegionalDomainName
@@ -138,8 +158,11 @@ Resources:
           AllowedMethods: [GET, HEAD, OPTIONS]
           CachedMethods: [GET, HEAD, OPTIONS]
           Compress: true
-          CachePolicyId: !Ref HtmlCachePolicy
-          ResponseHeadersPolicyId: !Ref SecurityHeaders
+          # UseOriginCacheControlHeaders forwards the viewer Host header and
+          # breaks private S3 REST origins. CachingOptimized still honors the
+          # origin Cache-Control header (with a one-second minimum TTL).
+          CachePolicyId: !If [HasWebAcl, '658327ea-f89d-4fab-a63d-7e88639e58f6', !Ref HtmlCachePolicy]
+          ResponseHeadersPolicyId: !If [HasWebAcl, '67f7725c-6f97-4210-82d7-5512b31e9d03', !Ref SecurityHeaders]
           FunctionAssociations:
             - EventType: viewer-request
               FunctionARN: !GetAtt SpaRewriteFunction.FunctionARN
@@ -150,8 +173,8 @@ Resources:
             AllowedMethods: [GET, HEAD, OPTIONS]
             CachedMethods: [GET, HEAD, OPTIONS]
             Compress: true
-            CachePolicyId: !Ref HashedAssetCachePolicy
-            ResponseHeadersPolicyId: !Ref SecurityHeaders
+            CachePolicyId: !If [HasWebAcl, '658327ea-f89d-4fab-a63d-7e88639e58f6', !Ref HashedAssetCachePolicy]
+            ResponseHeadersPolicyId: !If [HasWebAcl, '67f7725c-6f97-4210-82d7-5512b31e9d03', !Ref SecurityHeaders]
         ViewerCertificate:
           CloudFrontDefaultCertificate: true
           MinimumProtocolVersion: TLSv1.2_2021
@@ -183,6 +206,9 @@ Outputs:
   DistributionId:
     Description: CloudFront distribution ID
     Value: !Ref Distribution
+  DistributionArn:
+    Description: CloudFront distribution ARN
+    Value: !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}'
   DistributionDomainName:
     Description: HTTPS application hostname
     Value: !GetAtt Distribution.DomainName

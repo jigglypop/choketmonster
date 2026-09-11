@@ -14,6 +14,7 @@ import {
   BufferGeometry,
   CanvasTexture,
   Color,
+  DirectionalLight,
   Float32BufferAttribute,
   Group,
   InstancedMesh,
@@ -42,11 +43,15 @@ import type {
   WorldCreature,
   WorldSample,
 } from './types';
-import { createSceneryPlacements, SCENERY_ASSETS, TRAIL_POINTS, type SceneryPlacement } from './scenery';
+import { createSceneryPlacements, SCENERY_ASSETS, type SceneryPlacement } from './scenery';
 import { createGrounding, terrainSurfaceHeight, TERRAIN_SEGMENTS } from './grounding';
+import { KANTO_GATES, KANTO_LOCATIONS, KANTO_START, KANTO_SURFACE_CONNECTIONS, kantoGateHalfWidth, townBuildingOffsets } from './kanto';
 import { initialYaw, movementYaw, turnTowards } from './motion';
 import { normalizePokemonModel } from './model-normalization';
 import './view.css';
+import { RenderProbe } from './render-probe';
+import { SkyLighting, SurfaceMaterial, WaterMaterial, detailCanopy, detailSurface, useSurfaceTextures, type SurfaceTextures } from './materials';
+import { AdaptiveResolution } from './adaptive-resolution';
 
 const WORLD_MIN = -120;
 const WORLD_MAX = 120;
@@ -198,7 +203,7 @@ function Terrain({ sampleWorld, visual = true }: { sampleWorld: (x: number, z: n
   return (
     <RigidBody type="fixed" colliders="trimesh" friction={1}>
       <mesh geometry={geometry} receiveShadow userData={{ gaesupWorldObject: 'terrain' }}>
-        <meshStandardMaterial vertexColors roughness={.96} metalness={0} visible={visual} />
+        <SurfaceMaterial surface="ground" vertexColors visible={visual} />
       </mesh>
     </RigidBody>
   );
@@ -212,6 +217,7 @@ function InstancedPart({ geometry, material, sourceMatrix, placements, shadows }
   shadows: boolean;
 }) {
   const mesh = useRef<InstancedMesh>(null);
+  useEffect(() => { const instance = mesh.current; return () => { instance?.dispose(); }; }, [placements.length]);
   useLayoutEffect(() => {
     if (!mesh.current) return;
     const placementMatrix = new Matrix4();
@@ -234,7 +240,7 @@ function InstancedPart({ geometry, material, sourceMatrix, placements, shadows }
   return <instancedMesh ref={mesh} args={[geometry, material, placements.length]} castShadow={shadows} receiveShadow dispose={null} />;
 }
 
-function InstancedAsset({ url, placements, shadows, wind }: { url: string; placements: readonly SceneryPlacement[]; shadows: boolean; wind: boolean }) {
+function InstancedAsset({ url, placements, shadows, wind, rockTextures }: { url: string; placements: readonly SceneryPlacement[]; shadows: boolean; wind: boolean; rockTextures?: SurfaceTextures }) {
   const gltf = useCachedModel(url);
   const parts = useMemo(() => {
     if (!gltf) return [];
@@ -247,7 +253,10 @@ function InstancedAsset({ url, placements, shadows, wind }: { url: string; place
         const clone = material.clone();
         if (clone instanceof MeshStandardMaterial) {
           clone.metalness = 0;
-          clone.roughness = .95;
+          // Scanned assets retain their authored UVs and roughness/normal maps.
+          if (!clone.roughnessMap) clone.roughness = .95;
+          if (url.includes('/tree-')) detailCanopy(clone);
+          if (rockTextures) detailSurface(clone, rockTextures, 'rock');
           if (wind) {
             clone.onBeforeCompile = shader => {
               shader.uniforms.owWindTime = { value: 0 };
@@ -272,7 +281,7 @@ function InstancedAsset({ url, placements, shadows, wind }: { url: string; place
       meshes.push({ geometry: object.geometry, material: Array.isArray(object.material) ? normalized : normalized[0], matrix: object.matrixWorld.clone() });
     });
     return meshes;
-  }, [gltf, wind]);
+  }, [gltf, wind, rockTextures, url]);
   useFrame(({ clock }) => {
     if (!wind) return;
     for (const part of parts) {
@@ -290,67 +299,165 @@ function InstancedAsset({ url, placements, shadows, wind }: { url: string; place
     }
   }, [parts]);
   if (!placements.length) return null;
-  return <>{parts.map((part, index) => <InstancedPart key={index} geometry={part.geometry} material={part.material} sourceMatrix={part.matrix} placements={placements} shadows={shadows} />)}</>;
+  return <group name={`nature:${url.split('/').at(-1)?.split('?')[0]}`}>{parts.map((part, index) => <InstancedPart key={index} geometry={part.geometry} material={part.material} sourceMatrix={part.matrix} placements={placements} shadows={shadows} />)}</group>;
 }
 
-function Nature({ sampleWorld }: { sampleWorld: (x: number, z: number) => WorldSample }) {
+function Nature({ sampleWorld, player }: { sampleWorld: (x: number, z: number) => WorldSample; player: { x: number; z: number } }) {
   const placements = useMemo(() => createSceneryPlacements(sampleWorld), [sampleWorld]);
+  const rockTextures = useSurfaceTextures('rock');
+  const cellX = Math.round(player.x / 16) * 16, cellZ = Math.round(player.z / 16) * 16;
+  // 85m fog + 42m camera reach + 12m cell margin: unload only fully hidden props.
+  const nearby = useMemo(() => Object.fromEntries(SCENERY_ASSETS.map(asset => [asset.id,
+    placements[asset.id].filter(item => Math.hypot(item.x - cellX, item.z - cellZ) < (['moss-boulder', 'moss-stone', 'fern'].includes(asset.id) ? 68 : 140))])), [placements, cellX, cellZ]);
   return (
-    <group userData={{ gaesupWorldObject: 'kenney-nature-instances' }}>
+    <group userData={{ gaesupWorldObject: 'imported-nature-instances' }}>
       {SCENERY_ASSETS.map(asset => <InstancedAsset
         key={asset.id}
         url={asset.url}
-        placements={placements[asset.id]}
+        placements={nearby[asset.id]}
+        rockTextures={asset.id.startsWith('rock') || asset.id === 'cliff' ? rockTextures : undefined}
         shadows={!asset.id.startsWith('flower') && asset.id !== 'grass-tuft'}
-        wind={asset.id === 'grass-tuft' || asset.id === 'grass-soft' || asset.id.startsWith('flower') || asset.id === 'bush' || asset.id === 'lily'}
+        wind={asset.id === 'grass-tuft' || asset.id === 'grass-soft' || asset.id.startsWith('flower') || asset.id === 'bush' || asset.id === 'lily' || asset.id === 'fern'}
       />)}
     </group>
   );
 }
 
-function TrailAndWater({ sampleWorld }: { sampleWorld: (x: number, z: number) => WorldSample }) {
+function BuildingSign({ text, color }: { text: string; color: string }) {
+  const texture = useMemo(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256; canvas.height = 128;
+    const context = canvas.getContext('2d')!;
+    context.fillStyle = '#f4ecd2'; context.fillRect(4, 4, 248, 120);
+    context.strokeStyle = color; context.lineWidth = 12; context.strokeRect(8, 8, 240, 112);
+    context.fillStyle = color; context.textAlign = 'center'; context.textBaseline = 'middle';
+    context.font = `900 ${text.length > 2 ? 58 : 78}px system-ui, sans-serif`; context.fillText(text, 128, 67);
+    const result = new CanvasTexture(canvas); result.colorSpace = SRGBColorSpace; return result;
+  }, [color, text]);
+  useEffect(() => () => texture.dispose(), [texture]);
+  return <group position={[-1.25, 0, -1.5]}>
+    <mesh position={[0, .55, 0]} castShadow><boxGeometry args={[.09, 1.1, .09]} /><meshStandardMaterial color="#71583d" /></mesh>
+    <sprite position={[0, 1.15, 0]} scale={[.95, .475, 1]}><spriteMaterial map={texture} depthWrite={false} /></sprite>
+  </group>;
+}
+
+function TownBuilding({ townId, townColor, index }: { townId: string; townColor: string; index: number }) {
+  const pallet = townId === 'pallet';
+  const role = pallet ? (index === 0 ? 'RED' : index === 1 ? 'BLUE' : 'LAB') : (index === 0 ? 'P' : index === 1 ? 'M' : 'G');
+  const accent = pallet ? (index === 0 ? '#c94b3d' : index === 1 ? '#3f79ad' : '#437c62') : (index === 0 ? '#cf493e' : index === 1 ? '#397bb0' : townColor);
+  const url = pallet
+    ? (index === 2 ? '/models/kanto-buildings/town-house-large.glb?v=b40ea2fd5a6b' : '/models/kanto-buildings/town-house.glb?v=b4742c7bb903')
+    : (index === 0 ? '/models/kanto-buildings/town-clinic.glb?v=3b049c935182'
+      : index === 1 ? '/models/kanto-buildings/town-mart.glb?v=91d33bcbe904'
+        : '/models/kanto-buildings/town-gym.glb?v=2ca345798350');
+  const gltf = useCachedModel(url);
+  const model = useMemo(() => {
+    if (!gltf) return null;
+    const clone = cloneSkinned(gltf.scene);
+    clone.traverse(object => { if (object instanceof Mesh) { object.castShadow = true; object.receiveShadow = true; } });
+    return clone;
+  }, [gltf]);
+  return <group>
+    {model
+      ? <primitive object={model} dispose={null} />
+      : <mesh position={[0, 1.05, 0]} castShadow><boxGeometry args={[3.1, 2.1, 2.5]} /><meshStandardMaterial color="#e8dfc7" roughness={.9} /></mesh>}
+    <BuildingSign text={role} color={accent} />
+  </group>;
+}
+
+function WorldLabel({ name, x, y, z }: { name: string; x: number; y: number; z: number }) {
+  const texture = useMemo(() => {
+    const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 128;
+    const context = canvas.getContext('2d')!;
+    context.fillStyle = 'rgba(20, 48, 41, .9)'; context.beginPath(); context.roundRect(5, 5, 502, 118, 24); context.fill();
+    context.strokeStyle = '#ead77c'; context.lineWidth = 5; context.stroke();
+    context.fillStyle = '#fff6d5'; context.textAlign = 'center'; context.textBaseline = 'middle'; context.font = '800 42px system-ui, sans-serif'; context.fillText(name, 256, 65);
+    const result = new CanvasTexture(canvas); result.colorSpace = SRGBColorSpace; return result;
+  }, [name]);
+  useEffect(() => () => texture.dispose(), [texture]);
+  return <sprite position={[x, y, z]} scale={[3, .75, 1]}><spriteMaterial map={texture} transparent depthWrite={false} /></sprite>;
+}
+
+function TrailAndWater({ sampleWorld, player, badges }: { sampleWorld: (x: number, z: number) => WorldSample; player: { x: number; z: number }; badges: number }) {
+  const locations = useMemo(() => new Map(KANTO_LOCATIONS.map(item => [item.id, item])), []);
   const trail = useMemo(() => {
     const vertices: number[] = [];
     const indices: number[] = [];
-    TRAIL_POINTS.forEach(([x, z], index) => {
-      const before = TRAIL_POINTS[Math.max(0, index - 1)];
-      const after = TRAIL_POINTS[Math.min(TRAIL_POINTS.length - 1, index + 1)];
-      const dx = after[0] - before[0];
-      const dz = after[1] - before[1];
-      const length = Math.hypot(dx, dz) || 1;
-      const sideX = -dz / length * 2.15;
-      const sideZ = dx / length * 2.15;
-      for (const direction of [-1, 1]) {
-        const px = x + sideX * direction;
-        const pz = z + sideZ * direction;
-        vertices.push(px, sampleWorld(px, pz).height + .035, pz);
+    for (const [fromId, toId] of KANTO_SURFACE_CONNECTIONS) {
+      const from = locations.get(fromId)!, to = locations.get(toId)!;
+      const dx = to.x - from.x, dz = to.z - from.z, length = Math.hypot(dx, dz) || 1;
+      const steps = Math.max(1, Math.ceil(length / 5));
+      const sideX = -dz / length * 2.05, sideZ = dx / length * 2.05;
+      const offset = vertices.length / 3;
+      for (let step = 0; step <= steps; step += 1) {
+        const t = step / steps, x = from.x + dx * t, z = from.z + dz * t;
+        for (const direction of [-1, 1]) {
+          const px = x + sideX * direction, pz = z + sideZ * direction;
+          vertices.push(px, terrainSurfaceHeight(sampleWorld, px, pz) + .055, pz);
+        }
+        if (step < steps) {
+          const base = offset + step * 2;
+          indices.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
+        }
       }
-      if (index < TRAIL_POINTS.length - 1) {
-        const base = index * 2;
-        indices.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
-      }
-    });
+    }
     const geometry = new BufferGeometry();
     geometry.setAttribute('position', new Float32BufferAttribute(vertices, 3));
     geometry.setIndex(indices);
     geometry.computeVertexNormals();
     return geometry;
-  }, [sampleWorld]);
+  }, [locations, sampleWorld]);
   useEffect(() => () => trail.dispose(), [trail]);
-  const lakeVisible = sampleWorld(42, -28).biome === 'lake';
+  const townColors: Record<string, string> = {
+    pallet: '#e8dfc5', viridian: '#4d9b61', pewter: '#83858a', cerulean: '#4e94c8', vermilion: '#c5934d',
+    lavender: '#9b77b4', celadon: '#74a86a', saffron: '#d6b54c', fuchsia: '#d87498', cinnabar: '#b84d45',
+  };
   return (
-    <group userData={{ gaesupWorldObject: 'landmarks' }}>
-      <mesh geometry={trail} receiveShadow><meshStandardMaterial color="#b89a68" roughness={1} polygonOffset polygonOffsetFactor={-1} /></mesh>
-      {lakeVisible && <>
-        <mesh position={[42, -.52, -28]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}>
-          <circleGeometry args={[19, 64]} />
-          <meshStandardMaterial color="#4cacc0" emissive="#1d5f74" emissiveIntensity={.16} roughness={.28} metalness={.04} transparent opacity={.82} depthWrite={false} />
-        </mesh>
-        <mesh position={[42, -.5, -28]} rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[18.7, 19.35, 64]} />
-          <meshBasicMaterial color="#a9d9c2" transparent opacity={.7} />
-        </mesh>
-      </>}
+    <group userData={{ gaesupWorldObject: 'kanto-landmarks' }}>
+      <mesh geometry={trail} receiveShadow><SurfaceMaterial surface="path" color="#b89a68" /></mesh>
+      <mesh position={[-34, -.66, 101]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}>
+        <planeGeometry args={[91, 33]} /><WaterMaterial />
+      </mesh>
+      <mesh position={[61, -.66, -25]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}>
+        <circleGeometry args={[12, 48]} /><WaterMaterial lake />
+      </mesh>
+      {KANTO_LOCATIONS.filter(item => item.kind === 'town').map(town => <group key={town.id} position={[town.x, .05, town.z]}>
+        {townBuildingOffsets(town).map(([x, z], index) => <group key={index} position={[x, 0, z]}>
+          <TownBuilding townId={town.id} townColor={townColors[town.id] ?? '#b85d53'} index={index} />
+        </group>)}
+        <group position={[0, 0, -6]}>
+          <mesh position={[0, .9, 0]} castShadow><boxGeometry args={[2.4, 1.15, .24]} /><meshStandardMaterial color="#eadb9d" /></mesh>
+          <mesh position={[-.82, .35, 0]}><boxGeometry args={[.16, 1.1, .16]} /><meshStandardMaterial color="#6b4b2c" /></mesh>
+          <mesh position={[.82, .35, 0]}><boxGeometry args={[.16, 1.1, .16]} /><meshStandardMaterial color="#6b4b2c" /></mesh>
+        </group>
+      </group>)}
+      {KANTO_LOCATIONS.filter(item => item.kind === 'cave').map(cave => <group key={cave.id} position={[cave.x, terrainSurfaceHeight(sampleWorld, cave.x, cave.z), cave.z]}>
+        <mesh position={[0, 1.3, 0]} castShadow><dodecahedronGeometry args={[2.8, 0]} /><meshStandardMaterial color="#5f615f" roughness={1} /></mesh>
+        <mesh position={[0, .8, -2.15]}><circleGeometry args={[1.05, 24]} /><meshBasicMaterial color="#171b1c" /></mesh>
+      </group>)}
+      {KANTO_GATES.filter(gate => gate.visible !== false).map(gate => {
+        const from = locations.get(gate.from)!, to = locations.get(gate.to)!;
+        const x = (from.x + to.x) / 2, z = (from.z + to.z) / 2;
+        const rotationY = Math.atan2(to.x - from.x, to.z - from.z);
+        const y = terrainSurfaceHeight(sampleWorld, x, z);
+        const locked = badges < gate.requiredBadges;
+        const halfWidth = kantoGateHalfWidth(gate);
+        return <group key={gate.id} position={[x, y, z]} rotation={[0, rotationY, 0]}>
+          {[-halfWidth, halfWidth].map(side => <RigidBody key={side} type="fixed" colliders="cuboid" position={[side, 0, 0]}>
+            <mesh position={[0, 1.35, 0]} castShadow><boxGeometry args={[.55, 2.7, .55]} /><meshStandardMaterial color="#5f513f" roughness={.92} /></mesh>
+          </RigidBody>)}
+          <mesh position={[0, 2.62, 0]} castShadow><boxGeometry args={[halfWidth * 2 + .55, .42, .48]} /><meshStandardMaterial color="#755e3d" roughness={.9} /></mesh>
+          {locked && <RigidBody type="fixed" colliders="cuboid">
+            <mesh position={[0, .72, 0]} castShadow><boxGeometry args={[halfWidth * 2, 1.12, .38]} /><meshStandardMaterial color="#9d4438" roughness={.9} /></mesh>
+          </RigidBody>}
+          {Math.hypot(x - player.x, z - player.z) <= 14 && <WorldLabel name={locked ? `${gate.requiredBadges}배지 필요` : '관문 통과 가능'} x={0} y={3.35} z={0} />}
+        </group>;
+      })}
+      {KANTO_LOCATIONS.filter(item => (item.kind === 'town' || item.kind === 'cave') && Math.hypot(item.x - player.x, item.z - player.z) <= 12)
+        .map(item => <WorldLabel key={`label:${item.id}`} name={item.name} x={item.x} y={item.kind === 'town' ? 1.85 : terrainSurfaceHeight(sampleWorld, item.x, item.z) + 3.2} z={item.kind === 'town' ? item.z - 6 : item.z} />)}
+      <mesh position={[KANTO_START.x, .12, KANTO_START.z]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[1.3, 1.85, 32]} /><meshBasicMaterial color="#f4d44d" />
+      </mesh>
     </group>
   );
 }
@@ -508,13 +615,14 @@ function CreatureBillboard({ creature, hp, distance, emphasized }: { creature: W
   }, [creature.hp, creature.level, creature.maxHp, creature.name, hp]);
   useEffect(() => () => texture.dispose(), [texture]);
   if (distance > 34 && !emphasized) return null;
-  const width = emphasized ? 3.15 : distance < 5 ? 2.25 : 2.7;
-  return <sprite position={[0, (creature.displayHeight ?? 1.2) + .62, 0]} scale={[width, width * .25, 1]} renderOrder={20}><spriteMaterial map={texture} transparent depthTest={false} depthWrite={false} /></sprite>;
+  const width = emphasized ? 2.4 : 2.0;
+  return <sprite name="creature-nameplate" position={[0, (creature.displayHeight ?? 1.2) + .5, 0]} scale={[width, width * .25, 1]}><spriteMaterial map={texture} transparent depthTest depthWrite={false} /></sprite>;
 }
 
-function Creature({ creature, selected, distance, options }: {
+function Creature({ creature, selected, distance, options, showLabels }: {
   creature: WorldCreature;
   selected: boolean;
+  showLabels: boolean;
   distance: number;
   options: OpenWorldViewOptions;
 }) {
@@ -561,7 +669,7 @@ function Creature({ creature, selected, distance, options }: {
         : <SpriteCreature displayHeight={creature.displayHeight} url={(options.spriteUrl ?? (id => `/pokemon/${id}.png`))(creature.speciesId)} />}
       {(selected || creature.inBattle) && <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, .04, 0]}><ringGeometry args={[1.1, 1.34, 40]} /><meshBasicMaterial color={creature.inBattle ? '#f09155' : '#f6dd67'} transparent opacity={.86} /></mesh>}
       <AttackEffect active={creature.action === 'attack'} moveType={creature.moveType} />
-      <CreatureBillboard creature={creature} hp={hp} distance={distance} emphasized={selected || !!creature.inBattle} />
+      {showLabels && (distance <= 28 || selected || creature.inBattle) && <CreatureBillboard creature={creature} hp={hp} distance={distance} emphasized={selected || !!creature.inBattle} />}
     </group>
   );
 }
@@ -694,7 +802,31 @@ function PlayerCamera({ snapshot, options, command }: { snapshot: OpenWorldRende
   return <OrbitControls ref={controls} makeDefault enablePan={false} enableDamping dampingFactor={.08} minDistance={10} maxDistance={42} minPolarAngle={.38} maxPolarAngle={1.18} />;
 }
 
-function Scene({ snapshot, options, cameraCommand }: { snapshot: OpenWorldRenderSnapshot; options: OpenWorldViewOptions; cameraCommand: CameraCommand }) {
+function Sunlight({ player }: { player: { x: number; z: number } }) {
+  const sun = useRef<DirectionalLight>(null);
+  const target = useMemo(() => new Object3D(), []);
+  const x = Math.round(player.x / 4) * 4, z = Math.round(player.z / 4) * 4;
+  useLayoutEffect(() => { target.position.set(x, 0, z); target.updateMatrixWorld(); }, [x, z, target]);
+  return <><primitive object={target} /><directionalLight ref={sun} target={target} position={[x + 28, 52, z + 22]} intensity={2.6} color="#fff0d5" castShadow
+    shadow-mapSize={[1024, 1024]} shadow-camera-near={1} shadow-camera-far={150}
+    shadow-camera-left={-44} shadow-camera-right={44} shadow-camera-top={44} shadow-camera-bottom={-44}
+    shadow-normalBias={.045} shadow-bias={-.00015} /></>;
+}
+
+function FoodInstances({ foods, sampleWorld }: { foods: OpenWorldRenderSnapshot['foods']; sampleWorld: (x: number, z: number) => WorldSample }) {
+  const ref = useRef<InstancedMesh>(null);
+  useLayoutEffect(() => {
+    if (!ref.current) return;
+    const transform = new Matrix4();
+    foods?.forEach((food, i) => ref.current!.setMatrixAt(i, transform.makeTranslation(food.x, (food.y ?? sampleWorld(food.x, food.z).height) + .25, food.z)));
+    ref.current.instanceMatrix.needsUpdate = true;
+    ref.current.computeBoundingSphere();
+  }, [foods, sampleWorld]);
+  if (!foods?.length) return null;
+  return <instancedMesh ref={ref} args={[undefined, undefined, foods.length]}><icosahedronGeometry args={[.24, 1]} /><meshStandardMaterial color="#efca58" emissive="#785e16" emissiveIntensity={.35} /></instancedMesh>;
+}
+
+function Scene({ snapshot, options, cameraCommand, showLabels }: { snapshot: OpenWorldRenderSnapshot; options: OpenWorldViewOptions; cameraCommand: CameraCommand; showLabels: boolean }) {
   const sample = options.sampleWorld ?? fallbackSample;
   const visible = useMemo(() => [...snapshot.entities]
     .sort((a, b) => {
@@ -705,14 +837,15 @@ function Scene({ snapshot, options, cameraCommand }: { snapshot: OpenWorldRender
     }).slice(0, MAX_VISIBLE), [snapshot]);
   return (
     <>
-      <color attach="background" args={['#9bcfca']} />
-      <fog attach="fog" args={['#b8d8c8', 55, 175]} />
-      <ambientLight color="#fff1cc" intensity={1.5} />
-      <directionalLight position={[35, 52, 25]} intensity={2.25} color="#fff2c2" castShadow shadow-mapSize={[2048, 2048]} shadow-camera-far={170} shadow-camera-left={-75} shadow-camera-right={75} shadow-camera-top={75} shadow-camera-bottom={-75} />
+      <color attach="background" args={['#afcfc1']} />
+      <fog attach="fog" args={['#afcfc1', 48, 85]} />
+      <hemisphereLight args={['#d9eeed', '#66703c', 1.1]} />
+      <SkyLighting />
+      <Sunlight player={snapshot.player} />
       <Physics gravity={[0, -18, 0]} timeStep="vary">
         <Terrain sampleWorld={sample} />
-        <Nature sampleWorld={sample} />
-        <TrailAndWater sampleWorld={sample} />
+        <Nature sampleWorld={sample} player={snapshot.player} />
+        <TrailAndWater sampleWorld={sample} player={snapshot.player} badges={(snapshot as OpenWorldRenderSnapshot & { badges?: number }).badges ?? 0} />
         {options.terrainUrl && <StaticModel item={{
           id: 'openworld-terrain',
           url: options.terrainUrl,
@@ -724,12 +857,9 @@ function Scene({ snapshot, options, cameraCommand }: { snapshot: OpenWorldRender
           collider: 'none',
         }} />}
         {options.props?.map(item => <StaticModel key={item.id} item={item} />)}
-        {snapshot.foods?.map(food => {
-          const y = food.y ?? sample(food.x, food.z).height;
-          return <mesh key={food.id} position={[food.x, y + .25, food.z]} castShadow><icosahedronGeometry args={[.24, 1]} /><meshStandardMaterial color="#efca58" emissive="#785e16" emissiveIntensity={.35} /></mesh>;
-        })}
+        <FoodInstances foods={snapshot.foods} sampleWorld={sample} />
       </Physics>
-      {visible.map(creature => <Creature key={creature.id} creature={creature} selected={creature.id === snapshot.selectedWildId} distance={Math.hypot(creature.x - snapshot.player.x, creature.z - snapshot.player.z)} options={options} />)}
+      {visible.map(creature => <Creature key={creature.id} creature={creature} selected={creature.id === snapshot.selectedWildId} showLabels={showLabels} distance={Math.hypot(creature.x - snapshot.player.x, creature.z - snapshot.player.z)} options={options} />)}
       <PlayerCamera snapshot={snapshot} options={options} command={cameraCommand} />
     </>
   );
@@ -739,6 +869,9 @@ function OpenWorldApp({ store, options }: { store: SnapshotStore; options: OpenW
   const snapshot = useSyncExternalStore(store.subscribe, store.get, store.get);
   const runtime = useMemo(() => createGaesupRuntime({ plugins: [createCameraPlugin()], pluginRuntime: 'client' }), []);
   const [ready, setReady] = useState(false);
+  const [renderDpr, setRenderDpr] = useState(() => Math.min(window.devicePixelRatio || 1, 1.5));
+  const [showLabels, setShowLabels] = useState(() => { try { return localStorage.getItem('choketmon-nameplates') === 'true'; } catch { return false; } });
+  const toggleLabels = () => setShowLabels(previous => { try { localStorage.setItem('choketmon-nameplates', String(!previous)); } catch { /* Session-only preference when storage is unavailable. */ } return !previous; });
   const [cameraCommand, setCameraCommand] = useState<CameraCommand>({ id: 0, action: 'reset' });
   const moveCamera = (action: CameraAction) => setCameraCommand(previous => ({ id: previous.id + 1, action }));
   useEffect(() => {
@@ -756,9 +889,11 @@ function OpenWorldApp({ store, options }: { store: SnapshotStore; options: OpenW
       enablePhysics
       gravity={[0, -18, 0]}
     >
-      <Canvas shadows dpr={[1, 1.65]} camera={{ position: [12, 18, 16], fov: 48, near: .1, far: 320 }} gl={{ antialias: true, powerPreference: 'high-performance' }} onPointerMissed={() => options.onSelect(null)}>
+      <Canvas shadows dpr={renderDpr} camera={{ position: [12, 18, 16], fov: 48, near: .1, far: 160 }} gl={{ antialias: true, powerPreference: 'high-performance' }} onPointerMissed={() => options.onSelect(null)}>
+        <AdaptiveResolution setDpr={setRenderDpr} />
+        {new URLSearchParams(location.search).has('renderProbe') && <RenderProbe />}
         <group name="gaesup-world">
-          <Scene snapshot={snapshot} options={options} cameraCommand={cameraCommand} />
+          <Scene snapshot={snapshot} options={options} cameraCommand={cameraCommand} showLabels={showLabels} />
         </group>
       </Canvas>
       {!ready && <div className="ow-loading">Gaesup World 준비 중…</div>}
@@ -770,6 +905,7 @@ function OpenWorldApp({ store, options }: { store: SnapshotStore; options: OpenW
         <button type="button" onClick={() => moveCamera('zoom-in')} aria-label="카메라 확대">＋</button>
         <button type="button" onClick={() => moveCamera('zoom-out')} aria-label="카메라 축소">－</button>
         <button type="button" className="ow-camera-reset" onClick={() => moveCamera('reset')}>시점 초기화</button>
+        <button type="button" id="world-nameplates" className="ow-camera-reset" aria-label="포켓몬 이름·HP 표시" aria-pressed={showLabels} onClick={toggleLabels}>이름·HP</button>
       </div>
       <div className="ow-help">WASD / 방향키 이동 · 드래그 시점 · 휠 확대 · 포켓몬 선택</div>
     </GaesupWorld>

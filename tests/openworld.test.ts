@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { Brain, type Graph } from '../src/core/brain.ts';
 import { createGame, createMonster } from '../src/game/engine.ts';
 import type { FieldPolicy } from '../src/game/field.ts';
-import { OPEN_WORLD_MODEL, OpenWorldSimulation, biomeForSpecies, initialSpawnSpecies, movementSpeed, nextSpeciesInBiome, restoreOpenWorld, sampleWorld, serializeOpenWorld, speciesForSpawn } from '../src/openworld/simulation.ts';
+import { OPEN_WORLD_MODEL, OpenWorldSimulation, movementSpeed, restoreOpenWorld, sampleWorld, serializeOpenWorld } from '../src/openworld/simulation.ts';
+import { encountersForLocation, KANTO_LOCATIONS, KANTO_START, locationAt } from '../src/openworld/kanto.ts';
 
 const loadGraph = async () => JSON.parse(await readFile(new URL('../public/data/connectome.json', import.meta.url), 'utf8')) as Graph;
 const loadPolicy = async () => JSON.parse(await readFile(new URL('../public/data/field-policy.json', import.meta.url), 'utf8')) as FieldPolicy;
@@ -15,26 +16,29 @@ const forceRight = (source: FieldPolicy): FieldPolicy => {
   return policy;
 };
 
+const REMOTE_FIXTURE_POINTS = [
+  { x: 8, z: -15 }, { x: 8, z: 15 }, { x: 8, z: 44 }, { x: 48, z: 15 }, { x: -25, z: 15 },
+  { x: 3, z: 70 }, { x: 24, z: 67 }, { x: -68, z: 96 }, { x: -68, z: 50 }, { x: -68, z: -7 },
+  { x: 8, z: -32 }, { x: 65, z: -28 }, { x: -99, z: -18 }, { x: -34, z: 96 },
+] as const;
+
 describe('connectome open world', () => {
-  it('runs 15 autonomous wild brains in a deterministic continuous world and covers all 151 species', async () => {
+  it('runs 15 autonomous wild brains in deterministic local Kanto encounter tables', async () => {
     const graph = await loadGraph(), policy = await loadPolicy(), game = createGame(1, 'open-world-roster');
     const world = new OpenWorldSimulation(graph, game, 1001, undefined, policy);
-    expect(world.entities.filter(entity => entity.kind === 'wild')).toHaveLength(15);
-    expect(world.entities.filter(entity => entity.kind === 'wild').slice(0, 3).every(entity => Math.hypot(entity.x, entity.z) <= 18 && entity.level >= 2 && entity.level <= 3)).toBe(true);
-    expect(world.nearbyWildCount(18)).toBeGreaterThanOrEqual(7);
-    expect(new Set(Array.from({ length: 15 }, (_, index) => initialSpawnSpecies(index + 1))).size).toBe(15);
+    const wilds = world.entities.filter(entity => entity.kind === 'wild');
+    expect(wilds).toHaveLength(15);
+    expect(new Set(wilds.map(entity => entity.id)).size).toBe(15);
+    expect(world.player).toEqual({ ...KANTO_START, heading: 0 });
     expect(world.visibleEntities()).toHaveLength(12);
-    expect(world.spawnCatalog().map(entry => entry.speciesId)).toEqual(Array.from({ length: 151 }, (_, index) => index + 1));
-    expect(Array.from({ length: 151 }, (_, index) => speciesForSpawn(index + 1))).toEqual(Array.from({ length: 151 }, (_, index) => index + 1));
-    expect(speciesForSpawn(152)).toBe(1);
-    expect(new Set(world.spawnCatalog().map(entry => entry.biome))).toEqual(new Set(['meadow', 'forest', 'lake', 'rock']));
-    for (const entry of world.spawnCatalog()) expect(biomeForSpecies(nextSpeciesInBiome(entry.speciesId))).toBe(entry.biome);
-    for (const biome of ['meadow', 'forest', 'lake', 'rock'] as const) {
-      const species = world.spawnCatalog().filter(entry => entry.biome === biome).map(entry => entry.speciesId), reached = new Set<number>(); let cursor = species[0];
-      for (let count = 0; count < species.length; count++) { reached.add(cursor); cursor = nextSpeciesInBiome(cursor); }
-      expect(reached).toEqual(new Set(species));
+    for (const entity of wilds) {
+      const location = locationAt(entity.x, entity.z);
+      expect(encountersForLocation(location.id, game.player.badges)).toContain(entity.speciesId);
+      expect(entity.level).toBeGreaterThanOrEqual(location.minLevel);
+      expect(entity.level).toBeLessThanOrEqual(location.maxLevel);
     }
-    expect(biomeForSpecies(10)).toBe('forest'); expect(sampleWorld(42, -28).blocked).toBe(true);
+    const replay = new OpenWorldSimulation(graph, createGame(1, 'open-world-roster'), 1001, undefined, policy);
+    expect(replay.snapshot()).toEqual(world.snapshot());
     for (let tick = 0; tick < 30; tick++) world.step({ deltaSeconds: .1 });
     for (const entity of world.entities) {
       expect(entity.observation).toHaveLength(12); expect(entity.brain.graph.id).toBe(graph.id);
@@ -53,7 +57,7 @@ describe('connectome open world', () => {
     expect(source.entities.map(entity => ({ x: entity.x, z: entity.z }))).toEqual(zeroBefore);
 
     const tracked = checkpoint.entities.find(entity => entity.id === 'wild-1')!;
-    tracked.x = -10; tracked.z = 20;
+    tracked.x = -68; tracked.z = 66;
     const short = new OpenWorldSimulation(graph, createGame(1, 'open-world-speed'), 440, structuredClone(checkpoint), policy);
     const long = new OpenWorldSimulation(graph, createGame(1, 'open-world-speed'), 440, structuredClone(checkpoint), policy);
     const shortBefore = short.entities.find(entity => entity.id === tracked.id)!.x, longBefore = long.entities.find(entity => entity.id === tracked.id)!.x;
@@ -61,27 +65,31 @@ describe('connectome open world', () => {
     expect(short.entities.find(entity => entity.id === tracked.id)!.x - shortBefore).toBeCloseTo(movementSpeed(tracked.speciesId) * .1, 8);
     expect(long.entities.find(entity => entity.id === tracked.id)!.x - longBefore).toBeCloseTo(movementSpeed(tracked.speciesId) * .2, 8);
 
-    tracked.x = 20; tracked.z = -28;
+    tracked.x = -75.1; tracked.z = 78;
     const blocked = new OpenWorldSimulation(graph, createGame(1, 'open-world-speed'), 440, structuredClone(checkpoint), policy);
     blocked.step({ deltaSeconds: 5 });
     const stopped = blocked.entities.find(entity => entity.id === tracked.id)!;
-    expect(stopped.x).toBe(20); expect(stopped.z).toBe(-28); expect(stopped.collisions).toBeGreaterThan(tracked.collisions);
+    expect(stopped.x).toBeCloseTo(-75.1); expect(stopped.z).toBe(78); expect(stopped.collisions).toBeGreaterThan(tracked.collisions);
   });
 
-  it('streams distant same-biome wilds near a traveling player without changing brains', async () => {
+  it('streams new local individuals near a traveling player without changing surviving brains', async () => {
     const graph = await loadGraph(), policy = await loadOpenWorldPolicy();
     for (const seed of [4_401, 4_501, 4_601]) {
       const game = createGame(1, `open-world-density-${seed}`), world = new OpenWorldSimulation(graph, game, seed, undefined, policy); world.setAutoHunt(false);
       const before = new Map(world.entities.filter(entity => entity.kind === 'wild').map(entity => [entity.id, { x: entity.x, z: entity.z, readout: structuredClone(entity.brain.readout), updates: entity.brain.updates }]));
-      expect(world.movePlayer({ x: 0, z: -60, heading: 2 })).toBe(true);
+      expect(world.movePlayer({ x: -68, z: -7, heading: 0 })).toBe(true);
+      Object.assign(world.entities.find(entity => entity.kind === 'companion')!, world.player);
+      world.setControlMode('manual');
       for (let tick = 0; tick < 7; tick++) world.step({ deltaSeconds: .5, learning: false });
-      expect(world.nearbyWildCount(25)).toBeGreaterThanOrEqual(4);
-      const nearby = world.entities.filter(entity => entity.kind === 'wild' && Math.hypot(entity.x - world.player.x, entity.z - world.player.z) <= 25);
-      expect(nearby.every(entity => !sampleWorld(entity.x, entity.z).blocked && sampleWorld(entity.x, entity.z).biome === biomeForSpecies(entity.speciesId))).toBe(true);
-      const relocated = nearby.filter(entity => before.has(entity.id) && Math.hypot(entity.x - before.get(entity.id)!.x, entity.z - before.get(entity.id)!.z) > 20);
-      expect(relocated.length).toBeGreaterThanOrEqual(4);
-      for (const entity of relocated.filter(entity => before.has(entity.id))) { expect(entity.brain.readout).toEqual(before.get(entity.id)!.readout); expect(entity.brain.updates).toBe(before.get(entity.id)!.updates); }
-      for (const biome of ['forest', 'lake', 'rock'] as const) expect(world.entities.some(entity => entity.kind === 'wild' && biomeForSpecies(entity.speciesId) === biome && Math.hypot(entity.x - world.player.x, entity.z - world.player.z) > 25)).toBe(true);
+      expect(world.nearbyWildCount(38)).toBeGreaterThanOrEqual(4);
+      const nearby = world.entities.filter(entity => entity.kind === 'wild' && Math.hypot(entity.x - world.player.x, entity.z - world.player.z) <= 38);
+      expect(nearby.every(entity => !sampleWorld(entity.x, entity.z).blocked)).toBe(true);
+      const streamed = nearby.filter(entity => !before.has(entity.id));
+      expect(streamed.length).toBeGreaterThanOrEqual(4);
+      for (const entity of world.entities.filter(entity => before.has(entity.id))) {
+        expect(entity.brain.readout).toEqual(before.get(entity.id)!.readout);
+        expect(entity.brain.updates).toBe(before.get(entity.id)!.updates);
+      }
       const json = serializeOpenWorld(game, world), a = restoreOpenWorld(graph, json, policy), b = restoreOpenWorld(graph, json, policy);
       const traceA = Array.from({ length: 8 }, () => a.simulation.step({ deltaSeconds: .4, learning: false })), traceB = Array.from({ length: 8 }, () => b.simulation.step({ deltaSeconds: .4, learning: false }));
       expect(traceA).toEqual(traceB); expect(a.simulation.snapshot()).toEqual(b.simulation.snapshot());
@@ -93,9 +101,12 @@ describe('connectome open world', () => {
     const world = new OpenWorldSimulation(graph, game, 771, undefined, policy);
     const first = world.entities[0].brain, second = world.entities[1].brain;
     expect(first).not.toBe(second); expect(first.activity).not.toBe(second.activity); expect(first.readout).not.toBe(second.readout);
-    const before = world.entities.map(entity => ({ id: entity.id, inputWeights: entity.brain.inputWeights, readout: entity.brain.readout, updates: entity.brain.updates }));
+    const before = new Map(world.entities.map(entity => [entity.id, structuredClone({ inputWeights: entity.brain.inputWeights, readout: entity.brain.readout, updates: entity.brain.updates })]));
     for (let tick = 0; tick < 40; tick++) world.step({ deltaSeconds: .1, learning: false });
-    expect(world.entities.map(entity => ({ id: entity.id, inputWeights: entity.brain.inputWeights, readout: entity.brain.readout, updates: entity.brain.updates }))).toEqual(before);
+    for (const entity of world.entities) {
+      expect(entity.brain.updates).toBe(0);
+      if (before.has(entity.id)) expect({ inputWeights: entity.brain.inputWeights, readout: entity.brain.readout, updates: entity.brain.updates }).toEqual(before.get(entity.id));
+    }
   });
 
   it('moves one visible partner with bounded collision checks and replays the manual-control hold', async () => {
@@ -173,51 +184,70 @@ describe('connectome open world', () => {
   it('captures a wild Pokemon through the engine probability and ball inventory path', async () => {
     const graph = await loadGraph(), policy = await loadPolicy(), game = createGame(7, 'open-world-catch');
     const world = new OpenWorldSimulation(graph, game, 345, undefined, policy);
-    const target = world.entities.find(entity => entity.kind === 'wild' && entity.speciesId === 10)!;
+    const target = world.entities.find(entity => entity.kind === 'wild')!, targetSpecies = target.speciesId;
     expect(world.startEncounter(target.id)).toBe(true);
     let outcome: string | undefined;
     for (let attempt = 0; attempt < 8 && game.battle; attempt++) {
       expect(world.requestCapture('poke-ball')).toBe(true);
       for (const event of world.step({ deltaSeconds: 1 }).events) if (event.type === 'battle-turn') outcome = event.result.outcome ?? outcome;
     }
-    expect(outcome).toBe('caught'); expect(game.dex.caught).toContain(10); expect(game.inventory['poke-ball']).toBeLessThan(8);
+    expect(outcome).toBe('caught'); expect(game.dex.caught).toContain(targetSpecies); expect(game.inventory['poke-ball']).toBeLessThan(8);
     expect(world.rosterStatus()).toEqual({ alive: 14, pending: 1, total: 15 });
   });
 
   it('auto-selects, approaches through the connectome, battles for rewards, and restores a delayed replacement', async () => {
     const graph = await loadGraph(), policy = forceRight(await loadPolicy()), game = createGame(1, 'open-world-auto-hunt');
-    game.player.team = [createMonster(game, 1, 16)];
+    game.player.team = [createMonster(game, 150, 16)];
     const world = new OpenWorldSimulation(graph, game, 557, undefined, policy), checkpoint = world.snapshot();
-    checkpoint.player = { x: 15, z: -24, heading: 2 };
+    checkpoint.player = { x: -46, z: -12, heading: 1 };
     const companion = checkpoint.entities.find(entity => entity.kind === 'companion')!, target = checkpoint.entities.find(entity => entity.id === 'wild-1')!;
-    companion.x = 15; companion.z = -28; target.x = 20; target.z = -28; target.level = 2;
+    companion.x = -45; companion.z = -12; target.x = -40; target.z = -12; target.speciesId = 10; target.level = 2;
+    checkpoint.entities.filter(entity => entity.kind === 'wild' && entity.id !== target.id).forEach((entity, index) => Object.assign(entity, REMOTE_FIXTURE_POINTS[index]));
     const hunt = new OpenWorldSimulation(graph, game, 557, checkpoint, policy), companionStart = { x: companion.x, z: companion.z };
+    hunt.densityRemaining = 99;
     let encounter = false;
     for (let tick = 0; tick < 40 && !game.battle; tick++) {
       const step = hunt.step({ deltaSeconds: .25 }); encounter ||= step.events.some(event => event.type === 'encounter');
       if (tick === 0) expect(hunt.selectedWildId).toBe(target.id);
     }
     const movedCompanion = hunt.entities.find(entity => entity.kind === 'companion')!;
-    expect(encounter).toBe(true); expect(movedCompanion.x).toBeGreaterThan(companionStart.x); expect(hunt.player).toEqual(checkpoint.player);
+    expect(encounter).toBe(true); expect(movedCompanion.x).toBeGreaterThan(companionStart.x); expect(hunt.player).toEqual({ x: movedCompanion.x, z: movedCompanion.z, heading: movedCompanion.heading });
     const moneyBefore = game.player.money, xpBefore = game.player.team[0].xp;
     let outcome: string | undefined;
     for (let turn = 0; turn < 500 && game.battle; turn++) for (const event of hunt.step({ deltaSeconds: 1 }).events) if (event.type === 'battle-turn') outcome = event.result.outcome ?? outcome;
     expect(outcome).toBe('won'); expect(game.player.money).toBeGreaterThan(moneyBefore); expect(game.player.team[0].xp).toBeGreaterThan(xpBefore);
     expect(hunt.rosterStatus()).toEqual({ alive: 14, pending: 1, total: 15 });
+    hunt.densityRemaining = 3;
     const pendingSave = serializeOpenWorld(game, hunt), restored = restoreOpenWorld(graph, pendingSave, policy);
     expect(restored.simulation.respawnQueue).toEqual(hunt.respawnQueue); expect(restored.simulation.rosterStatus()).toEqual(hunt.rosterStatus());
+    restored.simulation.releaseVictory();
     restored.simulation.setAutoHunt(false);
-    for (let tick = 0; tick < 13; tick++) restored.simulation.step({ deltaSeconds: .5 });
+    restored.simulation.densityRemaining = 99;
+    const idsBeforeRespawn = new Set(restored.simulation.entities.filter(entity => entity.kind === 'wild').map(entity => entity.id));
+    for (let tick = 0; tick < 13 && restored.simulation.rosterStatus().pending; tick++) restored.simulation.step({ deltaSeconds: .5 });
     expect(restored.simulation.rosterStatus()).toEqual({ alive: 15, pending: 0, total: 15 });
-    const replacementSpecies = nextSpeciesInBiome(target.speciesId), replacement = restored.simulation.entities.find(entity => entity.kind === 'wild' && entity.id !== target.id && entity.speciesId === replacementSpecies)!;
-    expect(replacement).toBeDefined(); expect(sampleWorld(replacement.x, replacement.z).biome).toBe(biomeForSpecies(replacementSpecies));
+    const replacement = restored.simulation.entities.find(entity => entity.kind === 'wild' && !idsBeforeRespawn.has(entity.id))!;
+    expect(replacement).toBeDefined();
+    expect(KANTO_LOCATIONS.some(location => location.requiredBadges <= game.player.badges && location.encounters.includes(replacement.speciesId)
+      && replacement.level >= location.minLevel && replacement.level <= location.maxLevel)).toBe(true);
   });
 
   it('repeats autonomous hunts and rewards on a held-out seed with the deployed frozen policy', async () => {
-    const graph = await loadGraph(), policy = await loadOpenWorldPolicy(), game = createGame(1, 'open-world-heldout-6012044');
-    const world = new OpenWorldSimulation(graph, game, 6_012_044, undefined, policy, 12);
+    const graph = await loadGraph(), policy = forceRight(await loadOpenWorldPolicy()), game = createGame(1, 'open-world-heldout-6012044');
+    game.player.team = [createMonster(game, 150, 80)];
+    const source = new OpenWorldSimulation(graph, game, 6_012_044, undefined, policy, 12), checkpoint = source.snapshot();
+    checkpoint.player = { x: -46, z: -12, heading: 1 };
+    const companion = checkpoint.entities.find(entity => entity.kind === 'companion')!;
+    companion.x = -45; companion.z = -12;
+    checkpoint.entities.filter(entity => entity.kind === 'wild').slice(0, 2).forEach((entity, index) => {
+      entity.x = -40 + index * 6; entity.z = -12; entity.speciesId = 10; entity.level = 2;
+    });
+    checkpoint.entities.filter(entity => entity.kind === 'wild').slice(2).forEach((entity, index) => Object.assign(entity, REMOTE_FIXTURE_POINTS[index]));
+    const world = new OpenWorldSimulation(graph, game, 6_012_044, checkpoint, policy, 12);
+    world.densityRemaining = 99;
+    world.setAutoCapture(true);
     const moneyBefore = game.player.money, xpBefore = game.player.team[0].xp; let encounters = 0, wins = 0, replacements = 0, previousPending = 0, moneyRewards = 0;
-    for (let tick = 0; tick < 200; tick++) {
+    for (let tick = 0; tick < 400; tick++) {
       const beforeStep = game.player.money, step = world.step({ deltaSeconds: .25, learning: false });
       moneyRewards += Math.max(0, game.player.money - beforeStep); encounters += step.events.filter(event => event.type === 'encounter').length;
       wins += step.events.filter(event => event.type === 'battle-turn' && event.result.outcome === 'won').length;

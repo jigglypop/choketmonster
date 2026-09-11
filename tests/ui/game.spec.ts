@@ -97,7 +97,7 @@ test('stone and trade evolution keep identity and memories through the interface
 test('mobile uses local assets and shows actual connectome provenance', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const external: string[] = [];
-  await page.route('**/*', route => { if (!route.request().url().startsWith('http://127.0.0.1:5173')) { external.push(route.request().url()); return route.abort(); } return route.continue(); });
+  await page.route('**/*', route => { if (!route.request().url().startsWith('http://127.0.0.1:5174')) { external.push(route.request().url()); return route.abort(); } return route.continue(); });
   await start(page);
   const size = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, viewport: innerWidth }));
   expect(size.scroll).toBeLessThanOrEqual(size.viewport);

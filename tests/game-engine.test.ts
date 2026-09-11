@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { getMove, getSpecies, POKEMON } from '../src/data/pokemon';
+import { Brain } from '../src/core/brain';
 import { calculateDamage } from '../src/game/battle';
 import {
-  actBattle, availableEvolutions, challengeChampion, challengeGym, createGame, createMonster, evolve, restoreGame,
+  actBattle, availableEvolutions, challengeChampion, challengeGym, createGame, createMonster, evolve, experienceAtLevel, restoreGame,
   serializeGame, useItem, type BattleState,
 } from '../src/game/engine';
 import { assertAllSpeciesReachable, REGIONS, speciesEncounterSources } from '../src/game/regions';
@@ -63,6 +64,19 @@ describe('151종 로컬 게임 엔진', () => {
     expect(result.enemyAction).toEqual({ type: 'wait' });
     expect(player.moves[waterIndex].pp).toBe(beforePp - 1);
     expect(battle.enemy.team[0].hp).toBeLessThan(beforeHp);
+    expect(result.executedMoves).toContainEqual(expect.objectContaining({
+      actorInstanceId: player.instanceId,
+      targetInstanceId: battle.enemy.team[0].instanceId,
+      moveId: player.moves[waterIndex].moveId,
+      moveType: 'water',
+      damageClass: expect.any(String),
+      damagingMove: true,
+      executed: true,
+      hit: true,
+      typeMultiplier: 2,
+      result: 'hit',
+    }));
+    expect(result.executedMoves.find((entry) => entry.actorInstanceId === player.instanceId)!.damage).toBe(beforeHp - battle.enemy.team[0].hp);
 
     const move = getMove(player.moves[waterIndex].moveId);
     const attacker = { level: player.level, hp: player.hp, stats: player.stats, types: getSpecies(player.speciesId).types };
@@ -72,6 +86,128 @@ describe('151종 로컬 게임 엔진', () => {
     const neutralDamage = calculateDamage(attacker, { level: 20, hp: neutralStats.hp, stats: neutralStats, types: neutralSpecies.types }, move, 1);
     expect(fireDamage.multiplier).toBe(2);
     expect(fireDamage.damage).toBeGreaterThan(neutralDamage.damage);
+  });
+
+  it('실행된 기술 텔레메트리는 면역과 행동 차단을 로그 추론 없이 구분한다', () => {
+    const immuneState = createGame(1, 'move-telemetry-immune');
+    immuneState.player.team[0] = createMonster(immuneState, 25, 30);
+    immuneState.player.team[0].moves = [{ moveId: 85, pp: getMove(85).pp }]; // Thunderbolt
+    const immuneBattle = wildBattle(immuneState, 50, 30); // Diglett, ground
+    const immune = actBattle(immuneState, { type: 'move', index: 0 }, 4);
+    expect(immune.executedMoves).toEqual([expect.objectContaining({
+      actorInstanceId: immuneState.player.team[0].instanceId,
+      targetInstanceId: immuneBattle.enemy.team[0].instanceId,
+      moveId: 85,
+      moveType: 'electric',
+      damagingMove: true,
+      executed: true,
+      hit: true,
+      typeMultiplier: 0,
+      damage: 0,
+      result: 'immune',
+    })]);
+
+    const blockedState = createGame(1, 'move-telemetry-sleep');
+    blockedState.player.team[0] = createMonster(blockedState, 25, 30);
+    blockedState.player.team[0].moves = [{ moveId: 85, pp: getMove(85).pp }];
+    blockedState.player.team[0].status = 'sleep';
+    blockedState.player.team[0].statusTurns = 2;
+    wildBattle(blockedState, 7, 30);
+    const beforePp = blockedState.player.team[0].moves[0].pp;
+    const blocked = actBattle(blockedState, { type: 'move', index: 0 }, 4);
+    expect(blocked.executedMoves).toEqual([]);
+    expect(blockedState.player.team[0].moves[0].pp).toBe(beforePp);
+
+    const paralyzedState = createGame(1, 'move-telemetry-paralysis');
+    paralyzedState.player.team[0] = createMonster(paralyzedState, 25, 30);
+    paralyzedState.player.team[0].moves = [{ moveId: 85, pp: getMove(85).pp }];
+    paralyzedState.player.team[0].status = 'paralysis';
+    paralyzedState.rngState = 1; // second xorshift draw is below the 25% full-paralysis threshold
+    wildBattle(paralyzedState, 7, 30);
+    expect(actBattle(paralyzedState, { type: 'move', index: 0 }, 4).executedMoves).toEqual([]);
+
+    const faintedState = createGame(1, 'move-telemetry-fainted');
+    faintedState.player.team[0] = createMonster(faintedState, 25, 30);
+    faintedState.player.team[0].moves = [{ moveId: 85, pp: getMove(85).pp }];
+    faintedState.player.team[0].hp = 0;
+    wildBattle(faintedState, 7, 30);
+    expect(actBattle(faintedState, { type: 'move', index: 0 }, 4).executedMoves).toEqual([]);
+
+    const missedState = createGame(1, 'move-telemetry-missed');
+    missedState.player.team[0] = createMonster(missedState, 25, 30);
+    missedState.player.team[0].moves = [{ moveId: 12, pp: getMove(12).pp }]; // Guillotine, 30 accuracy
+    missedState.rngState = 58; // second xorshift draw is above the accuracy threshold
+    wildBattle(missedState, 7, 30);
+    expect(actBattle(missedState, { type: 'move', index: 0 }, 4).executedMoves).toEqual([
+      expect.objectContaining({ moveId: 12, executed: true, hit: false, damage: 0, result: 'missed' }),
+    ]);
+  });
+
+  it('승리 경험치를 활성 개체와 살아 있는 벤치에 개체별로 기록한다', () => {
+    const state = createGame(1, 'experience-share');
+    const active = state.player.team[0];
+    const bench = createMonster(state, 7, 5);
+    const fainted = createMonster(state, 4, 5);
+    const boxed = createMonster(state, 25, 5);
+    state.player.team.push(bench, fainted);
+    state.player.box.push(boxed);
+    fainted.hp = 0;
+    const activeBrain = new Brain(101).snapshot();
+    const benchBrain = new Brain(202).snapshot();
+    active.brain = activeBrain;
+    bench.brain = benchBrain;
+
+    const battle = wildBattle(state, 4, 5);
+    const defeated = battle.enemy.team[0];
+    const fullAmount = Math.max(1, Math.floor(getSpecies(defeated.speciesId).baseExperience * defeated.level / 7));
+    const sharedAmount = Math.max(1, Math.floor(fullAmount * .5));
+    bench.xp = experienceAtLevel(bench.level + 1, getSpecies(bench.speciesId).growthRate) - sharedAmount;
+    const before = { active: active.xp, activeLevel: active.level, bench: bench.xp, fainted: fainted.xp, boxed: boxed.xp };
+    defeated.hp = 0;
+    const result = actBattle(state, { type: 'wait' }, 4);
+
+    expect(result.experienceGains).toEqual([
+      { instanceId: active.instanceId, amount: fullAmount, levelsGained: active.level - before.activeLevel, shared: false },
+      { instanceId: bench.instanceId, amount: sharedAmount, levelsGained: 1, shared: true },
+    ]);
+    expect(active.xp).toBe(before.active + fullAmount);
+    expect(bench.level).toBe(6);
+    expect(fainted.xp).toBe(before.fainted);
+    expect(boxed.xp).toBe(before.boxed);
+    expect(active.brain).toBe(activeBrain);
+    expect(bench.brain).toBe(benchBrain);
+    expect(active.brain).not.toBe(bench.brain);
+  });
+
+  it('경험치 공유를 끄면 활성 개체만 기존 전체 경험치를 받는다', () => {
+    const state = createGame(1, 'experience-share-disabled');
+    state.experienceShare = false;
+    const bench = createMonster(state, 7, 5);
+    state.player.team.push(bench);
+    const battle = wildBattle(state, 4, 5);
+    const active = state.player.team[0];
+    const beforeBenchXp = bench.xp;
+    battle.enemy.team[0].hp = 0;
+    const result = actBattle(state, { type: 'wait' }, 4);
+    expect(result.experienceGains).toHaveLength(1);
+    expect(result.experienceGains[0]).toMatchObject({ instanceId: active.instanceId, shared: false });
+    expect(bench.xp).toBe(beforeBenchXp);
+  });
+
+  it('다중 상대의 첫 승리 뒤 저장 복원해도 같은 상대 경험치를 다시 주지 않는다', () => {
+    const state = createGame(1, 'experience-no-replay');
+    state.player.team[0] = createMonster(state, 1, 50);
+    state.defeatedGyms = Array.from({ length: 8 }, (_, index) => index + 1);
+    state.player.badges = 8;
+    challengeChampion(state);
+    state.battle!.enemy.team[0].hp = 0;
+    const first = actBattle(state, { type: 'wait' }, 4);
+    expect(first.experienceGains.length).toBe(1);
+    const restored = restoreGame(serializeGame(state));
+    const xpAfterFirst = restored.player.team[0].xp;
+    const nextTurn = actBattle(restored, { type: 'wait' }, 4);
+    expect(nextTurn.experienceGains).toEqual([]);
+    expect(restored.player.team[0].xp).toBe(xpAfterFirst);
   });
 
   it('능력 단계 변화와 메타몽 변신을 전투 중 실제 계산 상태로 보존한다', () => {
@@ -129,5 +265,10 @@ describe('151종 로컬 게임 엔진', () => {
     const invalid = JSON.parse(serializeGame(state)); invalid.player.team[0].stats.attack++;
     invalid.battle.player.team[0].stats.attack++;
     expect(() => restoreGame(JSON.stringify(invalid))).toThrow(/능력치/);
+
+    const legacy = JSON.parse(serializeGame(state)); delete legacy.experienceShare;
+    expect(restoreGame(JSON.stringify(legacy)).experienceShare).toBe(true);
+    const invalidShare = JSON.parse(serializeGame(state)); invalidShare.experienceShare = 'yes';
+    expect(() => restoreGame(JSON.stringify(invalidShare))).toThrow(/경험치 공유/);
   });
 });

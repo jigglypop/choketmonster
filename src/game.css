@@ -5,3 +5,78 @@
 .lab-hero{padding:30px;border-radius:16px;background:var(--forest);color:#f8f5e9}.lab-hero p{color:#b8cbc4}.graph-numbers{display:flex;gap:25px}.graph-numbers span{display:grid;font-size:8px;color:#a9beb7}.graph-numbers strong{font-size:31px;color:#d7e8bd}.brain-card{background:var(--forest);color:white}.brain-card canvas{display:block;width:100%;max-width:400px;margin:auto}.brain-card>p{color:#b7c9c2;font-size:9px}.method-card>p{color:var(--muted);line-height:1.65}.method-card dl{display:grid;grid-template-columns:1fr 1fr;gap:6px}.method-card dl div{padding:9px;background:#e9ece1;border-radius:7px}.method-card dt{font-size:7px;color:var(--muted)}.method-card dd{margin:3px 0;font-size:9px}.source-card{display:grid;grid-template-columns:.65fr 1.35fr;margin-top:15px}.source-card p{font-size:9px;line-height:1.5;word-break:break-word}.source-card code{font-size:7px}.source-card a{display:inline-block;margin:5px 9px 0 0;color:var(--teal);font-size:9px}.data-actions{display:flex;align-items:center;gap:7px;margin-top:15px}.data-actions div{margin-right:auto}.data-actions h2{margin:0}.data-actions p{margin:3px 0;font-size:9px;color:var(--muted)}.starter-dialog{border:0;border-radius:18px;max-width:1000px;width:calc(100% - 35px);padding:28px;background:#f7f4e9}.starter-dialog::backdrop{background:#113933e5;backdrop-filter:blur(8px)}.starter-copy{text-align:center}.starter-copy h1{font-size:42px;line-height:1.05;margin:9px}.starter-copy p{max-width:600px;margin:auto;color:var(--muted)}.starter-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:20px}.starter-card{border:1px solid var(--line);border-radius:12px;background:white;display:grid;place-items:center;padding:11px;transition:.2s}.starter-card:hover{transform:translateY(-4px);border-color:#75a08e;box-shadow:var(--shadow)}.starter-card img{width:160px;height:160px;object-fit:contain;image-rendering:pixelated}.starter-card strong{font-size:21px}.starter-card small{color:var(--muted)}.starter-card em{font-style:normal;width:100%;padding:9px;border-radius:7px;background:var(--forest);color:white;text-align:center}.toast{position:fixed;right:20px;bottom:20px;z-index:100;padding:12px 16px;border-radius:9px;background:var(--forest);color:white;box-shadow:0 12px 36px #12302a47;font-size:11px}.toast.error{background:#99473b}.loading,.fatal{min-height:70vh;display:grid;place-items:center;align-content:center;text-align:center}.spinner{width:34px;height:34px;border:3px solid #bcc9bf;border-top-color:var(--forest);border-radius:50%;animation:spin .8s linear infinite}.modal-shade{position:fixed;inset:0;z-index:60;background:#173f39bb;display:grid;place-items:center;padding:20px}.choice-modal{max-width:680px;width:100%;max-height:85vh;overflow:auto;background:#f7f4e9;padding:22px;border-radius:14px}.choice-modal>div{display:grid;grid-template-columns:1fr 1fr;gap:7px}.choice-modal>div>button{border:0;background:none}.choice-modal .monster-card{pointer-events:none}@keyframes spin{to{transform:rotate(360deg)}}
 @media(max-width:960px){.topbar{padding-inline:14px}.brand small,.trainer-summary span:nth-child(2){display:none}.map-layout,.team-layout,.lab-layout{grid-template-columns:1fr}.region-panel{max-height:none}.detail-card{position:static}.field-log{grid-template-columns:1fr 1fr}.dex-grid{grid-template-columns:repeat(4,1fr)}.shop-grid{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:640px){.topbar{flex-wrap:wrap;gap:8px}.topbar nav{order:3;width:100%;overflow:auto}.topbar nav button{font-size:10px}.topbar nav button.active:after{bottom:-8px}.page{padding:24px 12px 55px}.hero-strip,.section-heading,.battle-top,.lab-hero{align-items:flex-start;flex-direction:column;gap:14px}.hero-strip h1,.section-heading h1,.lab-hero h1{font-size:39px}.progress-ring{position:absolute;right:3px;top:2px;width:80px;height:80px}.map-actions{display:grid}.field-log{grid-template-columns:1fr}.battle-page{padding-inline:8px}.brain-controls{flex-wrap:wrap}.battle-stage{height:385px}.combatant.opponent{right:4px}.combatant.player{left:4px}.combatant img{width:125px;height:125px}.battle-info{min-width:170px;padding:9px}.battle-console,.card-grid,.move-grid,.choice-modal>div{grid-template-columns:1fr}.battle-log{display:block}.dex-tools{display:grid;width:100%}.dex-tools input{width:100%}.dex-grid{grid-template-columns:repeat(2,1fr)}.shop-grid{grid-template-columns:1fr}.center-banner,.data-actions{align-items:flex-start;flex-direction:column}.lab-hero{padding:22px}.graph-numbers{width:100%;justify-content:space-between}.method-card dl,.source-card{grid-template-columns:1fr}.starter-copy h1{font-size:31px}.starter-grid{grid-template-columns:1fr}.starter-card img{width:120px;height:120px}}
+
+/* Shared glass language for navigation, cards, consoles, and dialogs. */
+:root{
+  --glass-light:rgba(255,255,255,.58);
+  --glass-strong:rgba(250,248,239,.76);
+  --glass-line:rgba(255,255,255,.72);
+  --glass-shadow:0 18px 48px rgba(24,61,51,.14),inset 0 1px 0 rgba(255,255,255,.82);
+}
+.topbar{height:52px;min-height:52px;padding:6px 18px;gap:16px}
+.brand{font-size:13px;grid-template-columns:25px auto;gap:0 6px}
+.brand:before{width:23px;height:23px;border-width:2px}
+.brand small{display:none}
+.topbar nav{padding:2px;gap:3px}
+.topbar nav button{font-size:11px;padding:6px 10px}
+.topbar nav button.active:after{bottom:-4px;height:2px}
+.trainer-summary{font-size:10px;gap:5px}
+.trainer-summary span,.trainer-summary .quiet{padding:6px 8px}
+@media(max-width:640px){
+  .topbar{height:80px;min-height:80px;padding:5px 10px;gap:3px 10px;justify-content:space-between}
+  .topbar nav{order:3;width:100%;justify-content:space-around;margin:0;padding:1px}
+  .topbar nav button{font-size:9px;padding:5px 8px}
+  .topbar nav button.active:after{bottom:-2px}
+  .brand{font-size:12px}
+  .trainer-summary span,.trainer-summary .quiet{padding:4px 7px;font-size:9px}
+}
+body{background:radial-gradient(circle at 82% 0,rgba(205,230,211,.9),transparent 34%),radial-gradient(circle at 8% 72%,rgba(224,212,175,.5),transparent 38%),#eef2e9}
+.topbar{
+  background:linear-gradient(120deg,rgba(255,255,255,.72),rgba(242,248,239,.54));
+  border-bottom-color:rgba(255,255,255,.8);
+  box-shadow:0 9px 32px rgba(24,61,51,.1),inset 0 1px rgba(255,255,255,.9);
+  -webkit-backdrop-filter:blur(22px) saturate(145%);
+  backdrop-filter:blur(22px) saturate(145%);
+}
+.topbar nav{padding:4px;border:1px solid rgba(255,255,255,.7);border-radius:12px;background:rgba(255,255,255,.3)}
+.topbar nav button{border-radius:8px}
+.topbar nav button:hover,.topbar nav button.active{background:rgba(255,255,255,.62)}
+.trainer-summary span,
+.count-chip,
+.wallet,
+.quiet,
+.data-actions button,
+.item-use button,
+.dex-tools input,
+.dex-tools button{
+  background:rgba(255,255,255,.48);
+  border:1px solid rgba(255,255,255,.74);
+  box-shadow:inset 0 1px rgba(255,255,255,.72);
+  -webkit-backdrop-filter:blur(12px) saturate(135%);
+  backdrop-filter:blur(12px) saturate(135%);
+}
+.panel,
+.monster-card,
+.dex-card,
+.shop-card,
+.battle-info,
+.battle-menu,
+.move-grid,
+.choice-modal,
+.starter-dialog{
+  background:linear-gradient(145deg,var(--glass-strong),var(--glass-light));
+  border:1px solid var(--glass-line);
+  box-shadow:var(--glass-shadow);
+  -webkit-backdrop-filter:blur(18px) saturate(135%);
+  backdrop-filter:blur(18px) saturate(135%);
+}
+.move-grid,.battle-menu{padding:10px;border-radius:13px}
+.move-grid button,.battle-menu button,.battle-menu select,.evolution-list button,.starter-card{background:rgba(255,255,255,.54);border-color:rgba(255,255,255,.78)}
+.region-row,.method-card dl div,.move-list span,.battle-menu p,.card-action{background:rgba(236,243,233,.58)}
+.center-banner{background:linear-gradient(135deg,rgba(203,230,216,.7),rgba(255,255,255,.4));border:1px solid rgba(255,255,255,.72);box-shadow:var(--glass-shadow);-webkit-backdrop-filter:blur(16px) saturate(135%);backdrop-filter:blur(16px) saturate(135%)}
+.topbar button:focus-visible,
+.page button:focus-visible,
+.page input:focus-visible,
+.page select:focus-visible,
+dialog button:focus-visible{outline:3px solid #c85f4f;outline-offset:3px}
+@media(prefers-reduced-transparency:reduce){.topbar,.panel,.monster-card,.dex-card,.shop-card,.battle-info,.battle-menu,.move-grid,.choice-modal,.starter-dialog{background:#faf8ef;-webkit-backdrop-filter:none;backdrop-filter:none}}

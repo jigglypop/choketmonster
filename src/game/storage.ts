@@ -8,7 +8,7 @@ import { OpenWorldSimulation, type OpenWorldSnapshot } from '../openworld/simula
 
 export type ViewState = { position: MapPosition; learning: boolean; rewards?: Record<string, number>; field?: FieldSnapshot; fieldPreferences?: { paused: boolean; learning: boolean; selectedId: string }; openWorld?: OpenWorldSnapshot; openWorldPaused?: boolean };
 export type SaveEnvelope = { format: 'choketmon'; version: 2; model: string; savedAt: string; graph: Graph; game: unknown; view: ViewState };
-const monsters = (game: GameState) => [...game.player.team, ...game.player.box, ...(game.battle?.enemy.team ?? []), ...(game.battle?.player.team ?? [])];
+const monsters = (game: GameState) => [...game.player.team, ...game.player.box, ...(game.battle?.enemy.team ?? []), ...(game.battle?.player.team ?? []), ...(game.captureOffer ? [game.captureOffer] : [])];
 const computationalGraph = (graph: Graph) => JSON.stringify({ kind: graph.kind, id: graph.id, nodes: graph.nodes,
   edges: graph.edges.map(({ source, target, weight }) => ({ source, target, weight })),
   source: graph.provenance.source, version: graph.provenance.version, sha256: graph.provenance.sha256 });

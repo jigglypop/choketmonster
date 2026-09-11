@@ -1,0 +1,138 @@
+{
+  "version": "20260911",
+  "license": "CC0-1.0",
+  "sourcePage": "https://kenney.nl/assets/nature-kit",
+  "archiveSha256": "fa7974a0d342bfe63c38664ba9f8ec1a4aab8ea25f099bdc56870e33588c4d9d",
+  "sourceVersion": "2.1",
+  "sourceUrl": "https://kenney.nl/media/pages/assets/nature-kit/37ac38a37b-1677698939/kenney_nature-kit.zip",
+  "conversion": "Bottom center origin, Y-up meters, baked transforms, nonmetallic woodland palette; original meshes preserved",
+  "assets": [
+    {
+      "id": "rock-tall",
+      "file": "rock-tall.glb",
+      "bytes": 5740,
+      "sha256": "da8d7b5ac7e9d7cd77998047259e14c8af66c094052a3cfd4b561a1e1aa10a04",
+      "sourceFile": "rock_tallC.glb",
+      "sourceSha256": "87943b8b0d244ec9832d5dca9bf3cee2ab62aaa81797749f21a972f85c1f3be4",
+      "dimensions": {
+        "x": 1.6315,
+        "y": 2.8,
+        "z": 1.5611
+      },
+      "bounds": {
+        "min": [
+          -0.8157,
+          0.0,
+          -0.7805
+        ],
+        "max": [
+          0.8157,
+          2.8,
+          0.7805
+        ]
+      },
+      "triangles": 37,
+      "meshCount": 1,
+      "materials": [
+        "_defaultMat",
+        "dirt",
+        "grass"
+      ],
+      "validation": {
+        "meshCount": 1,
+        "triangles": 37,
+        "materialCount": 3,
+        "bottomY": 0.0,
+        "dimensions": {
+          "x": 1.6315,
+          "y": 2.8,
+          "z": 1.5611
+        }
+      }
+    },
+    {
+      "id": "rock-ridge",
+      "file": "rock-ridge.glb",
+      "bytes": 7004,
+      "sha256": "a7c8eb594276a307338709eaa43bb44390437b81d11bff63a5d4be0744681c67",
+      "sourceFile": "rock_tallG.glb",
+      "sourceSha256": "831683e6f920d0d6156132f73a1078ed4d0470bc3e862eff4436763898c68a96",
+      "dimensions": {
+        "x": 1.0855,
+        "y": 2.0,
+        "z": 1.2535
+      },
+      "bounds": {
+        "min": [
+          -0.5428,
+          0.0,
+          -0.6267
+        ],
+        "max": [
+          0.5428,
+          2.0,
+          0.6267
+        ]
+      },
+      "triangles": 62,
+      "meshCount": 1,
+      "materials": [
+        "_defaultMat.002",
+        "dirt.002",
+        "grass.002"
+      ],
+      "validation": {
+        "meshCount": 1,
+        "triangles": 62,
+        "materialCount": 3,
+        "bottomY": 0.0,
+        "dimensions": {
+          "x": 1.0855,
+          "y": 2.0,
+          "z": 1.2535
+        }
+      }
+    },
+    {
+      "id": "cliff",
+      "file": "cliff.glb",
+      "bytes": 3124,
+      "sha256": "18be3955d9d6196c81576e391056016bc71ff642761da1a416b7f0077649c889",
+      "sourceFile": "cliff_rock.glb",
+      "sourceSha256": "64b555b394b4312938ccd389862d5c01beb3fc417100aa41bb1e5e96a9889de0",
+      "dimensions": {
+        "x": 3.2,
+        "y": 3.2,
+        "z": 0.5392
+      },
+      "bounds": {
+        "min": [
+          -1.6,
+          -0.0,
+          -0.2696
+        ],
+        "max": [
+          1.6,
+          3.2,
+          0.2696
+        ]
+      },
+      "triangles": 32,
+      "meshCount": 1,
+      "materials": [
+        "dirt.004"
+      ],
+      "validation": {
+        "meshCount": 1,
+        "triangles": 32,
+        "materialCount": 1,
+        "bottomY": -0.0,
+        "dimensions": {
+          "x": 3.2,
+          "y": 3.2,
+          "z": 0.5392
+        }
+      }
+    }
+  ]
+}

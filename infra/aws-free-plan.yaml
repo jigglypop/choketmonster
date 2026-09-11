@@ -1,0 +1,48 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Optional global WAF and USD 0 CloudFront flat-rate plan for Choketmonster.
+
+Parameters:
+  DistributionArn:
+    Type: String
+    AllowedPattern: '^arn:[a-z0-9-]+:cloudfront::[0-9]{12}:distribution/[A-Z0-9]+$'
+  ActivateSubscription:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['false', 'true']
+
+Conditions:
+  Activate: !Equals [!Ref ActivateSubscription, 'true']
+
+Resources:
+  WebAcl:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: !Sub '${AWS::StackName}-web-acl'
+      Scope: CLOUDFRONT
+      DefaultAction:
+        Allow: {}
+      VisibilityConfig:
+        CloudWatchMetricsEnabled: true
+        MetricName: !Sub '${AWS::StackName}-web-acl'
+        SampledRequestsEnabled: true
+      Tags:
+        - Key: application
+          Value: choketmonster
+
+  FreePlan:
+    Type: AWS::PricingPlanManager::Subscription
+    Condition: Activate
+    Properties:
+      PlanFamily: CloudFront
+      PlanTier: FREE
+      UsageLevel: DEFAULT
+      ResourceArns:
+        - !Ref DistributionArn
+        - !GetAtt WebAcl.Arn
+
+Outputs:
+  WebAclArn:
+    Value: !GetAtt WebAcl.Arn
+  SubscriptionArn:
+    Condition: Activate
+    Value: !GetAtt FreePlan.Arn

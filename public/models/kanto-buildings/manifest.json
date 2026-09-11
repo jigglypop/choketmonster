@@ -1,0 +1,205 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "scripts/fetch-kanto-assets.py with Blender 5.2.1 LTS",
+  "license": "CC0-1.0",
+  "licenseTexts": [
+    "/models/kanto-buildings/LICENSE-KENNEY-SUBURBAN-CC0.txt",
+    "/models/kanto-buildings/LICENSE-KENNEY-COMMERCIAL-CC0.txt"
+  ],
+  "sourceReceipt": "data/local/kanto-assets/source-receipt.json",
+  "coordinateSystem": "glTF Y-up; dimensions are Three.js x/y/z metres; bottom-center pivot",
+  "totalBytes": 461804,
+  "totalTriangles": 6822,
+  "assets": [
+    {
+      "id": "town-house",
+      "role": "residence",
+      "sourcePackage": "suburban-2.0",
+      "sourceFile": "Models/GLB format/building-type-n.glb",
+      "sourceFileSha256": "f2a29ececcca4a27bbef187caba0e7bb0e35de7a0de9742a8b8440ce6874c48c",
+      "textureVariation": "embedded-default",
+      "file": "public/models/kanto-buildings/town-house.glb",
+      "bytes": 108340,
+      "sha256": "b4742c7bb903f9b8e41a63a4af67dd498444dd2fcca4cb1856fc5cac4dd422b5",
+      "dimensions": {
+        "x": 2.75,
+        "y": 1.7532,
+        "z": 2.1237
+      },
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": 1,
+      "pivot": "bottom-center",
+      "meshBudget": {
+        "triangles": 1612,
+        "vertices": 2664,
+        "maxTriangles": 10000
+      },
+      "url": "/models/kanto-buildings/town-house.glb?v=b4742c7bb903",
+      "deliveredValidation": {
+        "dimensions": {
+          "x": 2.75,
+          "y": 1.7532,
+          "z": 2.1237
+        },
+        "bottomY": 0.0,
+        "triangles": 1612
+      }
+    },
+    {
+      "id": "town-house-large",
+      "role": "residence-large",
+      "sourcePackage": "suburban-2.0",
+      "sourceFile": "Models/GLB format/building-type-d.glb",
+      "sourceFileSha256": "a41cd28265b2b224e700373c3a8356562619699998b7fa4d70ed41de629a6731",
+      "textureVariation": "embedded-default",
+      "file": "public/models/kanto-buildings/town-house-large.glb",
+      "bytes": 114104,
+      "sha256": "b40ea2fd5a6b79a60cfa8a60995f3fd5256647bc96849e074143b50c8a9542a0",
+      "dimensions": {
+        "x": 3.15,
+        "y": 2.2194,
+        "z": 1.8437
+      },
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": 1,
+      "pivot": "bottom-center",
+      "meshBudget": {
+        "triangles": 1757,
+        "vertices": 2811,
+        "maxTriangles": 10000
+      },
+      "url": "/models/kanto-buildings/town-house-large.glb?v=b40ea2fd5a6b",
+      "deliveredValidation": {
+        "dimensions": {
+          "x": 3.15,
+          "y": 2.2194,
+          "z": 1.8437
+        },
+        "bottomY": 0.0,
+        "triangles": 1757
+      }
+    },
+    {
+      "id": "town-clinic",
+      "role": "clinic",
+      "sourcePackage": "suburban-2.0",
+      "sourceFile": "Models/GLB format/building-type-a.glb",
+      "sourceFileSha256": "49f32e20b9dcd24b1c8f6d6488807b8c8cb684cbb595bfb0bb36ad903e470faa",
+      "textureVariation": "variation-b.png",
+      "file": "public/models/kanto-buildings/town-clinic.glb",
+      "bytes": 81092,
+      "sha256": "3b049c935182ae5b6969637b46bc4f74ec888171804a78e21b229162fe21ce1d",
+      "dimensions": {
+        "x": 3.2,
+        "y": 2.0518,
+        "z": 2.5308
+      },
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": 1,
+      "pivot": "bottom-center",
+      "meshBudget": {
+        "triangles": 1174,
+        "vertices": 1870,
+        "maxTriangles": 10000
+      },
+      "url": "/models/kanto-buildings/town-clinic.glb?v=3b049c935182",
+      "deliveredValidation": {
+        "dimensions": {
+          "x": 3.2,
+          "y": 2.0518,
+          "z": 2.5308
+        },
+        "bottomY": 0.0,
+        "triangles": 1174
+      }
+    },
+    {
+      "id": "town-mart",
+      "role": "shop",
+      "sourcePackage": "suburban-2.0",
+      "sourceFile": "Models/GLB format/building-type-h.glb",
+      "sourceFileSha256": "b8b8eb7a50f85fa20b4862723e133157f553d69a0daad39b850ddbd2099ebb84",
+      "textureVariation": "variation-a.png",
+      "file": "public/models/kanto-buildings/town-mart.glb",
+      "bytes": 57584,
+      "sha256": "91d33bcbe9043c8b1b52c0c2c112529925ad409eefa176a3ee448bd271f541ef",
+      "dimensions": {
+        "x": 3.2,
+        "y": 1.8154,
+        "z": 2.2548
+      },
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": 1,
+      "pivot": "bottom-center",
+      "meshBudget": {
+        "triangles": 770,
+        "vertices": 1228,
+        "maxTriangles": 10000
+      },
+      "url": "/models/kanto-buildings/town-mart.glb?v=91d33bcbe904",
+      "deliveredValidation": {
+        "dimensions": {
+          "x": 3.2,
+          "y": 1.8154,
+          "z": 2.2548
+        },
+        "bottomY": 0.0,
+        "triangles": 770
+      }
+    },
+    {
+      "id": "town-gym",
+      "role": "gym",
+      "sourcePackage": "commercial-2.1",
+      "sourceFile": "Models/GLB format/building-e.glb",
+      "sourceFileSha256": "edbe5b49858a3c83e72d3cf496129c06082ef3a3d6005769f8883138e275b456",
+      "textureVariation": "embedded-default",
+      "file": "public/models/kanto-buildings/town-gym.glb",
+      "bytes": 100684,
+      "sha256": "2ca3457983507007f83a5c0803ca83df49c5a1214312d312ae940fb263d4ca87",
+      "dimensions": {
+        "x": 3.2,
+        "y": 1.7424,
+        "z": 1.9666
+      },
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": 1,
+      "pivot": "bottom-center",
+      "meshBudget": {
+        "triangles": 1509,
+        "vertices": 2443,
+        "maxTriangles": 10000
+      },
+      "url": "/models/kanto-buildings/town-gym.glb?v=2ca345798350",
+      "deliveredValidation": {
+        "dimensions": {
+          "x": 3.2,
+          "y": 1.7424,
+          "z": 1.9666
+        },
+        "bottomY": 0.0,
+        "triangles": 1509
+      }
+    }
+  ]
+}

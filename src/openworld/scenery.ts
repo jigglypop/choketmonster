@@ -1,9 +1,12 @@
 import type { WorldSample } from './types';
 import { terrainSurfaceHeight } from './grounding';
+import { distanceToKantoPath, KANTO_LOCATIONS, KANTO_SURFACE_CONNECTIONS } from './kanto';
 
 export type SceneryAssetId =
   | 'tree-round' | 'tree-oak' | 'tree-pine' | 'tree-fat' | 'tree-thin'
   | 'rock-large' | 'rock-moss' | 'rock-small' | 'rock-flat'
+  | 'rock-tall' | 'rock-ridge' | 'cliff'
+  | 'moss-boulder' | 'moss-stone' | 'fern'
   | 'grass-tuft' | 'grass-soft'
   | 'flower-red' | 'flower-yellow' | 'flower-purple' | 'bush'
   | 'mushroom-cluster' | 'lily' | 'stump' | 'fence' | 'fallen-log';
@@ -17,11 +20,15 @@ export type SceneryPlacement = {
 };
 
 const ASSET_VERSION = '20260911-woodland';
-const assetUrl = (id: SceneryAssetId) => `/models/openworld/props/${id}.glb?v=${ASSET_VERSION}`;
+const assetUrl = (id: SceneryAssetId) => ['moss-boulder', 'moss-stone', 'fern'].includes(id)
+  ? `/models/openworld/nature-detail/${id}.glb?v=20260911` : ['rock-tall', 'rock-ridge', 'cliff'].includes(id)
+  ? `/models/openworld/rocks/${id}.glb?v=20260911` : `/models/openworld/props/${id}.glb?v=${ASSET_VERSION}`;
 
 export const SCENERY_ASSETS: ReadonlyArray<{ id: SceneryAssetId; url: string }> = [
   'tree-round', 'tree-oak', 'tree-pine', 'tree-fat', 'tree-thin',
   'rock-large', 'rock-moss', 'rock-small', 'rock-flat',
+  'rock-tall', 'rock-ridge', 'cliff',
+  'moss-boulder', 'moss-stone', 'fern',
   'grass-tuft', 'grass-soft', 'flower-red', 'flower-yellow', 'flower-purple',
   'bush', 'mushroom-cluster', 'lily', 'stump', 'fence', 'fallen-log',
 ].map(id => ({ id: id as SceneryAssetId, url: assetUrl(id as SceneryAssetId) }));
@@ -29,6 +36,8 @@ export const SCENERY_ASSETS: ReadonlyArray<{ id: SceneryAssetId; url: string }> 
 const emptyPlacements = (): Record<SceneryAssetId, SceneryPlacement[]> => ({
   'tree-round': [], 'tree-oak': [], 'tree-pine': [], 'tree-fat': [], 'tree-thin': [],
   'rock-large': [], 'rock-moss': [], 'rock-small': [], 'rock-flat': [],
+  'rock-tall': [], 'rock-ridge': [], cliff: [],
+  'moss-boulder': [], 'moss-stone': [], fern: [],
   'grass-tuft': [], 'grass-soft': [],
   'flower-red': [], 'flower-yellow': [], 'flower-purple': [], bush: [],
   'mushroom-cluster': [], lily: [], stump: [], fence: [], 'fallen-log': [],
@@ -73,12 +82,15 @@ export function createSceneryPlacements(sampleWorld: (x: number, z: number) => W
       const px = x + (noise(x, z, 1) - .5) * 2.4;
       const pz = z + (noise(x, z, 2) - .5) * 2.4;
       const sample = surfaceSample(sampleWorld, px, pz);
+      const landmarkDistance = Math.min(...KANTO_LOCATIONS.map(item => Math.hypot(px - item.x, pz - item.z)));
+      if (distanceToKantoPath(px, pz) < 4.7 || landmarkDistance < 9) continue;
       if (sample.biome === 'forest' && sample.blocked) {
         const selector = noise(px, pz, 3);
         place(result, selector < .24 ? 'tree-round' : selector < .5 ? 'tree-oak' : selector < .7 ? 'tree-fat' : selector < .88 ? 'tree-thin' : 'tree-pine', px, pz, sample, .82, 1.16, 4);
-        if (noise(px, pz, 5) > .5) place(result, 'bush', px + .75, pz - .55, surfaceSample(sampleWorld, px + .75, pz - .55), .75, 1.15, 6);
+        if (noise(px, pz, 5) > .5) place(result, 'fern', px + .75, pz - .55, surfaceSample(sampleWorld, px + .75, pz - .55), .85, 1.35, 6);
       } else if (sample.biome === 'rock' && sample.blocked) {
-        place(result, noise(px, pz, 7) < .48 ? 'rock-large' : 'rock-moss', px, pz, sample, .72, 1.18, 8);
+        const rock = noise(px, pz, 7);
+        place(result, rock < .25 ? 'rock-tall' : rock < .45 ? 'rock-ridge' : rock < .62 ? 'cliff' : 'moss-boulder', px, pz, sample, .72, 1.18, 8);
         place(result, 'rock-flat', px + .9, pz + .65, surfaceSample(sampleWorld, px + .9, pz + .65), .72, 1.1, 9);
       }
     }
@@ -92,7 +104,8 @@ export function createSceneryPlacements(sampleWorld: (x: number, z: number) => W
       const pz = z + (noise(x, z, 11) - .5) * 2.2;
       const sample = surfaceSample(sampleWorld, px, pz);
       if (sample.blocked || sample.biome === 'lake') continue;
-      if (Math.hypot(px, pz) < 9.5) continue;
+      const landmarkDistance = Math.min(...KANTO_LOCATIONS.map(item => Math.hypot(px - item.x, pz - item.z)));
+      if (distanceToKantoPath(px, pz) < 4.7 || landmarkDistance < 9) continue;
       const selector = noise(px, pz, 12);
       if (sample.biome === 'meadow') {
         if (selector < .62) {
@@ -104,9 +117,11 @@ export function createSceneryPlacements(sampleWorld: (x: number, z: number) => W
         } else if (selector < .73) place(result, 'flower-yellow', px, pz, sample, .78, 1.18, 18);
         else if (selector < .82) place(result, 'flower-red', px, pz, sample, .82, 1.22, 19);
         else if (selector < .89) place(result, 'flower-purple', px, pz, sample, .78, 1.18, 20);
-        else if (selector < .94) place(result, 'rock-flat', px, pz, sample, .7, 1.12, 21);
+        else if (selector < .92) place(result, 'moss-stone', px, pz, sample, .5, .85, 21);
+        else if (selector < .97) place(result, 'fern', px, pz, sample, .7, 1.12, 29);
       } else if (sample.biome === 'forest') {
-        if (selector < .32) place(result, 'bush', px, pz, sample, .72, 1.15, 22);
+        if (selector < .12) place(result, 'moss-stone', px, pz, sample, .65, .95, 30);
+        else if (selector < .32) place(result, 'fern', px, pz, sample, .72, 1.15, 22);
         else if (selector < .64) place(result, selector < .48 ? 'grass-tuft' : 'grass-soft', px, pz, sample, .65, 1.12, 23);
         else if (selector < .75) place(result, 'mushroom-cluster', px, pz, sample, .72, 1.15, 24);
         else if (selector > .94) place(result, selector > .975 ? 'fallen-log' : 'stump', px, pz, sample, .85, 1.15, 25);
@@ -118,29 +133,24 @@ export function createSceneryPlacements(sampleWorld: (x: number, z: number) => W
     }
   }
 
-  // Floating vegetation stays on the rendered water plane and away from its edge.
-  for (let x = 26; x <= 58; x += 4.1) {
-    for (let z = -44; z <= -12; z += 4.1) {
-      if (Math.hypot(x - 42, z + 28) >= 16 || noise(x, z, 29) > .62) continue;
-      result.lily.push({ x, y: -.49, z, rotationY: noise(x, z, 30) * Math.PI * 2, scale: .72 + noise(x, z, 31) * .42 });
+  // Route-edge fences sit just outside the logical corridor. End sections stay
+  // open so town squares and junctions remain readable gateways.
+  const locations = new Map(KANTO_LOCATIONS.map(item => [item.id, item]));
+  for (const [fromId, toId] of KANTO_SURFACE_CONNECTIONS) {
+    const from = locations.get(fromId)!, to = locations.get(toId)!;
+    if (from.kind === 'sea' || to.kind === 'sea') continue;
+    const dx = to.x - from.x, dz = to.z - from.z, length = Math.hypot(dx, dz);
+    if (length < 13) continue;
+    const sideX = -dz / length * 4.15, sideZ = dx / length * 4.15;
+    const rotationY = -Math.atan2(dz, dx);
+    for (let along = 6; along <= length - 6; along += 4.2) {
+      const t = along / length, centerX = from.x + dx * t, centerZ = from.z + dz * t;
+      for (const side of [-1, 1]) {
+        const x = centerX + sideX * side, z = centerZ + sideZ * side, sample = surfaceSample(sampleWorld, x, z);
+        if (!sample.blocked) continue;
+        result.fence.push({ x, y: sample.height, z, rotationY, scale: 1 });
+      }
     }
-  }
-
-  // A short fence line gives the starting meadow a trainer-scale landmark.
-  for (let x = -15; x <= 15; x += 3.33) {
-    const z = 119.6;
-    const sample = surfaceSample(sampleWorld, x, z);
-    if (!sample.blocked) place(result, 'fence', x, z, sample, 1, 1, 30);
-  }
-  // A small passable grove silhouettes the forest direction from the spawn.
-  // These are visual landmarks, deliberately without physics colliders.
-  for (const [x, z] of [[-13, -12], [-18, -17], [-24, -11], [-28, -20]] as const) {
-    const sample = surfaceSample(sampleWorld, x, z);
-    if (!sample.blocked && sample.biome !== 'lake') place(result, 'tree-round', x, z, sample, .68, .82, 35);
   }
   return result;
 }
-
-export const TRAIL_POINTS: ReadonlyArray<readonly [number, number]> = [
-  [-108, 18], [-76, 14], [-44, 9], [-12, 3], [20, 6], [51, 18], [80, 37], [108, 54],
-];

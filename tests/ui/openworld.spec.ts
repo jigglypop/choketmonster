@@ -10,7 +10,8 @@ import { getSpecies } from '../../src/data/pokemon';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
 const policy = JSON.parse(readFileSync('public/data/openworld-policy.json', 'utf8')) as FieldPolicy;
-async function start(page: Page) { await page.goto('/'); await page.locator('[data-starter="1"]').click(); await expect(page.locator('#ow-host canvas')).toBeVisible(); await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 20000 }); }
+test.setTimeout(90000);
+async function start(page: Page) { await page.goto('/'); await page.locator('[data-starter="1"]').click(); await page.locator('#world-mode-manual').click(); await page.locator('#world-auto-hunt').uncheck(); await expect(page.locator('#ow-host canvas')).toBeVisible(); await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 20000 }); }
 async function exported(page: Page) {
   await page.locator('[data-tab="lab"]').click();
   const download = page.waitForEvent('download'); await page.locator('#export-save').click();
@@ -26,9 +27,11 @@ async function load(page: Page, simulation: OpenWorldSimulation) {
 test('open world moves, pauses, and restores all brains without duplicating topology', async ({ page }) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await start(page);
+  await page.locator('#world-mode-manual').click();
   const position = await page.locator('#world-position').innerText();
-  await page.keyboard.down('d'); await page.waitForTimeout(600); await page.keyboard.up('d');
-  await expect(page.locator('#world-position')).not.toHaveText(position);
+  await page.keyboard.down('s');
+  try { await expect(page.locator('#world-position')).not.toHaveText(position); }
+  finally { await page.keyboard.up('s'); }
   await page.locator('#world-pause').click();
   const tick = await page.locator('#ow-host').getAttribute('data-tick');
   await page.waitForTimeout(550);
@@ -50,6 +53,7 @@ test('automatic world battle rewards, levels, evolves and retains the same world
   await start(page);
   const game = createGame(1, 'ui-world-win'); game.player.team = [createMonster(game, 1, 15)];
   const lead = game.player.team[0]; lead.xp = experienceAtLevel(16, getSpecies(1).growthRate) - 1;
+  lead.moves = [{ moveId: 33, pp: 35 }];
   const world = new OpenWorldSimulation(graph, game, 937, undefined, policy);
   world.startEncounter(world.entities.find(entity => entity.kind === 'wild')!.id);
   const enemy = game.battle!.enemy.team[0]; enemy.hp = 1; enemy.status = 'sleep'; enemy.statusTurns = 3;
@@ -58,6 +62,8 @@ test('automatic world battle rewards, levels, evolves and retains the same world
   await expect(page.locator('.world-move')).toHaveCount(4);
   await page.locator('[data-world-move="0"]').click();
   await page.locator('#world-pause').click();
+  await expect(page.locator('#world-capture-offer')).toBeVisible({ timeout: 15000 });
+  await page.locator('#world-win-release').click();
   await expect(page.locator('#world-battle-state')).toHaveText('접근하면 자동 배틀', { timeout: 15000 });
   await expect(page.locator('#ow-host canvas')).toBeVisible(); await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 20000 });
   await page.locator('#world-pause').click();

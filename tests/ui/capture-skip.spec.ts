@@ -1,0 +1,43 @@
+import { test, expect } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import { createGame } from '../../src/game/engine';
+import { defaultView, packSave } from '../../src/game/storage';
+import { OpenWorldSimulation } from '../../src/openworld/simulation';
+
+test('an imported zero-ball victory passes immediately and keeps automatic hunting enabled', async ({ page }) => {
+  test.setTimeout(120000);
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8'));
+  const policy = JSON.parse(readFileSync('public/data/openworld-policy.json', 'utf8'));
+  const game = createGame(1, 'capture-skip-ui');
+  const world = new OpenWorldSimulation(graph, game, 38220, undefined, policy);
+  world.setControlMode('manual');
+  world.startEncounter(world.entities.find(entity => entity.kind === 'wild')!.id);
+  game.battle!.player.team[0].moves = [{ moveId: 33, pp: 35 }];
+  Object.assign(game.battle!.enemy.team[0], { hp: 1, status: 'sleep', statusTurns: 3 });
+  world.requestAction({ type: 'move', index: 0 }); world.step({ deltaSeconds: 1 });
+  expect(game.captureOffer).toBeDefined();
+  game.inventory['poke-ball'] = game.inventory['great-ball'] = game.inventory['ultra-ball'] = 0;
+  world.setControlMode('auto'); world.setAutoCapture(true);
+  const save = packSave(game, graph, { ...defaultView(), learning: false, openWorld: world.snapshot(), openWorldPaused: false });
+
+  await page.goto('/'); await page.locator('[data-starter="1"]').click();
+  await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 60000 });
+  await page.locator('#import-file').setInputFiles({ name: 'zero-ball-victory.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(save)) });
+  await expect(page.locator('#world-ball-stock')).toContainText('볼 0개');
+  await expect(page.locator('#world-feed')).toContainText('놓아주었습니다', { timeout: 20000 });
+  await expect(page.locator('#world-capture-offer')).toBeHidden();
+  await expect(page.locator('#world-auto-hunt')).toBeChecked();
+  await expect(page.locator('#world-mode-auto')).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('#world-pause').click();
+  await page.locator('[data-tab="lab"]').click();
+  const downloaded = page.waitForEvent('download'); await page.locator('#export-save').click();
+  const current = JSON.parse(await readFile((await (await downloaded).path())!, 'utf8'));
+  expect(current.game.captureOffer).toBeUndefined();
+  expect(current.game.player.team).toHaveLength(1); expect(current.game.player.box).toHaveLength(0);
+  expect(current.view.openWorld.autoHunt).toBe(true);
+  expect(current.view.openWorld.tick).toBeGreaterThan(save.view.openWorld!.tick);
+  expect(errors).toEqual([]);
+});

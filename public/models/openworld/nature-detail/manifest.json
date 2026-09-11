@@ -1,0 +1,193 @@
+{
+  "version": "20260911",
+  "license": "CC0-1.0",
+  "assets": [
+    {
+      "id": "moss-boulder",
+      "file": "moss-boulder.glb",
+      "bytes": 515212,
+      "sha256": "365a40253efd80cd20b16377ff186efc35020843e38cf78e282132c64f007141",
+      "source": {
+        "id": "rock_moss_set_01",
+        "sourcePage": "https://polyhaven.com/a/rock_moss_set_01",
+        "authors": {
+          "Kless Gyzen": "All"
+        },
+        "license": "CC0-1.0",
+        "licenseUrl": "https://polyhaven.com/license",
+        "files": [
+          {
+            "file": "rock_moss_set_01/rock_moss_set_01_1k.gltf",
+            "sourceUrl": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/rock_moss_set_01/rock_moss_set_01_1k.gltf",
+            "bytes": 9987,
+            "sourceMd5": "75113cc1c21806cca5d8badad4737af7",
+            "sha256": "c36675aca9c6b2be7785c2534cf413b03ec82a5a2a5407a2b1c0cdb0346c9727"
+          },
+          {
+            "file": "rock_moss_set_01/textures/rock_moss_set_01_nor_gl_1k.jpg",
+            "sourceUrl": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/rock_moss_set_01/rock_moss_set_01_nor_gl_1k.jpg",
+            "bytes": 209975,
+            "sourceMd5": "eb7ebd31ad08e78d0497900652ff1568",
+            "sha256": "eb4aad3f207f1dc5b624d74ae240372171626a66912bd71adf7bd3e518181d6e"
+          },
+          {
+            "file": "rock_moss_set_01/rock_moss_set_01.bin",
+            "sourceUrl": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/rock_moss_set_01/rock_moss_set_01.bin",
+            "bytes": 1466380,
+            "sourceMd5": "207a51c9f56d34732e9814bbf9cc07b1",
+            "sha256": "de8360e6175879aaf02c171911069cf5f1852547f9ca7f10e440085dbcc3315e"
+          },
+          {
+            "file": "rock_moss_set_01/textures/rock_moss_set_01_rough_1k.jpg",
+            "sourceUrl": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/rock_moss_set_01/rock_moss_set_01_rough_1k.jpg",
+            "bytes": 82624,
+            "sourceMd5": "ed9d8a2c863262f76f881346e8047c6a",
+            "sha256": "4d6ec46623abd8e2cdb855f59c7ce31873ad61b36b60e4de579e9e776a497c6b"
+          },
+          {
+            "file": "rock_moss_set_01/textures/rock_moss_set_01_diff_1k.jpg",
+            "sourceUrl": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/rock_moss_set_01/rock_moss_set_01_diff_1k.jpg",
+            "bytes": 168099,
+            "sourceMd5": "b8742301e6b4bc5683d2de712e83f772",
+            "sha256": "40cea65d8aa4ee73a93b04af19963834d061eee9779c3fc2c1cba76eef812ccc"
+          }
+        ]
+      },
+      "selectedNode": "rock_moss_set_01_rock01",
+      "excluded": "Other source variants",
+      "conversion": "Selected original mesh; bottom center pivot, Y-up meters; UV-preserving decimation; original PBR maps",
+      "sourceTriangles": 11000,
+      "validation": {
+        "triangles": 1799,
+        "height": 1.350000023841858,
+        "uv": true,
+        "pivot": "bottom-center"
+      }
+    },
+    {
+      "id": "moss-stone",
+      "file": "moss-stone.glb",
+      "bytes": 495512,
+      "sha256": "4e6c76c0fdf647df0efb77d68ae9b4f3a644365b03bf920217443a34bc4c6836",
+      "source": {
+        "id": "rock_moss_set_01",
+        "sourcePage": "https://polyhaven.com/a/rock_moss_set_01",
+        "authors": {
+          "Kless Gyzen": "All"
+        },
+        "license": "CC0-1.0",
+        "licenseUrl": "https://polyhaven.com/license",
+        "files": [
+          {
+            "file": "rock_moss_set_01/rock_moss_set_01_1k.gltf",
+            "sourceUrl": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/rock_moss_set_01/rock_moss_set_01_1k.gltf",
+            "bytes": 9987,
+            "sourceMd5": "75113cc1c21806cca5d8badad4737af7",
+            "sha256": "c36675aca9c6b2be7785c2534cf413b03ec82a5a2a5407a2b1c0cdb0346c9727"
+          },
+          {
+            "file": "rock_moss_set_01/textures/rock_moss_set_01_nor_gl_1k.jpg",
+            "sourceUrl": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/rock_moss_set_01/rock_moss_set_01_nor_gl_1k.jpg",
+            "bytes": 209975,
+            "sourceMd5": "eb7ebd31ad08e78d0497900652ff1568",
+            "sha256": "eb4aad3f207f1dc5b624d74ae240372171626a66912bd71adf7bd3e518181d6e"
+          },
+          {
+            "file": "rock_moss_set_01/rock_moss_set_01.bin",
+            "sourceUrl": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/rock_moss_set_01/rock_moss_set_01.bin",
+            "bytes": 1466380,
+            "sourceMd5": "207a51c9f56d34732e9814bbf9cc07b1",
+            "sha256": "de8360e6175879aaf02c171911069cf5f1852547f9ca7f10e440085dbcc3315e"
+          },
+          {
+            "file": "rock_moss_set_01/textures/rock_moss_set_01_rough_1k.jpg",
+            "sourceUrl": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/rock_moss_set_01/rock_moss_set_01_rough_1k.jpg",
+            "bytes": 82624,
+            "sourceMd5": "ed9d8a2c863262f76f881346e8047c6a",
+            "sha256": "4d6ec46623abd8e2cdb855f59c7ce31873ad61b36b60e4de579e9e776a497c6b"
+          },
+          {
+            "file": "rock_moss_set_01/textures/rock_moss_set_01_diff_1k.jpg",
+            "sourceUrl": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/rock_moss_set_01/rock_moss_set_01_diff_1k.jpg",
+            "bytes": 168099,
+            "sourceMd5": "b8742301e6b4bc5683d2de712e83f772",
+            "sha256": "40cea65d8aa4ee73a93b04af19963834d061eee9779c3fc2c1cba76eef812ccc"
+          }
+        ]
+      },
+      "selectedNode": "rock_moss_set_01_rock03",
+      "excluded": "Other source variants",
+      "conversion": "Selected original mesh; bottom center pivot, Y-up meters; UV-preserving decimation; original PBR maps",
+      "sourceTriangles": 5000,
+      "validation": {
+        "triangles": 1199,
+        "height": 0.6200000047683716,
+        "uv": true,
+        "pivot": "bottom-center"
+      }
+    },
+    {
+      "id": "fern",
+      "file": "fern.glb",
+      "bytes": 1602292,
+      "sha256": "7333bd952456e2122b71bf0f1e6ac74715f33c251b63e7a87ffda767de859de6",
+      "source": {
+        "id": "fern_02",
+        "sourcePage": "https://polyhaven.com/a/fern_02",
+        "authors": {
+          "Rob Tuytel": "scanning",
+          "Rico Cilliers": "modeling"
+        },
+        "license": "CC0-1.0",
+        "licenseUrl": "https://polyhaven.com/license",
+        "files": [
+          {
+            "file": "fern_02/fern_02_1k.gltf",
+            "sourceUrl": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/fern_02/fern_02_1k.gltf",
+            "bytes": 6899,
+            "sourceMd5": "cf276874d37bfb73c299504a6b355b77",
+            "sha256": "33974295ee19670af4877705fc7d91f33f42d6302f0d44a625e072271223031f"
+          },
+          {
+            "file": "fern_02/textures/fern_02_arm_1k.jpg",
+            "sourceUrl": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fern_02/fern_02_arm_1k.jpg",
+            "bytes": 280359,
+            "sourceMd5": "1bbb2b22951f450720d28e17d93a2987",
+            "sha256": "ebfb5d76ce9cbdaec20bcd22dce9b755f0b1b8650ef29ca13555e3e6961025d7"
+          },
+          {
+            "file": "fern_02/textures/fern_02_diff_1k.jpg",
+            "sourceUrl": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fern_02/fern_02_diff_1k.jpg",
+            "bytes": 315705,
+            "sourceMd5": "82c18a6cfd5ae91c37c0e078f591181c",
+            "sha256": "a828a6e7b4c01c826911e2eac4b3afc7457dab7b3b392a31c681ed88b7d50029"
+          },
+          {
+            "file": "fern_02/textures/fern_02_nor_gl_1k.jpg",
+            "sourceUrl": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fern_02/fern_02_nor_gl_1k.jpg",
+            "bytes": 367222,
+            "sourceMd5": "43aed63dff79554f6064627515afd9d7",
+            "sha256": "45bce132c6e96a0864bc89ab5da51361ab3f4afa83a6669ae499ab5ca811f621"
+          },
+          {
+            "file": "fern_02/fern_02.bin",
+            "sourceUrl": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/fern_02/fern_02.bin",
+            "bytes": 176176,
+            "sourceMd5": "c061e9255f7d36ae9ce0e92ef3e100b2",
+            "sha256": "fe1abb762bcbbc7ad9e86925c8080437a62add257d9280e9142fdc85c226e64c"
+          }
+        ]
+      },
+      "selectedNode": "fern_02_a",
+      "excluded": "Other source variants",
+      "conversion": "Selected original mesh; bottom center pivot, Y-up meters; UV-preserving decimation; original PBR maps",
+      "sourceTriangles": 784,
+      "validation": {
+        "triangles": 784,
+        "height": 0.800000011920929,
+        "uv": true,
+        "pivot": "bottom-center"
+      }
+    }
+  ]
+}

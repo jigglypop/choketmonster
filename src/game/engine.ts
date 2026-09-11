@@ -1,6 +1,6 @@
 import { Brain, type BrainState } from '../core/brain';
 import { getMove, getSpecies, POKEMON } from '../data/pokemon';
-import type { BaseStats, Evolution, PokemonMove, PokemonSpecies } from './contracts';
+import type { BaseStats, Evolution, PokemonMove, PokemonSpecies, PokemonType } from './contracts';
 import { calculateDamage, catchProbability, turnOrder, typeMultiplier } from './battle';
 import { getRegion, REGIONS } from './regions';
 
@@ -51,12 +51,30 @@ export type BattleAction =
   | { type: 'run' };
 
 export type BattleLogEntry = { turn: number; text: string; kind: 'info' | 'damage' | 'status' | 'capture' | 'reward' };
+export type ExecutedMove = {
+  actorInstanceId: string;
+  targetInstanceId: string;
+  moveId: number;
+  moveType: PokemonType;
+  damageClass: PokemonMove['damageClass'];
+  damagingMove: boolean;
+  executed: true;
+  hit: boolean;
+  typeMultiplier: number;
+  damage: number;
+  result: 'hit' | 'missed' | 'immune' | 'failed' | 'status' | 'struggle';
+};
+export type ExperienceGain = { instanceId: string; amount: number; levelsGained: number; shared: boolean };
 export type BattleTurnResult = {
   battleEnded: boolean;
   outcome?: 'won' | 'lost' | 'caught' | 'escaped';
   playerAction: BattleAction;
   enemyAction?: { type: 'move'; index: number } | { type: 'wait' };
   events: BattleLogEntry[];
+  /** Moves that passed pre-action status/faint gates and were actually resolved. */
+  executedMoves: ExecutedMove[];
+  /** Per-individual XP actually applied for opponents defeated during this turn. */
+  experienceGains: ExperienceGain[];
   decisionSource: 'external-brain' | 'seeded-random';
 };
 
@@ -71,14 +89,18 @@ export type GameState = {
   regionId: string;
   defeatedGyms: number[];
   championDefeated: boolean;
+  /** Undefined in legacy schema-v2 saves is migrated to enabled by validateGame. */
+  experienceShare?: boolean;
   battle?: BattleState;
+  /** Open-world victory reward, held until the player catches or releases it. */
+  captureOffer?: Monster;
   logs: string[];
 };
 
 export type ExploreResult = { kind: 'encounter' | 'item' | 'money'; speciesId?: number; item?: InventoryItem; amount: number; text: string };
 
 export const ITEM_PRICES: Readonly<Record<InventoryItem, number>> = {
-  'poke-ball': 200, 'great-ball': 600, 'ultra-ball': 1200,
+  'poke-ball': 20, 'great-ball': 60, 'ultra-ball': 120,
   potion: 300, 'super-potion': 700, 'rare-candy': 2400,
   'fire-stone': 3000, 'water-stone': 3000, 'thunder-stone': 3000,
   'leaf-stone': 3000, 'moon-stone': 3000, 'link-cable': 4000,
@@ -175,7 +197,7 @@ export function createGame(starterId: 1 | 4 | 7, seed: number | string): GameSta
       'leaf-stone': 0, 'moon-stone': 0, 'link-cable': 0,
     },
     dex: { seen: [starterId], caught: [starterId] }, regionId: REGIONS[0].id,
-    defeatedGyms: [], championDefeated: false, logs: [],
+    defeatedGyms: [], championDefeated: false, experienceShare: true, logs: [],
   };
   state.player.team.push(createMonster(state, starterId, 5));
   addLog(state, `${getSpecies(starterId).name}와 모험을 시작했다.`);
@@ -332,7 +354,7 @@ function fixedMoveDamage(moveId: number, attacker: Monster, defender: Monster): 
   return undefined;
 }
 
-function performMove(state: GameState, battle: BattleState, attacker: Monster, defender: Monster, index: number, events: BattleLogEntry[]): void {
+function performMove(state: GameState, battle: BattleState, attacker: Monster, defender: Monster, index: number, events: BattleLogEntry[], executedMoves: ExecutedMove[]): void {
   if (attacker.hp <= 0) return;
   if (attacker.status === 'sleep') {
     attacker.statusTurns = Math.max(0, (attacker.statusTurns ?? 1) - 1);
@@ -354,17 +376,32 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
   if (!slot || slot.pp <= 0) {
     const damage = Math.max(1, Math.floor(defender.stats.hp / 8)); defender.hp = Math.max(0, defender.hp - damage);
     attacker.hp = Math.max(0, attacker.hp - Math.max(1, Math.floor(attacker.stats.hp / 4)));
-    events.push(event(battle, `${attacker.nickname}은(는) 발버둥쳐 ${damage} 피해를 주었다.`, 'damage')); return;
+    events.push(event(battle, `${attacker.nickname}은(는) 발버둥쳐 ${damage} 피해를 주었다.`, 'damage'));
+    executedMoves.push({ actorInstanceId: attacker.instanceId, targetInstanceId: defender.instanceId, moveId: -1,
+      moveType: 'normal', damageClass: 'physical', damagingMove: true, executed: true, hit: true,
+      typeMultiplier: 1, damage, result: 'struggle' });
+    return;
   }
   slot.pp--; const move = getMove(slot.moveId);
+  const damagingMove = move.damageClass !== 'status' && (move.power > 0 || fixedMoveDamage(move.id, attacker, defender) !== undefined || [12, 32, 90].includes(move.id));
   const attackerStages = battle.statStages?.[attacker.instanceId] ?? {}; const defenderStages = battle.statStages?.[defender.instanceId] ?? {};
   const accuracy = move.accuracy * stageMultiplier(attackerStages.accuracy) / stageMultiplier(defenderStages.evasion);
-  if (move.accuracy > 0 && random(state) * 100 >= accuracy) { events.push(event(battle, `${attacker.nickname}의 ${move.name}은(는) 빗나갔다.`)); return; }
+  if (move.accuracy > 0 && random(state) * 100 >= accuracy) {
+    events.push(event(battle, `${attacker.nickname}의 ${move.name}은(는) 빗나갔다.`));
+    executedMoves.push({ actorInstanceId: attacker.instanceId, targetInstanceId: defender.instanceId,
+      moveId: move.id, moveType: move.type, damageClass: move.damageClass, damagingMove,
+      executed: true, hit: false, typeMultiplier: 1, damage: 0, result: 'missed' });
+    return;
+  }
 
   if (move.id === 144) {
     battle.transformations ??= {};
     battle.transformations[attacker.instanceId] = { speciesId: effectiveSpeciesId(battle, defender), stats: structuredClone(effectiveStats(battle, defender)), moves: effectiveMoves(battle, defender).map((entry) => ({ moveId: entry.moveId, pp: Math.min(5, getMove(entry.moveId).pp) })) };
-    events.push(event(battle, `${attacker.nickname}은(는) ${defender.nickname}의 모습으로 변신했다.`, 'status')); return;
+    events.push(event(battle, `${attacker.nickname}은(는) ${defender.nickname}의 모습으로 변신했다.`, 'status'));
+    executedMoves.push({ actorInstanceId: attacker.instanceId, targetInstanceId: defender.instanceId,
+      moveId: move.id, moveType: move.type, damageClass: move.damageClass, damagingMove: false,
+      executed: true, hit: true, typeMultiplier: 1, damage: 0, result: 'status' });
+    return;
   }
 
   let totalDamage = 0; let multiplier = 1;
@@ -419,6 +456,11 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
     else { ailmentTarget.status = move.ailment; ailmentTarget.statusTurns = move.ailment === 'sleep' ? 2 + Math.floor(random(state) * 3) : move.ailment === 'confusion' || move.ailment === 'trap' ? 2 + Math.floor(random(state) * 4) : undefined; events.push(event(battle, `${ailmentTarget.nickname}은(는) ${move.ailment} 상태가 되었다.`, 'status')); }
   }
   if (!totalDamage && !move.statChanges?.length && !move.healing && !move.ailment && move.id !== 144) events.push(event(battle, `${move.name}의 특수 효과는 이 로컬 규칙에서 축약되어 변화가 없었다.`));
+  const failed = isOhko && attacker.level < defender.level;
+  executedMoves.push({ actorInstanceId: attacker.instanceId, targetInstanceId: defender.instanceId,
+    moveId: move.id, moveType: move.type, damageClass: move.damageClass, damagingMove,
+    executed: true, hit: true, typeMultiplier: multiplier, damage: totalDamage,
+    result: multiplier === 0 ? 'immune' : failed ? 'failed' : damagingMove ? 'hit' : 'status' });
 }
 
 function residual(battle: BattleState, monster: Monster, events: BattleLogEntry[]): void {
@@ -432,8 +474,12 @@ function residual(battle: BattleState, monster: Monster, events: BattleLogEntry[
   }
 }
 
-function gainExperience(monster: Monster, amount: number, events?: BattleLogEntry[], battle?: BattleState): void {
-  monster.xp += amount;
+function gainExperience(monster: Monster, amount: number, events?: BattleLogEntry[], battle?: BattleState, shared = false): ExperienceGain | undefined {
+  if (monster.level >= 100) return undefined;
+  const applied = Math.max(0, Math.floor(amount));
+  if (!applied) return undefined;
+  const levelBefore = monster.level;
+  monster.xp += applied;
   while (monster.level < 100 && monster.xp >= experienceAtLevel(monster.level + 1, getSpecies(monster.speciesId).growthRate)) {
     const oldMax = monster.stats.hp;
     monster.level++;
@@ -448,9 +494,10 @@ function gainExperience(monster: Monster, amount: number, events?: BattleLogEntr
     }
     if (events && battle) events.push(event(battle, `${monster.nickname}은(는) 레벨 ${monster.level}이 되었다.`, 'reward'));
   }
+  return { instanceId: monster.instanceId, amount: applied, levelsGained: monster.level - levelBefore, shared };
 }
 
-function concludeIfNeeded(state: GameState, battle: BattleState, events: BattleLogEntry[]): BattleTurnResult['outcome'] | undefined {
+function concludeIfNeeded(state: GameState, battle: BattleState, events: BattleLogEntry[], experienceGains: ExperienceGain[]): BattleTurnResult['outcome'] | undefined {
   if (!battle.player.team.some((monster) => monster.hp > 0)) {
     recoverAfterDefeat(state);
     events.push(event(battle, '전멸하여 치료소로 돌아왔다.'));
@@ -459,7 +506,19 @@ function concludeIfNeeded(state: GameState, battle: BattleState, events: BattleL
   const enemy = active(battle.enemy);
   if (enemy.hp <= 0) {
     const winner = active(battle.player);
-    gainExperience(winner, Math.max(1, Math.floor(getSpecies(enemy.speciesId).baseExperience * enemy.level / 7)), events, battle);
+    const fullAmount = Math.max(1, Math.floor(getSpecies(enemy.speciesId).baseExperience * enemy.level / 7));
+    if (winner.hp > 0) {
+      const activeGain = gainExperience(winner, fullAmount, events, battle, false);
+      if (activeGain) experienceGains.push(activeGain);
+    }
+    if (state.experienceShare !== false) {
+      const sharedAmount = Math.max(1, Math.floor(fullAmount * .5));
+      for (const teammate of battle.player.team) {
+        if (teammate.instanceId === winner.instanceId || teammate.hp <= 0) continue;
+        const sharedGain = gainExperience(teammate, sharedAmount, events, battle, true);
+        if (sharedGain) experienceGains.push(sharedGain);
+      }
+    }
     const next = battle.enemy.team.findIndex((monster) => monster.hp > 0);
     if (next >= 0) { battle.enemy.activeIndex = next; events.push(event(battle, `상대가 ${active(battle.enemy).nickname}을(를) 내보냈다.`)); }
     else {
@@ -495,10 +554,12 @@ export function actBattle(state: GameState, action: BattleAction, aiChoice?: num
   if (!battle) throw new Error('진행 중인 전투가 없습니다.');
   const events: BattleLogEntry[] = [];
   const enemyPick = pickEnemyMove(state, battle, active(battle.enemy), aiChoice);
-  const result: BattleTurnResult = { battleEnded: false, playerAction: action, enemyAction: enemyPick.wait ? { type: 'wait' } : { type: 'move', index: enemyPick.index }, events, decisionSource: enemyPick.source };
+  const executedMoves: ExecutedMove[] = [];
+  const experienceGains: ExperienceGain[] = [];
+  const result: BattleTurnResult = { battleEnded: false, playerAction: action, enemyAction: enemyPick.wait ? { type: 'wait' } : { type: 'move', index: enemyPick.index }, events, executedMoves, experienceGains, decisionSource: enemyPick.source };
   const enemyActs = (defender: Monster) => {
     if (enemyPick.wait) events.push(event(battle, `${active(battle.enemy).nickname}은(는) 기다렸다.`));
-    else performMove(state, battle, active(battle.enemy), defender, enemyPick.index, events);
+    else performMove(state, battle, active(battle.enemy), defender, enemyPick.index, events, executedMoves);
   };
 
   if (battle.awaitingSwitch && action.type !== 'switch') throw new Error('기절한 포켓몬을 교체해야 합니다.');
@@ -550,12 +611,12 @@ export function actBattle(state: GameState, action: BattleAction, aiChoice?: num
     const enemySlot = effectiveMoves(battle, enemy)[enemyPick.index];
     const enemyMove: PokemonMove = enemySlot ? getMove(enemySlot.moveId) : { id: -1, name: '발버둥', englishName: 'Struggle', type: 'normal', power: 50, accuracy: 100, pp: 1, damageClass: 'physical', priority: 0 };
     const order = turnOrder(combatant(player, battle), playerMove, combatant(enemy, battle), enemyMove, random(state));
-    if (order === 'player') { performMove(state, battle, player, enemy, resolvedPlayerIndex, events); if (enemyPick.wait) events.push(event(battle, `${enemy.nickname}은(는) 기다렸다.`)); else performMove(state, battle, enemy, player, enemyPick.index, events); }
-    else { if (enemyPick.wait) events.push(event(battle, `${enemy.nickname}은(는) 기다렸다.`)); else performMove(state, battle, enemy, player, enemyPick.index, events); performMove(state, battle, player, enemy, resolvedPlayerIndex, events); }
+    if (order === 'player') { performMove(state, battle, player, enemy, resolvedPlayerIndex, events, executedMoves); if (enemyPick.wait) events.push(event(battle, `${enemy.nickname}은(는) 기다렸다.`)); else performMove(state, battle, enemy, player, enemyPick.index, events, executedMoves); }
+    else { if (enemyPick.wait) events.push(event(battle, `${enemy.nickname}은(는) 기다렸다.`)); else performMove(state, battle, enemy, player, enemyPick.index, events, executedMoves); performMove(state, battle, player, enemy, resolvedPlayerIndex, events, executedMoves); }
   }
 
   residual(battle, active(battle.player), events); residual(battle, active(battle.enemy), events);
-  const outcome = concludeIfNeeded(state, battle, events);
+  const outcome = concludeIfNeeded(state, battle, events, experienceGains);
   if (outcome) { result.battleEnded = true; result.outcome = outcome; }
   else battle.turn++;
   for (const entry of events) addLog(state, entry.text);
@@ -585,7 +646,7 @@ export function buyItem(state: GameState, item: InventoryItem, quantity = 1): vo
   const cost = price * quantity;
   if (state.player.money < cost) throw new Error('돈이 부족합니다.');
   state.player.money -= cost; state.inventory[item] += quantity;
-  addLog(state, `${item} ${quantity}개를 샀다.`);
+  addLog(state, `${ITEM_LABELS[item]} ${quantity}개 · ₩${(ITEM_PRICES[item] * quantity).toLocaleString('ko-KR')} 구매 완료.`);
 }
 
 function allOwned(state: GameState): Monster[] { return [...state.player.team, ...state.player.box]; }
@@ -680,10 +741,26 @@ export function restoreGame(json: string): GameState {
   return validateGame(value);
 }
 
+/** Engineered victory rule: one available ball guarantees this defeated individual. */
+export function captureDefeatedWild(state: GameState, ball: BallItem): boolean {
+  const monster = state.captureOffer;
+  if (!monster || state.battle || !['poke-ball', 'great-ball', 'ultra-ball'].includes(ball) || state.inventory[ball] <= 0 || (state.player.team.length >= 6 && state.player.box.length >= 10000)) return false;
+  state.inventory[ball]--;
+  monster.hp = Math.max(1, monster.hp); monster.status = undefined; monster.statusTurns = undefined;
+  if (state.player.team.length < 6) state.player.team.push(monster); else state.player.box.push(monster);
+  state.dex.seen = uniqueSorted([...state.dex.seen, monster.speciesId]);
+  state.dex.caught = uniqueSorted([...state.dex.caught, monster.speciesId]);
+  state.captureOffer = undefined;
+  addLog(state, `${monster.nickname} 포획 성공! ${ITEM_LABELS[ball]} 1개를 사용했다.`);
+  return true;
+}
+
 export function validateGame(value: unknown): GameState {
   if (!value || typeof value !== 'object') throw new Error('저장 데이터는 객체여야 합니다.');
   const state = value as GameState;
   if (state.schemaVersion !== SAVE_SCHEMA_VERSION) throw new Error(`지원하지 않는 저장 스키마입니다: ${String(state.schemaVersion)}`);
+  if (state.experienceShare !== undefined && typeof state.experienceShare !== 'boolean') throw new Error('경험치 공유 설정이 손상되었습니다.');
+  state.experienceShare ??= true;
   if (typeof state.seed !== 'string' || !state.seed || state.seed.length > 200) throw new Error('시드가 손상되었습니다.');
   if (!Number.isInteger(state.rngState) || state.rngState <= 0 || state.rngState > 0xffffffff || !Number.isSafeInteger(state.nextInstanceId) || state.nextInstanceId < 1) throw new Error('난수/개체 ID 상태가 손상되었습니다.');
   if (!state.player || !Number.isSafeInteger(state.player.money) || state.player.money < 0 || !Number.isInteger(state.player.badges) || state.player.badges < 0 || state.player.badges > 8 || !Array.isArray(state.player.team) || !Array.isArray(state.player.box) || state.player.team.length < 1 || state.player.team.length > 6 || state.player.box.length > 10000) throw new Error('플레이어/팀/박스 데이터가 손상되었습니다.');
@@ -697,7 +774,8 @@ export function validateGame(value: unknown): GameState {
   if (region.minBadges > state.player.badges) throw new Error('잠기지 않은 지역 진행이 손상되었습니다.');
   if (state.dex.caught.some((id) => !state.dex.seen.includes(id))) throw new Error('잡은 도감은 발견 도감에 포함되어야 합니다.');
   const ids = new Set<string>(); let maximumGeneratedId = 0;
-  const monsters = [...state.player.team, ...state.player.box, ...(state.battle?.enemy.team ?? [])];
+  if (state.captureOffer && (state.battle || state.captureOffer.hp !== 0 || !state.dex.seen.includes(state.captureOffer.speciesId))) throw new Error('승리 후 포획 대상이 올바르지 않습니다.');
+  const monsters = [...state.player.team, ...state.player.box, ...(state.battle?.enemy.team ?? []), ...(state.captureOffer ? [state.captureOffer] : [])];
   for (const monster of monsters) {
     if (!monster || typeof monster.instanceId !== 'string' || ids.has(monster.instanceId)) throw new Error('개체 ID가 없거나 중복되었습니다.');
     ids.add(monster.instanceId); const species = getSpecies(monster.speciesId);
