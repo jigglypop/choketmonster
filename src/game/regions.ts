@@ -6,7 +6,7 @@ export type Region = {
   gym?: { badge: number; leader: string; speciesId: number; level: number };
 };
 
-const habitat = (name: string) => POKEMON.filter((species) => species.habitat === name).map((species) => species.id);
+const habitat = (name: string) => POKEMON.filter((species) => gameplayHabitat(species) === name).map((species) => species.id);
 
 /**
  * Every Kanto species has a direct, repeatable encounter source. Late legendary
@@ -37,8 +37,9 @@ export function speciesEncounterSources(speciesId: number): Region[] {
 
 export function assertAllSpeciesReachable(): true {
   const covered = new Set(REGIONS.flatMap((region) => [...region.encounterIds]));
-  const missing = Array.from({ length: 151 }, (_, index) => index + 1).filter((id) => !covered.has(id));
+  const missing = POKEMON.map(species => species.id).filter((id) => !covered.has(id));
   if (missing.length) throw new Error(`야생 출현 경로가 없는 종: ${missing.join(', ')}`);
   return true;
 }
 import { POKEMON } from '../data/pokemon';
+import { gameplayHabitat } from './habitat';

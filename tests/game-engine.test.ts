@@ -19,11 +19,11 @@ function wildBattle(state: ReturnType<typeof createGame>, speciesId: number, lev
   return battle;
 }
 
-describe('151종 로컬 게임 엔진', () => {
-  it('151종 각각에 반복 가능한 출현 지역을 제공한다', () => {
-    expect(POKEMON.map((species) => species.id)).toEqual(Array.from({ length: 151 }, (_, i) => i + 1));
+describe('전체 포켓몬 로컬 게임 엔진', () => {
+  it('전체 종 각각에 반복 가능한 출현 지역을 제공한다', () => {
+    expect(POKEMON.map((species) => species.id)).toEqual(Array.from({ length: 1025 }, (_, i) => i + 1));
     expect(assertAllSpeciesReachable()).toBe(true);
-    for (let id = 1; id <= 151; id++) expect(speciesEncounterSources(id).length).toBeGreaterThan(0);
+    for (let id = 1; id <= POKEMON.length; id++) expect(speciesEncounterSources(id).length).toBeGreaterThan(0);
     expect(REGIONS.filter((region) => region.gym)).toHaveLength(8);
     expect(speciesEncounterSources(150)[0].minBadges).toBe(8);
   });

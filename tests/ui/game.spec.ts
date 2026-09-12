@@ -16,8 +16,10 @@ async function start(page: Page) {
   await expect(page.locator('vite-error-overlay')).toHaveCount(0);
 }
 async function importGame(page: Page, game: GameState) {
+  // Controlled fixtures replace the global dex; keep the matching version record consistent.
+  game.versionCaught = { [game.adventureVersion ?? 'red']: [...game.dex.caught] };
   for (const mon of [...game.player.team, ...game.player.box, ...(game.battle?.enemy.team ?? [])]) controller.ensure(mon);
-  await page.locator('#import-file').setInputFiles({ name: 'fixture.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(packSave(game, graph, defaultView()))) });
+  await page.locator('#import-file').setInputFiles({ name: 'fixture.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(packSave(game, graph, { ...defaultView(), openWorldPaused: true }))) });
   await expect(page.getByRole('status')).toContainText('불러왔습니다');
 }
 async function exported(page: Page) {
@@ -26,14 +28,14 @@ async function exported(page: Page) {
   const file = await download; return JSON.parse(await readFile((await file.path())!, 'utf8'));
 }
 
-test('device-only save UI restores locally and shows server connectome status', async ({ page }) => {
+test('guest save UI restores locally and shows server connectome status', async ({ page }) => {
   const apiWrites: string[] = [];
   page.on('request', request => { if (request.method() !== 'GET' && new URL(request.url()).pathname.startsWith('/api/')) apiWrites.push(new URL(request.url()).pathname); });
   await page.route('**/api/auth/me', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user: null }) }));
   await page.route('**/api/connectome', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ available: true, graphId: 'male-cns-full', kind: 'connectome-full', nodes: 139255, edges: 52496440, activeEdges: 3100200 }) }));
   await page.goto('/');
-  await expect(page.locator('.device-storage')).toHaveText('이 기기에만 저장');
-  await expect(page.locator('#account-dialog,[data-open-auth],#logout-button')).toHaveCount(0);
+  await expect(page.locator('.device-storage')).toHaveText('이 기기에 저장');
+  await expect(page.locator('[data-open-auth]')).toHaveCount(1);
   await page.locator('[data-starter="1"]').click(); await expect(page.locator('#world-learning')).toBeChecked(); await page.locator('[data-tab="lab"]').click();
   await expect(page.locator('.graph-numbers')).toContainText('브라우저 뉴런');
   await expect(page.locator('.server-circuit')).toContainText('139,255'); await expect(page.locator('.server-circuit')).toContainText('52,496,440');
@@ -44,13 +46,13 @@ test('device-only save UI restores locally and shows server connectome status', 
   expect(apiWrites.filter(path => path.startsWith('/api/auth/') || path.startsWith('/api/saves/'))).toEqual([]);
 });
 
-test('real starter, map, all 151 local sprites, search, and an error-free desktop', async ({ page }) => {
+test('real starter, map, paginated national dex, search, and an error-free desktop', async ({ page }) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await start(page);
   await page.keyboard.press('ArrowLeft');
   await page.screenshot({ path: 'artifacts/ui-desktop.png', fullPage: true });
   await page.locator('[data-tab="dex"]').click();
-  await expect(page.locator('.dex-card')).toHaveCount(151);
+  await expect(page.locator('.dex-card')).toHaveCount(60);
   await page.locator('#dex-search').fill('피카츄');
   await expect(page.locator('.dex-card')).toHaveCount(1);
   await expect(page.locator('.dex-card img')).toHaveAttribute('src', '/pokemon/25.png');
@@ -138,10 +140,10 @@ test('stone and trade evolution keep identity and memories through the interface
   expect(save.game.player.team[1].brain.seed).toBe(kadabra.brain!.seed);
 });
 
-test('mobile uses local assets and shows actual connectome provenance', async ({ page }) => {
+test('mobile uses local assets and shows actual connectome provenance', async ({ page, baseURL }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const external: string[] = [];
-  await page.route('**/*', route => { if (!route.request().url().startsWith('http://127.0.0.1:5174')) { external.push(route.request().url()); return route.abort(); } return route.continue(); });
+  await page.route('**/*', route => { if (new URL(route.request().url()).origin !== new URL(baseURL!).origin) { external.push(route.request().url()); return route.abort(); } return route.continue(); });
   await start(page);
   const size = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, viewport: innerWidth }));
   expect(size.scroll).toBeLessThanOrEqual(size.viewport);

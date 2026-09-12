@@ -22,7 +22,7 @@ DISTRIBUTION = "E1P12YSCXY1AKT"
 SITE_URL = "https://d3b0jo8g1tseoa.cloudfront.net"
 INSTANCE = "i-0edb04b57d4e1361b"
 DOCUMENT = "ChoketmonDeployRelease"
-EXCLUDED = re.compile(r"^(?:models/pokemon/\d+\.glb|pokemon/(?:back/)?\d+\.png)$|(?:^|/)[^/]+\.(?:gb|gbc|gba|rom)$", re.I)
+EXCLUDED = re.compile(r"^(?:models/pokemon/\d+\.glb|pokemon/(?:back/)?[^/]+\.png)$|(?:^|/)[^/]+\.(?:gb|gbc|gba|rom)$", re.I)
 
 
 def sha256(path: Path) -> str:

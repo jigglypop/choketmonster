@@ -1,5 +1,7 @@
 import { Brain, type BrainState } from '../core/brain';
 import { getMove, getSpecies, POKEMON } from '../data/pokemon';
+import { getExperienceForLevel, EXPERIENCE_BY_GROWTH_RATE } from '../data/pokemon-experience';
+import { getVersionSpeciesIds } from '../data/pokemon-versions';
 import type { BaseStats, Evolution, PokemonMove, PokemonSpecies, PokemonType } from './contracts';
 import { calculateDamage, catchProbability, turnOrder, typeMultiplier } from './battle';
 import { getRegion, REGIONS } from './regions';
@@ -99,6 +101,10 @@ export type GameState = {
   championDefeated: boolean;
   /** Undefined in legacy schema-v2 saves is migrated to enabled by validateGame. */
   experienceShare?: boolean;
+  adventureVersion?: string;
+  versionCaught?: Record<string, number[]>;
+  /** Active-play seconds toward one free ball; this is an engineered game rule. */
+  ballRefillSeconds?: number;
   battle?: BattleState;
   /** Open-world victory reward, held until the player catches or releases it. */
   captureOffer?: Monster;
@@ -158,13 +164,9 @@ export function statsFor(species: PokemonSpecies, level: number): MonsterStats {
 }
 
 export function experienceAtLevel(level: number, growthRate: string): number {
-  const n = Math.max(1, Math.min(100, level));
+  const n = Math.max(1, Math.min(100, Math.floor(level)));
   const rate = growthRate.toLowerCase();
-  if (rate === 'fast') return Math.floor(4 * n ** 3 / 5);
-  if (rate === 'slow') return Math.floor(5 * n ** 3 / 4);
-  if (rate === 'medium-slow') return Math.max(0, Math.floor(6 * n ** 3 / 5 - 15 * n ** 2 + 100 * n - 140));
-  // Medium and unknown source labels use the documented cubic baseline.
-  return n ** 3;
+  return getExperienceForLevel(Object.hasOwn(EXPERIENCE_BY_GROWTH_RATE, rate) ? rate : 'medium', n);
 }
 
 function knownMoves(species: PokemonSpecies, level: number): MonsterMove[] {
@@ -194,7 +196,7 @@ export function createMonster(state: Pick<GameState, 'nextInstanceId'>, speciesI
 
 export function createGame(starterId: 1 | 4 | 7, seed: number | string): GameState {
   if (![1, 4, 7].includes(starterId)) throw new Error('스타터는 1, 4, 7 중 하나여야 합니다.');
-  if (POKEMON.length !== 151) throw new Error(`151종 데이터가 필요합니다. 현재 ${POKEMON.length}종입니다.`);
+  if (!POKEMON.length) throw new Error('포켓몬 데이터를 불러오지 못했습니다.');
   const state: GameState = {
     schemaVersion: SAVE_SCHEMA_VERSION,
     seed: String(seed), rngState: hashSeed(seed), nextInstanceId: 1,
@@ -205,7 +207,7 @@ export function createGame(starterId: 1 | 4 | 7, seed: number | string): GameSta
       'leaf-stone': 0, 'moon-stone': 0, 'link-cable': 0,
     },
     dex: { seen: [starterId], caught: [starterId] }, regionId: REGIONS[0].id,
-    defeatedGyms: [], championDefeated: false, experienceShare: true, logs: [],
+    defeatedGyms: [], championDefeated: false, experienceShare: true, adventureVersion: 'red', versionCaught: { red: [starterId] }, ballRefillSeconds: 0, logs: [],
   };
   state.player.team.push(createMonster(state, starterId, 5));
   addLog(state, `${getSpecies(starterId).name}와 모험을 시작했다.`);
@@ -489,7 +491,7 @@ function residual(battle: BattleState, monster: Monster, events: BattleLogEntry[
 
 function gainExperience(monster: Monster, amount: number, events?: BattleLogEntry[], battle?: BattleState, shared = false): ExperienceGain | undefined {
   if (monster.level >= 100) return undefined;
-  const applied = Math.max(0, Math.floor(amount));
+  const applied = Math.max(0, Math.min(Math.floor(amount), experienceAtLevel(100, getSpecies(monster.speciesId).growthRate) - monster.xp));
   if (!applied) return undefined;
   const levelBefore = monster.level;
   monster.xp += applied;
@@ -601,7 +603,7 @@ export function actBattle(state: GameState, action: BattleAction, aiChoice?: num
       const captured = structuredClone(wild); captured.status = undefined; captured.statusTurns = undefined;
       if (state.player.team.length < 6) state.player.team.push(captured); else state.player.box.push(captured);
       state.dex.seen = uniqueSorted([...state.dex.seen, captured.speciesId]);
-      state.dex.caught = uniqueSorted([...state.dex.caught, captured.speciesId]);
+      recordCapture(state, captured.speciesId);
       state.battle = undefined;
       events.push(event(battle, `${captured.nickname}을(를) 잡았다!`, 'capture'));
       for (const entry of events) addLog(state, entry.text);
@@ -706,7 +708,7 @@ export function evolve(state: GameState, instanceId: string, option: { targetId?
   for (const learned of knownMoves(getSpecies(evolution.target), monster.level)) {
     if (!monster.moves.some((slot) => slot.moveId === learned.moveId)) { if (monster.moves.length === 4) monster.moves.shift(); monster.moves.push(learned); }
   }
-  state.dex.seen = uniqueSorted([...state.dex.seen, evolution.target]); state.dex.caught = uniqueSorted([...state.dex.caught, evolution.target]);
+  state.dex.seen = uniqueSorted([...state.dex.seen, evolution.target]); recordCapture(state, evolution.target);
   addLog(state, `${monster.nickname}(으)로 진화했다.`); return monster;
 }
 
@@ -717,6 +719,7 @@ function normalizeEvolutionItem(item?: string): InventoryItem | undefined {
 }
 
 function evolutionReady(state: GameState, monster: Monster, evolution: Evolution, supplied?: InventoryItem): boolean {
+  if (evolution.method === 'special') return false;
   if (evolution.method === 'level') return monster.level >= (evolution.level ?? 1);
   const required = evolution.method === 'trade' ? 'link-cable' : normalizeEvolutionItem(evolution.item ?? supplied);
   return !!required && state.inventory[required] > 0 && (supplied === undefined || supplied === required);
@@ -746,6 +749,50 @@ export function withdrawMonster(state: GameState, boxIndex: number): void {
   state.player.team.push(monster);
 }
 
+export const BALL_REFILL_INTERVAL = 30;
+export const BALL_REFILL_CAP = 20;
+export function replenishBalls(state: GameState, elapsedSeconds: number): number {
+  if (!Number.isFinite(elapsedSeconds) || elapsedSeconds < 0 || elapsedSeconds > 5) throw new Error('보충 시간이 올바르지 않습니다.');
+  if (state.inventory['poke-ball'] >= BALL_REFILL_CAP) { state.ballRefillSeconds = 0; return 0; }
+  state.ballRefillSeconds = (state.ballRefillSeconds ?? 0) + elapsedSeconds;
+  const amount = Math.min(BALL_REFILL_CAP - state.inventory['poke-ball'], Math.floor(state.ballRefillSeconds / BALL_REFILL_INTERVAL));
+  state.inventory['poke-ball'] += amount;
+  state.ballRefillSeconds %= BALL_REFILL_INTERVAL;
+  return amount;
+}
+
+function recordCapture(state: GameState, speciesId: number): void {
+  state.dex.caught = uniqueSorted([...state.dex.caught, speciesId]);
+  const version = state.adventureVersion ?? 'red';
+  state.versionCaught ??= {};
+  if (getVersionSpeciesIds(version).includes(speciesId)) state.versionCaught[version] = uniqueSorted([...(state.versionCaught[version] ?? []), speciesId]);
+}
+
+/** Remove only an explicitly selected individual, preserving the historical dex. */
+export function releaseMonster(state: GameState, instanceId: string): Monster {
+  if (state.battle || state.captureOffer) throw new Error('배틀과 포획 선택을 마친 뒤 놓아줄 수 있습니다.');
+  const monster = findOwned(state, instanceId);
+  const teamIndex = state.player.team.findIndex(item => item.instanceId === instanceId);
+  if (teamIndex >= 0 && state.player.team.length <= 1) throw new Error('마지막 팀 포켓몬은 놓아줄 수 없습니다.');
+  if (teamIndex >= 0) state.player.team.splice(teamIndex, 1);
+  else state.player.box.splice(state.player.box.findIndex(item => item.instanceId === instanceId), 1);
+  addLog(state, `${monster.nickname} (${instanceId})을(를) 놓아주었다.`);
+  return monster;
+}
+
+/** Transfer cumulative XP once; the recipient retains its own neural memory. */
+export function mergeDuplicateMonster(state: GameState, targetId: string, donorId: string): number {
+  if (targetId === donorId) throw new Error('서로 다른 개체를 선택하세요.');
+  const target = findOwned(state, targetId), donor = findOwned(state, donorId);
+  if (target.speciesId !== donor.speciesId) throw new Error('같은 종끼리만 경험치를 합칠 수 있습니다.');
+  if (target.level >= 100) throw new Error('이미 최고 레벨입니다.');
+  // Validate the removal before touching either individual.
+  releaseMonster(state, donorId);
+  const gain = gainExperience(target, donor.xp)?.amount ?? 0;
+  addLog(state, `${target.nickname} (${targetId})에게 경험치 ${gain}을(를) 합쳤다. 남긴 개체의 회로 기억을 유지한다.`);
+  return gain;
+}
+
 export function serializeGame(state: GameState): string { assertPlayable(state); return JSON.stringify(state); }
 
 export function restoreGame(json: string): GameState {
@@ -762,7 +809,7 @@ export function captureDefeatedWild(state: GameState, ball: BallItem): boolean {
   monster.hp = Math.max(1, monster.hp); monster.status = undefined; monster.statusTurns = undefined;
   if (state.player.team.length < 6) state.player.team.push(monster); else state.player.box.push(monster);
   state.dex.seen = uniqueSorted([...state.dex.seen, monster.speciesId]);
-  state.dex.caught = uniqueSorted([...state.dex.caught, monster.speciesId]);
+  recordCapture(state, monster.speciesId);
   state.captureOffer = undefined;
   addLog(state, `${monster.nickname} 포획 성공! ${ITEM_LABELS[ball]} 1개를 사용했다.`);
   return true;
@@ -774,12 +821,23 @@ export function validateGame(value: unknown): GameState {
   if (state.schemaVersion !== SAVE_SCHEMA_VERSION) throw new Error(`지원하지 않는 저장 스키마입니다: ${String(state.schemaVersion)}`);
   if (state.experienceShare !== undefined && typeof state.experienceShare !== 'boolean') throw new Error('경험치 공유 설정이 손상되었습니다.');
   state.experienceShare ??= true;
+  state.adventureVersion ??= 'red';
+  const versionSpecies = getVersionSpeciesIds(state.adventureVersion);
+  if (!versionSpecies.length) throw new Error('수집 버전이 올바르지 않습니다.');
+  state.versionCaught ??= { red: [...(state.dex?.caught ?? [])].filter(id => getVersionSpeciesIds('red').includes(id)) };
+  if (!state.versionCaught || typeof state.versionCaught !== 'object' || Array.isArray(state.versionCaught) || Object.keys(state.versionCaught).length > 100) throw new Error('버전별 도감이 올바르지 않습니다.');
+  for (const [version, ids] of Object.entries(state.versionCaught)) {
+    const allowed = getVersionSpeciesIds(version);
+    if (!allowed.length || !Array.isArray(ids) || ids.length !== new Set(ids).size || ids.some(id => !allowed.includes(id) || !state.dex?.caught?.includes(id))) throw new Error('버전별 수집 기록이 올바르지 않습니다.');
+  }
+  state.ballRefillSeconds ??= 0;
+  if (!Number.isFinite(state.ballRefillSeconds) || state.ballRefillSeconds < 0 || state.ballRefillSeconds >= BALL_REFILL_INTERVAL) throw new Error('볼 보충 기록이 올바르지 않습니다.');
   if (typeof state.seed !== 'string' || !state.seed || state.seed.length > 200) throw new Error('시드가 손상되었습니다.');
   if (!Number.isInteger(state.rngState) || state.rngState <= 0 || state.rngState > 0xffffffff || !Number.isSafeInteger(state.nextInstanceId) || state.nextInstanceId < 1) throw new Error('난수/개체 ID 상태가 손상되었습니다.');
   if (!state.player || !Number.isSafeInteger(state.player.money) || state.player.money < 0 || !Number.isInteger(state.player.badges) || state.player.badges < 0 || state.player.badges > 8 || !Array.isArray(state.player.team) || !Array.isArray(state.player.box) || state.player.team.length < 1 || state.player.team.length > 6 || state.player.box.length > 10000) throw new Error('플레이어/팀/박스 데이터가 손상되었습니다.');
   if (!state.inventory || !state.dex || !Array.isArray(state.dex.seen) || !Array.isArray(state.dex.caught)) throw new Error('가방 또는 도감 데이터가 손상되었습니다.');
   for (const item of INVENTORY_ITEMS) if (!Number.isInteger(state.inventory[item]) || state.inventory[item] < 0) throw new Error(`가방 수량이 잘못되었습니다: ${item}`);
-  for (const id of [...state.dex.seen, ...state.dex.caught]) if (!Number.isInteger(id) || id < 1 || id > 151) throw new Error('도감 번호가 잘못되었습니다.');
+  for (const id of [...state.dex.seen, ...state.dex.caught]) if (!Number.isInteger(id) || !POKEMON.some(species => species.id === id)) throw new Error('도감 번호가 잘못되었습니다.');
   if (!Array.isArray(state.defeatedGyms) || state.defeatedGyms.length !== state.player.badges || state.defeatedGyms.some((badge, index) => badge !== index + 1)) throw new Error('배지 진행이 손상되었습니다.');
   if (typeof state.championDefeated !== 'boolean' || (state.championDefeated && state.player.badges !== 8)) throw new Error('챔피언 진행이 손상되었습니다.');
   if (!Array.isArray(state.logs) || state.logs.length > 200 || state.logs.some((log) => typeof log !== 'string' || log.length > 500)) throw new Error('로그가 손상되었습니다.');
@@ -790,7 +848,7 @@ export function validateGame(value: unknown): GameState {
   if (state.captureOffer && (state.battle || state.captureOffer.hp !== 0 || !state.dex.seen.includes(state.captureOffer.speciesId))) throw new Error('승리 후 포획 대상이 올바르지 않습니다.');
   const monsters = [...state.player.team, ...state.player.box, ...(state.battle?.enemy.team ?? []), ...(state.captureOffer ? [state.captureOffer] : [])];
   for (const monster of monsters) {
-    if (!monster || typeof monster.instanceId !== 'string' || ids.has(monster.instanceId)) throw new Error('개체 ID가 없거나 중복되었습니다.');
+    if (!monster || typeof monster.instanceId !== 'string' || !/^mon-[1-9]\d*$/.test(monster.instanceId) || ids.has(monster.instanceId)) throw new Error('개체 ID가 없거나 중복되었습니다.');
     ids.add(monster.instanceId); const species = getSpecies(monster.speciesId);
     const match = /^mon-(\d+)$/.exec(monster.instanceId); if (match) maximumGeneratedId = Math.max(maximumGeneratedId, Number(match[1]));
     if (typeof monster.nickname !== 'string' || !monster.nickname || monster.nickname.length > 40 || !Number.isInteger(monster.level) || monster.level < 1 || monster.level > 100 || !Number.isSafeInteger(monster.xp) || monster.xp < experienceAtLevel(monster.level, species.growthRate) || (monster.level < 100 && monster.xp >= experienceAtLevel(monster.level + 1, species.growthRate))) throw new Error('이름/레벨/경험치가 잘못되었습니다.');

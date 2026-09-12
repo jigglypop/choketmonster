@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { POKEMON, TYPE_EFFECTIVENESS } from '../src/data/pokemon';
-import { createGame, createMonster, evolve, actBattle, restoreGame, serializeGame, type InventoryItem } from '../src/game/engine';
+import { ITEM_PRICES, createGame, createMonster, evolve, actBattle, restoreGame, serializeGame, type InventoryItem } from '../src/game/engine';
 import { typeMultiplier } from '../src/game/battle';
 import type { PokemonType } from '../src/game/contracts';
 
 describe('full species and evolution coverage (controlled fixtures)', () => {
-  it('resolves every one of the 72 evolution edges and retains individual identity', () => {
+  it('resolves supported evolution edges, preserves identity, and refuses unimplemented source conditions', () => {
     let transitions = 0;
     for (const species of POKEMON) for (const evolution of species.evolutions) {
       const game = createGame(7, `evolution-${species.id}-${evolution.target}`);
@@ -13,6 +13,11 @@ describe('full species and evolution coverage (controlled fixtures)', () => {
       game.player.box.push(mon); const id = mon.instanceId;
       const item = evolution.method === 'trade' ? 'link-cable' : evolution.item;
       if (item) game.inventory[item as InventoryItem] = 1;
+      if (evolution.method === 'special' || (evolution.method === 'stone' && !Object.hasOwn(ITEM_PRICES, evolution.item ?? ''))) {
+        const before = JSON.stringify(mon);
+        expect(() => evolve(game, id, { targetId: evolution.target })).toThrow();
+        expect(JSON.stringify(mon)).toBe(before); continue;
+      }
       evolve(game, id, { targetId: evolution.target });
       expect(mon.speciesId).toBe(evolution.target);
       expect(mon.instanceId).toBe(id);
@@ -21,7 +26,7 @@ describe('full species and evolution coverage (controlled fixtures)', () => {
       expect(restoreGame(serializeGame(game)).player.box[0].speciesId).toBe(evolution.target);
       transitions++;
     }
-    expect(transitions).toBe(72);
+    expect(transitions).toBe(POKEMON.flatMap(species => species.evolutions).filter(evolution => evolution.method === 'level' || evolution.method === 'trade' || (evolution.method === 'stone' && Object.hasOwn(ITEM_PRICES, evolution.item ?? ''))).length);
   });
   it('can catch every species through the real probability and storage path', () => {
     // Fixtures provide low HP, sleep, and sufficient balls. Natural resource/progression

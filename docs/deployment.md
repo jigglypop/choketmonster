@@ -4,7 +4,7 @@
 
 운영 주소: **https://d3b0jo8g1tseoa.cloudfront.net**
 
-현재 배포는 `git push origin main`으로 실행한다. [GitHub OIDC 자동 배포](auto-deploy.md)가 검증·빌드·설치·정적 파일 공개·HTTPS 해시 확인을 순서대로 수행한다. `/version.json`의 `gitCommit`으로 최신 main 반영 여부를 확인한다. 현재 게임은 로그인 UI 없이 IndexedDB에 진행과 신경 기억을 보관하며 익명 회로 배치 API를 사용한다. 정상 게임의 DB 접근은 없고 기존 RDS 계정 자료는 보존한다. 아래 계정 기반 검증 결과는 초기 버전의 기록이다.
+현재 배포는 `git push origin main`으로 실행한다. [GitHub OIDC 자동 배포](auto-deploy.md)가 검증·빌드·설치·정적 파일 공개·HTTPS 해시 확인을 순서대로 수행한다. `/version.json`의 `gitCommit`으로 최신 main 반영 여부를 확인한다. 게임은 로그인 UI와 계정별 IndexedDB 저장을 사용하며 로그인·로그아웃·60초 자동저장·수동 저장에서 PostgreSQL에 동기화한다. 전체 회로 기억은 기기 IndexedDB에 남고 회로 배치 API는 PostgreSQL에 기록하지 않는다. 기존 RDS 계정 자료는 보존한다. 아래 계정 기반 검증 결과는 초기 버전의 기록이다.
 
 2026-09-12의 `choketmon-server` 스택은 `infra/aws-server.yaml`의 EC2 `t3.small`, RDS PostgreSQL `db.t4g.micro` Single-AZ, CloudFront VPC origin 구성을 사용한다. 서버 릴리스는 `artifacts/release-20260912T093014Z/receipt.json`, 최신 화면은 `artifacts/deploy-2026-09-12T09-49-18-556Z.deployed.json`에 기록했다. HTTPS API 25개 검사는 `artifacts/rust-api-production.json`, 실제 가입·학습 배틀·저장·로그아웃·재로그인 복원은 `artifacts/rust-production-ui.json`에서 통과했다. EC2 서비스를 재시작한 뒤 세션, 정확한 세이브 내용, 학습 상태가 유지되는 검사도 `artifacts/rust-production-persistence.json`에서 통과했다. 구체적 범위와 제한은 [이번 전달 기록](delivery-2026-09-12.md)을 읽는다.
 

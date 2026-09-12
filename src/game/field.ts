@@ -1,5 +1,6 @@
 import { Brain, validateGraph, type BrainState, type Graph } from '../core/brain.ts';
 import { Random, clamp } from '../core/random.ts';
+import { POKEMON } from '../data/pokemon';
 import { tileAt } from './map.ts';
 
 export const FIELD_MODEL = 'pokemon-field-recurrent-v1';
@@ -20,7 +21,7 @@ const INITIAL_FOODS = 8;
 const walkable = (x: number, y: number) => !BLOCKED.has(tileAt(x, y));
 const key = (x: number, y: number) => `${x}:${y}`;
 function hash(text: string): number { let value = 2166136261; for (const char of text) value = Math.imul(value ^ char.charCodeAt(0), 16777619) >>> 0; return value || 0x6d2b79f5; }
-function validMember(member: FieldMember): boolean { return !!member && typeof member.id === 'string' && !!member.id && Number.isInteger(member.speciesId) && member.speciesId >= 1 && member.speciesId <= 151; }
+function validMember(member: FieldMember): boolean { return !!member && typeof member.id === 'string' && !!member.id && Number.isInteger(member.speciesId) && POKEMON.some(species => species.id === member.speciesId); }
 const validCoordinate = (value: number) => Number.isInteger(value) && value >= 0;
 function stripGraph(state: BrainState): FieldBrainState { const { graph, ...memory } = structuredClone(state); return { ...memory, graphId: graph.id }; }
 
@@ -52,7 +53,7 @@ export class FieldSimulation {
   }
 
   setMembers(members: FieldMember[]): void {
-    if (!Array.isArray(members) || members.length > 6 || !members.every(validMember) || new Set(members.map(member => member.id)).size !== members.length) throw new Error('Field supports up to 6 unique members with species 1..151');
+    if (!Array.isArray(members) || members.length > 6 || !members.every(validMember) || new Set(members.map(member => member.id)).size !== members.length) throw new Error('Field supports up to 6 unique members with known Pokemon species');
     this.entities = members.map(member => {
       const retained = this.memories.get(member.id);
       if (retained) { retained.speciesId = member.speciesId; return retained; }

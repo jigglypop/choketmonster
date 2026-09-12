@@ -114,7 +114,7 @@ export function evaluatePokemonBrain(graph: Graph): PokemonBrainEvidence {
       observations: 'Scripted [bias, self HP, opponent HP, level delta, speed delta, turn, two status flags, four PP fractions]; no type or type-effectiveness input.',
       ablation: 'For each seed, restore one checkpoint twice and replace every graph edge weight with zero in one copy. Input projection and readout remain identical. Both copies receive the same ordered observations.',
       evaluation: 'learning=false, epsilon=0, four recurrent microsteps; readout and update count compared before/after.',
-      bounds: `${BRAIN_SEEDS.length} checkpoints x ${observations.length} observations; 151 one-step species instances.`,
+      bounds: `${BRAIN_SEEDS.length} checkpoints x ${observations.length} observations; ${POKEMON.length} one-step species instances.`,
     },
     circuitAblation: {
       checkpoints: BRAIN_SEEDS.length, observationsPerCheckpoint: observations.length, comparisons,

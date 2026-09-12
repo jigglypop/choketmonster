@@ -15,7 +15,7 @@ if (!gitCommit || !/^[a-f0-9]{40}$/i.test(gitCommit)) throw new Error('A 40-char
 await mkdir(target, { recursive: true });
 const excluded = (path: string) => {
   const normalized = path.replaceAll(sep, '/');
-  return /^(models\/pokemon\/\d+\.glb|pokemon\/(back\/)?\d+\.png)$/.test(normalized)
+  return /^(models\/pokemon\/\d+\.glb|pokemon\/(back\/)?[^/]+\.png)$/.test(normalized)
     || /(^|\/)[^/]+\.(gb|gbc|gba|rom)$/i.test(normalized);
 };
 await cp(source, target, { recursive: true, filter: path => !excluded(relative(source, path)) });
@@ -38,7 +38,7 @@ const receipt = {
   bytes: files.reduce((n, file) => n + file.bytes, 0),
   manifestSha256: createHash('sha256').update(JSON.stringify(files)).digest('hex'),
   source: { gitCommit, gitDirty: Boolean(git(['status', '--porcelain'])), builtAt },
-  exclusions: ['models/pokemon/{id}.glb', 'pokemon/{id}.png', 'pokemon/back/{id}.png', '*.gb', '*.gbc', '*.gba', '*.rom'],
+  exclusions: ['models/pokemon/{id}.glb', 'pokemon/{spriteKey}.png', 'pokemon/back/{spriteKey}.png', '*.gb', '*.gbc', '*.gba', '*.rom'],
   files,
 };
 const archivedReceipt = `${target}.json`;

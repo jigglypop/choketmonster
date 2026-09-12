@@ -1,6 +1,9 @@
 import { Brain, validateGraph, type BrainState, type Graph } from '../core/brain';
 import { Random, clamp } from '../core/random';
 import { POKEMON, getMove, getSpecies } from '../data/pokemon';
+import { getVersionSpeciesIds } from '../data/pokemon-versions';
+import { replenishBalls } from '../game/engine';
+import { gameplayHabitat } from '../game/habitat';
 import { ConnectomeController, type NeuralMonster } from '../game/connectome';
 import { chooseServerBrains, usesServerBrain, type ServerDecision } from '../game/server-brain';
 import { actBattle, availableEvolutions, captureDefeatedWild, createMonster, evolve, validateGame, type BallItem, type BattleAction, type BattleTurnResult, type GameState, type Monster } from '../game/engine';
@@ -72,7 +75,7 @@ export function sampleWorld(x: number, z: number): WorldSample {
 }
 
 export function biomeForSpecies(speciesId: number): WorldBiome {
-  const habitat = getSpecies(speciesId).habitat;
+  const habitat = gameplayHabitat(getSpecies(speciesId));
   if (habitat === 'forest') return 'forest';
   if (habitat === 'sea' || habitat === 'waters-edge') return 'lake';
   if (habitat === 'mountain' || habitat === 'rough-terrain' || habitat === 'cave' || habitat === 'rare') return 'rock';
@@ -93,7 +96,7 @@ export function nextSpeciesInBiome(speciesId: number): number {
 
 export function speciesForSpawn(serial: number): number {
   if (!Number.isSafeInteger(serial) || serial < 1) throw new Error('Spawn serial must be a positive integer');
-  return ((serial - 1) % 151) + 1;
+  return POKEMON[(serial - 1) % POKEMON.length].id;
 }
 
 export function initialSpawnSpecies(serial: number): number {
@@ -341,6 +344,7 @@ export class OpenWorldSimulation {
   step(options: { deltaSeconds?: number; learning?: boolean; epsilon?: number } = {}): OpenWorldStep {
     const deltaSeconds = options.deltaSeconds ?? .25, learning = options.learning ?? false, epsilon = options.epsilon ?? (learning ? .12 : 0);
     if (!finite(deltaSeconds) || deltaSeconds < 0 || deltaSeconds > 5 || typeof learning !== 'boolean' || !finite(epsilon) || epsilon < 0 || epsilon > 1) throw new Error('Invalid open-world step options');
+    replenishBalls(this.game, deltaSeconds);
     const events: OpenWorldEvent[] = [];
     const manualControlActive = this.manualControlRemaining > 0; this.manualControlRemaining = Math.max(0, this.manualControlRemaining - deltaSeconds);
     this.syncCompanion();
@@ -396,6 +400,7 @@ export class OpenWorldSimulation {
   }
 
   snapshot(): OpenWorldSnapshot {
+    this.syncCompanion();
     const pack = (entity: OpenWorldEntity): OpenWorldEntitySnapshot => { const { brain: _brain, ...rest } = entity; return { ...structuredClone(rest), brain: stripGraph(this.brain(entity.id).state) }; };
     return { schema: 1, model: OPEN_WORLD_MODEL, graphId: this.graph.id, seed: this.seed, rng: this.rng.state, tick: this.tick,
       serverFinalizations: this.serverFinalizations.length ? structuredClone(this.serverFinalizations) : undefined,
@@ -588,11 +593,13 @@ export class OpenWorldSimulation {
   }
 
   private syncCompanion(): void {
+    const ownedIds = new Set([...this.game.player.team, ...this.game.player.box].map(monster => `companion:${monster.instanceId}`));
+    for (const id of this.companionMemories.keys()) if (!ownedIds.has(id)) { this.companionMemories.delete(id); this.brains.delete(id); }
     const lead = this.game.player.team.find(monster => monster.hp > 0) ?? this.game.player.team[0];
     let companion = this.entities.find(entity => entity.kind === 'companion');
     const expectedId = `companion:${lead.instanceId}`;
     if (!companion || companion.id !== expectedId) {
-      if (companion) { this.entities.splice(this.entities.indexOf(companion), 1); this.companionMemories.set(companion.id, companion); }
+      if (companion) { this.entities.splice(this.entities.indexOf(companion), 1); if (ownedIds.has(companion.id)) this.companionMemories.set(companion.id, companion); else this.brains.delete(companion.id); }
       companion = this.companionMemories.get(expectedId);
       const position = this.companionPosition();
       if (companion) { this.companionMemories.delete(expectedId); companion.x = position.x; companion.z = position.z; }
@@ -610,7 +617,21 @@ export class OpenWorldSimulation {
   }
 
   private spawnPool(locationId: string): number[] {
-    return encountersForLocation(locationId, this.game.player.badges).filter(speciesId => !UNIQUE_SPECIES.has(speciesId) || (!this.game.dex.caught.includes(speciesId) && !this.entities.some(entity => entity.kind === 'wild' && entity.speciesId === speciesId) && !this.respawnQueue.some(pending => pending.speciesId === speciesId)));
+    const version = this.game.adventureVersion ?? 'red';
+    const caught = this.game.versionCaught?.[version] ?? this.game.dex.caught;
+    return versionEncounters(locationId, version, this.game.player.badges).filter(speciesId => !UNIQUE_SPECIES.has(speciesId) || (!caught.includes(speciesId) && !this.entities.some(entity => entity.kind === 'wild' && entity.speciesId === speciesId) && !this.respawnQueue.some(pending => pending.speciesId === speciesId)));
+  }
+
+  changeVersion(version: string): void {
+    if (this.game.battle || this.game.captureOffer) throw new Error('배틀과 포획 선택을 마친 뒤 버전을 바꿀 수 있습니다.');
+    if (!getVersionSpeciesIds(version).length) throw new Error('도감 자료가 없는 버전입니다.');
+    if (version === this.game.adventureVersion) return;
+    this.game.adventureVersion = version;
+    this.game.versionCaught ??= {}; this.game.versionCaught[version] ??= [];
+    const count = this.rosterStatus().total;
+    for (const entity of this.wildEntities()) { this.entities.splice(this.entities.indexOf(entity), 1); this.brains.delete(entity.id); }
+    this.respawnQueue = []; this.selectedWildId = undefined; this.selectionPinned = false; this.trackingSelected = false;
+    while (this.wildEntities().length < count) this.spawnWild();
   }
 
   private localSpawnPosition(): { x: number; z: number } {
@@ -814,13 +835,13 @@ export class OpenWorldSimulation {
     const memories = checkpoint.companionMemories ?? [], respawns = checkpoint.respawnQueue ?? [], savedEntities = [...checkpoint.entities, ...memories];
     const wildCount = checkpoint.entities.filter(entity => entity.kind === 'wild').length;
     if (wildCount + respawns.length < 12 || wildCount + respawns.length > 18 || checkpoint.entities.filter(entity => entity.kind === 'companion').length !== 1 || memories.some(entity => entity.kind !== 'companion') || new Set(savedEntities.map(entity => entity.id)).size !== savedEntities.length) throw new Error('Invalid open-world roster');
-    if (new Set(respawns.map(respawn => respawn.id)).size !== respawns.length || respawns.some(respawn => !respawn || typeof respawn.id !== 'string' || !respawn.id || !Number.isInteger(respawn.speciesId) || respawn.speciesId < 1 || respawn.speciesId > 151 || !Number.isInteger(respawn.level) || respawn.level < 1 || respawn.level > 100 || respawn.biome !== biomeForSpecies(respawn.speciesId) || !finite(respawn.originX) || !finite(respawn.originZ) || invalidTerrain(respawn.originX, respawn.originZ) || !finite(respawn.remainingSeconds) || respawn.remainingSeconds <= 0 || respawn.remainingSeconds > 6)) throw new Error('Invalid open-world respawn queue');
+    if (new Set(respawns.map(respawn => respawn.id)).size !== respawns.length || respawns.some(respawn => !respawn || typeof respawn.id !== 'string' || !respawn.id || !Number.isInteger(respawn.speciesId) || respawn.speciesId < 1 || !POKEMON.some(species => species.id === respawn.speciesId) || !Number.isInteger(respawn.level) || respawn.level < 1 || respawn.level > 100 || respawn.biome !== biomeForSpecies(respawn.speciesId) || !finite(respawn.originX) || !finite(respawn.originZ) || invalidTerrain(respawn.originX, respawn.originZ) || !finite(respawn.remainingSeconds) || respawn.remainingSeconds <= 0 || respawn.remainingSeconds > 6)) throw new Error('Invalid open-world respawn queue');
     const ownedIds = new Set([...this.game.player.team, ...this.game.player.box].map(monster => `companion:${monster.instanceId}`));
     if (savedEntities.filter(entity => entity.kind === 'companion').some(entity => !ownedIds.has(entity.id))) throw new Error('Open-world companion memory is not owned');
     for (const food of checkpoint.foods) if (!Number.isSafeInteger(food.id) || food.id < 1 || food.id >= checkpoint.nextFoodId || !finite(food.x) || !finite(food.z) || invalidTerrain(food.x, food.z)) throw new Error('Invalid open-world food');
     if (new Set(checkpoint.foods.map(food => food.id)).size !== checkpoint.foods.length || new Set(checkpoint.foods.map(food => key(food.x, food.z))).size !== checkpoint.foods.length) throw new Error('Duplicate open-world food');
     for (const saved of savedEntities) {
-      if (!saved || typeof saved.id !== 'string' || !saved.id || !['wild', 'companion'].includes(saved.kind) || !Number.isInteger(saved.speciesId) || saved.speciesId < 1 || saved.speciesId > 151 || !Number.isInteger(saved.level) || saved.level < 1 || saved.level > 100 || !finite(saved.x) || !finite(saved.z) || invalidTerrain(saved.x, saved.z) || !Number.isInteger(saved.heading) || saved.heading < 0 || saved.heading > 4 || !Number.isInteger(saved.action) || saved.action < 0 || saved.action > 4 || !finite(saved.energy) || saved.energy < 0 || saved.energy > 100 || !finite(saved.reward) || Math.abs(saved.reward) > 10 || !Number.isSafeInteger(saved.foods) || saved.foods < 0 || !Number.isSafeInteger(saved.collisions) || saved.collisions < 0 || !Array.isArray(saved.observation) || saved.observation.length !== 12 || !saved.observation.every(finite) || saved.brain?.graphId !== this.graph.id || saved.brain.sensoryBypass !== false) throw new Error('Invalid open-world entity');
+      if (!saved || typeof saved.id !== 'string' || !saved.id || !['wild', 'companion'].includes(saved.kind) || !Number.isInteger(saved.speciesId) || saved.speciesId < 1 || !POKEMON.some(species => species.id === saved.speciesId) || !Number.isInteger(saved.level) || saved.level < 1 || saved.level > 100 || !finite(saved.x) || !finite(saved.z) || invalidTerrain(saved.x, saved.z) || !Number.isInteger(saved.heading) || saved.heading < 0 || saved.heading > 4 || !Number.isInteger(saved.action) || saved.action < 0 || saved.action > 4 || !finite(saved.energy) || saved.energy < 0 || saved.energy > 100 || !finite(saved.reward) || Math.abs(saved.reward) > 10 || !Number.isSafeInteger(saved.foods) || saved.foods < 0 || !Number.isSafeInteger(saved.collisions) || saved.collisions < 0 || !Array.isArray(saved.observation) || saved.observation.length !== 12 || !saved.observation.every(finite) || saved.brain?.graphId !== this.graph.id || saved.brain.sensoryBypass !== false) throw new Error('Invalid open-world entity');
       const { graphId: _graphId, ...state } = structuredClone(saved.brain), brain = Brain.restore({ ...state, graph: this.graph }); brain.state.graph = this.graph; this.brains.set(saved.id, brain);
       const { brain: _savedBrain, ...rest } = structuredClone(saved), entity = { ...rest, brain: brain.state };
       if (memories.includes(saved)) this.companionMemories.set(entity.id, entity); else this.entities.push(entity);
@@ -868,4 +889,15 @@ export function restoreOpenWorld(graph: Graph, json: string, policy?: FieldPolic
   validateGame(game);
   if (game.battle) game.battle.player.team = game.player.team;
   return { game, simulation: new OpenWorldSimulation(graph, game, value.world.seed, value.world, policy, value.world.entities.filter(entity => entity.kind === 'wild').length) };
+}
+
+/** Regional dex species are placed on our shared map; these are designed encounters. */
+export function versionEncounters(locationId: string, version: string, badges: number): number[] {
+  const ids = getVersionSpeciesIds(version);
+  if (version === 'red' || version === 'blue' || version === 'yellow') return encountersForLocation(locationId, badges).filter(id => ids.includes(id));
+  const location = KANTO_LOCATIONS.find(item => item.id === locationId);
+  if (!location || location.requiredBadges > badges) return [];
+  const biome = location.kind === 'sea' ? 'lake' : location.kind === 'forest' ? 'forest' : location.kind === 'cave' ? 'rock' : 'meadow';
+  const matching = ids.filter(id => biomeForSpecies(id) === biome);
+  return [...(matching.length ? matching : ids)];
 }

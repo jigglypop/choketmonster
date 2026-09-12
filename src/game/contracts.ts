@@ -1,6 +1,6 @@
 export type PokemonType = 'normal' | 'fire' | 'water' | 'electric' | 'grass' | 'ice' | 'fighting' | 'poison' | 'ground' | 'flying' | 'psychic' | 'bug' | 'rock' | 'ghost' | 'dragon' | 'dark' | 'steel' | 'fairy';
 export type BaseStats = { hp: number; attack: number; defense: number; specialAttack: number; specialDefense: number; speed: number };
-export type Evolution = { target: number; method: 'level' | 'stone' | 'trade'; level?: number; item?: string };
+export type Evolution = { target: number; method: 'level' | 'stone' | 'trade' | 'special'; level?: number; item?: string; requirement?: string };
 export type PokemonSpecies = {
   id: number; name: string; englishName: string; types: PokemonType[];
   baseStats: BaseStats; catchRate: number; baseExperience: number; growthRate: string; heightMeters?: number;

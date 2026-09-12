@@ -61,7 +61,7 @@ try {
   if (-not $dist.StartsWith($artifactRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Payload must stay inside project artifacts.' }
   if (-not (Test-Path -LiteralPath (Join-Path $dist 'index.html'))) { throw 'Payload index.html is missing.' }
   foreach ($entry in $receipt.files) {
-    if ($entry.path -match '^(models/pokemon/\d+\.glb|pokemon/(back/)?\d+\.png)$' -or $entry.path -match '(?i)(^|/)[^/]+\.(gb|gbc|gba|rom)$') { throw 'Excluded Pokemon or Game Boy binary entered deployment payload.' }
+    if ($entry.path -match '^(models/pokemon/\d+\.glb|pokemon/(back/)?[^/]+\.png)$' -or $entry.path -match '(?i)(^|/)[^/]+\.(gb|gbc|gba|rom)$') { throw 'Excluded Pokemon or Game Boy binary entered deployment payload.' }
     $file = [IO.Path]::GetFullPath((Join-Path $dist $entry.path))
     if (-not $file.StartsWith($dist + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw 'Invalid payload file path.' }
     if ((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant() -ne $entry.sha256) { throw "Payload checksum mismatch: $($entry.path)" }

@@ -1,5 +1,6 @@
 import type { Graph } from '../core/brain';
 import { getMove, getSpecies } from '../data/pokemon';
+import { VERSIONS, getVersionSpeciesIds } from '../data/pokemon-versions';
 import { pokemonModelUrl, pokemonSpriteUrl } from '../game/assets';
 import { buyItem, experienceAtLevel, heal, ITEM_LABELS, ITEM_PRICES, statsFor, type BallItem, type GameState, type Monster } from '../game/engine';
 import { KANTO_LOCATIONS, KANTO_CONNECTIONS, KANTO_GYMS, locationAt, encountersForLocation } from './kanto';
@@ -42,12 +43,14 @@ export class OpenWorldPanel {
     this.simulation.syncPlayerToCompanion();
   }
 
+  async pauseAndSettle(): Promise<void> { this.paused = true; await this.serverRequest; }
+
   mount(host: HTMLElement): void {
     if (this.host === host && this.renderer && host.querySelector('#ow-host')) { this.refresh(); return; }
     this.unmount(); this.host = host;
     host.innerHTML = `<section class="adventure" aria-label="오픈월드 모험">
       <div id="ow-host"></div>
-      <div class="world-heading"><span class="world-eyebrow">KANTO · 관동지방</span><h1 id="world-biome">태초마을</h1><p id="world-zone-level">1번도로에서 첫 모험을 시작하세요</p></div>
+      <div class="world-heading"><label class="world-eyebrow" for="world-version">수집 버전 <select id="world-version"><option value="national">전국도감</option>${VERSIONS.filter(version => version.speciesIds.length).map(version => `<option value="${version.id}">${escape(version.name)}${version.id.endsWith('-japan') ? ' (일본판)' : ''}</option>`).join('')}</select></label><h1 id="world-biome">태초마을</h1><p id="world-zone-level">1번도로에서 첫 모험을 시작하세요</p></div>
       <aside class="world-radar"><button id="world-map-open" aria-label="관동 전체 지도 열기"><canvas id="world-minimap" width="180" height="180" aria-label="월드 지도"></canvas></button><span id="world-position"></span><small>관동 전체 지도 ↗</small></aside>
       <div class="world-tools"><button id="world-pause">Ⅱ 일시 정지</button><button id="world-heal">캠프 회복</button><label><input id="world-auto-hunt" type="checkbox" checked><span>자동 사냥</span></label><label><input id="world-learning" type="checkbox"><span id="world-learning-label">기술 학습</span></label></div>
       <div class="world-control-mode" role="group" aria-label="조작 모드"><div class="world-mode-buttons"><button id="world-mode-auto">자동</button><button id="world-mode-manual">수동</button></div><div class="world-control-copy"><strong id="world-control-title"></strong><small id="world-control-help"></small></div></div>
@@ -149,6 +152,12 @@ export class OpenWorldPanel {
       button.onpointerdown = e => { e.preventDefault(); this.changeMode('manual'); button.setPointerCapture(e.pointerId); stop(); move(); timer = window.setInterval(move, 100); };
       button.onpointerup = button.onpointercancel = button.onlostpointercapture = stop;
     });
+    const versionSelect = host.querySelector<HTMLSelectElement>('#world-version')!;
+    versionSelect.value = this.options.game.adventureVersion ?? 'red';
+    versionSelect.onchange = () => {
+      try { this.simulation.changeVersion(versionSelect.value); this.options.changed(); this.refresh(); this.options.notify('수집 버전을 바꿨습니다. 지역도감의 종을 공용 관동 맵에 배치합니다.'); }
+      catch (error) { versionSelect.value = this.options.game.adventureVersion ?? 'red'; this.options.notify(String(error), true); }
+    };
     this.refresh();
   }
 
@@ -267,7 +276,7 @@ export class OpenWorldPanel {
     const pool = encountersForLocation(location.id, game.player.badges);
     this.html('#world-zone-level', pool.length ? `야생 Lv.${location.minLevel}–${location.maxLevel} · ${pool.slice(0, 3).map(id => getSpecies(id).name).join(' · ')}` : '도시와 길을 따라 다음 구역으로 탐험하세요');
     this.html('#world-position', `${world.player.x.toFixed(0)}, ${world.player.z.toFixed(0)}`);
-    this.html('#world-objective', `${game.dex.caught.length} / 151종 포획 · ${game.dex.seen.length}종 발견`);
+    this.html('#world-objective', `${game.versionCaught?.[game.adventureVersion ?? 'red']?.length ?? 0} / ${getVersionSpeciesIds(game.adventureVersion ?? 'red').length}종 수집 · 전국 ${game.dex.caught.length}종`);
     this.html('#world-feed', game.logs.slice(-3).map(log => `<p>${escape(log)}</p>`).join(''));
     this.html('#world-battle-state', game.captureOffer ? '승리! 포획 여부를 선택하세요' : battle ? `${battle.awaitingSwitch ? '다음 파트너로 자동 교대 중' : world.escaping ? '도망 시도 중' : world.controlMode === 'manual' ? (battle.canRun ? '기술 선택 · 이동키로 도주' : '기술 선택 대기') : '자동 배틀'} · 턴 ${battle.turn}` : !world.hasBalls ? '볼 소진 · 구매 후 자동 사냥 가능' : this.paused ? '탐험 일시 정지' : world.controlMode === 'manual' ? '수동 탐험 · 배틀 버튼으로만 전투' : world.autoHunt ? '자동 추적 · 접근하면 배틀' : '접근하면 자동 배틀');
     this.button('#world-mode-auto').setAttribute('aria-pressed', String(world.controlMode === 'auto'));
@@ -276,7 +285,7 @@ export class OpenWorldPanel {
     this.html('#world-control-help', world.controlMode === 'manual' ? 'WASD 이동 · 기술 1–4 · M 전환' : `${world.autoHunt ? '대상 자동 선택·추적' : '이동만 자동'} · WASD로 직접 조작`);
     this.html('#world-ball-stock', `볼 ${game.inventory['poke-ball'] + game.inventory['great-ball'] + game.inventory['ultra-ball']}개 · ₩${game.player.money.toLocaleString('ko-KR')}`);
     this.html('#world-shop-items', (['poke-ball', 'great-ball', 'ultra-ball'] as BallItem[]).map(ball => `<div><strong>${ITEM_LABELS[ball]} <small>보유 ${game.inventory[ball]}개 · 개당 ₩${ITEM_PRICES[ball].toLocaleString('ko-KR')}</small></strong>${[1, 5].map(quantity => { const total = ITEM_PRICES[ball] * quantity, reason = battle ? '배틀 중 구매 불가' : game.player.money < total ? `₩${(total - game.player.money).toLocaleString('ko-KR')} 부족` : ''; return `<button data-world-buy="${ball}" data-quantity="${quantity}" ${reason ? `disabled title="${reason}"` : ''}>${quantity}개 · ₩${total.toLocaleString('ko-KR')}${reason ? `<small>${reason}</small>` : ''}</button>`; }).join('')}</div>`).join(''));
-    this.html('#world-shop-note', battle ? '배틀 중에는 구매할 수 없습니다.' : game.player.money < Math.min(...Object.values(ITEM_PRICES)) ? '소지금이 부족합니다. 배틀에서 이기면 상금을 받습니다.' : '버튼의 금액은 선택한 수량의 총액입니다.');
+    this.html('#world-shop-note', `몬스터볼 30초마다 +1 · 기본 보충 한도 20개 · 다음 ${Math.ceil(30 - (game.ballRefillSeconds ?? 0))}초. ` + (battle ? '배틀 중에는 구매할 수 없습니다.' : game.player.money < Math.min(...Object.values(ITEM_PRICES)) ? '소지금이 부족합니다. 배틀에서 이기면 상금을 받습니다.' : '볼이 없으면 자동 포획을 건너뜁니다.'));
     this.host.querySelectorAll<HTMLButtonElement>('[data-world-buy]').forEach(button => button.onclick = () => { const ball = button.dataset.worldBuy as BallItem, quantity = Number(button.dataset.quantity), total = ITEM_PRICES[ball] * quantity; try { buyItem(game, ball, quantity); this.options.notify(`${ITEM_LABELS[ball]} ${quantity}개 · ₩${total.toLocaleString('ko-KR')} 구매 완료`); this.options.changed(); this.refresh(); } catch (error) { this.options.notify(String(error), true); } });
     const offer = game.captureOffer, offerNode = this.host.querySelector<HTMLElement>('#world-capture-offer')!;
     offerNode.hidden = !offer;

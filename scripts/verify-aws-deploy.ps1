@@ -31,7 +31,7 @@ try {
   if ($ReceiptPath) {
     $receipt = Get-Content -LiteralPath $ReceiptPath -Raw | ConvertFrom-Json
     foreach ($entry in $receipt.files) {
-      if ($entry.path -match '^(models/pokemon/\d+\.glb|pokemon/(back/)?\d+\.png)$' -or $entry.path -match '(?i)(^|/)[^/]+\.(gb|gbc|gba|rom)$') { throw "Excluded binary is listed in receipt: $($entry.path)" }
+      if ($entry.path -match '^(models/pokemon/\d+\.glb|pokemon/(back/)?[^/]+\.png)$' -or $entry.path -match '(?i)(^|/)[^/]+\.(gb|gbc|gba|rom)$') { throw "Excluded binary is listed in receipt: $($entry.path)" }
       $uri = "$($outputs.SiteUrl)/$($entry.path)"
       $response = $client.GetAsync($uri).GetAwaiter().GetResult()
       $response.EnsureSuccessStatusCode() | Out-Null

@@ -22,7 +22,7 @@ repo:jigglypop@52653682/choketmonster@1364221925:ref:refs/heads/main
 
 ## 검증과 빌드
 
-Ubuntu 24.04와 Node 22에서 `npm ci`를 실행한다. `restore-source-cache.py`는 원본 manifest의 고정된 URL에서 테스트 입력 324개를 받고 SHA-256을 검증한다. 캐시 PNG와 CSV는 Git과 배포 산출물에 포함하지 않는다. 테스트는 worker를 2개로 제한하고 테스트 제한 시간을 60초로 둔 뒤 Vite production build를 만든다.
+Ubuntu 24.04와 Node 22에서 `npm ci`를 실행한다. `restore-source-cache.py`는 원본 manifest의 고정된 URL에서 테스트 입력 2,714개(CSV 30개, PNG 2,684개)를 받고 SHA-256을 검증한다. 캐시 PNG와 CSV는 Git과 배포 산출물에 포함하지 않는다. 테스트는 worker를 2개로 제한하고 테스트 제한 시간을 60초로 둔 뒤 Vite production build를 만든다.
 
 ```bash
 npm exec vitest -- run --maxWorkers 2 --testTimeout 60000

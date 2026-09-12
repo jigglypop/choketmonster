@@ -14,6 +14,7 @@ type Report = {
 
 class CookieJar {
   private values = new Map<string, string>();
+  profileId?: string;
   capture(response: Response): string[] {
     const headers = response.headers as Headers & { getSetCookie?: () => string[] };
     const rows = headers.getSetCookie?.() ?? (response.headers.get('set-cookie') ? [response.headers.get('set-cookie')!] : []);
@@ -40,6 +41,7 @@ const checks: Check[] = [];
 async function request(path: string, init: RequestInit = {}, jar?: CookieJar) {
   const headers = new Headers(init.headers);
   if (jar?.header()) headers.set('cookie', jar.header());
+  if (jar?.profileId && !headers.has('x-choketmon-profile')) headers.set('x-choketmon-profile', jar.profileId);
   if (init.method && init.method !== 'GET' && init.method !== 'HEAD' && !headers.has('origin')) headers.set('origin', origin);
   const started = performance.now();
   const response = await fetch(`${baseUrl}${path}`, { ...init, headers, redirect: 'manual', signal: AbortSignal.timeout(20_000) });
@@ -67,6 +69,7 @@ async function main() {
 
     call = await request('/api/auth/register', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: usernames[0], password }) });
     const registrationCookies = first.capture(call.response), registered = await json(call.response);
+    first.profileId = (registered.user as { id?: string } | undefined)?.id;
     record('register first account', [200, 201].includes(call.response.status) && (registered.user as { username?: string } | undefined)?.username === usernames[0], 'unique test account created', call.elapsedMs, call.response.status);
     record('session cookie is HttpOnly', registrationCookies.some(value => /;\s*httponly(?:;|$)/i.test(value)), 'Set-Cookie contains HttpOnly', call.elapsedMs, call.response.status);
     record('session cookie has SameSite', registrationCookies.some(value => /;\s*samesite=(lax|strict)(?:;|$)/i.test(value)), 'Set-Cookie contains SameSite=Lax or Strict', call.elapsedMs, call.response.status);
@@ -102,6 +105,7 @@ async function main() {
 
     call = await request('/api/auth/register', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: usernames[1], password }) });
     second.capture(call.response); const secondRegistered = await json(call.response);
+    second.profileId = (secondRegistered.user as { id?: string } | undefined)?.id;
     record('register second account', [200, 201].includes(call.response.status) && (secondRegistered.user as { username?: string } | undefined)?.username === usernames[1], 'second isolated test account created', call.elapsedMs, call.response.status);
     call = await request(`/api/saves/${encodeURIComponent(slot)}`, {}, second);
     record('other account cannot see save', call.response.status === 404, 'same slot name is absent for the second account', call.elapsedMs, call.response.status);
@@ -115,6 +119,7 @@ async function main() {
 
     const restored = new CookieJar();
     call = await request('/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: usernames[0], password }) }); restored.capture(call.response);
+    const relogged = await json(call.response); restored.profileId = (relogged.user as { id?: string } | undefined)?.id;
     record('relogin succeeds', call.response.status === 200, 'first account can create a fresh session', call.elapsedMs, call.response.status);
     call = await request(`/api/saves/${encodeURIComponent(slot)}`, {}, restored); const restoredSave = await json(call.response);
     record('relogin restores save', call.response.status === 200 && Number(restoredSave.revision) === revision, 'saved revision remains attached to the account', call.elapsedMs, call.response.status);
@@ -123,6 +128,25 @@ async function main() {
     record('cross-origin mutation rejected', call.response.status === 403, 'authenticated cross-origin PUT returns 403', call.elapsedMs, call.response.status);
     call = await request(`/api/saves/non-json-${suffix}`, { method: 'PUT', headers: { 'content-type': 'text/plain' }, body: '{}' }, restored);
     record('non-JSON mutation rejected', call.response.status === 415, 'authenticated text/plain PUT returns 415', call.elapsedMs, call.response.status);
+    call = await request(`/api/saves/profile-swap-${suffix}`, { method: 'PUT', headers: { 'content-type': 'application/json', 'x-choketmon-profile': first.profileId! }, body: JSON.stringify({ save, revision: 0, requestId: crypto.randomUUID() }) }, second);
+    record('cross-tab profile swap rejected', call.response.status === 403, 'a tab holding profile A data cannot write after the shared cookie changes to session B', call.elapsedMs, call.response.status);
+    const missingOriginStarted = performance.now();
+    const missingOrigin = await fetch(`${baseUrl}/api/auth/logout`, { method: 'POST', headers: { 'content-type': 'application/json', cookie: restored.header() }, body: '{}', redirect: 'manual' });
+    record('missing Origin mutation rejected', missingOrigin.status === 403, 'authenticated POST without Origin returns 403', Math.round(performance.now() - missingOriginStarted), missingOrigin.status);
+
+    const edited = structuredClone(save) as typeof save & { game: { player: { team: Array<{ stats: { attack: number } }> } } };
+    edited.game.player.team[0].stats.attack += 999;
+    call = await request(`/api/saves/edited-${suffix}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ save: edited, revision: 0, requestId: crypto.randomUUID() }) }, restored);
+    record('edited Pokemon rejected', call.response.status === 422, 'server recalculates Pokemon stats instead of trusting the client', call.elapsedMs, call.response.status);
+
+    const receiptSlot = `receipt-${suffix}`, firstReceiptId = crypto.randomUUID();
+    call = await request(`/api/saves/${receiptSlot}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ save, revision: 0, requestId: firstReceiptId }) }, restored);
+    const receiptOne = await json(call.response);
+    const nextSave = structuredClone(save); nextSave.savedAt = new Date(Date.now() + 2_000).toISOString();
+    call = await request(`/api/saves/${receiptSlot}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ save: nextSave, revision: Number(receiptOne.revision), requestId: crypto.randomUUID() }) }, restored);
+    const alteredOldRequest = structuredClone(save); alteredOldRequest.savedAt = new Date(Date.now() + 3_000).toISOString();
+    call = await request(`/api/saves/${receiptSlot}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ save: alteredOldRequest, revision: 0, requestId: firstReceiptId }) }, restored);
+    record('old request receipt cannot be reused', call.response.status === 409, 'request IDs remain bound after a newer save', call.elapsedMs, call.response.status);
 
     for (const [name, path, init] of [
       ['unauthenticated save read rejected', `/api/saves/${slot}`, {}],
@@ -135,9 +159,7 @@ async function main() {
     if (brainStepRequested) {
       const brainBody = JSON.stringify({ requestId: crypto.randomUUID(), inputs: [1, .8, .7, 0, .1, .02, 0, 0, 1, .7, .5, .2], available: [true, true, true, true, true], reward: null, learning: false, terminal: false });
       call = await request(`/api/brains/${encodeURIComponent(creatureId)}/step`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: brainBody }, restored); const firstBrainStatus = call.response.status, firstBrain = await json(call.response);
-      record('authenticated brain step', firstBrainStatus === 200, 'optional server brain step returns 200', call.elapsedMs, firstBrainStatus);
-      call = await request(`/api/brains/${encodeURIComponent(creatureId)}/step`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: brainBody }, restored); const retriedBrain = await json(call.response);
-      record('brain step idempotent retry', call.response.status === 200 && JSON.stringify(retriedBrain) === JSON.stringify(firstBrain), 'same requestId returns the same response', call.elapsedMs, call.response.status);
+      record('database-backed brain step retired', firstBrainStatus === 410 && firstBrain.code === 'LOCAL_CHECKPOINT_REQUIRED', 'legacy endpoint cannot write a neural state on every turn', call.elapsedMs, firstBrainStatus);
     }
   } catch (error) {
     record('suite execution', false, error instanceof Error ? error.message : String(error), Date.now() - started);

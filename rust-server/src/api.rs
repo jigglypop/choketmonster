@@ -1,5 +1,6 @@
-use crate::connectome::{Connectome, NeuralState, StepRequest};
+use crate::connectome::Connectome;
 use crate::local::{LocalBatchRequest, LocalBrains, LocalError};
+use crate::save_validation::validate_save;
 use argon2::{
     Argon2, PasswordHasher, PasswordVerifier,
     password_hash::{PasswordHash, SaltString},
@@ -101,8 +102,8 @@ pub fn router(state: AppState) -> Router {
         .route("/api/connectome", get(graph_info))
         .route("/api/saves", get(list_saves))
         .route("/api/saves/{slot}", get(load_save).put(save))
-        .route("/api/brains/{creature}/step", post(neural_step))
-        .route("/api/brains/step-batch", post(neural_batch))
+        .route("/api/brains/{creature}/step", post(retired_neural_step))
+        .route("/api/brains/step-batch", post(retired_neural_batch))
         .layer(DefaultBodyLimit::max(20_000_000))
         .layer(middleware::from_fn_with_state(state.clone(), protect))
         .layer(tower_http::compression::CompressionLayer::new())
@@ -204,6 +205,7 @@ async fn protect(State(state): State<AppState>, request: Request, next: Next) ->
             .get("sec-fetch-site")
             .is_some_and(|v| v == "cross-site");
         if cross_site
+            || origin.is_none()
             || origin.is_some_and(|origin| !state.origin.split(',').any(|v| origin == v.trim()))
         {
             return ApiError(StatusCode::FORBIDDEN, "허용되지 않은 요청 출처입니다.")
@@ -228,6 +230,18 @@ async fn protect(State(state): State<AppState>, request: Request, next: Next) ->
     response
         .headers_mut()
         .insert("x-content-type-options", "nosniff".parse().unwrap());
+    response
+        .headers_mut()
+        .insert("x-frame-options", "DENY".parse().unwrap());
+    response
+        .headers_mut()
+        .insert("referrer-policy", "no-referrer".parse().unwrap());
+    response.headers_mut().insert(
+        "content-security-policy",
+        "default-src 'none'; frame-ancestors 'none'"
+            .parse()
+            .unwrap(),
+    );
     response
 }
 #[derive(Serialize)]
@@ -254,6 +268,20 @@ async fn user(state: &AppState, headers: &HeaderMap) -> ApiResult<User> {
         id: row.get("id"),
         username: row.get("username"),
     })
+}
+async fn profile_user(state: &AppState, headers: &HeaderMap) -> ApiResult<User> {
+    let account = user(state, headers).await?;
+    let profile = headers
+        .get("x-choketmon-profile")
+        .and_then(|value| value.to_str().ok());
+    let expected = account.id.to_string();
+    if profile != Some(expected.as_str()) {
+        return Err(ApiError(
+            StatusCode::FORBIDDEN,
+            "로그인 계정과 이 탭의 저장 프로필이 다릅니다. 다시 로그인해 주세요.",
+        ));
+    }
+    Ok(account)
 }
 fn rate_limit(state: &AppState, key: String, max: u32) -> ApiResult<()> {
     let mut attempts = state.attempts.lock().map_err(internal)?;
@@ -304,12 +332,18 @@ async fn session(state: &AppState, user: User) -> ApiResult<Response> {
         .bind(user.id)
         .execute(&state.db)
         .await?;
+    // Bound stolen/forgotten sessions per account. expires_at preserves
+    // insertion order because every new token receives the same 30-day TTL.
+    sqlx::query("DELETE FROM sessions WHERE token_hash IN (SELECT token_hash FROM sessions WHERE user_id=$1 ORDER BY expires_at DESC OFFSET 8)")
+        .bind(user.id)
+        .execute(&state.db)
+        .await?;
     sqlx::query("DELETE FROM sessions WHERE expires_at<now()")
         .execute(&state.db)
         .await?;
     let secure = if state.secure { "; Secure" } else { "" };
     let cookie = format!(
-        "choketmon_session={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000{secure}"
+        "choketmon_session={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000{secure}"
     );
     Ok(([(header::SET_COOKIE, cookie)], Json(json!({"user":user}))).into_response())
 }
@@ -318,7 +352,8 @@ async fn register(
     Json(body): Json<Credentials>,
 ) -> ApiResult<Response> {
     let (username, password) = credentials(body)?;
-    rate_limit(&state, "register:global".into(), 30)?;
+    rate_limit(&state, "register:global".into(), 300)?;
+    rate_limit(&state, format!("register:{username}"), 5)?;
     let permit = state
         .compute
         .clone()
@@ -412,7 +447,7 @@ async fn logout(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<
         StatusCode::NO_CONTENT,
         [(
             header::SET_COOKIE,
-            format!("choketmon_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0{secure}"),
+            format!("choketmon_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0{secure}"),
         )],
     )
         .into_response())
@@ -471,7 +506,7 @@ fn decompress(bytes: &[u8]) -> ApiResult<Vec<u8>> {
     Ok(out)
 }
 async fn list_saves(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Json<Value>> {
-    let user = user(&state, &headers).await?;
+    let user = profile_user(&state, &headers).await?;
     let rows=sqlx::query("SELECT slot,revision,updated_at::text FROM saves WHERE user_id=$1 ORDER BY updated_at DESC LIMIT 100").bind(user.id).fetch_all(&state.db).await?;
     Ok(Json(
         json!({"saves":rows.iter().map(|r|json!({"slot":r.get::<String,_>("slot"),"revision":r.get::<i64,_>("revision"),"updatedAt":r.get::<String,_>("updated_at")})).collect::<Vec<_>>()}),
@@ -483,7 +518,7 @@ async fn load_save(
     Path(slot): Path<String>,
 ) -> ApiResult<Json<Value>> {
     identifier(&slot)?;
-    let user = user(&state, &headers).await?;
+    let user = profile_user(&state, &headers).await?;
     let row = sqlx::query("SELECT revision,payload FROM saves WHERE user_id=$1 AND slot=$2")
         .bind(user.id)
         .bind(slot)
@@ -511,18 +546,13 @@ async fn save(
 ) -> ApiResult<Json<Value>> {
     identifier(&slot)?;
     identifier(&body.request_id)?;
-    let user = user(&state, &headers).await?;
+    let user = profile_user(&state, &headers).await?;
+    rate_limit(&state, format!("save:{}", user.id), 600)?;
     let value = &body.save;
-    if body.revision < 0
-        || value["format"] != "choketmon"
-        || value["version"] != 2
-        || value["model"] != "pokemon-recurrent-v1"
-        || !value["game"]["player"]["team"].is_array()
-        || !value["game"]["player"]["box"].is_array()
-        || !value["graph"].is_object()
-    {
-        return Err(bad("저장 파일 형식이 올바르지 않습니다."));
+    if body.revision < 0 {
+        return Err(bad("저장 리비전이 올바르지 않습니다."));
     }
+    validate_save(value).map_err(bad)?;
     let mut tx = state.db.begin().await?;
     sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
         .bind(format!("save:{}", user.id))
@@ -541,17 +571,15 @@ async fn save(
         .unwrap_or(0);
     let raw = serde_json::to_vec(value).map_err(internal)?;
     let payload_hash = hex::encode(Sha256::digest(&raw));
-    if let Some(prior) = prior
-        .as_ref()
-        .filter(|r| r.get::<String, _>("request_id") == body.request_id)
-    {
-        if prior.get::<String, _>("payload_hash") != payload_hash {
+    if let Some(receipt) = sqlx::query("SELECT revision,payload_hash FROM save_requests WHERE user_id=$1 AND slot=$2 AND request_id=$3")
+        .bind(user.id).bind(&slot).bind(&body.request_id).fetch_optional(&mut *tx).await? {
+        if receipt.get::<String, _>("payload_hash") != payload_hash {
             return Err(ApiError(
                 StatusCode::CONFLICT,
                 "같은 요청 ID의 저장 내용이 다릅니다.",
             ));
         }
-        return Ok(Json(json!({"revision":revision})));
+        return Ok(Json(json!({"revision":receipt.get::<i64,_>("revision")})));
     }
     if revision != body.revision {
         return Err(ApiError(
@@ -570,167 +598,39 @@ async fn save(
         ));
     }
     sqlx::query("INSERT INTO saves(user_id,slot,revision,request_id,payload,payload_hash) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(user_id,slot) DO UPDATE SET revision=excluded.revision,request_id=excluded.request_id,payload=excluded.payload,payload_hash=excluded.payload_hash,updated_at=now()")
-        .bind(user.id).bind(&slot).bind(revision+1).bind(body.request_id).bind(bytes).bind(payload_hash).execute(&mut *tx).await?;
+        .bind(user.id).bind(&slot).bind(revision+1).bind(&body.request_id).bind(bytes).bind(&payload_hash).execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO save_requests(user_id,slot,request_id,payload_hash,revision) VALUES($1,$2,$3,$4,$5)")
+        .bind(user.id).bind(&slot).bind(&body.request_id).bind(&payload_hash).bind(revision+1).execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM save_requests WHERE user_id=$1 AND created_at<now()-interval '1 day'")
+        .bind(user.id)
+        .execute(&mut *tx)
+        .await?;
     tx.commit().await?;
     Ok(Json(json!({"revision":revision+1})))
 }
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct NeuralRequest {
-    request_id: String,
-    episode_id: Option<String>,
-    #[serde(flatten)]
-    step: StepRequest,
-}
-#[derive(Deserialize)]
-struct NeuralBatch {
-    steps: Vec<NeuralBatchItem>,
-}
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct NeuralBatchItem {
-    creature_id: String,
-    #[serde(flatten)]
-    request: NeuralRequest,
-}
-// Each creature retains its own durable idempotency receipt. A retry after a
-// partial batch reuses completed decisions, then resolves the remaining one.
-async fn neural_batch(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Json(batch): Json<NeuralBatch>,
-) -> ApiResult<Json<Value>> {
-    if batch.steps.is_empty() || batch.steps.len() > 2 {
-        return Err(bad("한 번에 1~2개 개체만 계산할 수 있습니다."));
-    }
-    if batch.steps.len() == 2 && batch.steps[0].creature_id == batch.steps[1].creature_id {
-        return Err(bad("배치의 개체 ID는 서로 달라야 합니다."));
-    }
-    for item in &batch.steps {
-        identifier(&item.creature_id)?;
-        identifier(&item.request.request_id)?;
-    }
-    let mut decisions = Vec::with_capacity(batch.steps.len());
-    for item in batch.steps {
-        let Json(decision) = neural_step(
-            State(state.clone()),
-            headers.clone(),
-            Path(item.creature_id.clone()),
-            Json(item.request),
-        )
-        .await?;
-        decisions.push(json!({"creatureId":item.creature_id,"decision":decision}));
-    }
-    Ok(Json(json!({"decisions":decisions})))
-}
-async fn neural_step(
+
+async fn retired_neural_step(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(creature): Path<String>,
-    Json(body): Json<NeuralRequest>,
-) -> ApiResult<Json<Value>> {
+    Json(_body): Json<Value>,
+) -> ApiResult<Response> {
     identifier(&creature)?;
-    identifier(&body.request_id)?;
-    let account = user(&state, &headers).await?;
-    rate_limit(&state, format!("brain:{}", account.id), 3600)?;
-    let graph = state.graph.clone().ok_or(ApiError(
-        StatusCode::SERVICE_UNAVAILABLE,
-        "전체 회로가 로드되지 않았습니다.",
-    ))?;
-    let mut tx = state.db.begin().await?;
-    let locked: bool =
-        sqlx::query_scalar("SELECT pg_try_advisory_xact_lock(hashtextextended($1,0))")
-            .bind(format!("brain:{}", account.id))
-            .fetch_one(&mut *tx)
-            .await?;
-    if !locked {
-        return Err(ApiError(
-            StatusCode::TOO_MANY_REQUESTS,
-            "이 계정의 이전 회로 계산이 진행 중입니다.",
-        ));
-    }
-    let episode_id = body.episode_id.unwrap_or_else(|| "interactive".into());
-    identifier(&episode_id)?;
-    let request_hash = hex::encode(Sha256::digest(
-        serde_json::to_vec(&json!({"step":body.step,"episodeId":episode_id})).map_err(internal)?,
-    ));
-    if let Some(row)=sqlx::query("SELECT response,request_hash FROM neural_requests WHERE user_id=$1 AND creature_id=$2 AND request_id=$3").bind(account.id).bind(&creature).bind(&body.request_id).fetch_optional(&mut *tx).await? {
-        if row.get::<String,_>("request_hash")!=request_hash {return Err(ApiError(StatusCode::CONFLICT,"같은 회로 요청 ID의 입력이 다릅니다."));}
-        return Ok(Json(row.get("response")));
-    }
-    let permit = state.compute.clone().try_acquire_owned().map_err(|_| {
-        ApiError(
-            StatusCode::TOO_MANY_REQUESTS,
-            "회로 계산 중입니다. 잠시 후 다시 시도해 주세요.",
-        )
-    })?;
-    let row = sqlx::query(
-        "SELECT graph_id,state,episode_id FROM neural_states WHERE user_id=$1 AND creature_id=$2",
-    )
-    .bind(account.id)
-    .bind(&creature)
-    .fetch_optional(&mut *tx)
-    .await?;
-    if row.is_none() {
-        let count: i64 = sqlx::query_scalar("SELECT count(*) FROM neural_states WHERE user_id=$1")
-            .bind(account.id)
-            .fetch_one(&mut *tx)
-            .await?;
-        if count >= 512 {
-            return Err(ApiError(
-                StatusCode::PAYLOAD_TOO_LARGE,
-                "계정의 서버 뇌 상태 512개 한도에 도달했습니다.",
-            ));
-        }
-    }
-    let info = graph.info();
-    let graph_id = info["graphId"]
-        .as_str()
-        .ok_or_else(|| internal("graphId missing"))?
-        .to_owned();
-    let seed_bytes = Sha256::digest(format!("{}:{creature}", account.id).as_bytes());
-    let seed = u64::from_le_bytes(seed_bytes[..8].try_into().unwrap());
-    let mut neural: NeuralState = if let Some(row) = row {
-        if row.get::<String, _>("graph_id") != graph_id {
-            return Err(ApiError(
-                StatusCode::CONFLICT,
-                "저장된 회로 버전이 현재 서버와 다릅니다.",
-            ));
-        }
-        let bytes: Vec<u8> = row.get("state");
-        let mut saved: NeuralState =
-            bincode::deserialize(&decompress(&bytes)?).map_err(internal)?;
-        if row.get::<String, _>("episode_id") != episode_id {
-            saved.activity.fill(0.0);
-            saved.previous = None;
-            saved.action = 4;
-        }
-        saved
-    } else {
-        NeuralState::new(&graph, seed)
-    };
-    let (response, bytes) = tokio::task::spawn_blocking(move || -> ApiResult<_> {
-        let _permit = permit;
-        let result = graph
-            .step(&mut neural, &body.step)
-            .map_err(|_| bad("회로 입력 형식이 올바르지 않습니다."))?;
-        Ok((
-            serde_json::to_value(result).map_err(internal)?,
-            compress(&bincode::serialize(&neural).map_err(internal)?)?,
-        ))
-    })
-    .await
-    .map_err(internal)??;
-    sqlx::query("INSERT INTO neural_states(user_id,creature_id,graph_id,state,episode_id) VALUES($1,$2,$3,$4,$5) ON CONFLICT(user_id,creature_id) DO UPDATE SET state=excluded.state,episode_id=excluded.episode_id,updated_at=now()")
-        .bind(account.id).bind(&creature).bind(graph_id).bind(bytes).bind(episode_id).execute(&mut *tx).await?;
-    sqlx::query("INSERT INTO neural_requests(user_id,creature_id,request_id,response,request_hash) VALUES($1,$2,$3,$4,$5)").bind(account.id).bind(&creature).bind(body.request_id).bind(&response).bind(request_hash).execute(&mut *tx).await?;
-    // Bounded retry receipts, retained for a day without unbounded table growth.
-    sqlx::query(
-        "DELETE FROM neural_requests WHERE user_id=$1 AND created_at<now()-interval '1 day'",
-    )
-    .bind(account.id)
-    .execute(&mut *tx)
-    .await?;
-    tx.commit().await?;
-    Ok(Json(response))
+    let _ = user(&state, &headers).await?;
+    Ok((StatusCode::GONE, Json(json!({
+        "message":"계정용 회로 API는 종료되었습니다. /api/local-brains/step-batch와 기기 체크포인트를 사용해 주세요.",
+        "code":"LOCAL_CHECKPOINT_REQUIRED"
+    }))).into_response())
+}
+
+async fn retired_neural_batch(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(_body): Json<Value>,
+) -> ApiResult<Response> {
+    let _ = user(&state, &headers).await?;
+    Ok((StatusCode::GONE, Json(json!({
+        "message":"계정용 회로 API는 종료되었습니다. /api/local-brains/step-batch와 기기 체크포인트를 사용해 주세요.",
+        "code":"LOCAL_CHECKPOINT_REQUIRED"
+    }))).into_response())
 }

@@ -360,6 +360,28 @@ function BuildingSign({ text, color }: { text: string; color: string }) {
   </group>;
 }
 
+function TownPaving({ color }: { color: string }) {
+  const ref = useRef<InstancedMesh>(null);
+  const tiles = useMemo(() => {
+    const result: Array<[number, number]> = [];
+    for (let x = -7; x <= 7; x++) for (let z = -7; z <= 7; z++) if (Math.hypot(x, z) <= 7.1) result.push([x, z]);
+    return result;
+  }, []);
+  useLayoutEffect(() => {
+    if (!ref.current) return;
+    const matrix = new Matrix4(), base = new Color(color), cream = new Color('#e7dfc9');
+    tiles.forEach(([x, z], index) => {
+      ref.current!.setMatrixAt(index, matrix.makeTranslation(x * 1.12, -.015, z * 1.12));
+      ref.current!.setColorAt(index, cream.clone().lerp(base, (x + z) % 2 === 0 ? .34 : .12));
+    });
+    ref.current.instanceMatrix.needsUpdate = true;
+    if (ref.current.instanceColor) ref.current.instanceColor.needsUpdate = true;
+  }, [color, tiles]);
+  return <instancedMesh ref={ref} args={[undefined, undefined, tiles.length]} receiveShadow name="town-paving">
+    <boxGeometry args={[1.08, .045, 1.08]} /><meshStandardMaterial roughness={.94} />
+  </instancedMesh>;
+}
+
 function TownBuilding({ townId, townColor, index }: { townId: string; townColor: string; index: number }) {
   const pallet = townId === 'pallet';
   const role = pallet ? (index === 0 ? 'RED' : index === 1 ? 'BLUE' : 'LAB') : (index === 0 ? 'P' : index === 1 ? 'M' : 'G');
@@ -441,6 +463,7 @@ function TrailAndWater({ sampleWorld, player, badges }: { sampleWorld: (x: numbe
         <circleGeometry args={[12, 48]} /><WaterMaterial lake />
       </mesh>
       {KANTO_LOCATIONS.filter(item => item.kind === 'town').map(town => <group key={town.id} position={[town.x, .05, town.z]}>
+        <TownPaving color={townColors[town.id] ?? '#c3b59b'} />
         {townBuildingOffsets(town).map(([x, z], index) => <group key={index} position={[x, 0, z]}>
           <TownBuilding townId={town.id} townColor={townColors[town.id] ?? '#b85d53'} index={index} />
         </group>)}
@@ -683,7 +706,7 @@ function Creature({ creature, selected, distance, options, showLabels }: {
       onClick={event => { event.stopPropagation(); options.onSelect(creature.id); }}
       onDoubleClick={event => { event.stopPropagation(); options.onInteract?.(creature.id); }}
     >
-      {distance <= MODEL_LOD_DISTANCE
+      {distance <= MODEL_LOD_DISTANCE && creature.speciesId <= 151
         ? <PokemonModel creature={creature} url={(options.modelUrl ?? (id => `/models/pokemon/${id}.glb`))(creature.speciesId)} />
         : <SpriteCreature displayHeight={creature.displayHeight} url={(options.spriteUrl ?? (id => `/pokemon/${id}.png`))(creature.speciesId)} />}
       {(selected || creature.inBattle) && <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, .04, 0]}><ringGeometry args={[1.1, 1.34, 40]} /><meshBasicMaterial color={creature.inBattle ? '#f09155' : '#f6dd67'} transparent opacity={.86} /></mesh>}

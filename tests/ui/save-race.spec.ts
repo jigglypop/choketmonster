@@ -1,9 +1,9 @@
 import { test, expect } from '@playwright/test';
 
 test('two tabs keep the newest device save without deleting legacy account records', async ({ page, context }) => {
-  const saveRequests: string[] = []; let accountReads = 0;
+  const saveRequests: string[] = [];
   context.on('request', request => { if (new URL(request.url()).pathname.startsWith('/api/saves/')) saveRequests.push(request.url()); });
-  await context.route('**/api/auth/me', route => { accountReads++; return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user: null }) }); });
+  await context.route('**/api/auth/me', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user: null }) }));
   const second = await context.newPage();
   await Promise.all([page.goto('/'), second.goto('/')]);
 
@@ -47,14 +47,14 @@ test('two tabs keep the newest device save without deleting legacy account recor
   expect(result.current).toEqual({ marker: 'tab-B-newest' });
   expect(result.keys).toContain('account:former-user:current');
   expect(saveRequests).toEqual([]);
-  expect(accountReads).toBe(0);
 });
 
-test('a missing device slot copies the active legacy account save once without cloud save access', async ({ page }) => {
+test('a missing guest slot never exposes or migrates an account-scoped save', async ({ page }) => {
   let accountReads = 0; const saveRequests: string[] = [];
   page.on('request', request => { const path = new URL(request.url()).pathname; if (path.startsWith('/api/saves/')) saveRequests.push(path); });
   await page.route('**/api/auth/me', route => { accountReads++; return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user: { id: 'legacy-user', username: 'unused' } }) }); });
-  await page.goto('/data/source-manifest.json');
+  await page.goto('/data/connectome.json');
+  const accountReadsBeforeStorage = accountReads;
   await page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open('choketmon-151', 2);
@@ -66,18 +66,15 @@ test('a missing device slot copies the active legacy account save once without c
       tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
     }); db.close();
   });
-  const readsBeforeMigration = accountReads;
   const first = await page.evaluate(async () => {
     const modulePath = '/src/game/storage.ts', module = await import(/* @vite-ignore */ modulePath);
     return module.readSave();
   });
-  const readsAfterMigration = accountReads;
   const second = await page.evaluate(async () => {
     const modulePath = '/src/game/storage.ts', module = await import(/* @vite-ignore */ modulePath);
     return module.readSave();
   });
-  expect([first, second]).toEqual([{ marker: 'legacy-local' }, { marker: 'legacy-local' }]);
-  expect(readsAfterMigration).toBeGreaterThan(readsBeforeMigration);
-  expect(accountReads).toBe(readsAfterMigration);
+  expect([first, second]).toEqual([undefined, undefined]);
+  expect(accountReads).toBe(accountReadsBeforeStorage);
   expect(saveRequests).toEqual([]);
 });
