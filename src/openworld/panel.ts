@@ -3,9 +3,9 @@ import { getMove, getSpecies } from '../data/pokemon';
 import { VERSIONS, getVersionSpeciesIds } from '../data/pokemon-versions';
 import { pokemonModelUrl, pokemonSpriteUrl } from '../game/assets';
 import { buyItem, experienceAtLevel, heal, ITEM_LABELS, ITEM_PRICES, statsFor, type BallItem, type GameState, type Monster } from '../game/engine';
-import { KANTO_LOCATIONS, KANTO_CONNECTIONS, KANTO_GYMS, locationAt, encountersForLocation } from './kanto';
+import { WORLDS, getWorldAtlas } from './atlas';
 import type { FieldPolicy } from '../game/field';
-import { movementSpeed, OpenWorldSimulation, sampleWorld, type OpenWorldSnapshot } from './simulation';
+import { movementSpeed, OpenWorldSimulation, versionEncounters, type OpenWorldSnapshot } from './simulation';
 import { lastServerDecision } from '../game/server-brain';
 import { mountOpenWorld } from './view';
 import type { OpenWorldRenderSnapshot, OpenWorldView, WorldCreature, WorldHeading } from './types';
@@ -50,8 +50,8 @@ export class OpenWorldPanel {
     this.unmount(); this.host = host;
     host.innerHTML = `<section class="adventure" aria-label="오픈월드 모험">
       <div id="ow-host"></div>
-      <div class="world-heading"><label class="world-eyebrow" for="world-version">수집 버전 <select id="world-version"><option value="national">전국도감</option>${VERSIONS.filter(version => version.speciesIds.length).map(version => `<option value="${version.id}">${escape(version.name)}${version.id.endsWith('-japan') ? ' (일본판)' : ''}</option>`).join('')}</select></label><h1 id="world-biome">태초마을</h1><p id="world-zone-level">1번도로에서 첫 모험을 시작하세요</p></div>
-      <aside class="world-radar"><button id="world-map-open" aria-label="관동 전체 지도 열기"><canvas id="world-minimap" width="180" height="180" aria-label="월드 지도"></canvas></button><span id="world-position"></span><small>관동 전체 지도 ↗</small></aside>
+      <div class="world-heading"><label class="world-eyebrow" for="world-version"><span id="world-region-label">관동</span> · 수집 <select id="world-version"><option value="national">전국도감</option>${VERSIONS.filter(version => version.speciesIds.length).map(version => `<option value="${version.id}">${escape(version.name)}${version.id.endsWith('-japan') ? ' (일본판)' : ''}</option>`).join('')}</select></label><h1 id="world-biome">태초마을</h1><p id="world-zone-level">1번도로에서 첫 모험을 시작하세요</p></div>
+      <aside class="world-radar"><button id="world-map-open" aria-label="지역 전체 지도 열기"><canvas id="world-minimap" width="180" height="180" aria-label="월드 지도"></canvas></button><span id="world-position"></span><small id="world-map-caption">지역 지도 ↗</small></aside>
       <div class="world-tools"><button id="world-pause">Ⅱ 일시 정지</button><button id="world-heal">캠프 회복</button><label><input id="world-auto-hunt" type="checkbox" checked><span>자동 사냥</span></label><label><input id="world-learning" type="checkbox"><span id="world-learning-label">기술 학습</span></label></div>
       <div class="world-control-mode" role="group" aria-label="조작 모드"><div class="world-mode-buttons"><button id="world-mode-auto">자동</button><button id="world-mode-manual">수동</button></div><div class="world-control-copy"><strong id="world-control-title"></strong><small id="world-control-help"></small></div></div>
       <details class="world-shop"><summary>프렌들리숍 · <span id="world-ball-stock"></span></summary><div id="world-shop-items"></div><small id="world-shop-note">승리 후에는 볼 1개로 확정 포획합니다.</small></details>
@@ -70,14 +70,14 @@ export class OpenWorldPanel {
         </details>
       </div>
       <section class="world-capture-offer" id="world-capture-offer" aria-label="승리 후 포획" hidden></section>
-      <dialog class="kanto-map-dialog" id="world-map-dialog"><header><div><small>KANTO REGION</small><h2>지도 · 순간이동</h2></div><button id="world-map-close">닫기 ✕</button></header><p>방문한 마을로 무료 이동합니다. 길이 막히면 태초마을로 돌아갈 수 있습니다.</p><div id="world-travel"></div><div id="world-map-content"></div></dialog>
+      <dialog class="kanto-map-dialog" id="world-map-dialog"><header><div><small id="world-map-region-name">KANTO REGION</small><h2>지도 · 순간이동</h2></div><button id="world-map-close">닫기 ✕</button></header><div class="world-region-picker"><label for="world-region">여행할 지역</label><select id="world-region">${WORLDS.map(region => `<option value="${region.id}">${region.name}</option>`).join('')}</select></div><p id="world-map-note">방문한 마을로 무료 이동합니다. 도시 연결·지형·출현은 게임용으로 구성한 지도입니다.</p><div id="world-travel"></div><div id="world-map-content"></div></dialog>
       <div class="world-feed" id="world-feed" aria-live="polite"></div>
       <div class="world-respawn" id="world-respawn"></div>
       <div class="world-dpad" aria-label="터치 이동"><button data-world-step="0,-1" aria-label="북쪽 이동">▲</button><div><button data-world-step="-1,0" aria-label="서쪽 이동">◀</button><button data-world-step="0,1" aria-label="남쪽 이동">▼</button><button data-world-step="1,0" aria-label="동쪽 이동">▶</button></div></div>
       <details class="world-method"><summary>회로와 게임 규칙</summary><p>브라우저 MaleCNS 실측 부분 회로 ${this.options.graph.nodes.length} 뉴런 · ${this.options.graph.edges.length.toLocaleString()} 연결. 전체 회로가 연결된 배틀은 서버에서 계산하고 반환된 개체 기억은 이 기기에 저장합니다. 감각 입력·행동 대응·학습 보상·월드 속도는 게임을 위해 설계했습니다.</p></details>
     </section>`;
     this.renderer = mountOpenWorld(host.querySelector('#ow-host')!, {
-      getSnapshot: () => this.renderSnapshot(), sampleWorld, modelUrl: pokemonModelUrl, spriteUrl: pokemonSpriteUrl,
+      getSnapshot: () => this.renderSnapshot(), sampleWorld: (x, z) => this.simulation.sampleWorld(x, z), modelUrl: pokemonModelUrl, spriteUrl: pokemonSpriteUrl,
       onReady: () => { this.ready = true; const canvasHost = this.host?.querySelector<HTMLElement>('#ow-host'); if (canvasHost) canvasHost.dataset.ready = 'true'; },
       onNavigationStart: () => {
         if (!this.canAcceptMovement()) return false;
@@ -155,8 +155,13 @@ export class OpenWorldPanel {
     const versionSelect = host.querySelector<HTMLSelectElement>('#world-version')!;
     versionSelect.value = this.options.game.adventureVersion ?? 'red';
     versionSelect.onchange = () => {
-      try { this.simulation.changeVersion(versionSelect.value); this.options.changed(); this.refresh(); this.options.notify('수집 버전을 바꿨습니다. 지역도감의 종을 공용 관동 맵에 배치합니다.'); }
+      try { this.simulation.changeVersion(versionSelect.value); this.options.changed(); this.refresh(); this.options.notify(`${this.simulation.atlas.name} 지역에서 수집을 시작합니다.`); }
       catch (error) { versionSelect.value = this.options.game.adventureVersion ?? 'red'; this.options.notify(String(error), true); }
+    };
+    const regionSelect = host.querySelector<HTMLSelectElement>('#world-region')!;
+    regionSelect.onchange = () => {
+      try { this.simulation.changeRegion(getWorldAtlas(regionSelect.value).id); this.options.changed(); this.refresh(); this.drawRegionMap(); this.options.notify(`${this.simulation.atlas.name}에 도착했습니다.`); }
+      catch (error) { regionSelect.value = this.simulation.regionId; this.options.notify(String(error), true); }
     };
     this.refresh();
   }
@@ -224,9 +229,10 @@ export class OpenWorldPanel {
     const ally = battle ? battle.player.team[battle.player.activeIndex] : game.player.team.find(mon => mon.hp > 0) ?? game.player.team[0];
     const enemy = battle?.enemy.team[battle.enemy.activeIndex];
     return {
+      regionId: this.simulation.regionId,
       player: { ...this.simulation.player, heading: this.simulation.player.heading as WorldHeading }, tick: this.simulation.tick, selectedWildId: this.simulation.selectedWildId, badges: game.player.badges,
       foods: this.simulation.foods.map(food => ({ ...food, id: String(food.id) })),
-      entities: this.simulation.visibleEntities(12).map(entity => {
+      entities: this.simulation.visibleEntities(18).map(entity => {
         const inBattle = Boolean(battle && (entity.kind === 'companion' || entity.id === this.simulation.battleWildId));
         const monster = entity.kind === 'companion' ? ally : entity.id === this.simulation.battleWildId ? enemy : undefined;
         const transformed = monster && battle?.transformations?.[monster.instanceId];
@@ -253,6 +259,13 @@ export class OpenWorldPanel {
     const game = this.options.game, world = this.simulation, battle = game.battle;
     const host = this.host.querySelector<HTMLElement>('#ow-host')!;
     host.dataset.runtime = 'gaesup-world'; host.dataset.graphId = this.options.graph.id;
+    host.dataset.region = world.regionId;
+    this.html('#world-region-label', world.atlas.name);
+    this.html('#world-map-caption', `${world.atlas.name} 지도 ↗`);
+    for (const [id, value] of [['world-version', game.adventureVersion ?? 'red'], ['world-region', world.regionId]]) {
+      const select = this.host.querySelector<HTMLSelectElement>(`#${id}`)!; if (select.value !== value) select.value = value;
+      select.disabled = Boolean(battle || game.captureOffer);
+    }
     host.dataset.tick = String(world.tick); host.dataset.paused = String(this.paused);
     const lead = battle ? battle.player.team[battle.player.activeIndex] : game.player.team.find(mon => mon.hp > 0) ?? game.player.team[0];
     const serverReceipt = lastServerDecision(lead.instanceId);
@@ -271,9 +284,9 @@ export class OpenWorldPanel {
       return `<button data-world-move="${index}" class="world-move type-${move.type}" ${!battle || slot.pp <= 0 ? 'disabled' : ''} title="${move.damageClass === 'physical' ? '물리' : move.damageClass === 'special' ? '특수' : '변화'} · 우선도 ${move.priority} · 클릭하면 다음 턴에 사용"><span>${index + 1} · ${types[move.type]} · 우선 ${move.priority}</span><strong>${move.name}</strong><small><span class="move-details">위력 ${move.power || '—'} · 명중 ${move.accuracy || '—'} · </span>PP ${slot.pp}/${move.pp}</small></button>`;
     }).join(''));
     this.html('#world-emergency-action', battle && !battle.awaitingSwitch && moves.every(slot => slot.pp <= 0) ? '<button id="world-struggle">발버둥 (PP 소진)</button>' : '');
-    const location = locationAt(world.player.x, world.player.z);
+    const location = this.simulation.locationAt(world.player.x, world.player.z);
     this.html('#world-biome', location.name);
-    const pool = encountersForLocation(location.id, game.player.badges);
+    const pool = versionEncounters(location.id, game.adventureVersion ?? 'red', game.player.badges, world.regionId);
     this.html('#world-zone-level', pool.length ? `야생 Lv.${location.minLevel}–${location.maxLevel} · ${pool.slice(0, 3).map(id => getSpecies(id).name).join(' · ')}` : '도시와 길을 따라 다음 구역으로 탐험하세요');
     this.html('#world-position', `${world.player.x.toFixed(0)}, ${world.player.z.toFixed(0)}`);
     this.html('#world-objective', `${game.versionCaught?.[game.adventureVersion ?? 'red']?.length ?? 0} / ${getVersionSpeciesIds(game.adventureVersion ?? 'red').length}종 수집 · 전국 ${game.dex.caught.length}종`);
@@ -294,10 +307,10 @@ export class OpenWorldPanel {
       this.button('#world-win-catch').onclick = () => this.catchVictory();
       this.button('#world-win-release').onclick = () => { world.releaseVictory(); this.options.changed(); this.refresh(); };
     }
-    const gym = KANTO_GYMS.find(item => item.locationId === location.id);
+    const gym = this.simulation.atlas.gyms.find(item => item.locationId === location.id);
     this.html('#world-gym', gym ? `<button id="world-gym-challenge" ${battle || offer || gym.badge !== game.player.badges + 1 ? 'disabled' : ''}>${gym.name} · Lv.${gym.level} ${game.player.badges >= gym.badge ? '클리어 ✓' : '도전'}</button><small>배지 ${game.player.badges}/8${gym.badge > game.player.badges + 1 ? ' · 앞 체육관부터 도전하세요' : ''}</small>` : '');
     if (gym) this.button('#world-gym-challenge').onclick = () => { if (world.challengeLocalGym()) { this.options.changed(); this.refresh(); } };
-    if (!gym && KANTO_LOCATIONS.some(item => item.id.startsWith('diglett-cave-') && Math.hypot(item.x - world.player.x, item.z - world.player.z) <= 5)) {
+    if (!gym && this.simulation.atlas.locations.some(item => item.id.startsWith('diglett-cave-') && Math.hypot(item.x - world.player.x, item.z - world.player.z) <= 5)) {
       this.html('#world-gym', `<button id="world-tunnel" ${battle || offer ? 'disabled' : ''}>디그다의 굴 통과 → 반대편 입구</button>`);
       this.button('#world-tunnel').onclick = () => { if (world.traverseTunnel()) { this.options.changed(); this.refresh(); } };
     }
@@ -339,21 +352,22 @@ export class OpenWorldPanel {
 
   private drawRegionMap(): void {
     const world = this.simulation, scale = (n: number) => n + 120;
-    this.html('#world-travel', KANTO_LOCATIONS.filter(item => item.kind === 'town').map(item => `<button data-world-travel="${item.id}" ${!world.visitedTownIds.includes(item.id) || this.options.game.battle || this.options.game.captureOffer ? 'disabled' : ''}>${item.name}<small>${world.visitedTownIds.includes(item.id) ? '순간이동' : '미방문'}</small></button>`).join(''));
+    this.html('#world-map-region-name', `${world.atlas.englishName.toUpperCase()} REGION`);
+    this.html('#world-travel', this.simulation.atlas.locations.filter(item => item.kind === 'town').map(item => `<button data-world-travel="${item.id}" ${!world.visitedTownIds.includes(item.id) || this.options.game.battle || this.options.game.captureOffer ? 'disabled' : ''}>${item.name}<small>${world.visitedTownIds.includes(item.id) ? '순간이동' : '미방문'}</small></button>`).join(''));
     this.host!.querySelectorAll<HTMLButtonElement>('[data-world-travel]').forEach(button => button.onclick = () => { if (world.teleportToTown(button.dataset.worldTravel!)) { this.host!.querySelector<HTMLDialogElement>('#world-map-dialog')!.close(); this.options.notify('안전한 마을 입구로 이동했습니다.'); this.options.changed(); this.refresh(); } });
-    const lines = KANTO_CONNECTIONS.map(([from, to]) => { const a = KANTO_LOCATIONS.find(item => item.id === from)!, b = KANTO_LOCATIONS.find(item => item.id === to)!; return `<line x1="${scale(a.x)}" y1="${scale(a.z)}" x2="${scale(b.x)}" y2="${scale(b.z)}"/>`; }).join('');
-    const towns = KANTO_LOCATIONS.filter(item => item.kind === 'town' || item.kind === 'special').map(item => `<g><circle cx="${scale(item.x)}" cy="${scale(item.z)}" r="2.8"/><text x="${scale(item.x) + 4}" y="${scale(item.z) - 3}">${item.name}</text></g>`).join('');
-    this.html('#world-map-content', `<svg viewBox="0 0 260 240" role="img" aria-label="관동 도시 연결 지도"><rect width="260" height="240" rx="8" fill="#bed5c0"/><g stroke="#faf1ce" stroke-width="3" fill="none">${lines}</g><g fill="#35594a">${towns}</g><circle cx="${scale(world.player.x)}" cy="${scale(world.player.z)}" r="4" fill="#e04f45" stroke="white"/><text x="8" y="16">N ↑ · 빨간 점: 내 위치</text></svg><div class="kanto-zone-list">${KANTO_LOCATIONS.map(item => `<div class="${locationAt(world.player.x, world.player.z).id === item.id ? 'current' : ''}"><strong>${item.name}</strong><small>${item.encounters.length ? `Lv.${item.minLevel}–${item.maxLevel} · ${item.encounters.slice(0, 4).map(id => getSpecies(id).name).join(' / ')}` : '마을 · 연결 거점'}${item.requiredBadges ? ` · 배지 ${item.requiredBadges}개` : ''}</small></div>`).join('')}</div>`);
+    const lines = this.simulation.atlas.connections.map(([from, to]) => { const a = this.simulation.atlas.locations.find(item => item.id === from)!, b = this.simulation.atlas.locations.find(item => item.id === to)!; return `<line x1="${scale(a.x)}" y1="${scale(a.z)}" x2="${scale(b.x)}" y2="${scale(b.z)}"/>`; }).join('');
+    const towns = this.simulation.atlas.locations.filter(item => item.kind === 'town' || item.kind === 'special').map(item => `<g><circle cx="${scale(item.x)}" cy="${scale(item.z)}" r="2.8"/><text x="${scale(item.x) + 4}" y="${scale(item.z) - 3}">${item.name}</text></g>`).join('');
+    this.html('#world-map-content', `<svg viewBox="0 0 260 240" role="img" aria-label="${world.atlas.name} 도시 연결 지도"><rect width="260" height="240" rx="8" fill="#bed5c0"/><g stroke="#faf1ce" stroke-width="3" fill="none">${lines}</g><g fill="#35594a">${towns}</g><circle cx="${scale(world.player.x)}" cy="${scale(world.player.z)}" r="4" fill="#e04f45" stroke="white"/><text x="8" y="16">N ↑ · 빨간 점: 내 위치</text></svg><div class="kanto-zone-list">${this.simulation.atlas.locations.map(item => `<div class="${this.simulation.locationAt(world.player.x, world.player.z).id === item.id ? 'current' : ''}"><strong>${item.name}</strong><small>${item.encounters.length ? `Lv.${item.minLevel}–${item.maxLevel} · ${item.encounters.slice(0, 4).map(id => getSpecies(id).name).join(' / ')}` : '마을 · 연결 거점'}${item.requiredBadges ? ` · 배지 ${item.requiredBadges}개` : ''}</small></div>`).join('')}</div>`);
   }
 
   private minimap(): void {
     const canvas = this.host?.querySelector<HTMLCanvasElement>('#world-minimap'); if (!canvas) return;
     const ctx = canvas.getContext('2d')!, size = canvas.width;
     const colors = { meadow: '#88a565', forest: '#345d42', lake: '#69adb3', rock: '#ac9f85' };
-    for (let x = 0; x < size; x += 4) for (let z = 0; z < size; z += 4) { ctx.fillStyle = colors[sampleWorld(x / size * 240 - 120, z / size * 240 - 120).biome]; ctx.fillRect(x, z, 4, 4); }
+    for (let x = 0; x < size; x += 4) for (let z = 0; z < size; z += 4) { ctx.fillStyle = colors[this.simulation.sampleWorld(x / size * 240 - 120, z / size * 240 - 120).biome]; ctx.fillRect(x, z, 4, 4); }
     ctx.strokeStyle = '#efe4bb'; ctx.lineWidth = 2;
-    for (const [from, to] of KANTO_CONNECTIONS) { const a = KANTO_LOCATIONS.find(item => item.id === from)!, b = KANTO_LOCATIONS.find(item => item.id === to)!; ctx.beginPath(); ctx.moveTo((a.x + 120) / 240 * size, (a.z + 120) / 240 * size); ctx.lineTo((b.x + 120) / 240 * size, (b.z + 120) / 240 * size); ctx.stroke(); }
-    for (const location of KANTO_LOCATIONS.filter(item => item.kind === 'town')) { ctx.fillStyle = '#b05946'; ctx.fillRect((location.x + 120) / 240 * size - 2, (location.z + 120) / 240 * size - 2, 4, 4); }
+    for (const [from, to] of this.simulation.atlas.connections) { const a = this.simulation.atlas.locations.find(item => item.id === from)!, b = this.simulation.atlas.locations.find(item => item.id === to)!; ctx.beginPath(); ctx.moveTo((a.x + 120) / 240 * size, (a.z + 120) / 240 * size); ctx.lineTo((b.x + 120) / 240 * size, (b.z + 120) / 240 * size); ctx.stroke(); }
+    for (const location of this.simulation.atlas.locations.filter(item => item.kind === 'town')) { ctx.fillStyle = '#b05946'; ctx.fillRect((location.x + 120) / 240 * size - 2, (location.z + 120) / 240 * size - 2, 4, 4); }
     for (const entity of this.simulation.entities) { ctx.fillStyle = entity.id === this.simulation.selectedWildId ? '#fff0a1' : '#faf2dc'; ctx.beginPath(); ctx.arc((entity.x + 120) / 240 * size, (entity.z + 120) / 240 * size, 2.5, 0, Math.PI * 2); ctx.fill(); }
     ctx.fillStyle = '#e0543e'; ctx.strokeStyle = '#fff8dd'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc((this.simulation.player.x + 120) / 240 * size, (this.simulation.player.z + 120) / 240 * size, 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   }

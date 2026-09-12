@@ -29,6 +29,7 @@ export type WorldCreature = WorldPoint & {
 export type WorldFood = WorldPoint & { id: string; kind?: string };
 
 export type OpenWorldRenderSnapshot = {
+  regionId?: string;
   badges?: number;
   player: WorldPlayer;
   entities: readonly WorldCreature[];

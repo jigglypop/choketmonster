@@ -26,11 +26,12 @@ export function RenderProbe() {
     const target = window as unknown as { __renderProbe?: { read(): unknown; reset(): void } };
     target.__renderProbe = {
       read: () => ({ samples: [...samples.current], dpr: gl.getPixelRatio(),
-        camera: camera.position.toArray(), objects: scene.children.length,
+        streaming: scene.userData.streaming, camera: camera.position.toArray(), objects: scene.children.length,
         creatures: scene.getObjectsByProperty('type', 'Group')
           .filter(object => object.name.startsWith('creature:'))
           .map(object => ({ id: object.name.slice('creature:'.length), position: object.position.toArray(), yaw: object.rotation.y })),
         nameplates: scene.getObjectsByProperty('name', 'creature-nameplate').length,
+        loadedPokemon: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('pokemon-model:')).map(object => Number(object.name.slice('pokemon-model:'.length))),
         renderables: renderableInventory(scene),
         detailAssets: ['moss-boulder', 'moss-stone', 'fern'].map(id => {
           const group = scene.getObjectByName(`nature:${id}.glb`);

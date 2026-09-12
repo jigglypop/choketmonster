@@ -392,6 +392,99 @@ fn validate_monster(
     Ok(())
 }
 
+const WORLD_MAPS: [(&str, &str); 10] = [
+    ("kanto", "kanto-v2"),
+    ("johto", "johto-atlas-v1"),
+    ("hoenn", "hoenn-atlas-v1"),
+    ("sinnoh", "sinnoh-atlas-v1"),
+    ("unova", "unova-atlas-v1"),
+    ("kalos", "kalos-atlas-v1"),
+    ("alola", "alola-atlas-v1"),
+    ("galar", "galar-atlas-v1"),
+    ("hisui", "hisui-atlas-v1"),
+    ("paldea", "paldea-atlas-v1"),
+];
+
+fn validate_town_ids(value: &Value) -> Result<(), &'static str> {
+    let ids = value
+        .as_array()
+        .ok_or("지역 방문 기록이 올바르지 않습니다.")?;
+    if ids.len() > 100 {
+        return Err("지역 방문 기록이 올바르지 않습니다.");
+    }
+    let mut unique = HashSet::new();
+    for id in ids {
+        let id = id
+            .as_str()
+            .filter(|id| !id.is_empty() && id.len() <= 80)
+            .ok_or("지역 방문 기록이 올바르지 않습니다.")?;
+        if !unique.insert(id) {
+            return Err("지역 방문 기록이 올바르지 않습니다.");
+        }
+    }
+    Ok(())
+}
+
+fn validate_open_world(view: Option<&Value>) -> Result<(), &'static str> {
+    let Some(view) = view else {
+        return Ok(());
+    };
+    let view = view
+        .as_object()
+        .ok_or("화면 저장 형식이 올바르지 않습니다.")?;
+    let Some(world) = view.get("openWorld") else {
+        return Ok(());
+    };
+    let world = world
+        .as_object()
+        .ok_or("오픈월드 저장 형식이 올바르지 않습니다.")?;
+    if world
+        .get("regionId")
+        .is_some_and(|value| !value.is_string())
+        || world
+            .get("mapVersion")
+            .is_some_and(|value| !value.is_string())
+    {
+        return Err("오픈월드 지역과 지도 버전이 올바르지 않습니다.");
+    }
+    let region = world.get("regionId").and_then(Value::as_str);
+    let map_version = world.get("mapVersion").and_then(Value::as_str);
+    match region {
+        Some(region) => {
+            let expected = WORLD_MAPS
+                .iter()
+                .find_map(|(id, map)| (*id == region).then_some(*map))
+                .ok_or("오픈월드 지역이 올바르지 않습니다.")?;
+            let legacy_kanto =
+                region == "kanto" && (map_version.is_none() || map_version == Some("kanto-v1"));
+            if !legacy_kanto && map_version != Some(expected) {
+                return Err("오픈월드 지도 버전이 지역과 일치하지 않습니다.");
+            }
+        }
+        None => {
+            if !matches!(map_version, None | Some("kanto-v1") | Some("kanto-v2")) {
+                return Err("기존 오픈월드 지도 버전이 올바르지 않습니다.");
+            }
+        }
+    }
+    if let Some(ids) = world.get("visitedTownIds") {
+        validate_town_ids(ids)?;
+    }
+    if let Some(regions) = world.get("visitedTownsByRegion") {
+        let regions = regions
+            .as_object()
+            .filter(|regions| regions.len() <= WORLD_MAPS.len())
+            .ok_or("지역별 방문 기록이 올바르지 않습니다.")?;
+        for (region, ids) in regions {
+            if !WORLD_MAPS.iter().any(|(id, _)| id == region) {
+                return Err("지역별 방문 기록이 올바르지 않습니다.");
+            }
+            validate_town_ids(ids)?;
+        }
+    }
+    Ok(())
+}
+
 pub fn validate_save(value: &Value) -> Result<(), &'static str> {
     if value.get("format") != Some(&Value::String("choketmon".into()))
         || value.get("version") != Some(&Value::from(2))
@@ -560,6 +653,7 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
     if next_instance_id <= maximum_generated_id {
         return Err("다음 개체 ID가 기존 개체보다 커야 합니다.");
     }
+    validate_open_world(value.get("view"))?;
     Ok(())
 }
 
@@ -650,5 +744,29 @@ mod tests {
                 validate_monster(&edited, &mut HashSet::new(), false, &mut HashSet::new()).is_err()
             );
         }
+    }
+
+    #[test]
+    fn validates_regional_open_world_heads_and_visit_shape() {
+        let mut save = valid_save();
+        save["view"]["openWorld"] = serde_json::json!({
+            "regionId":"paldea", "mapVersion":"paldea-atlas-v1",
+            "visitedTownIds":["cabo-poco"],
+            "visitedTownsByRegion":{"kanto":["pallet"],"paldea":["cabo-poco"]}
+        });
+        validate_save(&save).unwrap();
+
+        let mut wrong_map = save.clone();
+        wrong_map["view"]["openWorld"]["mapVersion"] = Value::String("kanto-v2".into());
+        assert!(validate_save(&wrong_map).is_err());
+
+        let mut unknown_region = save.clone();
+        unknown_region["view"]["openWorld"]["regionId"] = Value::String("missing".into());
+        assert!(validate_save(&unknown_region).is_err());
+
+        let mut duplicate_visit = save;
+        duplicate_visit["view"]["openWorld"]["visitedTownsByRegion"]["paldea"] =
+            serde_json::json!(["cabo-poco", "cabo-poco"]);
+        assert!(validate_save(&duplicate_visit).is_err());
     }
 }

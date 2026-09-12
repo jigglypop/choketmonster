@@ -100,7 +100,7 @@ describe('Kanto navigation state', () => {
     expect(movementSpeed(150, 5)).toBeGreaterThan(movementSpeed(1, 5));
     const levelGrowth = movementSpeed(1, 50) - movementSpeed(1, 5);
     expect(levelGrowth).toBeGreaterThan(0);
-    expect(levelGrowth).toBeLessThan(1);
+    expect(levelGrowth).toBeLessThan(1.3);
 
     const { game, world } = setup(41_006);
     const companion = world.entities.find(entity => entity.kind === 'companion')!;

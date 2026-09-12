@@ -120,3 +120,8 @@ button:disabled { cursor: default; opacity: .5; }
   .adventure .ow-camera-controls { top: 62px; right: 150px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; } }
+
+.world-region-picker { display: flex; align-items: center; gap: 12px; margin: 14px 0; }
+.world-region-picker select { min-height: 44px; flex: 1; padding: 8px 12px; border-radius: 10px; border: 1px solid #9bb4a5; background: #f4f4e8; color: #173f39; }
+#world-region-label { white-space: nowrap; }
+@media (max-width: 720px) { .world-eyebrow { display: flex; align-items: center; gap: 4px; letter-spacing: 0; } #world-version { max-width: 122px; } }

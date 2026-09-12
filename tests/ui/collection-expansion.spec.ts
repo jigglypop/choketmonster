@@ -20,8 +20,8 @@ test('version collection, later-generation images, duplicate XP and release surv
   await page.locator('#dex-search').fill('906');
   await expect(page.locator('.dex-card')).toHaveCount(1);
   await page.locator('.dex-card').click();
-  await expect(page.locator('.species-preview')).toHaveAttribute('src', '/pokemon/906.png');
-  await expect.poll(() => page.locator('.species-preview').evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+  await expect(page.locator('.model-host canvas')).toHaveAttribute('data-ready', 'true', { timeout: 30000 });
+  await expect(page.locator('.model-host canvas')).toHaveAttribute('data-species', '906');
   await page.locator('.model-dialog button').click();
   await page.locator('#collect-version').click();
   await expect(page.locator('#world-version')).toHaveValue('scarlet');

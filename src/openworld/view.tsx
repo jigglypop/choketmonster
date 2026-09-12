@@ -10,12 +10,13 @@ import {
   type AnimationAction,
   LoopOnce,
   LoopRepeat,
-  BufferAttribute,
   BufferGeometry,
   CanvasTexture,
   Color,
   DirectionalLight,
   Float32BufferAttribute,
+  Frustum,
+  Sphere,
   Group,
   InstancedMesh,
   Material,
@@ -25,7 +26,6 @@ import {
   Mesh,
   MeshStandardMaterial,
   Object3D,
-  PlaneGeometry,
   Quaternion,
   SRGBColorSpace,
   Spherical,
@@ -33,7 +33,7 @@ import {
   TextureLoader,
   Vector3,
 } from 'three';
-import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
+import { type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import type {
@@ -46,8 +46,11 @@ import type {
   WorldSample,
 } from './types';
 import { createSceneryPlacements, SCENERY_ASSETS, type SceneryPlacement } from './scenery';
-import { createGrounding, terrainSurfaceHeight, TERRAIN_SEGMENTS } from './grounding';
-import { KANTO_GATES, KANTO_LOCATIONS, KANTO_START, KANTO_SURFACE_CONNECTIONS, kantoGateHalfWidth, townBuildingOffsets } from './kanto';
+import { createGrounding, terrainSurfaceHeight } from './grounding';
+import { getWorldAtlas, type WorldAtlas } from './atlas';
+import { hasPokemonModel, pokemonSpriteUrl } from '../game/assets';
+import { createGLTFLoader } from '../three/gltf-loader';
+import { creatureLods, terrainChunks, TERRAIN_CHUNK_SIZE, type TerrainChunk, type VisibilityTest } from './lod';
 import { initialYaw, movementYaw, turnTowards } from './motion';
 import { normalizePokemonModel } from './model-normalization';
 import './view.css';
@@ -59,8 +62,6 @@ import { findWorldPath, headingForStep } from './navigation';
 
 const WORLD_MIN = -120;
 const WORLD_MAX = 120;
-const MAX_VISIBLE = 12;
-const MODEL_LOD_DISTANCE = 54;
 const MODEL_CACHE_LIMIT = 16;
 const NATURE_DETAIL_RADIUS = 68;
 // Fog is fully opaque at 85 world units. The rounded 16-unit streaming cell can
@@ -71,7 +72,7 @@ const NATURE_SHADOW_CASTERS = new Set([
   'rock-large', 'rock-moss', 'rock-tall', 'rock-ridge', 'cliff', 'moss-boulder',
   'stump', 'fallen-log',
 ]);
-const loader = new GLTFLoader();
+const loader = createGLTFLoader();
 const DEFAULT_CAMERA_OFFSET = new Vector3(7, 10, 11);
 type CameraCommand = { id: number; action: CameraAction };
 
@@ -110,49 +111,61 @@ function pruneModelCache(): void {
   }
 }
 
-function acquireModel(url: string): Promise<{ gltf: GLTF; release(): void }> {
+type LoadTask = { url: string; entry: CachedModel; resolve(value: GLTF): void; reject(error: unknown): void };
+const loadQueue: LoadTask[] = [];
+let activeLoads = 0;
+const failedModels = new Map<string, number>();
+function drainModelQueue(): void {
+  loadQueue.sort((a, b) => Number(/raw\.githubusercontent\.com/.test(b.url)) - Number(/raw\.githubusercontent\.com/.test(a.url)));
+  while (activeLoads < 3 && loadQueue.length) {
+    const task = loadQueue.shift()!;
+    if (!task.entry.refs) {
+      if (modelCache.get(task.url) === task.entry) modelCache.delete(task.url);
+      task.reject(new Error('Model left the visible area before loading')); continue;
+    }
+    activeLoads++;
+    loader.loadAsync(task.url).then(gltf => { task.entry.gltf = gltf; task.resolve(gltf); }, error => {
+      failedModels.set(task.url, performance.now());
+      if (modelCache.get(task.url) === task.entry) modelCache.delete(task.url);
+      task.reject(error);
+    }).finally(() => { activeLoads--; pruneModelCache(); drainModelQueue(); });
+  }
+}
+
+function acquireModel(url: string): { promise: Promise<GLTF>; release(): void } {
   let entry = modelCache.get(url);
   if (!entry) {
-    entry = {
-      promise: loader.loadAsync(url),
-      refs: 0,
-      lastUsed: performance.now(),
-    };
+    const lastFailure = failedModels.get(url);
+    if (lastFailure !== undefined && performance.now() - lastFailure < 60_000) {
+      return { promise: Promise.reject(new Error('Model temporarily unavailable')), release() {} };
+    }
+    let resolve!: (value: GLTF) => void, reject!: (error: unknown) => void;
+    const promise = new Promise<GLTF>((yes, no) => { resolve = yes; reject = no; });
+    entry = { promise, refs: 0, lastUsed: performance.now() };
     modelCache.set(url, entry);
-    entry.promise.then(gltf => { entry!.gltf = gltf; }).catch(() => modelCache.delete(url));
+    loadQueue.push({ url, entry, resolve, reject });
   }
-  entry.refs += 1;
+  entry.refs++;
   entry.lastUsed = performance.now();
-  return entry.promise.then(gltf => ({
-    gltf,
-    release: () => {
-      const current = modelCache.get(url);
-      if (!current) return;
-      current.refs = Math.max(0, current.refs - 1);
-      current.lastUsed = performance.now();
-      pruneModelCache();
-    },
-  })).catch(error => {
-    entry!.refs = Math.max(0, entry!.refs - 1);
-    throw error;
-  });
+  const acquired = entry;
+  queueMicrotask(drainModelQueue);
+  let released = false;
+  return { promise: entry.promise, release() {
+    if (released) return; released = true;
+    acquired.refs = Math.max(0, acquired.refs - 1);
+    acquired.lastUsed = performance.now();
+    pruneModelCache();
+  } };
 }
 
 function useCachedModel(url: string): GLTF | null {
   const [gltf, setGltf] = useState<GLTF | null>(null);
   useEffect(() => {
     let active = true;
-    let release: (() => void) | undefined;
     setGltf(null);
-    acquireModel(url).then(result => {
-      release = result.release;
-      if (active) setGltf(result.gltf);
-      else release();
-    }).catch(() => { if (active) setGltf(null); });
-    return () => {
-      active = false;
-      release?.();
-    };
+    const request = acquireModel(url);
+    request.promise.then(value => { if (active) setGltf(value); }).catch(() => { if (active) setGltf(null); });
+    return () => { active = false; request.release(); };
   }, [url]);
   return gltf;
 }
@@ -179,49 +192,50 @@ function fallbackSample(x: number, z: number): WorldSample {
   return { height, biome: Math.abs(x) + Math.abs(z) > 175 ? 'rock' : 'meadow', blocked: false };
 }
 
-function Terrain({ sampleWorld, visual = true, onNavigate }: { sampleWorld: (x: number, z: number) => WorldSample; visual?: boolean; onNavigate?: (point: WorldPoint) => void }) {
-  const geometry = useMemo(() => {
-    const plane = new PlaneGeometry(240, 240, TERRAIN_SEGMENTS, TERRAIN_SEGMENTS);
-    plane.rotateX(-Math.PI / 2);
-    const positions = plane.attributes.position;
-    const colors = new Float32Array(positions.count * 3);
+function Terrain({ sampleWorld, chunk, atlas, onNavigate }: { sampleWorld: (x: number, z: number) => WorldSample; chunk: TerrainChunk; atlas: WorldAtlas; onNavigate?: (point: WorldPoint) => void }) {
+  const { geometry, skirt } = useMemo(() => {
+    const n = chunk.segments, stride = n + 1;
+    const vertices: number[] = [], colors: number[] = [], indices: number[] = [];
     const palette: Record<WorldSample['biome'], Color> = {
-      meadow: new Color('#679447'),
-      forest: new Color('#285b35'),
-      lake: new Color('#438b94'),
-      rock: new Color('#777763'),
+      meadow: new Color(atlas.palette.ground), forest: new Color('#285b35'),
+      lake: new Color(atlas.palette.water), rock: new Color(atlas.id === 'sinnoh' || atlas.id === 'hisui' ? '#acb1ab' : '#777763'),
     };
-    const color = new Color();
-    for (let index = 0; index < positions.count; index += 1) {
-      const x = positions.getX(index);
-      const z = positions.getZ(index);
-      const sample = sampleWorld(x, z);
-      positions.setY(index, sample.height);
-      color.copy(palette[sample.biome]);
-      const broad = Math.sin(x * .12 + z * .07) * .045;
-      const fine = Math.sin(x * .73) * Math.cos(z * .61) * .025;
-      const moisture = sample.biome === 'meadow' ? Math.max(0, 1 - Math.hypot(x - 42, z + 28) / 48) * .055 : 0;
-      color.offsetHSL(broad * .14 - moisture, .015 + fine, broad + fine - moisture * .25);
-      colors[index * 3] = color.r;
-      colors[index * 3 + 1] = color.g;
-      colors[index * 3 + 2] = color.b;
+    for (let iz = 0; iz <= n; iz++) for (let ix = 0; ix <= n; ix++) {
+      const x = chunk.x - 20 + ix * TERRAIN_CHUNK_SIZE / n, z = chunk.z - 20 + iz * TERRAIN_CHUNK_SIZE / n;
+      const sample = sampleWorld(x, z), color = palette[sample.biome].clone();
+      vertices.push(x, terrainSurfaceHeight(sampleWorld, x, z), z);
+      color.offsetHSL(0, .01, Math.sin(x * .12 + z * .07) * .035);
+      colors.push(color.r, color.g, color.b);
+      if (ix < n && iz < n) { const a = iz * stride + ix, b = a + stride; indices.push(a, b, a + 1, b, b + 1, a + 1); }
     }
-    plane.setAttribute('color', new BufferAttribute(colors, 3));
-    plane.computeVertexNormals();
-    return plane;
-  }, [sampleWorld]);
-  useEffect(() => () => geometry.dispose(), [geometry]);
-  return (
-    <RigidBody type="fixed" colliders="trimesh" friction={1}>
-      <mesh geometry={geometry} receiveShadow userData={{ gaesupWorldObject: 'terrain' }} onClick={event => {
-        event.stopPropagation();
-        if (event.button !== 0 || event.delta > 5) return;
-        onNavigate?.({ x: event.point.x, z: event.point.z });
-      }}>
-        <SurfaceMaterial surface="ground" vertexColors visible={visual} />
-      </mesh>
-    </RigidBody>
-  );
+    const geometry = new BufferGeometry();
+    geometry.setAttribute('position', new Float32BufferAttribute(vertices, 3));
+    geometry.setAttribute('color', new Float32BufferAttribute(colors, 3));
+    geometry.setIndex(indices); geometry.computeVertexNormals();
+    // Separate skirts close coarse/fine seams without bending the ground normals.
+    const skirtVertices: number[] = [], skirtColors: number[] = [], skirtIndices: number[] = [];
+    const edges = [Array.from({ length: stride }, (_, i) => i), Array.from({ length: stride }, (_, i) => i * stride + n),
+      Array.from({ length: stride }, (_, i) => n * stride + n - i), Array.from({ length: stride }, (_, i) => (n - i) * stride)];
+    for (const edge of edges) for (let i = 0; i < n; i++) {
+      const start = skirtVertices.length / 3;
+      for (const vertex of [edge[i], edge[i + 1]]) for (const depth of [0, 4]) {
+        skirtVertices.push(vertices[vertex * 3], vertices[vertex * 3 + 1] - depth, vertices[vertex * 3 + 2]);
+        skirtColors.push(...colors.slice(vertex * 3, vertex * 3 + 3));
+      }
+      skirtIndices.push(start, start + 1, start + 2, start + 1, start + 3, start + 2, start + 2, start + 1, start, start + 2, start + 3, start + 1);
+    }
+    const skirt = new BufferGeometry(); skirt.setAttribute('position', new Float32BufferAttribute(skirtVertices, 3));
+    skirt.setAttribute('color', new Float32BufferAttribute(skirtColors, 3)); skirt.setIndex(skirtIndices); skirt.computeVertexNormals();
+    return { geometry, skirt };
+  }, [chunk.x, chunk.z, chunk.segments, sampleWorld, atlas]);
+  useEffect(() => () => { geometry.dispose(); skirt.dispose(); }, [geometry, skirt]);
+  const surface = <mesh geometry={geometry} receiveShadow name={`terrain-chunk:${chunk.key}:${chunk.segments}`} onClick={event => {
+    event.stopPropagation(); if (event.button === 0 && event.delta <= 5) onNavigate?.({ x: event.point.x, z: event.point.z });
+  }}><SurfaceMaterial surface="ground" vertexColors /></mesh>;
+  return <group>
+    {chunk.distance <= 20 ? <RigidBody type="fixed" colliders="trimesh" friction={1}>{surface}</RigidBody> : surface}
+    <mesh geometry={skirt}><SurfaceMaterial surface="ground" vertexColors /></mesh>
+  </group>;
 }
 
 function InstancedPart({ geometry, material, sourceMatrix, placements, shadows }: {
@@ -317,20 +331,20 @@ function InstancedAsset({ url, placements, shadows, wind, rockTextures }: { url:
   return <group name={`nature:${url.split('/').at(-1)?.split('?')[0]}`}>{parts.map((part, index) => <InstancedPart key={index} geometry={part.geometry} material={part.material} sourceMatrix={part.matrix} placements={placements} shadows={shadows} />)}</group>;
 }
 
-function Nature({ sampleWorld, player }: { sampleWorld: (x: number, z: number) => WorldSample; player: { x: number; z: number } }) {
-  const placements = useMemo(() => createSceneryPlacements(sampleWorld), [sampleWorld]);
+function Nature({ sampleWorld, player, atlas, isVisible }: { sampleWorld: (x: number, z: number) => WorldSample; player: { x: number; z: number }; atlas: WorldAtlas; isVisible: VisibilityTest }) {
+  const placements = useMemo(() => createSceneryPlacements(sampleWorld, atlas), [sampleWorld, atlas]);
   const rockTextures = useSurfaceTextures('rock');
   const cellX = Math.round(player.x / 16) * 16, cellZ = Math.round(player.z / 16) * 16;
   // 85m fog + 48m camera reach + 12m cell margin: unload only fully hidden props.
   const nearby = useMemo(() => Object.fromEntries(SCENERY_ASSETS.map(asset => {
     const visible = placements[asset.id]
-      .filter(item => Math.hypot(item.x - cellX, item.z - cellZ) < (['moss-boulder', 'moss-stone', 'fern'].includes(asset.id) ? NATURE_DETAIL_RADIUS : NATURE_VISIBLE_RADIUS))
+      .filter(item => Math.hypot(item.x - cellX, item.z - cellZ) < (['moss-boulder', 'moss-stone', 'fern'].includes(asset.id) ? NATURE_DETAIL_RADIUS : NATURE_VISIBLE_RADIUS) && (Math.hypot(item.x - player.x, item.z - player.z) < 12 || isVisible(item.x, item.y + 3, item.z, 6)))
       .map(item => ({ ...item, scale: item.scale * asset.scale }));
     return [asset.id, visible];
-  })), [placements, cellX, cellZ]);
+  })), [placements, cellX, cellZ, isVisible]);
   return (
     <group userData={{ gaesupWorldObject: 'imported-nature-instances' }}>
-      {SCENERY_ASSETS.map(asset => <InstancedAsset
+      {SCENERY_ASSETS.filter(asset => nearby[asset.id].length).map(asset => <InstancedAsset
         key={asset.id}
         url={asset.url}
         placements={nearby[asset.id]}
@@ -419,12 +433,30 @@ function WorldLabel({ name, x, y, z }: { name: string; x: number; y: number; z: 
   return <sprite position={[x, y, z]} scale={[3, .75, 1]}><spriteMaterial map={texture} transparent depthWrite={false} /></sprite>;
 }
 
-function TrailAndWater({ sampleWorld, player, badges }: { sampleWorld: (x: number, z: number) => WorldSample; player: { x: number; z: number }; badges: number }) {
-  const locations = useMemo(() => new Map(KANTO_LOCATIONS.map(item => [item.id, item])), []);
+function RegionalLandmark({ region, x, y, z }: { region: string; x: number; y: number; z: number }) {
+  const mountain = ['hoenn', 'sinnoh', 'hisui'].includes(region);
+  return <group name={`regional-landmark:${region}`} position={[x, y, z]}>
+    {mountain ? <>
+      <mesh position={[0, 3.5, 0]} castShadow><coneGeometry args={[7, 8, 7]} /><meshStandardMaterial color={region === 'hoenn' ? '#73584e' : '#7d8b87'} flatShading /></mesh>
+      <mesh position={[0, 6.5, 0]}><coneGeometry args={[2, 2.4, 7]} /><meshStandardMaterial color={region === 'hoenn' ? '#e59045' : '#ebf0e8'} flatShading /></mesh>
+    </> : region === 'johto' ? <>
+      <mesh position={[0, 2.6, 0]} castShadow><boxGeometry args={[3, 5.2, 3]} /><meshStandardMaterial color="#c49765" /></mesh>
+      {[0, 1, 2].map(i => <mesh key={i} position={[0, 2 + i * 1.5, 0]} rotation={[0, Math.PI / 4, 0]} castShadow><coneGeometry args={[4 - i * .65, 1.5, 4]} /><meshStandardMaterial color="#755b43" /></mesh>)}
+    </> : region === 'alola' ? <>
+      {[-2, 2].map(offset => <group key={offset} position={[offset, 0, 0]}><mesh position={[0, 2.5, 0]} castShadow><cylinderGeometry args={[.25, .45, 5, 6]} /><meshStandardMaterial color="#a9834a" /></mesh><mesh position={[0, 5, 0]} scale={[2.3, .45, 2.3]} castShadow><icosahedronGeometry args={[1.3, 0]} /><meshStandardMaterial color="#5d9661" /></mesh></group>)}
+    </> : <>
+      <mesh position={[0, 3, 0]} castShadow><cylinderGeometry args={[1.1, 2.2, 6, region === 'kalos' ? 4 : 8]} /><meshStandardMaterial color={region === 'galar' ? '#a35d5d' : '#bdb69c'} /></mesh>
+      <mesh position={[0, 6.1, 0]}><octahedronGeometry args={[1.6]} /><meshStandardMaterial color={region === 'paldea' ? '#8e78bd' : '#d3b66c'} /></mesh>
+    </>}
+  </group>;
+}
+
+function TrailAndWater({ sampleWorld, player, badges, atlas, visible }: { sampleWorld: (x: number, z: number) => WorldSample; player: { x: number; z: number }; badges: number; atlas: WorldAtlas; visible: VisibilityTest }) {
+  const locations = useMemo(() => new Map(atlas.locations.map(item => [item.id, item])), [atlas]);
   const trail = useMemo(() => {
     const vertices: number[] = [];
     const indices: number[] = [];
-    for (const [fromId, toId] of KANTO_SURFACE_CONNECTIONS) {
+    for (const [fromId, toId] of atlas.surfaceConnections) {
       const from = locations.get(fromId)!, to = locations.get(toId)!;
       const dx = to.x - from.x, dz = to.z - from.z, length = Math.hypot(dx, dz) || 1;
       const steps = Math.max(1, Math.ceil(length / 5));
@@ -447,25 +479,27 @@ function TrailAndWater({ sampleWorld, player, badges }: { sampleWorld: (x: numbe
     geometry.setIndex(indices);
     geometry.computeVertexNormals();
     return geometry;
-  }, [locations, sampleWorld]);
+  }, [locations, sampleWorld, atlas]);
   useEffect(() => () => trail.dispose(), [trail]);
   const townColors: Record<string, string> = {
     pallet: '#e8dfc5', viridian: '#4d9b61', pewter: '#83858a', cerulean: '#4e94c8', vermilion: '#c5934d',
     lavender: '#9b77b4', celadon: '#74a86a', saffron: '#d6b54c', fuchsia: '#d87498', cinnabar: '#b84d45',
   };
   return (
-    <group userData={{ gaesupWorldObject: 'kanto-landmarks' }}>
+    <group name={`region-landmarks:${atlas.id}`} userData={{ gaesupWorldObject: 'region-landmarks' }}>
       <mesh geometry={trail} receiveShadow><SurfaceMaterial surface="path" color="#b89a68" /></mesh>
-      <mesh position={[-34, -.66, 101]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}>
+      {atlas.id === 'kanto' && <><mesh position={[-34, -.66, 101]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}>
         <planeGeometry args={[91, 33]} /><WaterMaterial />
       </mesh>
       <mesh position={[61, -.66, -25]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}>
         <circleGeometry args={[12, 48]} /><WaterMaterial lake />
-      </mesh>
-      {KANTO_LOCATIONS.filter(item => item.kind === 'town').map(town => <group key={town.id} position={[town.x, .05, town.z]}>
-        <TownPaving color={townColors[town.id] ?? '#c3b59b'} />
-        {townBuildingOffsets(town).map(([x, z], index) => <group key={index} position={[x, 0, z]}>
-          <TownBuilding townId={town.id} townColor={townColors[town.id] ?? '#b85d53'} index={index} />
+      </mesh></>}
+      {atlas.id !== 'kanto' && atlas.locations.filter(item => item.kind === 'sea' && Math.hypot(item.x - player.x, item.z - player.z) < 90).map(item => <mesh key={item.id} position={[item.x, sampleWorld(item.x, item.z).height + .025, item.z]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}><circleGeometry args={[12, 32]} /><WaterMaterial lake /></mesh>)}
+      {atlas.id !== 'kanto' && atlas.locations.filter(item => item.kind === 'special' && Math.hypot(item.x - player.x, item.z - player.z) < 70 && visible(item.x, 5, item.z, 10)).map(item => <RegionalLandmark key={item.id} region={atlas.id} x={item.x} y={terrainSurfaceHeight(sampleWorld, item.x, item.z)} z={item.z} />)}
+      {atlas.locations.filter(item => item.kind === 'town' && Math.hypot(item.x - player.x, item.z - player.z) <= 85 && visible(item.x, 3, item.z, 14)).map(town => <group key={town.id} name={`town:${town.id}`} position={[town.x, terrainSurfaceHeight(sampleWorld, town.x, town.z) + .05, town.z]}>
+        <TownPaving color={townColors[town.id] ?? atlas.palette.town} />
+        {atlas.buildingOffsets(town).map(([x, z], index) => <group key={index} position={[x, 0, z]}>
+          <TownBuilding townId={town.id} townColor={townColors[town.id] ?? atlas.palette.town} index={index} />
         </group>)}
         <group position={[0, 0, -6]}>
           <mesh position={[0, .9, 0]} castShadow><boxGeometry args={[2.4, 1.15, .24]} /><meshStandardMaterial color="#eadb9d" /></mesh>
@@ -473,17 +507,17 @@ function TrailAndWater({ sampleWorld, player, badges }: { sampleWorld: (x: numbe
           <mesh position={[.82, .35, 0]}><boxGeometry args={[.16, 1.1, .16]} /><meshStandardMaterial color="#6b4b2c" /></mesh>
         </group>
       </group>)}
-      {KANTO_LOCATIONS.filter(item => item.kind === 'cave').map(cave => <group key={cave.id} position={[cave.x, terrainSurfaceHeight(sampleWorld, cave.x, cave.z), cave.z]}>
+      {atlas.locations.filter(item => item.kind === 'cave' && Math.hypot(item.x - player.x, item.z - player.z) <= 80 && visible(item.x, 3, item.z, 8)).map(cave => <group key={cave.id} position={[cave.x, terrainSurfaceHeight(sampleWorld, cave.x, cave.z), cave.z]}>
         <mesh position={[0, 1.3, 0]} castShadow><dodecahedronGeometry args={[2.8, 0]} /><meshStandardMaterial color="#5f615f" roughness={1} /></mesh>
         <mesh position={[0, .8, -2.15]}><circleGeometry args={[1.05, 24]} /><meshBasicMaterial color="#171b1c" /></mesh>
       </group>)}
-      {KANTO_GATES.filter(gate => gate.visible !== false).map(gate => {
+      {atlas.gates.filter(gate => gate.visible !== false).map(gate => {
         const from = locations.get(gate.from)!, to = locations.get(gate.to)!;
         const x = (from.x + to.x) / 2, z = (from.z + to.z) / 2;
         const rotationY = Math.atan2(to.x - from.x, to.z - from.z);
         const y = terrainSurfaceHeight(sampleWorld, x, z);
         const locked = badges < gate.requiredBadges;
-        const halfWidth = kantoGateHalfWidth(gate);
+        const halfWidth = atlas.gateHalfWidth(gate);
         return <group key={gate.id} position={[x, y, z]} rotation={[0, rotationY, 0]}>
           {[-halfWidth, halfWidth].map(side => <RigidBody key={side} type="fixed" colliders="cuboid" position={[side, 0, 0]}>
             <mesh position={[0, 1.35, 0]} castShadow><boxGeometry args={[.55, 2.7, .55]} /><meshStandardMaterial color="#5f513f" roughness={.92} /></mesh>
@@ -495,9 +529,9 @@ function TrailAndWater({ sampleWorld, player, badges }: { sampleWorld: (x: numbe
           {Math.hypot(x - player.x, z - player.z) <= 14 && <WorldLabel name={locked ? `${gate.requiredBadges}배지 필요` : '관문 통과 가능'} x={0} y={3.35} z={0} />}
         </group>;
       })}
-      {KANTO_LOCATIONS.filter(item => (item.kind === 'town' || item.kind === 'cave') && Math.hypot(item.x - player.x, item.z - player.z) <= 12)
-        .map(item => <WorldLabel key={`label:${item.id}`} name={item.name} x={item.x} y={item.kind === 'town' ? 1.85 : terrainSurfaceHeight(sampleWorld, item.x, item.z) + 3.2} z={item.kind === 'town' ? item.z - 6 : item.z} />)}
-      <mesh position={[KANTO_START.x, .12, KANTO_START.z]} rotation={[-Math.PI / 2, 0, 0]}>
+      {atlas.locations.filter(item => (item.kind === 'town' || item.kind === 'cave') && Math.hypot(item.x - player.x, item.z - player.z) <= 12)
+        .map(item => <WorldLabel key={`label:${item.id}`} name={item.name} x={item.x} y={terrainSurfaceHeight(sampleWorld, item.x, item.z) + (item.kind === 'town' ? 1.85 : 3.2)} z={item.kind === 'town' ? item.z - 6 : item.z} />)}
+      <mesh position={[atlas.start.x, .12, atlas.start.z]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[1.3, 1.85, 32]} /><meshBasicMaterial color="#f4d44d" />
       </mesh>
     </group>
@@ -544,10 +578,11 @@ function PokemonModel({ creature, url }: { creature: WorldCreature; url: string 
     root.current.position.y = 0;
     const pulse = creature.action === 'attack' ? 1 + Math.max(0, Math.sin(phase * 1.8)) * .12 : 1;
     root.current.scale.set(pulse, creature.action === 'hurt' ? .88 : 1, pulse);
-    root.current.rotation.z = creature.action === 'fainted' ? Math.PI / 2 : 0;
+    root.current.rotation.z = creature.action === 'fainted' ? Math.PI / 2 : !gltf?.animations.length && creature.action === 'walk' ? Math.sin(phase) * .045 : 0;
     if (!ground.current && normalized) ground.current = createGrounding(normalized.visual, root.current);
     root.current.parent?.getWorldPosition(worldPosition.current);
     ground.current?.(worldPosition.current.y);
+    if (!gltf?.animations.length && creature.action === 'walk') root.current.position.y += Math.abs(Math.sin(phase)) * .07;
   }, -1);
   useEffect(() => { ground.current = undefined; }, [normalized]);
 
@@ -577,8 +612,8 @@ function PokemonModel({ creature, url }: { creature: WorldCreature; url: string 
     activeAction.current = next;
   }, [creature.action, gltf, normalized]);
 
-  if (!normalized) return <FallbackCreature displayHeight={creature.displayHeight} />;
-  return <group ref={root}><primitive object={normalized.visual} /></group>;
+  if (!normalized) return <SpriteCreature displayHeight={creature.displayHeight} url={pokemonSpriteUrl(creature.speciesId)} />;
+  return <group ref={root} name={`pokemon-model:${creature.speciesId}`}><primitive object={normalized.visual} /></group>;
 }
 
 function FallbackCreature({ displayHeight = 1.2 }: { displayHeight?: number }) {
@@ -661,10 +696,11 @@ function CreatureBillboard({ creature, hp, distance, emphasized }: { creature: W
   return <sprite name="creature-nameplate" position={[0, (creature.displayHeight ?? 1.2) + .5, 0]} scale={[width, width * .25, 1]}><spriteMaterial map={texture} transparent depthTest depthWrite={false} /></sprite>;
 }
 
-function Creature({ creature, selected, distance, options, showLabels }: {
+function Creature({ creature, selected, distance, options, showLabels, model }: {
   creature: WorldCreature;
   selected: boolean;
   showLabels: boolean;
+  model: boolean;
   distance: number;
   options: OpenWorldViewOptions;
 }) {
@@ -690,7 +726,7 @@ function Creature({ creature, selected, distance, options, showLabels }: {
   useFrame((_, delta) => {
     if (!root.current) return;
     const remaining = visual.current.distanceTo(target.current);
-    const speed = MathUtils.clamp(creature.movementSpeed ?? 2.4, .5, 8);
+    const speed = MathUtils.clamp(creature.movementSpeed ?? 2.4, .5, 12);
     const step = Math.max(speed * Math.min(delta, .05) * 1.2, remaining * Math.min(1, delta * 4));
     if (remaining > 0) visual.current.lerp(target.current, Math.min(1, step / remaining));
     visual.current.y = terrainSurfaceHeight(sample, visual.current.x, visual.current.z);
@@ -706,7 +742,7 @@ function Creature({ creature, selected, distance, options, showLabels }: {
       onClick={event => { event.stopPropagation(); options.onSelect(creature.id); }}
       onDoubleClick={event => { event.stopPropagation(); options.onInteract?.(creature.id); }}
     >
-      {distance <= MODEL_LOD_DISTANCE && creature.speciesId <= 151
+      {model && hasPokemonModel(creature.speciesId)
         ? <PokemonModel creature={creature} url={(options.modelUrl ?? (id => `/models/pokemon/${id}.glb`))(creature.speciesId)} />
         : <SpriteCreature displayHeight={creature.displayHeight} url={(options.spriteUrl ?? (id => `/pokemon/${id}.png`))(creature.speciesId)} />}
       {(selected || creature.inBattle) && <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, .04, 0]}><ringGeometry args={[1.1, 1.34, 40]} /><meshBasicMaterial color={creature.inBattle ? '#f09155' : '#f6dd67'} transparent opacity={.86} /></mesh>}
@@ -896,15 +932,36 @@ function FoodInstances({ foods, sampleWorld }: { foods: OpenWorldRenderSnapshot[
   return <instancedMesh ref={ref} args={[undefined, undefined, foods.length]}><icosahedronGeometry args={[.24, 1]} /><meshStandardMaterial color="#efca58" emissive="#785e16" emissiveIntensity={.35} /></instancedMesh>;
 }
 
+function useViewWindow() {
+  const { camera, size } = useThree();
+  const [windowState, setWindowState] = useState<{ frustum: Frustum | null; mobile: boolean }>({ frustum: null, mobile: size.width <= 720 });
+  const elapsed = useRef(1), previous = useRef('');
+  useFrame((_, delta) => {
+    elapsed.current += delta;
+    if (elapsed.current < .16) return;
+    elapsed.current = 0;
+    const key = [...camera.position.toArray(), ...camera.quaternion.toArray()].map(n => n.toFixed(2)).join(':') + `:${size.width}:${size.height}`;
+    if (previous.current === key) return; previous.current = key;
+    camera.updateMatrixWorld();
+    setWindowState({ frustum: new Frustum().setFromProjectionMatrix(new Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)), mobile: size.width <= 720 });
+  });
+  const visible = useMemo<VisibilityTest>(() => {
+    const sphere = new Sphere();
+    return (x, y, z, radius) => { if (!windowState.frustum) return false; sphere.center.set(x, y, z); sphere.radius = radius; return windowState.frustum.intersectsSphere(sphere); };
+  }, [windowState.frustum]);
+  return { ...windowState, visible };
+}
+
 function Scene({ snapshot, options, cameraCommand, showLabels, destination, onNavigate, onDestination }: { snapshot: OpenWorldRenderSnapshot; options: OpenWorldViewOptions; cameraCommand: CameraCommand; showLabels: boolean; destination: WorldPoint | null; onNavigate: (point: WorldPoint) => void; onDestination: (point: WorldPoint | null) => void }) {
-  const sample = options.sampleWorld ?? fallbackSample;
-  const visible = useMemo(() => [...snapshot.entities]
-    .sort((a, b) => {
-      const priorityA = Number(a.id === snapshot.selectedWildId || a.inBattle);
-      const priorityB = Number(b.id === snapshot.selectedWildId || b.inBattle);
-      if (priorityA !== priorityB) return priorityB - priorityA;
-      return Math.hypot(a.x - snapshot.player.x, a.z - snapshot.player.z) - Math.hypot(b.x - snapshot.player.x, b.z - snapshot.player.z);
-    }).slice(0, MAX_VISIBLE), [snapshot]);
+  const atlas = getWorldAtlas(snapshot.regionId ?? 'kanto');
+  const sample = atlas.sample;
+  const worldOptions = useMemo(() => ({ ...options, sampleWorld: sample }), [options, sample]);
+  const windowState = useViewWindow();
+  const chunks = useMemo(() => terrainChunks(snapshot.player, windowState.visible), [snapshot.player.x, snapshot.player.z, windowState.visible]);
+  const visible = useMemo(() => creatureLods(snapshot.entities, snapshot.player, windowState.visible, windowState.mobile, snapshot.selectedWildId), [snapshot, windowState]);
+  const { scene } = useThree();
+  useFrame(() => { scene.userData.streaming = { region: atlas.id, player: { x: snapshot.player.x, z: snapshot.player.z }, terrainChunks: chunks.length, terrainTotal: 36, highDetailChunks: chunks.filter(c => c.segments === 12).length,
+    visibleCreatures: visible.length, detailedCreatures: visible.filter(v => v.model && hasPokemonModel(v.creature.speciesId)).length, cachedModels: modelCache.size, activeLoads, queuedLoads: loadQueue.length, modelLimit: windowState.mobile ? 4 : 8 }; });
   return (
     <>
       <color attach="background" args={['#afcfc1']} />
@@ -913,9 +970,9 @@ function Scene({ snapshot, options, cameraCommand, showLabels, destination, onNa
       <SkyLighting />
       <Sunlight player={snapshot.player} />
       <Physics gravity={[0, -18, 0]} timeStep="vary">
-        <Terrain sampleWorld={sample} onNavigate={onNavigate} />
-        <Nature sampleWorld={sample} player={snapshot.player} />
-        <TrailAndWater sampleWorld={sample} player={snapshot.player} badges={(snapshot as OpenWorldRenderSnapshot & { badges?: number }).badges ?? 0} />
+        <group key={atlas.id}>{chunks.map(chunk => <Terrain key={`${chunk.key}:${chunk.segments}`} sampleWorld={sample} atlas={atlas} chunk={chunk} onNavigate={onNavigate} />)}</group>
+        <Nature key={atlas.id} sampleWorld={sample} player={snapshot.player} atlas={atlas} isVisible={windowState.visible} />
+        <TrailAndWater key={atlas.id} sampleWorld={sample} player={snapshot.player} atlas={atlas} visible={windowState.visible} badges={(snapshot as OpenWorldRenderSnapshot & { badges?: number }).badges ?? 0} />
         {options.terrainUrl && <StaticModel item={{
           id: 'openworld-terrain',
           url: options.terrainUrl,
@@ -926,15 +983,15 @@ function Scene({ snapshot, options, cameraCommand, showLabels, destination, onNa
           scale: options.terrainTransform?.scale,
           collider: 'none',
         }} />}
-        {options.props?.map(item => <StaticModel key={item.id} item={item} />)}
+        {options.props?.filter(item => Math.hypot(item.x - snapshot.player.x, item.z - snapshot.player.z) < 85 && windowState.visible(item.x, item.y ?? 0, item.z, 8)).map(item => <StaticModel key={item.id} item={item} />)}
         <FoodInstances foods={snapshot.foods} sampleWorld={sample} />
       </Physics>
-      {visible.map(creature => <Creature key={creature.id} creature={creature} selected={creature.id === snapshot.selectedWildId} showLabels={showLabels} distance={Math.hypot(creature.x - snapshot.player.x, creature.z - snapshot.player.z)} options={options} />)}
+      {visible.map(({ creature, distance, model }) => <Creature key={creature.id} creature={creature} selected={creature.id === snapshot.selectedWildId} showLabels={showLabels} distance={distance} model={model} options={worldOptions} />)}
       {destination && <group position={[destination.x, terrainSurfaceHeight(sample, destination.x, destination.z) + .08, destination.z]}>
         <mesh rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[.42, .62, 28]} /><meshBasicMaterial color="#ffe27a" transparent opacity={.9} /></mesh>
         <mesh position={[0, .08, 0]} rotation={[-Math.PI / 2, 0, 0]}><circleGeometry args={[.13, 20]} /><meshBasicMaterial color="#fff4b8" /></mesh>
       </group>}
-      <PlayerCamera snapshot={snapshot} options={options} command={cameraCommand} destination={destination} onDestination={onDestination} />
+      <PlayerCamera key={atlas.id} snapshot={snapshot} options={worldOptions} command={cameraCommand} destination={destination} onDestination={onDestination} />
     </>
   );
 }
@@ -948,6 +1005,7 @@ function OpenWorldApp({ store, options }: { store: SnapshotStore; options: OpenW
   const toggleLabels = () => setShowLabels(previous => { try { localStorage.setItem('choketmon-nameplates', String(!previous)); } catch { /* Session-only preference when storage is unavailable. */ } return !previous; });
   const [cameraCommand, setCameraCommand] = useState<CameraCommand>({ id: 0, action: 'reset' });
   const [destination, setDestination] = useState<WorldPoint | null>(null);
+  useEffect(() => { setDestination(null); }, [snapshot.regionId]);
   const navigate = useCallback((point: WorldPoint) => {
     if (options.onNavigationStart?.() === false) return;
     setDestination(point);

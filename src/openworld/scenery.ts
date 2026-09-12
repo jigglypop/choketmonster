@@ -1,6 +1,6 @@
 import type { WorldSample } from './types';
 import { terrainSurfaceHeight } from './grounding';
-import { distanceToKantoPath, KANTO_LOCATIONS, KANTO_SURFACE_CONNECTIONS } from './kanto';
+import { getWorldAtlas, type WorldAtlas } from './atlas';
 
 export type SceneryAssetId =
   | 'tree-round' | 'tree-oak' | 'tree-pine' | 'tree-fat' | 'tree-thin'
@@ -87,7 +87,7 @@ function surfaceSample(sampleWorld: (x: number, z: number) => WorldSample, x: nu
   return { ...sampleWorld(x, z), height: terrainSurfaceHeight(sampleWorld, x, z) };
 }
 
-export function createSceneryPlacements(sampleWorld: (x: number, z: number) => WorldSample): Record<SceneryAssetId, SceneryPlacement[]> {
+export function createSceneryPlacements(sampleWorld: (x: number, z: number) => WorldSample, atlas: WorldAtlas = getWorldAtlas('kanto')): Record<SceneryAssetId, SceneryPlacement[]> {
   const result = emptyPlacements();
 
   // Large silhouettes sit on the exact simulation obstacle samples so the
@@ -97,8 +97,8 @@ export function createSceneryPlacements(sampleWorld: (x: number, z: number) => W
       const px = x + (noise(x, z, 1) - .5) * 2.4;
       const pz = z + (noise(x, z, 2) - .5) * 2.4;
       const sample = surfaceSample(sampleWorld, px, pz);
-      const landmarkDistance = Math.min(...KANTO_LOCATIONS.map(item => Math.hypot(px - item.x, pz - item.z)));
-      if (distanceToKantoPath(px, pz) < 4.7 || landmarkDistance < 9) continue;
+      const landmarkDistance = Math.min(...atlas.locations.map(item => Math.hypot(px - item.x, pz - item.z)));
+      if (atlas.distanceToPath(px, pz) < 4.7 || landmarkDistance < 9) continue;
       if (sample.biome === 'forest' && sample.blocked) {
         const selector = noise(px, pz, 3);
         place(result, selector < .24 ? 'tree-round' : selector < .5 ? 'tree-oak' : selector < .7 ? 'tree-fat' : selector < .88 ? 'tree-thin' : 'tree-pine', px, pz, sample, .82, 1.16, 4);
@@ -119,8 +119,8 @@ export function createSceneryPlacements(sampleWorld: (x: number, z: number) => W
       const pz = z + (noise(x, z, 11) - .5) * 2.2;
       const sample = surfaceSample(sampleWorld, px, pz);
       if (sample.blocked || sample.biome === 'lake') continue;
-      const landmarkDistance = Math.min(...KANTO_LOCATIONS.map(item => Math.hypot(px - item.x, pz - item.z)));
-      if (distanceToKantoPath(px, pz) < 4.7 || landmarkDistance < 9) continue;
+      const landmarkDistance = Math.min(...atlas.locations.map(item => Math.hypot(px - item.x, pz - item.z)));
+      if (atlas.distanceToPath(px, pz) < 4.7 || landmarkDistance < 9) continue;
       const selector = noise(px, pz, 12);
       if (sample.biome === 'meadow') {
         if (selector < .62) {
@@ -150,8 +150,8 @@ export function createSceneryPlacements(sampleWorld: (x: number, z: number) => W
 
   // Route-edge fences sit just outside the logical corridor. End sections stay
   // open so town squares and junctions remain readable gateways.
-  const locations = new Map(KANTO_LOCATIONS.map(item => [item.id, item]));
-  for (const [fromId, toId] of KANTO_SURFACE_CONNECTIONS) {
+  const locations = new Map(atlas.locations.map(item => [item.id, item]));
+  for (const [fromId, toId] of atlas.surfaceConnections) {
     const from = locations.get(fromId)!, to = locations.get(toId)!;
     if (from.kind === 'sea' || to.kind === 'sea') continue;
     const dx = to.x - from.x, dz = to.z - from.z, length = Math.hypot(dx, dz);

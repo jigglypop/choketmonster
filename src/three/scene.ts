@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
+import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
+import { createGLTFLoader } from './gltf-loader';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import type { GameState } from '../game/engine';
@@ -16,7 +17,7 @@ export type FieldScene = {
   onSelect: (id: string) => void;
   onFood: (x: number, y: number) => void;
 };
-const loader = new GLTFLoader();
+const loader = createGLTFLoader();
 const assets = new Map<string, { task: Promise<GLTF>; value?: GLTF }>();
 function load(url: string) {
   const cached = assets.get(url);
