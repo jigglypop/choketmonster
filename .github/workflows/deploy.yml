@@ -73,15 +73,26 @@ jobs:
         if: steps.gate.outputs.run == 'true'
         id: rust
         env:
-          BEFORE: ${{ github.event.before }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
+          # Compare against the last published release: a failed prior push must
+          # not cause the next push to skip a server binary that never deployed.
+          deployed="$(python3 - <<'PY'
+          import json, urllib.request
+          try:
+              req = urllib.request.Request('https://d3b0jo8g1tseoa.cloudfront.net/version.json', headers={'Cache-Control':'no-cache'})
+              with urllib.request.urlopen(req, timeout=15) as response:
+                  print(json.load(response).get('gitCommit', ''))
+          except Exception:
+              print('')
+          PY
+          )"
           build=false
-          if [ "${EVENT_NAME}" = "workflow_dispatch" ] || ! [[ "${BEFORE}" =~ ^[0-9a-f]{40}$ ]] || [[ "${BEFORE}" =~ ^0+$ ]]; then
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ] || ! [[ "${deployed}" =~ ^[0-9a-f]{40}$ ]]; then
             build=true
-          elif ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+          elif ! git cat-file -e "${deployed}^{commit}" 2>/dev/null; then
             build=true
-          elif ! git diff --quiet "${BEFORE}" "${GITHUB_SHA}" -- rust-server; then
+          elif ! git diff --quiet "${deployed}" "${GITHUB_SHA}" -- rust-server; then
             build=true
           fi
           echo "build=${build}" >> "${GITHUB_OUTPUT}"

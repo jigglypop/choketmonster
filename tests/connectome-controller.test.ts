@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Graph } from '../src/core/brain';
+import { actBattle, createGame, createMonster } from '../src/game/engine';
 import { automatedMoveMask, availableMoveMask, battleMoveSenses, ConnectomeController, mapToAvailableMove, type NeuralMonster } from '../src/game/connectome';
 
 const graph: Graph = {
@@ -120,6 +121,18 @@ describe('connectome battle observations', () => {
     expect(actions.filter(action => action === 0).length).toBeGreaterThanOrEqual(Math.floor(50 / 3));
 
     self.moves.forEach(slot => { slot.pp = 0; });
-    expect(automatedMoveMask(self, foe, 1)).toEqual([false, false, false, false, true]);
+    expect(automatedMoveMask(self, foe, 1)).toEqual([true, false, false, false, false]);
+  });
+
+  it('executes Struggle for both automated sides after all PP are depleted', () => {
+    const game = createGame(1, 'no-pp-auto'), self = game.player.team[0], foe = createMonster(game, 4, 5);
+    for (const monster of [self, foe]) monster.moves.forEach(slot => { slot.pp = 0; });
+    game.battle = { kind: 'wild', regionId: game.regionId, player: { team: game.player.team, activeIndex: 0 }, enemy: { team: [foe], activeIndex: 0 }, turn: 1, canRun: true };
+    const controller = new ConnectomeController(graph);
+    const mine = controller.choose(self, foe, 1, null, true, { automatic: true });
+    const theirs = controller.choose(foe, self, 1, null, true, { automatic: true });
+    const result = actBattle(game, { type: 'move', index: mine.action }, theirs.action);
+    expect(result.executedMoves).toHaveLength(2);
+    expect(result.executedMoves.every(move => move.result === 'struggle' && move.damage > 0)).toBe(true);
   });
 });

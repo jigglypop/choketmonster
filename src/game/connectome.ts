@@ -24,7 +24,8 @@ const FIXED_DAMAGE_MOVES = new Set([12, 32, 49, 69, 82, 90, 101, 149, 162]);
 /** Game-only action guard for unattended battles; it does not change observations or learning weights. */
 export function automatedMoveMask(self: NeuralMonster, other: NeuralMonster, turn: number, context: BattleSenseContext = {}): [boolean, boolean, boolean, boolean, boolean] {
   const ppMask = availableMoveMask(self), defenderTypes = getSpecies(other.speciesId).types;
-  if (!ppMask.slice(0, 4).some(Boolean)) return ppMask;
+  // Slot zero is the engine's Struggle fallback when all move PP are depleted.
+  if (!ppMask.slice(0, 4).some(Boolean)) return [true, false, false, false, false];
   const attacks = [0, 1, 2, 3].map(index => {
     const slot = self.moves[index]; if (!slot || slot.pp <= 0 || slot.moveId === undefined) return false;
     const move = getMove(slot.moveId);

@@ -38,8 +38,19 @@ export async function importConnectome(options: ImportOptions): Promise<Graph> {
     }
   };
   const parser = parse({ columns: true, bom: true, skip_empty_lines: true, trim: true, max_record_size: 1_000_000 });
-  if (csv.endsWith('.gz')) await pipeline(createReadStream(csv), hasher, createGunzip(), parser, consume);
-  else await pipeline(createReadStream(csv), hasher, parser, consume);
+  // Node may surface the upstream AbortError after an async destination fails,
+  // especially with gzip on Linux. Preserve the importer error that initiated
+  // stream teardown so callers receive the actionable budget/schema failure.
+  let destinationError: unknown;
+  const guardedConsume = async (rows: AsyncIterable<Record<string, string>>) => {
+    try { await consume(rows); } catch (error) { destinationError = error; throw error; }
+  };
+  try {
+    if (csv.endsWith('.gz')) await pipeline(createReadStream(csv), hasher, createGunzip(), parser, guardedConsume);
+    else await pipeline(createReadStream(csv), hasher, parser, guardedConsume);
+  } catch (error) {
+    throw destinationError ?? error;
+  }
   if (!count || !weights.size) throw new Error('No connections between the selected neurons');
   const incoming = Array(nodes.length).fill(0);
   for (const e of weights.values()) incoming[e.target] += Math.abs(e.signedCount);

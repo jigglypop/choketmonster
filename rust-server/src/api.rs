@@ -122,27 +122,61 @@ async fn local_neural_batch(
         .local_brains
         .try_begin(&batch.client_id)
         .map_err(local_error)?;
-    let client_id = batch.client_id.clone();
-    let permit = match state.compute.clone().try_acquire_owned() {
-        Ok(permit) => permit,
-        Err(_) => {
-            state.local_brains.finish(&client_id);
-            return Err(ApiError(
-                StatusCode::TOO_MANY_REQUESTS,
-                "Neural computation is busy. Please retry shortly.",
-            ));
-        }
+    let busy = LocalBusyGuard {
+        brains: state.local_brains.clone(),
+        client_id: batch.client_id.clone(),
     };
-    let local_brains = state.local_brains.clone();
-    let worker = local_brains.clone();
-    let result = tokio::task::spawn_blocking(move || {
+    let permit = state.compute.clone().try_acquire_owned().map_err(|_| {
+        ApiError(
+            StatusCode::TOO_MANY_REQUESTS,
+            "Neural computation is busy. Please retry shortly.",
+        )
+    })?;
+    let worker = busy.brains.clone();
+    // The worker owns the busy receipt. Dropping the HTTP future cannot unlock
+    // this client while its blocking graph step is still running.
+    let response = tokio::task::spawn_blocking(move || {
+        let _busy = busy;
         let _permit = permit;
         worker.process(&graph, batch)
     })
-    .await;
-    local_brains.finish(&client_id);
-    let response = result.map_err(internal)?.map_err(local_error)?;
+    .await
+    .map_err(internal)?
+    .map_err(local_error)?;
     Ok(Json(response))
+}
+
+struct LocalBusyGuard {
+    brains: Arc<LocalBrains>,
+    client_id: String,
+}
+
+impl Drop for LocalBusyGuard {
+    fn drop(&mut self) {
+        self.brains.finish(&self.client_id);
+    }
+}
+
+#[cfg(test)]
+mod local_busy_tests {
+    use super::*;
+
+    #[test]
+    fn worker_guard_releases_client_on_unwind() {
+        let brains = Arc::new(LocalBrains::default());
+        let client_id = "c".repeat(64);
+        brains.try_begin(&client_id).unwrap();
+        let guard = LocalBusyGuard {
+            brains: brains.clone(),
+            client_id: client_id.clone(),
+        };
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = guard;
+            panic!("simulated blocking worker panic");
+        }));
+        brains.try_begin(&client_id).unwrap();
+        brains.finish(&client_id);
+    }
 }
 
 fn local_error(error: LocalError) -> ApiError {

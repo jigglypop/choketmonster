@@ -16,7 +16,7 @@ type Decision = {
   checkpoint?: string;
 };
 type Check = { name: string; passed: boolean; detail: string };
-type CallMetric = { name: string; status: number; elapsedMs: number; responseBytes: number };
+type CallMetric = { name: string; status: number; elapsedMs: number; requestBytes: number; responseBytes: number };
 
 const arg = (name: string) => { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1]; };
 const baseUrl = (arg('--base-url') ?? 'http://127.0.0.1:8080').replace(/\/$/, '');
@@ -56,13 +56,14 @@ function historical(step: NeuralStep): HistoryStep {
 
 async function post(name: string, body: unknown) {
   const started = performance.now();
+  const encodedBody = JSON.stringify(body);
   const response = await fetch(`${baseUrl}/api/local-brains/step-batch`, {
-    method: 'POST', headers: { 'content-type': 'application/json', origin }, body: JSON.stringify(body),
+    method: 'POST', headers: { 'content-type': 'application/json', origin }, body: encodedBody,
     signal: AbortSignal.timeout(120_000),
   });
   const bytes = new Uint8Array(await response.arrayBuffer());
   const elapsedMs = Number((performance.now() - started).toFixed(3));
-  calls.push({ name, status: response.status, elapsedMs, responseBytes: bytes.byteLength });
+  calls.push({ name, status: response.status, elapsedMs, requestBytes: Buffer.byteLength(encodedBody), responseBytes: bytes.byteLength });
   let value: Record<string, unknown> = {};
   try { value = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>; } catch { /* recorded below */ }
   return { status: response.status, value, raw: new TextDecoder().decode(bytes) };
@@ -72,13 +73,17 @@ function decisions(call: Awaited<ReturnType<typeof post>>) {
   return (call.value.decisions ?? []) as Decision[];
 }
 
-function pgCounts(): { neuralStates: number; neuralRequests: number } | null {
+type PgSnapshot = { neuralStates: number; neuralRequests: number; writes: { table: string; inserted: number; updated: number; deleted: number }[] };
+const checkLocalDatabase = !process.argv.includes('--skip-db');
+function pgCounts(): PgSnapshot | null {
+  if (!checkLocalDatabase) return null;
+  if (!['http://127.0.0.1:8080', 'http://localhost:8080'].includes(baseUrl)) throw new Error('Remote verification must use --skip-db; local PostgreSQL statistics cannot verify a remote database.');
   const psql = 'C:\\Program Files\\PostgreSQL\\18\\bin\\psql.exe';
   try {
     const text = execFileSync(psql, ['-h', '127.0.0.1', '-p', '55432', '-U', 'choketmon', '-d', 'choketmon', '-tAc',
-      "SELECT (SELECT count(*) FROM neural_states),(SELECT count(*) FROM neural_requests)"], { encoding: 'utf8' }).trim();
-    const [neuralStates, neuralRequests] = text.split('|').map(Number);
-    return Number.isFinite(neuralStates) && Number.isFinite(neuralRequests) ? { neuralStates, neuralRequests } : null;
+      "SELECT json_build_object('neuralStates',(SELECT count(*) FROM neural_states),'neuralRequests',(SELECT count(*) FROM neural_requests),'writes',(SELECT json_agg(t) FROM (SELECT relname AS table,n_tup_ins AS inserted,n_tup_upd AS updated,n_tup_del AS deleted FROM pg_stat_user_tables WHERE relname IN ('neural_states','neural_requests','saves') ORDER BY relname) t))"], { encoding: 'utf8' }).trim();
+    const value = JSON.parse(text) as PgSnapshot;
+    return Number.isFinite(value.neuralStates) && Number.isFinite(value.neuralRequests) && Array.isArray(value.writes) ? value : null;
   } catch { return null; }
 }
 
@@ -174,9 +179,10 @@ async function main() {
     && terminalDecision.decision.activity === 0 && terminalDecision.decision.updates === 10 && !!terminalDecision.checkpoint,
   `status=${terminalCall.status}, action=${terminalDecision?.decision.action}, activity=${terminalDecision?.decision.activity}, updates=${terminalDecision?.decision.updates}`);
 
+  if (checkLocalDatabase) await new Promise(resolve => setTimeout(resolve, 1500));
   const pgAfter = pgCounts();
-  check('anonymous neural API does not write PostgreSQL brain tables', !!pgBefore && !!pgAfter
-    && pgBefore.neuralStates === pgAfter.neuralStates && pgBefore.neuralRequests === pgAfter.neuralRequests,
+  if (checkLocalDatabase) check('anonymous neural API does not write PostgreSQL brain/save tables', !!pgBefore && !!pgAfter
+    && JSON.stringify(pgBefore) === JSON.stringify(pgAfter),
   `before=${JSON.stringify(pgBefore)}, after=${JSON.stringify(pgAfter)}`);
 
   const report = {
@@ -185,8 +191,9 @@ async function main() {
     summary: {
       checks: checks.length, passedChecks: checks.filter(row => row.passed).length,
       totalElapsedMs: Number(calls.reduce((sum, row) => sum + row.elapsedMs, 0).toFixed(3)),
+      totalRequestBytes: calls.reduce((sum, row) => sum + row.requestBytes, 0),
       totalResponseBytes: calls.reduce((sum, row) => sum + row.responseBytes, 0),
-      checkpointBase64Bytes: checkpoint.length, pgBefore, pgAfter,
+      checkpointBase64Bytes: checkpoint.length, pgBefore, pgAfter, databaseVerified: checkLocalDatabase,
     },
   };
   await mkdir(dirname(output), { recursive: true });

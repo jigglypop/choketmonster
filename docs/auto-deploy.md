@@ -32,7 +32,7 @@ npx tsx scripts/prepare-deploy.ts
 
 배포 준비물의 `version.json`은 정확한 40자리 `gitCommit`과 UTC `builtAt`을 담는다. 준비 영수증은 모든 파일의 크기와 SHA-256을 기록한다. 포켓몬 로컬 PNG·GLB, Game Boy ROM 확장자는 준비 디렉터리와 영수증에서 계속 제외한다.
 
-Rust 서버는 수동 실행, 최초 push처럼 `before`가 0인 실행, 비교할 이전 커밋이 없는 실행, 또는 `event.before..GITHUB_SHA`에서 `rust-server/`가 변경된 실행에만 빌드한다. `musl-tools`와 `x86_64-unknown-linux-musl` target을 설치하고 다음 명령으로 정적 release 바이너리를 만든다.
+Rust 서버는 운영 `/version.json`의 마지막 배포 커밋과 현재 커밋 사이에서 `rust-server/`가 바뀌었을 때 빌드한다. 이전 push가 실패해도 아직 배포되지 않은 Rust 변경을 빠뜨리지 않는다. 운영 버전이 없거나 확인되지 않거나 수동 실행이면 빌드한다. `musl-tools`와 `x86_64-unknown-linux-musl` target을 설치하고 다음 명령으로 정적 release 바이너리를 만든다.
 
 ```bash
 cargo build --locked --release --target x86_64-unknown-linux-musl --manifest-path rust-server/Cargo.toml

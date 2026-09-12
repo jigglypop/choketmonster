@@ -1,9 +1,9 @@
 import { test, expect } from '@playwright/test';
 
 test('two tabs keep the newest device save without deleting legacy account records', async ({ page, context }) => {
-  const saveRequests: string[] = [];
+  const saveRequests: string[] = []; let accountReads = 0;
   context.on('request', request => { if (new URL(request.url()).pathname.startsWith('/api/saves/')) saveRequests.push(request.url()); });
-  await context.route('**/api/auth/me', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user: null }) }));
+  await context.route('**/api/auth/me', route => { accountReads++; return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user: null }) }); });
   const second = await context.newPage();
   await Promise.all([page.goto('/'), second.goto('/')]);
 
@@ -47,6 +47,7 @@ test('two tabs keep the newest device save without deleting legacy account recor
   expect(result.current).toEqual({ marker: 'tab-B-newest' });
   expect(result.keys).toContain('account:former-user:current');
   expect(saveRequests).toEqual([]);
+  expect(accountReads).toBe(0);
 });
 
 test('a missing device slot copies the active legacy account save once without cloud save access', async ({ page }) => {

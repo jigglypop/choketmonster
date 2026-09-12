@@ -15,7 +15,7 @@ const types: Record<string, string> = { normal: '노말', fire: '불꽃', water:
 const escape = (text: unknown) => String(text).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 // Display size only; movement speed, collision and saved species data stay in world units.
 const pokemonDisplayHeight = (speciesId: number) => Math.min(4.8, Math.max(1.3, (getSpecies(speciesId).heightMeters ?? 1) * 2.5));
-type Options = { game: GameState; graph: Graph; policy: FieldPolicy; checkpoint?: OpenWorldSnapshot; learning(): boolean; setLearning(value: boolean): void; notify(message: string, error?: boolean): void; changed(): void };
+type Options = { game: GameState; graph: Graph; policy: FieldPolicy; checkpoint?: OpenWorldSnapshot; learning(): boolean; setLearning(value: boolean): void; notify(message: string, error?: boolean): void; changed(immediate?: boolean): void | Promise<void> };
 
 export class OpenWorldPanel {
   readonly simulation: OpenWorldSimulation;
@@ -114,7 +114,18 @@ export class OpenWorldPanel {
     });
     this.button('#world-map-open').onclick = () => { this.drawRegionMap(); this.host!.querySelector<HTMLDialogElement>('#world-map-dialog')!.showModal(); };
     this.button('#world-map-close').onclick = () => this.host!.querySelector<HTMLDialogElement>('#world-map-dialog')!.close();
-    this.button('#world-pause').onclick = () => { this.paused = !this.paused; this.options.changed(); this.refresh(); };
+    this.button('#world-pause').onclick = async () => {
+      this.paused = !this.paused; this.refresh();
+      const button = this.button('#world-pause'); button.disabled = true;
+      try {
+        // A request already in flight still owns a durable neural result. Finish
+        // it before marking this paused snapshot saved, so reload sees that head.
+        if (this.paused) await this.serverRequest;
+        await this.options.changed(true);
+      } catch (error) {
+        this.paused = true; this.options.notify(String(error), true);
+      } finally { button.disabled = false; this.refresh(); }
+    };
     this.button('#world-heal').onclick = () => {
       if (this.options.game.battle) return this.options.notify('배틀을 마친 뒤 회복할 수 있습니다.');
       heal(this.options.game); this.options.notify('캠프에서 HP·PP·상태 이상을 회복했습니다.'); this.options.changed(); this.refresh();
@@ -184,7 +195,7 @@ export class OpenWorldPanel {
           this.attacks.set(move.actorInstanceId, { start: now + index * 300, end: now + index * 300 + 280, type: move.moveType });
         });
         if (event.result.battleEnded) this.options.notify(event.result.outcome === 'won' ? '승리! 경험치와 보상을 받았습니다.' : event.result.outcome === 'caught' ? '포획 성공! 팀과 도감에 등록했습니다.' : event.result.outcome === 'lost' ? '파트너가 쓰러졌습니다. 회복한 뒤 다시 탐험하세요.' : '배틀에서 벗어났습니다.');
-        this.options.changed();
+        await this.options.changed(true);
       }
       if (event.type === 'evolved') this.options.notify(`${getSpecies(event.fromSpeciesId).name} → ${getSpecies(event.speciesId).name} 진화!`);
     }

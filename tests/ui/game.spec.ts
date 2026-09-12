@@ -34,7 +34,7 @@ test('device-only save UI restores locally and shows server connectome status', 
   await page.goto('/');
   await expect(page.locator('.device-storage')).toHaveText('이 기기에만 저장');
   await expect(page.locator('#account-dialog,[data-open-auth],#logout-button')).toHaveCount(0);
-  await page.locator('[data-starter="1"]').click(); await page.locator('[data-tab="lab"]').click();
+  await page.locator('[data-starter="1"]').click(); await expect(page.locator('#world-learning')).toBeChecked(); await page.locator('[data-tab="lab"]').click();
   await expect(page.locator('.graph-numbers')).toContainText('브라우저 뉴런');
   await expect(page.locator('.server-circuit')).toContainText('139,255'); await expect(page.locator('.server-circuit')).toContainText('52,496,440');
   await page.screenshot({ path: 'artifacts/ui-lab-server.png', fullPage: true });

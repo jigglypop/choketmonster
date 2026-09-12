@@ -91,14 +91,28 @@ async function writeLocal(key: string, save: unknown) {
   });
 }
 let legacyMigration: Promise<unknown | undefined> | undefined;
+async function legacyAccountIds(key: string): Promise<string[]> {
+  const db = await database();
+  return new Promise((resolve, reject) => {
+    const request = db.transaction(STORE, 'readonly').objectStore(STORE).getAllKeys();
+    request.onsuccess = () => resolve(request.result.flatMap(candidate => {
+      if (typeof candidate !== 'string') return [];
+      const match = new RegExp(`^account:([^:]+):${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`).exec(candidate);
+      return match ? [match[1]] : [];
+    }));
+    request.onerror = () => reject(request.error);
+  });
+}
 async function migrateActiveAccountSave(key: string): Promise<unknown | undefined> {
   if (key !== 'current') return undefined;
   legacyMigration ??= (async () => {
     try {
+      const localAccountIds = await legacyAccountIds(key);
+      if (!localAccountIds.length) return undefined;
       const response = await fetch('/api/auth/me', { credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(2000) });
       if (!response.ok) return undefined;
       const body = await response.json() as { user?: { id?: string } | null }, id = body.user?.id;
-      if (!id) return undefined;
+      if (!id || !localAccountIds.includes(id)) return undefined;
       const legacy = await readLocal(`account:${id}:current`);
       if (legacy !== undefined && await readLocal('current') === undefined) await writeLocal('current', legacy);
       return legacy;
