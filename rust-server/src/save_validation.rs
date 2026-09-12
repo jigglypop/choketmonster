@@ -361,6 +361,19 @@ fn validate_monster(
         }
         integer(slot.get("pp"), 0, known.pp)?;
     }
+    if let Some(order) = monster.get("moveOrder") {
+        let order = order.as_array().ok_or("기술 배치가 올바르지 않습니다.")?;
+        if order.len() > 4 {
+            return Err("기술 배치가 올바르지 않습니다.");
+        }
+        let mut ordered_ids = HashSet::new();
+        for value in order {
+            let move_id = integer(Some(value), 1, MAX_SAFE_INTEGER)?;
+            if !move_ids.contains(&move_id) || !ordered_ids.insert(move_id) {
+                return Err("기술 배치가 올바르지 않습니다.");
+            }
+        }
+    }
     if let Some(brain) = monster.get("brain") {
         validate_brain(brain)?;
     }
@@ -689,6 +702,25 @@ mod tests {
     #[test]
     fn accepts_consistent_save() {
         validate_save(&valid_save()).unwrap();
+    }
+
+    #[test]
+    fn validates_optional_move_order_against_current_unique_moves() {
+        let mut save = valid_save();
+        let move_id = save["game"]["player"]["team"][0]["moves"][0]["moveId"].clone();
+        save["game"]["player"]["team"][0]["moveOrder"] = serde_json::json!([move_id]);
+        validate_save(&save).unwrap();
+
+        for invalid in [
+            serde_json::json!([move_id, move_id]),
+            serde_json::json!([999_999]),
+            serde_json::json!([1, 2, 3, 4, 5]),
+            Value::Null,
+        ] {
+            let mut edited = save.clone();
+            edited["game"]["player"]["team"][0]["moveOrder"] = invalid;
+            assert!(validate_save(&edited).is_err());
+        }
     }
 
     #[test]

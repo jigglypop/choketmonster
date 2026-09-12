@@ -11,7 +11,7 @@ export type BattleSenseContext = {
 };
 export type Decision = { rawAction: number; action: number; updates: number; graphId: string; activity: number };
 export const BRAIN_MODEL = 'pokemon-recurrent-v1';
-export const BRAIN_ASSUMPTIONS = '실제 신경 연결 일부를 사용합니다. HP·레벨·속도·상태와 기술별 PP, 공격 상성·면역, 회복 필요, 능력 단계 여유, 상태이상 적용 가능성을 합친 12개 배틀 감각의 투영, tanh 동역학, 4회 순환 계산, 기술 4개·대기 출력, 보상 학습은 게임용 설계입니다. 자동 전투의 매 3번째 턴 유효 공격 제한과 효과 없는 기술 제외는 학습과 분리된 게임 규칙입니다. 감각에서 출력으로 가는 우회 연결은 껐습니다.';
+export const BRAIN_ASSUMPTIONS = '실제 신경 연결 일부를 사용합니다. HP·레벨·속도·상태와 기술별 PP, 공격 상성·면역, 회복 필요, 능력 단계 여유, 상태이상 적용 가능성을 합친 12개 배틀 감각의 투영, tanh 동역학, 4회 순환 계산, 기술 4개·대기 출력, 보상 학습은 게임용 설계입니다. 자동 전투는 유효 공격이 있으면 매 턴 공격 기술만 허용하고, 공격이 없을 때 효과 있는 변화 기술을 허용합니다. 이 제한과 효과 없는 기술 제외는 학습과 분리된 게임 규칙입니다. 감각에서 출력으로 가는 우회 연결은 껐습니다.';
 
 const SELF_TARGETS = new Set([4, 7, 13, 15]);
 
@@ -22,7 +22,7 @@ export function availableMoveMask(monster: NeuralMonster): [boolean, boolean, bo
 const FIXED_DAMAGE_MOVES = new Set([12, 32, 49, 69, 82, 90, 101, 149, 162]);
 
 /** Game-only action guard for unattended battles; it does not change observations or learning weights. */
-export function automatedMoveMask(self: NeuralMonster, other: NeuralMonster, turn: number, context: BattleSenseContext = {}): [boolean, boolean, boolean, boolean, boolean] {
+export function automatedMoveMask(self: NeuralMonster, other: NeuralMonster, _turn: number, context: BattleSenseContext = {}): [boolean, boolean, boolean, boolean, boolean] {
   const ppMask = availableMoveMask(self), defenderTypes = getSpecies(other.speciesId).types;
   // Slot zero is the engine's Struggle fallback when all move PP are depleted.
   if (!ppMask.slice(0, 4).some(Boolean)) return [true, false, false, false, false];
@@ -34,6 +34,7 @@ export function automatedMoveMask(self: NeuralMonster, other: NeuralMonster, tur
   const strategic = [0, 1, 2, 3].map(index => {
     const slot = self.moves[index]; if (!slot || slot.pp <= 0 || slot.moveId === undefined) return false;
     const move = getMove(slot.moveId);
+    if (move.damageClass !== 'status') return false;
     const healing = ((move.healing ?? 0) > 0 || move.id === 156) && self.hp < self.stats.hp;
     const selfTarget = move.metaCategory === 8 || (move.metaCategory !== 7 && SELF_TARGETS.has(move.targetId ?? 10));
     const stages = selfTarget ? context.selfStatStages : context.otherStatStages;
@@ -47,8 +48,8 @@ export function automatedMoveMask(self: NeuralMonster, other: NeuralMonster, tur
       && !ailmentImmune(move.ailment, getSpecies(statusTarget.speciesId).types);
     return healing || stageChange || ailment;
   });
-  const forceAttack = turn % 3 === 0 && attacks.some(Boolean);
-  let allowed = ppMask.slice(0, 4).map((hasPp, index) => hasPp && (forceAttack ? attacks[index] : attacks[index] || strategic[index]));
+  if (attacks.some(Boolean)) return attacks.concat(false) as [boolean, boolean, boolean, boolean, boolean];
+  let allowed = ppMask.slice(0, 4).map((hasPp, index) => hasPp && strategic[index]);
   if (!allowed.some(Boolean)) allowed = ppMask.slice(0, 4);
   return allowed.concat(false) as [boolean, boolean, boolean, boolean, boolean];
 }

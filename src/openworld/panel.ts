@@ -2,6 +2,7 @@ import type { Graph } from '../core/brain';
 import { getMove, getSpecies } from '../data/pokemon';
 import { VERSIONS, getVersionSpeciesIds } from '../data/pokemon-versions';
 import { pokemonModelUrl, pokemonSpriteUrl } from '../game/assets';
+import { getMoveLayout } from '../game/move-layout';
 import { buyItem, experienceAtLevel, heal, ITEM_LABELS, ITEM_PRICES, statsFor, type BallItem, type GameState, type Monster } from '../game/engine';
 import { getWorldAtlas } from './atlas';
 import { PLAYABLE_WORLDS, isPlayableAdventureVersion } from './availability';
@@ -18,7 +19,7 @@ const escape = (text: unknown) => String(text).replace(/[&<>"']/g, c => ({ '&': 
 // Display size only; movement speed, collision and saved species data stay in world units.
 const pokemonDisplayHeight = (speciesId: number) => Math.min(4.8, Math.max(1.3, (getSpecies(speciesId).heightMeters ?? 1) * 2.5));
 const MANUAL_IDLE_SECONDS = 3;
-type Options = { game: GameState; graph: Graph; policy: FieldPolicy; checkpoint?: OpenWorldSnapshot; learning(): boolean; setLearning(value: boolean): void; notify(message: string, error?: boolean): void; changed(immediate?: boolean): void | Promise<void> };
+type Options = { game: GameState; graph: Graph; policy: FieldPolicy; checkpoint?: OpenWorldSnapshot; learning(): boolean; setLearning(value: boolean): void; editMoves?(instanceId: string): void; notify(message: string, error?: boolean): void; changed(immediate?: boolean): void | Promise<void> };
 
 export class OpenWorldPanel {
   readonly simulation: OpenWorldSimulation;
@@ -34,7 +35,12 @@ export class OpenWorldPanel {
     if (!this.host || event.repeat || event.ctrlKey || event.metaKey || event.altKey || (event.target instanceof Element && event.target.closest('input,textarea,select,dialog'))) return;
     if (event.code === 'KeyM') { event.preventDefault(); this.changeMode(this.simulation.controlMode === 'auto' ? 'manual' : 'auto'); }
     const index = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(event.code);
-    if (index >= 0 && !this.paused) { event.preventDefault(); this.simulation.requestAction({ type: 'move', index }); }
+    if (index >= 0 && !this.paused) {
+      event.preventDefault();
+      const button = this.host.querySelector<HTMLButtonElement>(`[data-world-slot="${index}"]`);
+      if (button && !button.disabled) button.click();
+      else if (index === 0) this.host.querySelector<HTMLButtonElement>('#world-struggle')?.click();
+    }
     if (event.code === 'KeyB') { event.preventDefault(); this.button('#world-catch').click(); }
     if (event.code === 'Space') { event.preventDefault(); this.button('#world-pause').click(); }
   };
@@ -65,7 +71,7 @@ export class OpenWorldPanel {
         <details class="world-battle-hud" aria-label="파트너와 배틀">
           <summary><span>PARTNER · 파트너와 배틀</span><strong>파트너 상태</strong><i aria-hidden="true">⌄</i></summary>
           <div class="world-battle-deck">
-            <div id="world-combatants"></div><div id="world-moves" class="world-moves"></div><div id="world-emergency-action"></div>
+            <div id="world-combatants"></div><div id="world-moves" class="world-moves"></div><button id="world-edit-moves" class="world-edit-moves">기술 배치</button><div id="world-emergency-action"></div>
             <div class="world-battle-actions"><button id="world-engage">가까운 포켓몬 배틀</button><button id="world-catch" disabled>볼 던지기</button><button id="world-potion" disabled>상처약</button><button id="world-run" disabled>도망</button><label><input id="world-auto-catch" type="checkbox"> 자동 포획</label><span id="world-battle-state">자동 배틀 대기</span></div>
             <label class="world-exp-share"><input id="world-exp-share" type="checkbox"> 팀 경험치 공유</label>
             <details class="world-rewards"><summary>이 개체의 보상 기록</summary><div id="world-rewards"></div><small>게임에서 설계한 보상이며 생물학적 학습의 증거가 아닙니다.</small></details>
@@ -97,6 +103,12 @@ export class OpenWorldPanel {
     this.host.querySelector<HTMLDetailsElement>('.world-battle-hud')!.open = !window.matchMedia('(max-width: 720px)').matches;
     this.button('#world-mode-auto').onclick = () => this.changeMode('auto');
     this.button('#world-mode-manual').onclick = () => this.changeMode('manual');
+    this.button('#world-edit-moves').onclick = () => {
+      const game = this.options.game;
+      if (game.battle || game.captureOffer) return;
+      const lead = game.player.team.find(monster => monster.hp > 0) ?? game.player.team[0];
+      this.options.editMoves?.(lead.instanceId);
+    };
     this.button('#world-target-track').onclick = () => { this.simulation.trackSelected(); this.options.changed(); this.refresh(); };
     this.button('#world-target-battle').onclick = () => { const id = this.simulation.selectedWildId; if (id) this.encounter(id); };
     this.button('#world-target-clear').onclick = () => { this.simulation.selectWild(null); this.options.changed(); this.refresh(); };
@@ -292,10 +304,12 @@ export class OpenWorldPanel {
     const xp = Math.min(100, Math.max(0, (lead.xp - xpStart) / Math.max(1, xpEnd - xpStart) * 100));
     const card = (mon: Monster, label: string) => `<div class="world-combatant"><img src="${pokemonSpriteUrl(mon.speciesId)}" alt="${getSpecies(mon.speciesId).name}"><div class="world-combatant-copy"><small>${label} · Lv.${mon.level}</small><strong>${escape(mon.nickname)}</strong><div class="world-hp-row"><span>HP</span><b>${mon.hp} / ${mon.stats.hp}</b>${mon.status ? `<em>${mon.status}</em>` : ''}</div><div class="world-hp" role="meter" aria-label="${escape(mon.nickname)} HP" aria-valuemin="0" aria-valuemax="${mon.stats.hp}" aria-valuenow="${mon.hp}"><i style="width:${mon.hp / mon.stats.hp * 100}%"></i></div><span class="world-combatant-meta">스피드 ${mon.stats.speed} · 이동 ${movementSpeed(mon.speciesId, mon.level).toFixed(1)}m/s</span></div></div>`;
     this.html('#world-combatants', `${card(lead, '내 파트너')}${enemy ? card(enemy, `${battle!.kind === 'wild' ? '야생' : '체육관'} · ${world.controlMode === 'manual' ? '수동' : '자동'} 배틀`) : `<div class="world-growth"><small>다음 레벨까지 ${Math.max(0, xpEnd - lead.xp)} EXP</small><div class="world-xp"><i style="width:${xp}%"></i></div><span>${species.moves.filter(move => move.level > lead.level).slice(0, 1).map(move => `Lv.${move.level} ${getMove(move.moveId).name} 습득`).join('') || '현재 레벨의 기술을 모두 익혔습니다.'}</span></div>`}`);
+    const moveLayout = getMoveLayout({ ...lead, moves });
+    this.button('#world-edit-moves').disabled = !!battle || !!game.captureOffer || !this.options.editMoves;
     this.html('#world-moves', Array.from({ length: 4 }, (_, index) => {
-      const slot = moves[index]; if (!slot) return `<div class="world-move empty-slot"><span>${index + 1}</span><strong>미습득</strong><small>레벨을 올려 기술을 익히세요</small></div>`;
+      const slot = moveLayout[index]; if (!slot) return `<div class="world-move empty-slot"><span>${index + 1}</span><strong>미습득</strong><small>레벨을 올려 기술을 익히세요</small></div>`;
       const move = getMove(slot.moveId);
-      return `<button data-world-move="${index}" class="world-move type-${move.type}" ${!battle || slot.pp <= 0 ? 'disabled' : ''} title="${move.damageClass === 'physical' ? '물리' : move.damageClass === 'special' ? '특수' : '변화'} · 우선도 ${move.priority} · 클릭하면 다음 턴에 사용"><span>${index + 1} · ${types[move.type]} · 우선 ${move.priority}</span><strong>${move.name}</strong><small><span class="move-details">위력 ${move.power || '—'} · 명중 ${move.accuracy || '—'} · </span>PP ${slot.pp}/${move.pp}</small></button>`;
+      return `<button data-world-move="${slot.sourceIndex}" data-world-slot="${index}" data-world-move-id="${slot.moveId}" class="world-move type-${move.type}" ${!battle || slot.pp <= 0 ? 'disabled' : ''} title="${move.damageClass === 'physical' ? '물리' : move.damageClass === 'special' ? '특수' : '변화'} · 우선도 ${move.priority} · 클릭하면 다음 턴에 사용"><span>${index + 1} · ${types[move.type]} · 우선 ${move.priority}</span><strong>${move.name}</strong><small><span class="move-details">위력 ${move.power || '—'} · 명중 ${move.accuracy || '—'} · </span>PP ${slot.pp}/${move.pp}</small></button>`;
     }).join(''));
     this.html('#world-emergency-action', battle && !battle.awaitingSwitch && moves.every(slot => slot.pp <= 0) ? '<button id="world-struggle">발버둥 (PP 소진)</button>' : '');
     const location = this.simulation.locationAt(world.player.x, world.player.z);

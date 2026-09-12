@@ -92,3 +92,17 @@
 }
 
 @media (prefers-reduced-motion: reduce) { .save-state[data-state="saving"] i { animation: none; } }
+.move-layout { display: grid; gap: 8px; }
+.move-layout-help { font-size: 12px; line-height: 1.6; color: var(--muted); }
+.move-layout-entry { display: flex; align-items: center; gap: 10px; padding: 10px; background: rgba(236, 243, 233, .58); border: 1px solid var(--line); border-radius: 10px; }
+.move-layout-number { flex: 0 0 22px; text-align: center; color: #497464; }
+.move-layout-copy { flex: 1; min-width: 0; }
+.move-layout-copy strong, .move-layout-copy small { display: block; }
+.move-layout-copy small { margin-top: 4px; font-size: 11px; line-height: 1.5; color: var(--muted); }
+.move-layout-controls { display: flex; gap: 4px; flex-shrink: 0; }
+.move-layout-controls button { min-width: 40px; min-height: 44px; padding: 7px; }
+.move-layout-controls button:disabled { opacity: .3; cursor: default; }
+.attack-recovery { margin-top: 12px; padding: 12px; border: 1px solid #83a28a; border-radius: 10px; background: rgba(216, 233, 208, .55); }
+.attack-recovery p { margin-top: 0; font-size: 12px; line-height: 1.6; }
+.attack-recovery label { display: block; font-size: 12px; margin-bottom: 6px; }
+.attack-recovery select, .attack-recovery button { display: block; width: 100%; min-height: 44px; margin-top: 8px; }

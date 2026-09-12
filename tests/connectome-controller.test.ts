@@ -99,29 +99,74 @@ describe('connectome battle observations', () => {
 
     self.hp = 25;
     expect(automatedMoveMask(self, monster('fire-target', 4), 1, { selfStatStages: { attack: 0 } }))
-      .toEqual([true, true, true, true, false]);
+      .toEqual([false, false, false, true, false]);
   });
 
-  it('reserves every third automatic turn for a non-immune attack and keeps fixed-damage moves', () => {
+  it('allows only non-immune attacks on every automatic turn and keeps fixed-damage moves', () => {
     const self = monster('automatic-attack', 1); self.moves = [
       { moveId: 69, pp: 20 }, // Seismic Toss: power 0, fixed damage
       { moveId: 77, pp: 35 },
     ];
     const foe = monster('automatic-foe', 4);
-    expect(automatedMoveMask(self, foe, 1)).toEqual([true, true, false, false, false]);
+    expect(automatedMoveMask(self, foe, 1)).toEqual([true, false, false, false, false]);
     expect(automatedMoveMask(self, foe, 3)).toEqual([true, false, false, false, false]);
     expect(mapToAvailableMove(4, automatedMoveMask(self, foe, 3))).toBe(0);
   });
 
-  it('produces no waits and at least one attack per three turns in a fixed 50-turn automatic comparison', () => {
+  it('produces an attack and no waits on every turn in a fixed 50-turn automatic comparison', () => {
     const self = monster('automatic-50-turns', 1); self.moves = [{ moveId: 33, pp: 99 }, { moveId: 14, pp: 99 }];
     const foe = monster('automatic-50-turn-foe', 4);
     const actions = Array.from({ length: 50 }, (_, index) => mapToAvailableMove(4, automatedMoveMask(self, foe, index + 1, { selfStatStages: { attack: 0 } })));
     expect(actions.filter(action => action === 4)).toHaveLength(0);
-    expect(actions.filter(action => action === 0).length).toBeGreaterThanOrEqual(Math.floor(50 / 3));
+    expect(actions).toEqual(Array(50).fill(0));
 
     self.moves.forEach(slot => { slot.pp = 0; });
     expect(automatedMoveMask(self, foe, 1)).toEqual([true, false, false, false, false]);
+  });
+
+  it('excludes immune and depleted attacks, then permits an effective status fallback', () => {
+    const self = monster('automatic-matchup', 25); self.moves = [
+      { moveId: 85, pp: 15 }, // Thunderbolt
+      { moveId: 45, pp: 40 }, // Growl
+      { moveId: 33, pp: 0 }, // depleted Tackle
+    ];
+    const ground = monster('ground-target', 50);
+    expect(automatedMoveMask(self, ground, 1, { otherStatStages: { attack: 0 } }))
+      .toEqual([false, true, false, false, false]);
+
+    self.moves[2].pp = 20;
+    expect(automatedMoveMask(self, ground, 2, { otherStatStages: { attack: 0 } }))
+      .toEqual([false, false, true, false, false]);
+  });
+
+  it('keeps effective healing and status moves when no usable attack exists', () => {
+    const self = monster('automatic-support', 1); self.moves = [
+      { moveId: 105, pp: 10 }, // Recover
+      { moveId: 77, pp: 35 }, // Poison Powder
+      { moveId: 33, pp: 0 },
+    ];
+    self.hp = 25;
+    expect(automatedMoveMask(self, monster('support-target', 4), 7))
+      .toEqual([true, true, false, false, false]);
+  });
+
+  it('replays automatic attack choices and leaves evaluation weights unchanged', () => {
+    const controller = new ConnectomeController(graph), foe = monster('replay-foe', 4);
+    const source = monster('replay-source', 1); source.moves = [{ moveId: 14, pp: 20 }, { moveId: 33, pp: 35 }];
+    controller.ensure(source);
+    const checkpoint = structuredClone(source.brain!), left = structuredClone(source), right = structuredClone(source);
+    left.brain = structuredClone(checkpoint); right.brain = structuredClone(checkpoint);
+    const weights = { input: structuredClone(checkpoint.inputWeights), readout: structuredClone(checkpoint.readout) };
+    const leftActions: number[] = [], rightActions: number[] = [];
+    for (let turn = 1; turn <= 12; turn++) {
+      leftActions.push(controller.choose(left, foe, turn, null, false, { automatic: true, selfStatStages: { attack: 0 } }).action);
+      rightActions.push(controller.choose(right, foe, turn, null, false, { automatic: true, selfStatStages: { attack: 0 } }).action);
+    }
+    expect(leftActions).toEqual(Array(12).fill(1));
+    expect(rightActions).toEqual(leftActions);
+    expect(left.brain!.inputWeights).toEqual(weights.input); expect(left.brain!.readout).toEqual(weights.readout);
+    expect(right.brain!.inputWeights).toEqual(weights.input); expect(right.brain!.readout).toEqual(weights.readout);
+    expect(availableMoveMask(left)).toEqual([true, true, false, false, true]);
   });
 
   it('executes Struggle for both automated sides after all PP are depleted', () => {

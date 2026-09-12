@@ -4,6 +4,7 @@ import { getExperienceForLevel, EXPERIENCE_BY_GROWTH_RATE } from '../data/pokemo
 import { getVersionSpeciesIds } from '../data/pokemon-versions';
 import type { BaseStats, Evolution, PokemonMove, PokemonSpecies, PokemonType } from './contracts';
 import { calculateDamage, catchProbability, turnOrder, typeMultiplier } from './battle';
+import { getMoveLayout, reconcileMoveOrder } from './move-layout';
 import { getRegion, REGIONS } from './regions';
 
 export const SAVE_SCHEMA_VERSION = 2 as const;
@@ -23,6 +24,8 @@ export type Monster = {
   hp: number;
   stats: MonsterStats;
   moves: MonsterMove[];
+  /** Presentation order by move ID. Engine and neural slots remain in `moves`. */
+  moveOrder?: number[];
   status?: string;
   statusTurns?: number;
   brain?: BrainState;
@@ -169,13 +172,56 @@ export function experienceAtLevel(level: number, growthRate: string): number {
   return getExperienceForLevel(Object.hasOwn(EXPERIENCE_BY_GROWTH_RATE, rate) ? rate : 'medium', n);
 }
 
+const ENGINE_DAMAGE_MOVE_IDS = new Set([12, 32, 49, 69, 82, 90, 101, 149, 162]);
+
+function canDealEngineDamage(moveId: number): boolean {
+  const move = getMove(moveId);
+  return move.damageClass !== 'status' && (move.power > 0 || ENGINE_DAMAGE_MOVE_IDS.has(moveId));
+}
+
+/** Latest-first legal recovery choices for a monster whose current set cannot deal damage. */
+export function recoverableAttackMoveIds(monster: Monster): number[] {
+  if (monster.moves.some((slot) => canDealEngineDamage(slot.moveId))) return [];
+  const learned = getSpecies(monster.speciesId).moves
+    .map((entry, index) => ({ ...entry, index }))
+    .filter((entry) => entry.level <= monster.level && canDealEngineDamage(entry.moveId))
+    .sort((a, b) => b.level - a.level || b.index - a.index);
+  const seen = new Set<number>();
+  return learned.map((entry) => entry.moveId).filter((moveId) => {
+    if (seen.has(moveId)) return false;
+    seen.add(moveId);
+    return true;
+  });
+}
+
 function knownMoves(species: PokemonSpecies, level: number): MonsterMove[] {
   const learned = species.moves
     .filter((entry) => entry.level <= level)
     .sort((a, b) => a.level - b.level)
-    .filter((entry, index, entries) => entries.findIndex((other) => other.moveId === entry.moveId) === index)
-    .slice(-4);
-  return learned.map(({ moveId }) => ({ moveId, pp: getMove(moveId).pp }));
+    .filter((entry, index, entries) => entries.findIndex((other) => other.moveId === entry.moveId) === index);
+  const selected = learned.slice(-4);
+  if (selected.length && !selected.some((entry) => canDealEngineDamage(entry.moveId))) {
+    const damaging = learned.findLast((entry) => canDealEngineDamage(entry.moveId));
+    if (damaging) selected.splice(0, 1, damaging);
+  }
+  return selected.map(({ moveId }) => ({ moveId, pp: getMove(moveId).pp }));
+}
+
+function learnMove(monster: Monster, moveId: number): void {
+  if (monster.moves.some((slot) => slot.moveId === moveId)) return;
+  if (monster.moves.length === 4) {
+    let replacement = 0;
+    if (!canDealEngineDamage(moveId)) {
+      const damaging = monster.moves.filter((slot) => canDealEngineDamage(slot.moveId));
+      if (damaging.length === 1) {
+        const statusIndex = monster.moves.findIndex((slot) => !canDealEngineDamage(slot.moveId));
+        if (statusIndex >= 0) replacement = statusIndex;
+      }
+    }
+    monster.moves.splice(replacement, 1);
+  }
+  monster.moves.push({ moveId, pp: getMove(moveId).pp });
+  reconcileMoveOrder(monster);
 }
 
 export function createMonster(state: Pick<GameState, 'nextInstanceId'>, speciesId: number, level: number): Monster {
@@ -500,12 +546,8 @@ function gainExperience(monster: Monster, amount: number, events?: BattleLogEntr
     monster.level++;
     monster.stats = statsFor(getSpecies(monster.speciesId), monster.level);
     monster.hp += monster.stats.hp - oldMax;
-    const currentIds = new Set(monster.moves.map((slot) => slot.moveId));
     for (const learned of getSpecies(monster.speciesId).moves.filter((entry) => entry.level === monster.level)) {
-      if (!currentIds.has(learned.moveId)) {
-        if (monster.moves.length === 4) monster.moves.shift();
-        monster.moves.push({ moveId: learned.moveId, pp: getMove(learned.moveId).pp });
-      }
+      learnMove(monster, learned.moveId);
     }
     if (events && battle) events.push(event(battle, `${monster.nickname}은(는) 레벨 ${monster.level}이 되었다.`, 'reward'));
   }
@@ -706,8 +748,9 @@ export function evolve(state: GameState, instanceId: string, option: { targetId?
   monster.stats = statsFor(getSpecies(evolution.target), monster.level);
   monster.hp = Math.min(monster.stats.hp, monster.hp + monster.stats.hp - oldMax);
   for (const learned of knownMoves(getSpecies(evolution.target), monster.level)) {
-    if (!monster.moves.some((slot) => slot.moveId === learned.moveId)) { if (monster.moves.length === 4) monster.moves.shift(); monster.moves.push(learned); }
+    learnMove(monster, learned.moveId);
   }
+  reconcileMoveOrder(monster);
   state.dex.seen = uniqueSorted([...state.dex.seen, evolution.target]); recordCapture(state, evolution.target);
   addLog(state, `${monster.nickname}(으)로 진화했다.`); return monster;
 }
@@ -747,6 +790,37 @@ export function withdrawMonster(state: GameState, boxIndex: number): void {
   if (state.battle || state.player.team.length >= 6) throw new Error('지금은 데려올 수 없습니다.');
   const [monster] = state.player.box.splice(boxIndex, 1); if (!monster) throw new Error('잘못된 박스 위치입니다.');
   state.player.team.push(monster);
+}
+
+/** Reorder adjacent presentation slots while preserving engine/neural indexes. */
+export function reorderMonsterMoves(state: GameState, instanceId: string, from: number, to: number): void {
+  if (state.battle) throw new Error('전투 중에는 기술 배치를 바꿀 수 없습니다.');
+  const monster = findOwned(state, instanceId);
+  const layout = getMoveLayout(monster);
+  if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to < 0 || from >= layout.length || to >= layout.length) throw new Error('기술 배치 위치가 올바르지 않습니다.');
+  if (Math.abs(from - to) !== 1) throw new Error('인접한 기술끼리만 순서를 바꿀 수 있습니다.');
+  const fromStatus = getMove(layout[from].moveId).damageClass === 'status';
+  const toStatus = getMove(layout[to].moveId).damageClass === 'status';
+  if (fromStatus !== toStatus) throw new Error('공격 기술과 보조 기술의 경계를 넘을 수 없습니다.');
+  [layout[from], layout[to]] = [layout[to], layout[from]];
+  monster.moveOrder = layout.map((entry) => entry.moveId);
+}
+
+/** Explicitly replace the first displayed status slot with a legal damaging move. */
+export function recoverAttackMove(state: GameState, instanceId: string, moveId: number): void {
+  const monster = findOwned(state, instanceId);
+  if (state.battle || state.captureOffer) throw new Error('전투와 포획 선택을 마친 뒤 공격 기술을 배치할 수 있습니다.');
+  if (!Number.isSafeInteger(moveId) || !recoverableAttackMoveIds(monster).includes(moveId)) throw new Error('배치할 수 있는 공격 기술이 아닙니다.');
+  const replacement = { moveId, pp: getMove(moveId).pp };
+  if (monster.moves.length < 4) monster.moves.push(replacement);
+  else {
+    const first = getMoveLayout(monster)[0];
+    if (!first) throw new Error('교체할 기술이 없습니다.');
+    monster.moves.splice(first.sourceIndex, 1, replacement);
+  }
+  if (monster.moveOrder === undefined) monster.moveOrder = monster.moves.map((slot) => slot.moveId);
+  reconcileMoveOrder(monster);
+  if (monster.brain) monster.brain.previous = null;
 }
 
 export const BALL_REFILL_INTERVAL = 30;
@@ -856,6 +930,10 @@ export function validateGame(value: unknown): GameState {
     if (!monster.stats || (Object.keys(expectedStats) as (keyof MonsterStats)[]).some((key) => monster.stats[key] !== expectedStats[key]) || !Number.isFinite(monster.hp) || monster.hp < 0 || monster.hp > monster.stats.hp) throw new Error('능력치/HP가 잘못되었습니다.');
     if (!Array.isArray(monster.moves) || monster.moves.length > 4) throw new Error('기술 데이터가 잘못되었습니다.');
     for (const slot of monster.moves) { const move = getMove(slot.moveId); if (!Number.isInteger(slot.pp) || slot.pp < 0 || slot.pp > move.pp) throw new Error('PP가 잘못되었습니다.'); }
+    if (monster.moveOrder !== undefined) {
+      const knownMoveIds = new Set(monster.moves.map((slot) => slot.moveId));
+      if (!Array.isArray(monster.moveOrder) || monster.moveOrder.length > 4 || monster.moveOrder.length !== new Set(monster.moveOrder).size || monster.moveOrder.some((moveId) => !Number.isSafeInteger(moveId) || !knownMoveIds.has(moveId))) throw new Error('기술 배치가 잘못되었습니다.');
+    }
     if (monster.status !== undefined && (typeof monster.status !== 'string' || !monster.status || monster.status.length > 40)) throw new Error('상태이상이 잘못되었습니다.');
     if (monster.statusTurns !== undefined && (!Number.isInteger(monster.statusTurns) || monster.statusTurns < 1 || monster.statusTurns > 10)) throw new Error('상태이상 지속 시간이 잘못되었습니다.');
     if (monster.moveLearning !== undefined) for (const [moveId, stats] of Object.entries(monster.moveLearning)) {

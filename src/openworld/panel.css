@@ -380,3 +380,6 @@
   .world-control-mode{width:calc(100% - 20px)}
   .world-lower-hud>.world-battle-hud[open]{width:calc(100% - 20px)}
 }
+
+.world-edit-moves { width: 100%; min-height: 40px; margin: 8px 0; border: 1px solid rgba(212, 225, 190, .35); border-radius: 8px; background: rgba(31, 69, 56, .62); color: #f8f3dc; font: inherit; font-size: 12px; cursor: pointer; }
+.world-edit-moves:disabled { opacity: .45; cursor: default; }
