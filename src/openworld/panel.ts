@@ -3,7 +3,8 @@ import { getMove, getSpecies } from '../data/pokemon';
 import { VERSIONS, getVersionSpeciesIds } from '../data/pokemon-versions';
 import { pokemonModelUrl, pokemonSpriteUrl } from '../game/assets';
 import { buyItem, experienceAtLevel, heal, ITEM_LABELS, ITEM_PRICES, statsFor, type BallItem, type GameState, type Monster } from '../game/engine';
-import { WORLDS, getWorldAtlas } from './atlas';
+import { getWorldAtlas } from './atlas';
+import { PLAYABLE_WORLDS, isPlayableAdventureVersion } from './availability';
 import type { FieldPolicy } from '../game/field';
 import { movementSpeed, OpenWorldSimulation, versionEncounters, type OpenWorldSnapshot } from './simulation';
 import { lastServerDecision } from '../game/server-brain';
@@ -52,7 +53,7 @@ export class OpenWorldPanel {
     this.unmount(); this.host = host;
     host.innerHTML = `<section class="adventure" aria-label="오픈월드 모험">
       <div id="ow-host"></div>
-      <div class="world-heading"><label class="world-eyebrow" for="world-version"><span id="world-region-label">관동</span> · 수집 <select id="world-version"><option value="national">전국도감</option>${VERSIONS.filter(version => version.speciesIds.length).map(version => `<option value="${version.id}">${escape(version.name)}${version.id.endsWith('-japan') ? ' (일본판)' : ''}</option>`).join('')}</select></label><h1 id="world-biome">태초마을</h1><p id="world-zone-level">1번도로에서 첫 모험을 시작하세요</p></div>
+      <div class="world-heading"><label class="world-eyebrow" for="world-version"><span id="world-region-label">관동</span> · 수집 <select id="world-version"><option value="national">전국도감</option>${VERSIONS.filter(version => version.speciesIds.length && isPlayableAdventureVersion(version.id)).map(version => `<option value="${version.id}">${escape(version.name)}${version.id.endsWith('-japan') ? ' (일본판)' : ''}</option>`).join('')}</select></label><h1 id="world-biome">태초마을</h1><p id="world-zone-level">1번도로에서 첫 모험을 시작하세요</p></div>
       <aside class="world-radar"><button id="world-map-open" aria-label="지역 전체 지도 열기"><canvas id="world-minimap" width="180" height="180" aria-label="월드 지도"></canvas></button><span id="world-position"></span><small id="world-map-caption">지역 지도 ↗</small></aside>
       <div class="world-tools"><button id="world-pause">Ⅱ 일시 정지</button><button id="world-heal">캠프 회복</button><label><input id="world-auto-hunt" type="checkbox" checked><span>자동 사냥</span></label><label><input id="world-learning" type="checkbox"><span id="world-learning-label">기술 학습</span></label></div>
       <div class="world-control-mode" role="group" aria-label="조작 모드"><div class="world-mode-buttons"><button id="world-mode-auto">자동</button><button id="world-mode-manual">수동</button></div><div class="world-control-copy"><strong id="world-control-title"></strong><small id="world-control-help"></small></div></div>
@@ -72,7 +73,7 @@ export class OpenWorldPanel {
         </details>
       </div>
       <section class="world-capture-offer" id="world-capture-offer" aria-label="승리 후 포획" hidden></section>
-      <dialog class="kanto-map-dialog" id="world-map-dialog"><header><div><small id="world-map-region-name">KANTO REGION</small><h2>지도 · 순간이동</h2></div><button id="world-map-close">닫기 ✕</button></header><div class="world-region-picker"><label for="world-region">여행할 지역</label><select id="world-region">${WORLDS.map(region => `<option value="${region.id}">${region.name}</option>`).join('')}</select></div><p id="world-map-note">방문한 마을로 무료 이동합니다. 도시 연결·지형·출현은 게임용으로 구성한 지도입니다.</p><div id="world-travel"></div><div id="world-map-content"></div></dialog>
+      <dialog class="kanto-map-dialog" id="world-map-dialog"><header><div><small id="world-map-region-name">KANTO REGION</small><h2>지도 · 순간이동</h2></div><button id="world-map-close">닫기 ✕</button></header><div class="world-region-picker"><label for="world-region">여행할 지역</label><select id="world-region">${PLAYABLE_WORLDS.map(region => `<option value="${region.id}">${region.name}</option>`).join('')}</select></div><p id="world-map-note">방문한 마을로 무료 이동합니다. 도시 연결·지형·출현은 게임용으로 구성한 지도입니다.</p><div id="world-travel"></div><div id="world-map-content"></div></dialog>
       <div class="world-feed" id="world-feed" aria-live="polite"></div>
       <div class="world-respawn" id="world-respawn"></div>
       <div class="world-dpad" aria-label="터치 이동"><button data-world-step="0,-1" aria-label="북쪽 이동">▲</button><div><button data-world-step="-1,0" aria-label="서쪽 이동">◀</button><button data-world-step="0,1" aria-label="남쪽 이동">▼</button><button data-world-step="1,0" aria-label="동쪽 이동">▶</button></div></div>

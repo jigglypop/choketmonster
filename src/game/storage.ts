@@ -48,7 +48,9 @@ export function unpackSave(input: unknown, expectedGraph?: Graph): { game: GameS
   const preferences = view.fieldPreferences;
   if (preferences !== undefined && (!preferences || typeof preferences.paused !== 'boolean' || typeof preferences.learning !== 'boolean' || typeof preferences.selectedId !== 'string')) throw new Error('들판 설정이 올바르지 않습니다.');
   if (view.openWorldPaused !== undefined && typeof view.openWorldPaused !== 'boolean') throw new Error('월드 정지 설정이 올바르지 않습니다.');
-  if (view.openWorld !== undefined) new OpenWorldSimulation(graph, game, view.openWorld.seed, view.openWorld);
+  // Validation may run a map migration. Keep the decoded save untouched so the
+  // caller can back up its original version and progress before applying it.
+  if (view.openWorld !== undefined) new OpenWorldSimulation(graph, structuredClone(game), view.openWorld.seed, view.openWorld);
   return { game, graph, view: view.learningDefaultsVersion === undefined ? { ...view, learning: true, learningDefaultsVersion: 1 } : view };
 }
 

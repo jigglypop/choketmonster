@@ -2,13 +2,15 @@ import { Brain, validateGraph, type BrainState, type Graph } from '../core/brain
 import { Random, clamp } from '../core/random';
 import { POKEMON, getMove, getSpecies } from '../data/pokemon';
 import { getVersionSpeciesIds } from '../data/pokemon-versions';
+import { hasPokemonModel } from '../data/pokemon-models';
 import { replenishBalls } from '../game/engine';
 import { gameplayHabitat } from '../game/habitat';
 import { ConnectomeController, type NeuralMonster } from '../game/connectome';
 import { chooseServerBrains, usesServerBrain, type ServerDecision } from '../game/server-brain';
 import { actBattle, availableEvolutions, captureDefeatedWild, createMonster, evolve, validateGame, type BallItem, type BattleAction, type BattleTurnResult, type GameState, type Monster } from '../game/engine';
 import { KANTO_START, KANTO_MAP_VERSION } from './kanto';
-import { getWorldAtlas, regionForVersion, type WorldAtlas, type WorldRegionId } from './atlas';
+import { getWorldAtlas, type WorldAtlas, type WorldRegionId } from './atlas';
+import { isPlayableAdventureVersion, isPlayableWorldRegion, playableWorldRegionForVersion } from './availability';
 import { REGIONS } from '../game/regions';
 import type { FieldPolicy } from '../game/field';
 import { appendReward, emptyRewardLedger, rewardEncounter, rewardBattleTurn, validateRewardLedger, type EngineeredReward, type RewardLedger, type RewardDecisionSource } from '../game/rewards';
@@ -197,12 +199,15 @@ export class OpenWorldSimulation {
   constructor(graph: Graph, game: GameState, seed: number, checkpoint?: OpenWorldSnapshot, policy?: FieldPolicy, wildCount = DEFAULT_WILD_COUNT) {
     validateGraph(graph); if (graph.kind !== 'connectome-subset') throw new Error('Open world requires a real connectome subset');
     validateGame(game); if (!Number.isSafeInteger(seed) || seed < 0 || seed > 0xffffffff) throw new Error('Open-world seed must be uint32');
+    if (!checkpoint && !isPlayableAdventureVersion(game.adventureVersion ?? 'red')) {
+      game.adventureVersion = 'national'; game.versionCaught ??= {}; game.versionCaught.national ??= [];
+    }
     const rosterCount = checkpoint ? checkpoint.entities.filter(entity => entity.kind === 'wild').length + (checkpoint.respawnQueue?.length ?? 0) : wildCount;
     if (!Number.isInteger(rosterCount) || rosterCount < 12 || rosterCount > 18) throw new Error('Open world requires 12..18 alive or pending wild Pokemon');
     this.graph = structuredClone(graph); this.game = game; this.seed = seed >>> 0; this.rng = new Random(this.seed);
     // Saves created before regional atlases always used Kanto, even when their
     // collection version was Gold, Scarlet, or another expanded data set.
-    this.regionId = checkpoint ? checkpoint.regionId ?? 'kanto' : regionForVersion(game.adventureVersion ?? 'red');
+    this.regionId = checkpoint ? checkpoint.regionId ?? 'kanto' : playableWorldRegionForVersion(game.adventureVersion ?? 'red');
     // Resolve eagerly so unknown checkpoint regions fail before any entity state is accepted.
     getWorldAtlas(this.regionId);
     this.player = { ...this.atlas.start, heading: 0 };
@@ -212,8 +217,14 @@ export class OpenWorldSimulation {
     if (this.policy && (this.policy.graphId !== graph.id || this.policy.schema !== 1)) throw new Error('Open-world field policy does not match graph');
     if (checkpoint) {
       this.restore(checkpoint);
-      if (this.regionId === 'kanto' && !checkpoint.mapVersion) this.migrateLegacyMap();
-      else if (this.regionId === 'kanto' && checkpoint.mapVersion !== KANTO_MAP_VERSION) this.migrateKantoBoundaries();
+      if (!isPlayableWorldRegion(this.regionId)) this.migrateUnavailableRegion();
+      else {
+        if (!isPlayableAdventureVersion(this.game.adventureVersion ?? 'red')) {
+          this.game.adventureVersion = 'national'; this.game.versionCaught ??= {}; this.game.versionCaught.national ??= [];
+        }
+        if (this.regionId === 'kanto' && !checkpoint.mapVersion) this.migrateLegacyMap();
+        else if (this.regionId === 'kanto' && checkpoint.mapVersion !== KANTO_MAP_VERSION) this.migrateKantoBoundaries();
+      }
     }
     else {
       this.entities.push(this.makeCompanion());
@@ -644,14 +655,16 @@ export class OpenWorldSimulation {
   private spawnPool(locationId: string): number[] {
     const version = this.game.adventureVersion ?? 'red';
     const caught = this.game.versionCaught?.[version] ?? this.game.dex.caught;
-    return versionEncounters(locationId, version, this.game.player.badges, this.regionId).filter(speciesId => !UNIQUE_SPECIES.has(speciesId) || (!caught.includes(speciesId) && !this.entities.some(entity => entity.kind === 'wild' && entity.speciesId === speciesId) && !this.respawnQueue.some(pending => pending.speciesId === speciesId)));
+    return versionEncounters(locationId, version, this.game.player.badges, this.regionId).filter(speciesId => hasPokemonModel(speciesId)
+      && (!UNIQUE_SPECIES.has(speciesId) || (!caught.includes(speciesId) && !this.entities.some(entity => entity.kind === 'wild' && entity.speciesId === speciesId) && !this.respawnQueue.some(pending => pending.speciesId === speciesId))));
   }
 
   changeVersion(version: string): void {
     if (this.game.battle || this.game.captureOffer) throw new Error('배틀과 포획 선택을 마친 뒤 버전을 바꿀 수 있습니다.');
     if (!getVersionSpeciesIds(version).length) throw new Error('도감 자료가 없는 버전입니다.');
+    if (!isPlayableAdventureVersion(version)) throw new Error('실제 3D 지역 지도가 확보되지 않은 버전입니다.');
     if (version === this.game.adventureVersion) return;
-    const mappedRegion = version === 'national' ? this.regionId : regionForVersion(version);
+    const mappedRegion = version === 'national' ? this.regionId : playableWorldRegionForVersion(version);
     if (mappedRegion !== this.regionId) {
       this.changeRegionInternal(mappedRegion, version);
       return;
@@ -665,6 +678,7 @@ export class OpenWorldSimulation {
   }
 
   changeRegion(regionId: WorldRegionId): void {
+    if (!isPlayableWorldRegion(regionId)) throw new Error('실제 3D 지역 지도가 확보되지 않은 지역입니다.');
     this.changeRegionInternal(regionId, getWorldAtlas(regionId).defaultVersion);
   }
 
@@ -852,6 +866,42 @@ export class OpenWorldSimulation {
     return action.type === 'wait' || action.type === 'run';
   }
   private priority(entity: OpenWorldEntity): number { return entity.id === this.battleWildId ? 0 : entity.id === this.selectedWildId ? 1 : entity.kind === 'companion' ? 2 : 3; }
+
+  private migrateUnavailableRegion(): void {
+    const previousRegion = this.regionId, kanto = getWorldAtlas('kanto');
+    this.visitedTownsByRegion[previousRegion] = [...this.visitedTownIds];
+    this.regionId = 'kanto';
+    this.game.adventureVersion = 'national';
+    this.game.versionCaught ??= {}; this.game.versionCaught.national ??= [];
+    this.visitedTownIds = [...(this.visitedTownsByRegion.kanto ?? this.initialVisitedTowns(kanto))];
+    this.visitedTownsByRegion.kanto = [...this.visitedTownIds];
+    this.player = { ...kanto.start, heading: 0 };
+
+    const nearest = (point: { x: number; z: number }) => kanto.nearestWalkable(point.x, point.z, this.game.player.badges) ?? kanto.start;
+    for (const entity of this.entities) {
+      const arrival = entity.kind === 'companion' ? kanto.start : nearest(entity);
+      entity.x = arrival.x; entity.z = arrival.z; entity.target = undefined;
+    }
+    const usedFood = new Set<string>();
+    for (let index = 0; index < this.foods.length; index++) {
+      const food = this.foods[index]; let arrival: { x: number; z: number } | undefined;
+      for (let attempt = 0; attempt < 256 && !arrival; attempt++) {
+        const radius = attempt ? 1 + Math.floor((attempt - 1) / 16) * 1.25 : 0;
+        const angle = (attempt % 16) / 16 * Math.PI * 2;
+        const candidate = nearest({ x: food.x + Math.cos(angle) * radius, z: food.z + Math.sin(angle) * radius });
+        if (!usedFood.has(key(candidate.x, candidate.z))) arrival = candidate;
+      }
+      if (!arrival) throw new Error('Kanto migration could not place saved food safely');
+      food.x = arrival.x; food.z = arrival.z; usedFood.add(key(food.x, food.z));
+    }
+    for (const pending of this.respawnQueue) {
+      const arrival = nearest({ x: pending.originX, z: pending.originZ });
+      pending.originX = arrival.x; pending.originZ = arrival.z;
+    }
+    this.recordTownVisit();
+    this.game.logs.push(`${getWorldAtlas(previousRegion).name} 저장을 실제 지도가 있는 관동으로 옮겼습니다. 보유 포켓몬과 개체 기억은 유지했습니다.`);
+    this.game.logs = this.game.logs.slice(-200);
+  }
 
   private migrateKantoBoundaries(): void {
     const relocate = (point: { x: number; z: number }) => {

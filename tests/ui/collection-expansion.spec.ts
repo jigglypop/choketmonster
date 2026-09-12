@@ -10,8 +10,10 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('version collection, later-generation images, duplicate XP and release survive a reload', async ({ page }) => {
-  test.setTimeout(90000);
+  test.setTimeout(150000);
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  const model906 = readFileSync('data/local/pokemon-models-expanded/429de1288cea0d43f5b4f56305d2276e94239d65/906.glb');
+  await page.route('https://raw.githubusercontent.com/Pokemon-3D-api/assets/**/906.glb', route => route.fulfill({ body: model906, contentType: 'model/gltf-binary' }));
   await page.goto('/'); await page.locator('[data-starter="1"]').click();
   await expect(page.locator('#world-version')).toHaveValue('red');
   await page.locator('[data-tab="dex"]').click();
@@ -23,11 +25,15 @@ test('version collection, later-generation images, duplicate XP and release surv
   await expect(page.locator('.model-host canvas')).toHaveAttribute('data-ready', 'true', { timeout: 30000 });
   await expect(page.locator('.model-host canvas')).toHaveAttribute('data-species', '906');
   await page.locator('.model-dialog button').click();
+  const unsupportedCollect = page.locator('#collect-version');
+  await expect(unsupportedCollect).toBeDisabled();
+  await expect(unsupportedCollect).toHaveText('지역 3D 맵 미확보 · 도감만 보기');
+  await page.locator('#dex-version').selectOption('national');
   await page.locator('#collect-version').click();
-  await expect(page.locator('#world-version')).toHaveValue('scarlet');
+  await expect(page.locator('#world-version')).toHaveValue('national');
   await page.locator('#world-pause').click();
   await page.locator('#save-now').click(); await page.reload();
-  await expect(page.locator('#world-version')).toHaveValue('scarlet');
+  await expect(page.locator('#world-version')).toHaveValue('national');
 
   const game = createGame(1, 'collection-ui'); game.player.box.push(createMonster(game, 1, 20), createMonster(game, 25, 8));
   game.dex.seen.push(25); game.dex.caught.push(25);

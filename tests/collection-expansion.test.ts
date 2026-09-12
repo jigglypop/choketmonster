@@ -4,6 +4,7 @@ import type { Graph } from '../src/core/brain';
 import { ConnectomeController } from '../src/game/connectome';
 import { ITEM_PRICES, captureDefeatedWild, createGame, createMonster, experienceAtLevel, mergeDuplicateMonster, releaseMonster, replenishBalls, validateGame } from '../src/game/engine';
 import { POKEMON } from '../src/data/pokemon';
+import { hasPokemonModel } from '../src/data/pokemon-models';
 import { VERSIONS, getVersionSpeciesIds } from '../src/data/pokemon-versions';
 import { KANTO_LOCATIONS } from '../src/openworld/kanto';
 import { OpenWorldSimulation, restoreOpenWorld, serializeOpenWorld, versionEncounters } from '../src/openworld/simulation';
@@ -23,18 +24,19 @@ describe('expanded collection and individual lifecycle', () => {
     }
   });
 
-  it('changes the spawn roster while retaining the partner and separate collection records', () => {
+  it('limits playable collection changes while retaining the partner and separate collection records', () => {
     const game = createGame(1, 'versions');
     const world = new OpenWorldSimulation(graph, game, 818);
     const partner = world.entities.find(entity => entity.kind === 'companion')!;
     const memory = structuredClone(partner.brain);
-    world.changeVersion('scarlet');
+    expect(() => world.changeVersion('scarlet')).toThrow(/3D 지역 지도/);
+    world.changeVersion('national');
     expect(world.entities.find(entity => entity.kind === 'companion')!.brain).toEqual(memory);
-    expect(world.entities.filter(entity => entity.kind === 'wild').every(entity => getVersionSpeciesIds('scarlet').includes(entity.speciesId))).toBe(true);
+    expect(world.entities.filter(entity => entity.kind === 'wild').every(entity => getVersionSpeciesIds('national').includes(entity.speciesId) && hasPokemonModel(entity.speciesId))).toBe(true);
     const wild = createMonster(game, 906, 5); wild.hp = 0;
     game.dex.seen.push(906); game.captureOffer = wild;
     expect(captureDefeatedWild(game, 'poke-ball')).toBe(true);
-    expect(game.versionCaught?.scarlet).toEqual([906]);
+    expect(game.versionCaught?.national).toEqual([906]);
     expect(game.versionCaught?.red).toEqual([1]);
     expect(() => validateGame(game)).not.toThrow();
   });

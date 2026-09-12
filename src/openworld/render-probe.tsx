@@ -32,6 +32,7 @@ export function RenderProbe() {
           .map(object => ({ id: object.name.slice('creature:'.length), position: object.position.toArray(), yaw: object.rotation.y })),
         nameplates: scene.getObjectsByProperty('name', 'creature-nameplate').length,
         loadedPokemon: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('pokemon-model:')).map(object => Number(object.name.slice('pokemon-model:'.length))),
+        modelStatuses: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('pokemon-model-status:')).map(object => object.name.slice('pokemon-model-status:'.length)),
         renderables: renderableInventory(scene),
         detailAssets: ['moss-boulder', 'moss-stone', 'fern'].map(id => {
           const group = scene.getObjectByName(`nature:${id}.glb`);

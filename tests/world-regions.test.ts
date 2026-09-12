@@ -2,65 +2,92 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { Graph } from '../src/core/brain';
 import { getVersionSpeciesIds } from '../src/data/pokemon-versions';
+import { hasPokemonModel } from '../src/data/pokemon-models';
 import { createGame, createMonster } from '../src/game/engine';
 import { getWorldAtlas } from '../src/openworld/atlas';
 import { OpenWorldSimulation, restoreOpenWorld, serializeOpenWorld, versionEncounters } from '../src/openworld/simulation';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
 
+function moveCheckpointToRegion(world: OpenWorldSimulation, regionId: 'paldea') {
+  const checkpoint = world.snapshot(), atlas = getWorldAtlas(regionId), points: Array<{ x: number; z: number }> = [];
+  for (let x = -118; x <= 118 && points.length < checkpoint.entities.length + checkpoint.foods.length; x++) {
+    for (let z = -118; z <= 118 && points.length < checkpoint.entities.length + checkpoint.foods.length; z++) {
+      if (!atlas.sample(x, z).blocked) points.push({ x, z });
+    }
+  }
+  if (points.length < checkpoint.entities.length + checkpoint.foods.length) throw new Error('Regional fixture has too few walkable points');
+  checkpoint.regionId = regionId; checkpoint.mapVersion = atlas.mapVersion;
+  checkpoint.player = { ...atlas.start, heading: 0 };
+  checkpoint.visitedTownIds = ['cabo-poco'];
+  checkpoint.visitedTownsByRegion = { kanto: ['pallet', 'viridian'], paldea: ['cabo-poco'] };
+  checkpoint.entities.forEach((entity, index) => Object.assign(entity, points[index]));
+  checkpoint.foods.forEach((food, index) => Object.assign(food, points[checkpoint.entities.length + index]));
+  return checkpoint;
+}
+
 describe('regional open worlds', () => {
-  it('moves with a version, keeps National in place, and persists the regional atlas', () => {
+  it('normalizes an unsupported new-game version and spawns only species with real models', () => {
     const game = createGame(1, 'regional-version');
+    game.adventureVersion = 'scarlet'; game.versionCaught ??= {}; game.versionCaught.scarlet ??= [];
     const world = new OpenWorldSimulation(graph, game, 73_001);
-    world.changeVersion('scarlet');
-
-    expect(world.regionId).toBe('paldea');
-    expect(world.player).toEqual({ ...getWorldAtlas('paldea').start, heading: 0 });
-    expect(world.entities.filter(entity => entity.kind === 'wild').every(entity => getVersionSpeciesIds('scarlet').includes(entity.speciesId))).toBe(true);
-
-    world.changeVersion('national');
-    expect(world.regionId).toBe('paldea');
-    const restored = restoreOpenWorld(graph, serializeOpenWorld(game, world)).simulation;
-    expect(restored.regionId).toBe('paldea');
-    expect(restored.snapshot().mapVersion).toBe(getWorldAtlas('paldea').mapVersion);
-    expect(restored.sampleWorld(restored.player.x, restored.player.z).blocked).toBe(false);
+    expect(world.regionId).toBe('kanto');
+    expect(game.adventureVersion).toBe('national');
+    expect(world.entities.filter(entity => entity.kind === 'wild').every(entity => hasPokemonModel(entity.speciesId))).toBe(true);
+    expect(() => world.changeVersion('scarlet')).toThrow(/3D 지역 지도/);
+    expect(() => world.changeRegion('paldea')).toThrow(/3D 지역 지도/);
+    world.changeVersion('yellow');
+    expect(game.adventureVersion).toBe('yellow');
   });
 
-  it('keeps each region visit list and the owned companion memory across travel', () => {
-    const game = createGame(1, 'regional-memory');
-    const world = new OpenWorldSimulation(graph, game, 73_002);
-    world.visitedTownIds.push('viridian');
-    const companionBefore = world.snapshot().entities.find(entity => entity.kind === 'companion')!.brain;
-
-    world.changeRegion('johto');
-    expect(game.adventureVersion).toBe('gold');
-    expect(world.visitedTownIds).toEqual(['new-bark']);
-    expect(world.snapshot().entities.find(entity => entity.kind === 'companion')!.brain).toEqual(companionBefore);
-
-    world.changeRegion('kanto');
-    expect(world.visitedTownIds).toEqual(['pallet', 'viridian']);
-    expect(world.snapshot().visitedTownsByRegion).toMatchObject({ kanto: ['pallet', 'viridian'], johto: ['new-bark'] });
-  });
-
-  it('rejects unknown regions, mismatched map heads, and region changes during battle', () => {
+  it('rejects unknown regions and mismatched legacy map heads', () => {
     const game = createGame(1, 'regional-validation');
     const world = new OpenWorldSimulation(graph, game, 73_003);
     const checkpoint = world.snapshot();
     expect(() => new OpenWorldSimulation(graph, game, world.seed, { ...checkpoint, regionId: 'missing' as never })).toThrow(/Unknown world region/);
-
-    world.changeRegion('paldea');
-    const paldea = world.snapshot();
+    const paldea = moveCheckpointToRegion(world, 'paldea');
     expect(() => new OpenWorldSimulation(graph, game, world.seed, { ...paldea, mapVersion: 'kanto-v2' })).toThrow(/map version/);
-
-    const target = world.entities.find(entity => entity.kind === 'wild')!;
-    expect(world.startEncounter(target.id)).toBe(true);
-    expect(() => world.changeRegion('johto')).toThrow(/배틀/);
   });
 
   it('offers the complete version dex across a region without cross-version species', () => {
     const atlas = getWorldAtlas('paldea'), expected = getVersionSpeciesIds('scarlet');
     const encountered = new Set(atlas.locations.flatMap(location => versionEncounters(location.id, 'scarlet', 8, 'paldea')));
     expect([...encountered].sort((a, b) => a - b)).toEqual([...expected].sort((a, b) => a - b));
+  });
+
+  it('moves a removed-region battle to Kanto without deleting entities, brains, or history', () => {
+    const game = createGame(1, 'removed-region-battle');
+    const world = new OpenWorldSimulation(graph, game, 73_002);
+    const target = world.entities.find(entity => entity.kind === 'wild')!;
+    expect(world.startEncounter(target.id)).toBe(true);
+    game.adventureVersion = 'scarlet'; game.versionCaught ??= {}; game.versionCaught.scarlet = [1];
+    const checkpoint = moveCheckpointToRegion(world, 'paldea');
+    const entityMemories = new Map(checkpoint.entities.map(entity => [entity.id, structuredClone(entity.brain)]));
+
+    const restored = new OpenWorldSimulation(graph, game, world.seed, checkpoint);
+    const saved = restored.snapshot();
+    expect(restored.regionId).toBe('kanto');
+    expect(game.adventureVersion).toBe('national');
+    expect(restored.player).toEqual({ ...getWorldAtlas('kanto').start, heading: 0 });
+    expect(restored.battleWildId).toBe(target.id);
+    expect(saved.entities.map(entity => entity.id)).toEqual(checkpoint.entities.map(entity => entity.id));
+    for (const entity of saved.entities) expect(entity.brain, entity.id).toEqual(entityMemories.get(entity.id));
+    expect(saved.visitedTownsByRegion).toMatchObject({ kanto: ['pallet', 'viridian'], paldea: ['cabo-poco'] });
+    expect(game.versionCaught?.scarlet).toEqual([1]);
+  });
+
+  it('preserves a capture decision while migrating a removed region', () => {
+    const game = createGame(1, 'removed-region-capture');
+    const world = new OpenWorldSimulation(graph, game, 73_006);
+    const offer = createMonster(game, 25, 4); offer.hp = 0;
+    game.captureOffer = offer; game.dex.seen = [...new Set([...game.dex.seen, 25])].sort((a, b) => a - b);
+    game.adventureVersion = 'scarlet'; game.versionCaught ??= {}; game.versionCaught.scarlet ??= [];
+    const checkpoint = moveCheckpointToRegion(world, 'paldea');
+
+    const restored = new OpenWorldSimulation(graph, game, world.seed, checkpoint);
+    expect(restored.regionId).toBe('kanto');
+    expect(game.captureOffer?.instanceId).toBe(offer.instanceId);
+    expect(game.captureOffer?.hp).toBe(0);
   });
 
   it('restores pre-region Kanto saves under an expanded version, including an active battle', () => {
@@ -79,6 +106,8 @@ describe('regional open worlds', () => {
 
     const restored = new OpenWorldSimulation(graph, game, world.seed, checkpoint);
     expect(restored.regionId).toBe('kanto');
+    expect(game.adventureVersion).toBe('national');
+    expect(game.versionCaught?.scarlet).toEqual([]);
     expect(restored.battleWildId).toBe(target.id);
     expect(restored.visitedTownIds).toEqual(['pallet', 'viridian']);
     expect(restored.snapshot().entities.find(entity => entity.id === target.id)!.brain).toEqual(targetMemory);

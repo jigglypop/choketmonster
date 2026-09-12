@@ -1,5 +1,6 @@
 import { hasPokemonModel } from './game/assets';
 import { getWorldAtlas } from './openworld/atlas';
+import { isPlayableAdventureVersion, isPlayableWorldRegion } from './openworld/availability';
 import './game.css';
 import './team.css';
 import { currentAccount } from './game/account';
@@ -96,7 +97,7 @@ function prepareWorld() {
   if (!game) return;
   setServerBrainScope(currentAccount() ? `account:${currentAccount()!.id}:${game.seed}` : game.seed);
   if (game.battle && !view.openWorld) return;
-  if (view.openWorld && view.openWorld.mapVersion !== getWorldAtlas(view.openWorld.regionId ?? 'kanto').mapVersion) {
+  if (view.openWorld && (!isPlayableWorldRegion(view.openWorld.regionId ?? 'kanto') || !isPlayableAdventureVersion(game.adventureVersion ?? 'red') || view.openWorld.mapVersion !== getWorldAtlas(view.openWorld.regionId ?? 'kanto').mapVersion)) {
     void writeSave(packSave(game, controller.graph, view), `backup-before-kanto-${Date.now()}`).catch(error => notify(String(error), true));
   }
   if (view.openWorld && originalFieldPolicy) {
@@ -264,12 +265,13 @@ function renderDex() {
     && (dexMode === 'all' || (dexMode === 'caught' ? caughtIds : game!.dex.seen).includes(s.id)));
   const pageSize = 60, pages = Math.max(1, Math.ceil(filtered.length / pageSize)); dexPage = Math.min(dexPage, pages - 1);
   const versionName = dexVersion === 'national' ? '전국도감' : getPokemonVersion(dexVersion).name;
-  $('#screen').innerHTML = `<div class="page dex-page"><section class="section-heading"><div><span class="kicker">POKÉDEX · COLLECTION</span><h1>${escapeHtml(versionName)}</h1><p>수록 ${pool.length}종 · 수집 ${caughtIds.filter(id => pool.some(s => s.id === id)).length}종</p></div>
+  const playable = isPlayableAdventureVersion(dexVersion);
+  $('#screen').innerHTML = `<div class="page dex-page"><section class="section-heading"><div><span class="kicker">POKÉDEX · COLLECTION</span><h1>${escapeHtml(versionName)}</h1><p>수록 ${pool.length}종 · 3D 지원 ${pool.filter(s => hasPokemonModel(s.id)).length}종 · 수집 ${caughtIds.filter(id => pool.some(s => s.id === id)).length}종</p></div>
     <div class="dex-tools"><label for="dex-version">버전별 도감</label><select id="dex-version"><option value="national">전국도감 · ${POKEMON.length}종</option>${VERSIONS.map(version => `<option value="${version.id}" ${version.speciesIds.length ? '' : 'disabled'}>${escapeHtml(version.name)}${version.id.endsWith('-japan') ? ' (일본판)' : ''} · ${version.speciesIds.length ? `${version.speciesIds.length}종` : '원본 도감 없음'}</option>`).join('')}</select><input id="dex-search" type="search" aria-label="도감 검색" value="${escapeHtml(dexQuery)}" placeholder="이름, 번호, 타입 검색"><div>${(['all', 'seen', 'caught'] as const).map(mode => `<button data-dex-mode="${mode}" class="${dexMode === mode ? 'active' : ''}">${mode === 'all' ? '전체' : mode === 'seen' ? '발견' : '수집'}</button>`).join('')}</div></div></section>
-    <section class="collection-note"><p>버전 목록은 원본 지역도감 기준입니다. 선택한 버전의 지역 맵에 이 게임의 규칙으로 배치합니다. 지형·배치·출현은 게임용으로 구성했으며 본가 지도와 다릅니다. 버전마다 직접 잡거나 진화한 기록을 따로 모읍니다.</p><button id="collect-version" class="primary" ${game.adventureVersion === dexVersion ? 'disabled' : ''}>${game.adventureVersion === dexVersion ? '이 버전 수집 중' : '이 버전에서 수집'}</button></section>
+    <section class="collection-note"><p>도감 자료와 기존 수집 기록은 모든 버전에서 확인할 수 있습니다. 현재 탐험 지도는 관동이며, 전국도감 모드에서 다른 세대의 3D 지원 포켓몬도 만납니다. 지형과 출현은 이 게임의 규칙으로 구성했습니다.</p><button id="collect-version" class="primary" ${!playable || game.adventureVersion === dexVersion ? 'disabled' : ''}>${!playable ? '지역 3D 맵 미확보 · 도감만 보기' : game.adventureVersion === dexVersion ? '이 버전 수집 중' : '이 버전에서 수집'}</button></section>
     <div class="dex-grid">${filtered.slice(dexPage * pageSize, (dexPage + 1) * pageSize).map(s => {
       const seen = game!.dex.seen.includes(s.id), caught = caughtIds.includes(s.id);
-      const regions = s.id <= 151 && ['red', 'blue', 'yellow'].includes(dexVersion) ? kantoSpeciesSources(s.id).join(' / ') : '수집 버전 선택 후 해당 지역 탐험';
+      const regions = !hasPokemonModel(s.id) ? '3D 미지원 · 도감 자료만 제공' : s.id <= 151 && ['red', 'blue', 'yellow'].includes(dexVersion) ? kantoSpeciesSources(s.id).join(' / ') : '관동 · 전국도감 모드에서 탐험';
       return `<article class="dex-card" data-species="${s.id}" tabindex="0" role="button" aria-label="${escapeHtml(s.name)} 상세 보기"><span>No.${String(s.id).padStart(3, '0')} · ${escapeHtml(s.englishName)}</span><img loading="lazy" src="${s.frontSprite}" alt="${escapeHtml(s.name)}"><strong>${escapeHtml(s.name)}</strong><div>${typesHtml(s.id)}</div><small>${caught ? '● 수집' : seen ? '○ 발견' : '미발견'}</small><p><b>출현</b> ${escapeHtml(regions)}</p></article>`;
     }).join('') || '<p class="empty">검색 조건에 맞는 포켓몬이 없습니다.</p>'}</div>
     <nav class="box-pagination" aria-label="도감 페이지"><button id="dex-prev" ${dexPage === 0 ? 'disabled' : ''}>이전</button><span>${dexPage + 1} / ${pages} · 검색 ${filtered.length}종</span><button id="dex-next" ${dexPage + 1 >= pages ? 'disabled' : ''}>다음</button></nav></div>`;
@@ -306,7 +308,7 @@ function showModel(id: number) {
   const forms = getPokemonForms(id);
   dialog.insertAdjacentHTML('beforeend', `<details class="form-gallery"><summary>원본 폼 자료 ${forms.length}개</summary><p>폼 이미지 자료입니다. 현재 포획·능력치·개체 저장은 종의 기본 폼 기준입니다.</p><div>${forms.map(form => `<figure>${form.frontSprite ? `<img loading="lazy" src="${pokemonSpriteUrl(form.spriteKey)}" alt="${escapeHtml(form.name)}">` : '<span>원본 이미지 없음</span>'}<figcaption>${escapeHtml(form.formName || form.name || form.identifier)}${form.isBattleOnly ? ' · 배틀 전용' : ''}</figcaption></figure>`).join('')}</div></details>`);
   document.body.append(dialog); dialog.showModal();
-  if (hasPokemonModel(id)) getPokemonScene().showSpecimen(dialog.querySelector<HTMLElement>('.model-host')!, id); else { dialog.querySelector('.model-host')!.innerHTML = `<img class="species-preview" src="${species.frontSprite}" alt="${escapeHtml(species.name)}">`; dialog.querySelector('.model-control-hint')!.textContent = '공개 원본에 3D 모델이 없는 종 · 스프라이트로 표시합니다.'; }
+  if (hasPokemonModel(id)) getPokemonScene().showSpecimen(dialog.querySelector<HTMLElement>('.model-host')!, id); else { dialog.querySelector('.model-host')!.innerHTML = `<img class="species-preview" src="${species.frontSprite}" alt="${escapeHtml(species.name)}">`; dialog.querySelector('.model-control-hint')!.textContent = '현재 게임에서 3D 미지원 · 도감 이미지를 표시합니다.'; }
   dialog.querySelector('button')!.onclick = () => dialog.close();
   dialog.addEventListener('close', () => { getPokemonScene().detach(); dialog.remove(); render(); }, { once: true });
 }

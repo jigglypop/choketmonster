@@ -1,4 +1,5 @@
 import type { WorldCreature, WorldPoint } from './types';
+import { hasPokemonModel } from '../data/pokemon-models';
 
 export const TERRAIN_CHUNK_SIZE = 40;
 export type TerrainChunk = { key: string; x: number; z: number; segments: number; distance: number };
@@ -18,12 +19,13 @@ export function terrainChunks(player: WorldPoint, visible: VisibilityTest): Terr
 }
 
 export function creatureLods(entities: readonly WorldCreature[], player: WorldPoint, visible: VisibilityTest, mobile: boolean, selected?: string | null) {
-  const modelRadius = mobile ? 22 : 32, viewRadius = mobile ? 52 : 72;
-  let models = mobile ? 4 : 8;
+  const modelRadius = mobile ? 22 : 32;
   return entities.map(creature => ({ creature, distance: Math.hypot(creature.x - player.x, creature.z - player.z) }))
-    .filter(({ creature: c, distance }) => distance <= viewRadius && (c.id.startsWith('companion:') || visible(c.x, (c.y ?? 0) + 2, c.z, Math.max(3, c.displayHeight ?? 1))))
+    .filter(({ creature: c, distance }) => distance <= modelRadius
+      && (hasPokemonModel(c.speciesId) || c.id.startsWith('companion:') || c.inBattle)
+      && (c.id.startsWith('companion:') || visible(c.x, (c.y ?? 0) + 2, c.z, Math.max(3, c.displayHeight ?? 1))))
     .sort((a, b) => Number(b.creature.id.startsWith('companion:') || b.creature.inBattle || b.creature.id === selected)
       - Number(a.creature.id.startsWith('companion:') || a.creature.inBattle || a.creature.id === selected) || a.distance - b.distance || a.creature.id.localeCompare(b.creature.id))
-    .slice(0, mobile ? 10 : 16)
-    .map(item => ({ ...item, model: item.distance <= modelRadius && models-- > 0 }));
+    .slice(0, mobile ? 4 : 8)
+    .map(item => ({ ...item, model: hasPokemonModel(item.creature.speciesId) }));
 }

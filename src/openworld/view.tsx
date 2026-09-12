@@ -30,7 +30,6 @@ import {
   SRGBColorSpace,
   Spherical,
   Texture,
-  TextureLoader,
   Vector3,
 } from 'three';
 import { type GLTF } from 'three/addons/loaders/GLTFLoader.js';
@@ -48,7 +47,7 @@ import type {
 import { createSceneryPlacements, SCENERY_ASSETS, type SceneryPlacement } from './scenery';
 import { createGrounding, terrainSurfaceHeight } from './grounding';
 import { getWorldAtlas, type WorldAtlas } from './atlas';
-import { hasPokemonModel, pokemonSpriteUrl } from '../game/assets';
+import { hasPokemonModel } from '../game/assets';
 import { createGLTFLoader } from '../three/gltf-loader';
 import { creatureLods, terrainChunks, TERRAIN_CHUNK_SIZE, type TerrainChunk, type VisibilityTest } from './lod';
 import { initialYaw, movementYaw, turnTowards } from './motion';
@@ -158,16 +157,21 @@ function acquireModel(url: string): { promise: Promise<GLTF>; release(): void } 
   } };
 }
 
-function useCachedModel(url: string): GLTF | null {
-  const [gltf, setGltf] = useState<GLTF | null>(null);
+function useModelStatus(url: string): { url: string; gltf: GLTF | null; failed: boolean } {
+  const [state, setState] = useState({ url, gltf: null as GLTF | null, failed: false });
   useEffect(() => {
     let active = true;
-    setGltf(null);
+    setState({ url, gltf: null, failed: false });
     const request = acquireModel(url);
-    request.promise.then(value => { if (active) setGltf(value); }).catch(() => { if (active) setGltf(null); });
+    request.promise.then(gltf => { if (active) setState({ url, gltf, failed: false }); })
+      .catch(() => { if (active) setState({ url, gltf: null, failed: true }); });
     return () => { active = false; request.release(); };
   }, [url]);
-  return gltf;
+  return state.url === url ? state : { url, gltf: null, failed: false };
+}
+
+function useCachedModel(url: string): GLTF | null {
+  return useModelStatus(url).gltf;
 }
 
 class SnapshotStore {
@@ -553,7 +557,7 @@ function StaticModel({ item }: { item: OpenWorldProp }) {
 }
 
 function PokemonModel({ creature, url }: { creature: WorldCreature; url: string }) {
-  const gltf = useCachedModel(url);
+  const { gltf, failed } = useModelStatus(url);
   const root = useRef<Group>(null);
   const mixer = useRef<AnimationMixer | null>(null);
   const activeAction = useRef<AnimationAction | undefined>(undefined);
@@ -612,28 +616,15 @@ function PokemonModel({ creature, url }: { creature: WorldCreature; url: string 
     activeAction.current = next;
   }, [creature.action, gltf, normalized]);
 
-  if (!normalized) return <SpriteCreature displayHeight={creature.displayHeight} url={pokemonSpriteUrl(creature.speciesId)} />;
+  if (!normalized) return <ModelStatus name={failed ? '3D 불러오기 실패' : '3D 불러오는 중'} />;
   return <group ref={root} name={`pokemon-model:${creature.speciesId}`}><primitive object={normalized.visual} /></group>;
 }
 
-function FallbackCreature({ displayHeight = 1.2 }: { displayHeight?: number }) {
-  return (
-    <group scale={displayHeight / 1.8}>
-      <mesh position={[0, 1.05, 0]} castShadow><sphereGeometry args={[.72, 20, 14]} /><meshStandardMaterial color="#e5cc67" /></mesh>
-      <mesh position={[0, .38, 0]} castShadow><sphereGeometry args={[.46, 18, 12]} /><meshStandardMaterial color="#f2e9bd" /></mesh>
-    </group>
-  );
-}
-
-function SpriteCreature({ url, displayHeight = 1.2 }: { url: string; displayHeight?: number }) {
-  const [texture, setTexture] = useState<ReturnType<TextureLoader['load']> | null>(null);
-  useEffect(() => {
-    let active = true;
-    const loaded = new TextureLoader().load(url, value => { if (active) setTexture(value); }, undefined, () => {});
-    return () => { active = false; loaded.dispose(); };
-  }, [url]);
-  if (!texture) return <FallbackCreature displayHeight={displayHeight} />;
-  return <sprite position={[0, displayHeight * .55, 0]} scale={[displayHeight, displayHeight, 1]}><spriteMaterial map={texture} transparent alphaTest={.08} /></sprite>;
+function ModelStatus({ name }: { name: string }) {
+  return <group name={`pokemon-model-status:${name}`}>
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, .04, 0]}><ringGeometry args={[.45, .6, 24]} /><meshBasicMaterial color="#d2d9d1" transparent opacity={.65} /></mesh>
+    <WorldLabel name={name} x={0} y={.65} z={0} />
+  </group>;
 }
 
 const MOVE_COLORS: Record<string, [string, string]> = {
@@ -744,7 +735,7 @@ function Creature({ creature, selected, distance, options, showLabels, model }: 
     >
       {model && hasPokemonModel(creature.speciesId)
         ? <PokemonModel creature={creature} url={(options.modelUrl ?? (id => `/models/pokemon/${id}.glb`))(creature.speciesId)} />
-        : <SpriteCreature displayHeight={creature.displayHeight} url={(options.spriteUrl ?? (id => `/pokemon/${id}.png`))(creature.speciesId)} />}
+        : <ModelStatus name="3D 미지원 · 저장 기록 유지" />}
       {(selected || creature.inBattle) && <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, .04, 0]}><ringGeometry args={[1.1, 1.34, 40]} /><meshBasicMaterial color={creature.inBattle ? '#f09155' : '#f6dd67'} transparent opacity={.86} /></mesh>}
       <AttackEffect active={creature.action === 'attack'} moveType={creature.moveType} />
       {showLabels && (distance <= 28 || selected || creature.inBattle) && <CreatureBillboard creature={creature} hp={hp} distance={distance} emphasized={selected || !!creature.inBattle} />}

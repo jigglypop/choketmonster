@@ -17,9 +17,15 @@ describe('visible world streaming budgets', () => {
     expect(JSON.stringify(entries)).toBe(before);
   });
 
-  it('uses sprites at middle distance and culls after the visible radius', () => {
+  it('only admits nearby 3D models and keeps unavailable saved companions as status markers', () => {
     const visible = creatureLods([creature('near', 10, 0), creature('middle', 45, 0), creature('far', 100, 0)], { x: 0, z: 0 }, () => true, false);
-    expect(visible.map(item => [item.creature.id, item.model])).toEqual([['near', true], ['middle', false]]);
+    expect(visible.map(item => [item.creature.id, item.model])).toEqual([['near', true]]);
+    const unsupported = [
+      { ...creature('wild-unavailable', 1, 0), speciesId: 1024 },
+      { ...creature('companion:saved-mon', 0, 0), speciesId: 1024 },
+    ];
+    expect(creatureLods(unsupported, { x: 0, z: 0 }, () => true, true).map(item => [item.creature.id, item.model]))
+      .toEqual([['companion:saved-mon', false]]);
   });
 
   it('keeps local ground while clipping other chunks and changes detail with distance', () => {

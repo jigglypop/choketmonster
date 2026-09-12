@@ -5,6 +5,7 @@ import { ConnectomeController } from '../src/game/connectome';
 import { packSave, unpackSave, defaultView } from '../src/game/storage';
 import type { Graph } from '../src/core/brain';
 import { FieldSimulation } from '../src/game/field';
+import { OpenWorldSimulation } from '../src/openworld/simulation';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
 function battleGame(): GameState {
@@ -16,6 +17,22 @@ function battleGame(): GameState {
 }
 
 describe('full game checkpoint integration', () => {
+  it('preserves the original collection version for backup before migrating a decoded world', () => {
+    const game = createGame(1, 'backup-before-map-migration');
+    const world = new OpenWorldSimulation(graph, game, 412);
+    game.adventureVersion = 'gold'; game.versionCaught ??= {}; game.versionCaught.gold = [1];
+    const save = packSave(game, graph, { ...defaultView(), openWorld: world.snapshot() });
+    const loaded = unpackSave(save, graph);
+    expect(loaded.game.adventureVersion).toBe('gold');
+    expect(loaded.game.versionCaught?.gold).toEqual([1]);
+    expect(loaded.view.openWorld).toEqual(save.view.openWorld);
+    const backup = packSave(loaded.game, graph, loaded.view);
+    new OpenWorldSimulation(graph, loaded.game, world.seed, loaded.view.openWorld);
+    expect(loaded.game.adventureVersion).toBe('national');
+    expect((backup.game as GameState).adventureVersion).toBe('gold');
+    expect((backup.game as GameState).versionCaught?.gold).toEqual([1]);
+    expect(backup.view.openWorld).toEqual(save.view.openWorld);
+  });
   it('saves field and battle memories independently with exact field continuation', () => {
     const game = battleGame(), view = defaultView(), members = game.player.team.map(mon => ({ id: mon.instanceId, speciesId: mon.speciesId }));
     const battleMemory = structuredClone(game.player.team[0].brain);
