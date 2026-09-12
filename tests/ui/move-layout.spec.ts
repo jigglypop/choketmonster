@@ -171,8 +171,11 @@ test('world slots expose display and source indexes, and Digit1 spends only the 
     { slot: 3, source: 0, moveId: 45 },
   ]);
   await expect(page.locator('#world-edit-moves')).toBeDisabled();
+  await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 20_000 });
 
   const before = structuredClone(lead.moves);
+  await page.locator('#world-pause').focus();
+  await expect(page.locator('#world-pause')).toBeFocused();
   await page.keyboard.press('Digit1');
   await expect(page.locator('[data-world-slot="0"]')).toContainText('PP 5/');
   await page.locator('#world-pause').click();
