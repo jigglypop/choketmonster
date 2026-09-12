@@ -866,7 +866,7 @@ function PlayerCamera({ snapshot, options, command, destination, onDestination }
         movement.current.set(dx / remaining, 0, dz / remaining);
       }
     }
-    if (forwardAxis || sideAxis) {
+    if ((forwardAxis || sideAxis) && options.onMovementInput?.() !== false) {
       if (!path.current.length) {
         camera.getWorldDirection(forward.current);
         forward.current.y = 0;
@@ -894,6 +894,9 @@ function PlayerCamera({ snapshot, options, command, destination, onDestination }
           path.current = [];
           onDestination(null);
         }
+      } else if (path.current.length) {
+        path.current = [];
+        onDestination(null);
       }
     }
     if (controls.current) {

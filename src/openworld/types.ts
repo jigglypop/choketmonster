@@ -59,6 +59,8 @@ export type OpenWorldViewOptions = {
   onPlayerMove: (next: PlayerMove) => boolean | void;
   /** Selects manual control before a click-to-move route begins. */
   onNavigationStart?: () => boolean | void;
+  /** Active keyboard or route input, including attempts blocked by terrain. */
+  onMovementInput?: () => boolean | void;
   onSelect: (instanceId: string | null) => void;
   onInteract?: (instanceId: string) => void;
   modelUrl?: (speciesId: number) => string;

@@ -16,6 +16,7 @@ const types: Record<string, string> = { normal: '노말', fire: '불꽃', water:
 const escape = (text: unknown) => String(text).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 // Display size only; movement speed, collision and saved species data stay in world units.
 const pokemonDisplayHeight = (speciesId: number) => Math.min(4.8, Math.max(1.3, (getSpecies(speciesId).heightMeters ?? 1) * 2.5));
+const MANUAL_IDLE_SECONDS = 3;
 type Options = { game: GameState; graph: Graph; policy: FieldPolicy; checkpoint?: OpenWorldSnapshot; learning(): boolean; setLearning(value: boolean): void; notify(message: string, error?: boolean): void; changed(immediate?: boolean): void | Promise<void> };
 
 export class OpenWorldPanel {
@@ -25,6 +26,7 @@ export class OpenWorldPanel {
   private ready = false;
   private attacks = new Map<string, { start: number; end: number; type: string }>();
   private tickPending = false;
+  private manualIdleSeconds = 0;
   private serverRequest?: Promise<void>;
   private readonly htmlCache = new WeakMap<Element, string>();
   private readonly hotkeys = (event: KeyboardEvent) => {
@@ -79,19 +81,15 @@ export class OpenWorldPanel {
     this.renderer = mountOpenWorld(host.querySelector('#ow-host')!, {
       getSnapshot: () => this.renderSnapshot(), sampleWorld: (x, z) => this.simulation.sampleWorld(x, z), modelUrl: pokemonModelUrl, spriteUrl: pokemonSpriteUrl,
       onReady: () => { this.ready = true; const canvasHost = this.host?.querySelector<HTMLElement>('#ow-host'); if (canvasHost) canvasHost.dataset.ready = 'true'; },
-      onNavigationStart: () => {
-        if (!this.canAcceptMovement()) return false;
-        if (this.simulation.controlMode !== 'manual') this.changeMode('manual');
-        return true;
-      },
+      onNavigationStart: () => this.noteManualInput(),
+      onMovementInput: () => this.noteManualInput(),
       onPlayerMove: next => {
-        if (!this.canAcceptMovement()) return false;
-        if (this.simulation.controlMode !== 'manual') this.changeMode('manual');
+        if (!this.noteManualInput()) return false;
         const accepted = this.simulation.movePartner(next);
         if (accepted) { this.renderer?.update(); this.refresh(); }
         return accepted;
       },
-      onSelect: id => { if (id?.startsWith('companion:')) return; this.simulation.selectWild(id, true); this.options.changed(); this.refresh(); },
+      onSelect: id => { if (id?.startsWith('companion:')) return; this.manualIdleSeconds = 0; this.simulation.selectWild(id, true); this.options.changed(); this.refresh(); },
       onInteract: id => this.encounter(id),
     });
     window.addEventListener('keydown', this.hotkeys);
@@ -111,6 +109,7 @@ export class OpenWorldPanel {
     this.host.querySelector('#world-nearby')!.addEventListener('click', event => {
       const button = (event.target as Element).closest<HTMLButtonElement>('[data-world-wild]');
       if (!button?.dataset.worldWild) return;
+      this.manualIdleSeconds = 0;
       this.simulation.selectWild(button.dataset.worldWild, true);
       this.host!.querySelector<HTMLDetailsElement>('.world-objective')!.open = false;
       this.options.changed(); this.refresh();
@@ -147,7 +146,7 @@ export class OpenWorldPanel {
     this.input('#world-exp-share').onchange = e => { this.options.game.experienceShare = (e.target as HTMLInputElement).checked; this.options.changed(); this.refresh(); };
     host.querySelectorAll<HTMLButtonElement>('[data-world-step]').forEach(button => {
       let timer: number | undefined;
-      const move = () => { if (!this.canAcceptMovement()) return; const [x, z] = button.dataset.worldStep!.split(',').map(Number), player = this.simulation.player, companion = this.simulation.entities.find(entity => entity.kind === 'companion')!, step = movementSpeed(companion.speciesId, companion.level) * .1; this.simulation.movePartner({ x: player.x + x * step, z: player.z + z * step, heading: x ? (x > 0 ? 1 : 3) : z > 0 ? 2 : 0 }); this.renderer?.update(); this.refresh(); };
+      const move = () => { if (!this.noteManualInput()) return; const [x, z] = button.dataset.worldStep!.split(',').map(Number), player = this.simulation.player, companion = this.simulation.entities.find(entity => entity.kind === 'companion')!, step = movementSpeed(companion.speciesId, companion.level) * .1; this.simulation.movePartner({ x: player.x + x * step, z: player.z + z * step, heading: x ? (x > 0 ? 1 : 3) : z > 0 ? 2 : 0 }); this.renderer?.update(); this.refresh(); };
       const stop = () => { window.clearInterval(timer); timer = undefined; };
       button.onpointerdown = e => { e.preventDefault(); this.changeMode('manual'); button.setPointerCapture(e.pointerId); stop(); move(); timer = window.setInterval(move, 100); };
       button.onpointerup = button.onpointercancel = button.onlostpointercapture = stop;
@@ -174,7 +173,14 @@ export class OpenWorldPanel {
       && !this.host?.querySelector<HTMLDialogElement>('#world-map-dialog')?.open;
   }
 
-  private changeMode(mode: 'auto' | 'manual'): void { this.simulation.setControlMode(mode); this.options.changed(); this.refresh(); }
+  private noteManualInput(): boolean {
+    if (!this.canAcceptMovement()) return false;
+    this.manualIdleSeconds = 0;
+    if (this.simulation.controlMode !== 'manual') this.changeMode('manual');
+    return true;
+  }
+
+  private changeMode(mode: 'auto' | 'manual'): void { this.manualIdleSeconds = 0; this.simulation.setControlMode(mode); this.options.changed(); this.refresh(); }
   private catchVictory(): void { this.options.notify(this.simulation.captureVictory() ? '포획 성공! 팀 또는 박스에 저장했습니다.' : '볼이 없어 포획을 패스합니다.'); this.options.changed(); this.refresh(); }
 
   private encounter(id: string): void {
@@ -187,9 +193,16 @@ export class OpenWorldPanel {
   }
 
   async tick(): Promise<void> {
-    if (this.tickPending || !this.renderer || !this.ready || this.paused || document.hidden || this.host?.querySelector<HTMLDialogElement>('#world-map-dialog')?.open) return;
+    if (this.tickPending || !this.renderer || !this.ready) return;
+    if (this.paused || document.hidden || this.host?.querySelector<HTMLDialogElement>('#world-map-dialog')?.open) { this.manualIdleSeconds = 0; return; }
     this.tickPending = true;
     try {
+    // Count active exploration time only. Input also resets this when a wall
+    // blocks movement, so held controls never hand the partner back to AI.
+    if (this.simulation.controlMode === 'manual' && this.canAcceptMovement()) {
+      this.manualIdleSeconds += .25;
+      if (this.manualIdleSeconds >= MANUAL_IDLE_SECONDS) this.changeMode('auto');
+    } else this.manualIdleSeconds = 0;
     // Resolve neural decisions alongside the fixed-rate world clock. The simulation
     // itself gates a battle turn until all required decisions are present.
     if (!this.serverRequest) {
@@ -295,7 +308,7 @@ export class OpenWorldPanel {
     this.button('#world-mode-auto').setAttribute('aria-pressed', String(world.controlMode === 'auto'));
     this.button('#world-mode-manual').setAttribute('aria-pressed', String(world.controlMode === 'manual'));
     this.html('#world-control-title', world.controlMode === 'manual' ? '수동 이동' : '자동 이동 · 배틀');
-    this.html('#world-control-help', world.controlMode === 'manual' ? 'WASD 이동 · 기술 1–4 · M 전환' : `${world.autoHunt ? '대상 자동 선택·추적' : '이동만 자동'} · WASD로 직접 조작`);
+    this.html('#world-control-help', world.controlMode === 'manual' ? (battle || game.captureOffer ? '기술 1–4 · M 전환' : '3초간 이동 입력이 없으면 자동 · M 전환') : `${world.autoHunt ? '대상 자동 선택·추적' : '이동만 자동'} · WASD로 직접 조작`);
     this.html('#world-ball-stock', `볼 ${game.inventory['poke-ball'] + game.inventory['great-ball'] + game.inventory['ultra-ball']}개 · ₩${game.player.money.toLocaleString('ko-KR')}`);
     this.html('#world-shop-items', (['poke-ball', 'great-ball', 'ultra-ball'] as BallItem[]).map(ball => `<div><strong>${ITEM_LABELS[ball]} <small>보유 ${game.inventory[ball]}개 · 개당 ₩${ITEM_PRICES[ball].toLocaleString('ko-KR')}</small></strong>${[1, 5].map(quantity => { const total = ITEM_PRICES[ball] * quantity, reason = battle ? '배틀 중 구매 불가' : game.player.money < total ? `₩${(total - game.player.money).toLocaleString('ko-KR')} 부족` : ''; return `<button data-world-buy="${ball}" data-quantity="${quantity}" ${reason ? `disabled title="${reason}"` : ''}>${quantity}개 · ₩${total.toLocaleString('ko-KR')}${reason ? `<small>${reason}</small>` : ''}</button>`; }).join('')}</div>`).join(''));
     this.html('#world-shop-note', `몬스터볼 30초마다 +1 · 기본 보충 한도 20개 · 다음 ${Math.ceil(30 - (game.ballRefillSeconds ?? 0))}초. ` + (battle ? '배틀 중에는 구매할 수 없습니다.' : game.player.money < Math.min(...Object.values(ITEM_PRICES)) ? '소지금이 부족합니다. 배틀에서 이기면 상금을 받습니다.' : '볼이 없으면 자동 포획을 건너뜁니다.'));
