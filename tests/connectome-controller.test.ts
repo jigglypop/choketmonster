@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Graph } from '../src/core/brain';
-import { ConnectomeController, type NeuralMonster } from '../src/game/connectome';
+import { automatedMoveMask, availableMoveMask, battleMoveSenses, ConnectomeController, mapToAvailableMove, type NeuralMonster } from '../src/game/connectome';
 
 const graph: Graph = {
   schema: 1,
@@ -57,5 +57,69 @@ describe('connectome battle observations', () => {
     expect(decision.updates).toBe(7);
     expect(self.brain!.inputWeights.every((row) => row.length === 12)).toBe(true);
     expect(self.brain!.graph.id).toBe(graph.id);
+  });
+
+  it('exports deterministic legality masks and maps empty PP without changing the 12-input schema', () => {
+    const self = monster('mask', 1);
+    self.moves = [{ moveId: 33, pp: 0 }, { moveId: 45, pp: 40 }, { moveId: 73, pp: 0 }];
+    expect(availableMoveMask(self)).toEqual([false, true, false, false, true]);
+    expect(mapToAvailableMove(0, availableMoveMask(self))).toBe(1);
+    expect(mapToAvailableMove(4, availableMoveMask(self))).toBe(4);
+    expect(new ConnectomeController(graph).observe(self, monster('foe', 4), 1)).toHaveLength(12);
+  });
+
+  it('encodes recovery need, saturated buffs, and status immunity in each move slot', () => {
+    const self = monster('strategy', 1); self.moves = [
+      { moveId: 105, pp: 10 }, { moveId: 14, pp: 20 }, { moveId: 77, pp: 35 }, { moveId: 55, pp: 25 },
+    ];
+    const fire = monster('fire', 4), poison = monster('poison', 1);
+    self.hp = 20;
+    const hurt = battleMoveSenses(self, fire, { selfStatStages: { attack: 0 } });
+    self.hp = 100;
+    const full = battleMoveSenses(self, fire, { selfStatStages: { attack: 6 } });
+    const immune = battleMoveSenses(self, poison, { selfStatStages: { attack: 6 } });
+    expect(hurt[0]).toBeGreaterThan(full[0]);
+    expect(hurt[1]).toBeGreaterThan(full[1]);
+    expect(immune[2]).toBeLessThan(full[2]);
+    expect(hurt.every(Number.isFinite)).toBe(true);
+  });
+
+  it('masks ineffective recovery, saturated buffs, and immune status during automatic battle', () => {
+    const self = monster('automatic-strategy', 1); self.moves = [
+      { moveId: 105, pp: 10 }, // Recover
+      { moveId: 14, pp: 20 }, // Swords Dance
+      { moveId: 77, pp: 35 }, // Poison Powder
+      { moveId: 33, pp: 35 }, // Tackle
+    ];
+    const poisonOpponent = monster('poison-target', 1);
+    self.hp = self.stats.hp;
+    expect(automatedMoveMask(self, poisonOpponent, 1, { selfStatStages: { attack: 6 } }))
+      .toEqual([false, false, false, true, false]);
+
+    self.hp = 25;
+    expect(automatedMoveMask(self, monster('fire-target', 4), 1, { selfStatStages: { attack: 0 } }))
+      .toEqual([true, true, true, true, false]);
+  });
+
+  it('reserves every third automatic turn for a non-immune attack and keeps fixed-damage moves', () => {
+    const self = monster('automatic-attack', 1); self.moves = [
+      { moveId: 69, pp: 20 }, // Seismic Toss: power 0, fixed damage
+      { moveId: 77, pp: 35 },
+    ];
+    const foe = monster('automatic-foe', 4);
+    expect(automatedMoveMask(self, foe, 1)).toEqual([true, true, false, false, false]);
+    expect(automatedMoveMask(self, foe, 3)).toEqual([true, false, false, false, false]);
+    expect(mapToAvailableMove(4, automatedMoveMask(self, foe, 3))).toBe(0);
+  });
+
+  it('produces no waits and at least one attack per three turns in a fixed 50-turn automatic comparison', () => {
+    const self = monster('automatic-50-turns', 1); self.moves = [{ moveId: 33, pp: 99 }, { moveId: 14, pp: 99 }];
+    const foe = monster('automatic-50-turn-foe', 4);
+    const actions = Array.from({ length: 50 }, (_, index) => mapToAvailableMove(4, automatedMoveMask(self, foe, index + 1, { selfStatStages: { attack: 0 } })));
+    expect(actions.filter(action => action === 4)).toHaveLength(0);
+    expect(actions.filter(action => action === 0).length).toBeGreaterThanOrEqual(Math.floor(50 / 3));
+
+    self.moves.forEach(slot => { slot.pp = 0; });
+    expect(automatedMoveMask(self, foe, 1)).toEqual([false, false, false, false, true]);
   });
 });

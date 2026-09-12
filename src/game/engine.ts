@@ -11,6 +11,7 @@ export type BattleKind = 'wild' | 'gym' | 'champion';
 
 export type MonsterStats = BaseStats;
 export type MonsterMove = { moveId: number; pp: number };
+export type MoveLearningStat = { choices: number; executed: number; effective: number; reward: number };
 export type Monster = {
   instanceId: string;
   speciesId: number;
@@ -23,6 +24,8 @@ export type Monster = {
   status?: string;
   statusTurns?: number;
   brain?: BrainState;
+  /** Persisted game-learning telemetry, keyed by move ID; it does not contain graph data. */
+  moveLearning?: Record<string, MoveLearningStat>;
 };
 
 export type BattleSide = { team: Monster[]; activeIndex: number };
@@ -62,6 +65,11 @@ export type ExecutedMove = {
   hit: boolean;
   typeMultiplier: number;
   damage: number;
+  category: 'damage' | 'healing' | 'buff' | 'status' | 'mixed';
+  hpRecovered: number;
+  statStageDelta: number;
+  ailmentApplied: boolean;
+  strategicEffect: boolean;
   result: 'hit' | 'missed' | 'immune' | 'failed' | 'status' | 'struggle';
 };
 export type ExperienceGain = { instanceId: string; amount: number; levelsGained: number; shared: boolean };
@@ -379,10 +387,11 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
     events.push(event(battle, `${attacker.nickname}은(는) 발버둥쳐 ${damage} 피해를 주었다.`, 'damage'));
     executedMoves.push({ actorInstanceId: attacker.instanceId, targetInstanceId: defender.instanceId, moveId: -1,
       moveType: 'normal', damageClass: 'physical', damagingMove: true, executed: true, hit: true,
-      typeMultiplier: 1, damage, result: 'struggle' });
+      typeMultiplier: 1, damage, category: 'damage', hpRecovered: 0, statStageDelta: 0, ailmentApplied: false, strategicEffect: false, result: 'struggle' });
     return;
   }
   slot.pp--; const move = getMove(slot.moveId);
+  let hpRecovered = 0, statStageDelta = 0, ailmentApplied = false;
   const damagingMove = move.damageClass !== 'status' && (move.power > 0 || fixedMoveDamage(move.id, attacker, defender) !== undefined || [12, 32, 90].includes(move.id));
   const attackerStages = battle.statStages?.[attacker.instanceId] ?? {}; const defenderStages = battle.statStages?.[defender.instanceId] ?? {};
   const accuracy = move.accuracy * stageMultiplier(attackerStages.accuracy) / stageMultiplier(defenderStages.evasion);
@@ -390,7 +399,7 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
     events.push(event(battle, `${attacker.nickname}의 ${move.name}은(는) 빗나갔다.`));
     executedMoves.push({ actorInstanceId: attacker.instanceId, targetInstanceId: defender.instanceId,
       moveId: move.id, moveType: move.type, damageClass: move.damageClass, damagingMove,
-      executed: true, hit: false, typeMultiplier: 1, damage: 0, result: 'missed' });
+      executed: true, hit: false, typeMultiplier: 1, damage: 0, category: damagingMove ? 'damage' : 'status', hpRecovered: 0, statStageDelta: 0, ailmentApplied: false, strategicEffect: false, result: 'missed' });
     return;
   }
 
@@ -400,7 +409,7 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
     events.push(event(battle, `${attacker.nickname}은(는) ${defender.nickname}의 모습으로 변신했다.`, 'status'));
     executedMoves.push({ actorInstanceId: attacker.instanceId, targetInstanceId: defender.instanceId,
       moveId: move.id, moveType: move.type, damageClass: move.damageClass, damagingMove: false,
-      executed: true, hit: true, typeMultiplier: 1, damage: 0, result: 'status' });
+      executed: true, hit: true, typeMultiplier: 1, damage: 0, category: 'status', hpRecovered: 0, statStageDelta: 0, ailmentApplied: false, strategicEffect: true, result: 'status' });
     return;
   }
 
@@ -428,14 +437,14 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
 
   if (move.drain && totalDamage > 0) {
     const amount = Math.max(1, Math.floor(totalDamage * Math.abs(move.drain) / 100));
-    if (move.drain > 0) attacker.hp = Math.min(attacker.stats.hp, attacker.hp + amount); else attacker.hp = Math.max(0, attacker.hp - amount);
+    if (move.drain > 0) { const before = attacker.hp; attacker.hp = Math.min(attacker.stats.hp, attacker.hp + amount); hpRecovered += attacker.hp - before; } else attacker.hp = Math.max(0, attacker.hp - amount);
     events.push(event(battle, move.drain > 0 ? `${attacker.nickname}은(는) HP를 ${amount} 흡수했다.` : `${attacker.nickname}은(는) 반동으로 ${amount} 피해를 입었다.`, 'status'));
   }
   if (move.healing && move.healing > 0) {
-    const amount = Math.max(1, Math.floor(attacker.stats.hp * move.healing / 100)); attacker.hp = Math.min(attacker.stats.hp, attacker.hp + amount);
+    const amount = Math.max(1, Math.floor(attacker.stats.hp * move.healing / 100)); const before = attacker.hp; attacker.hp = Math.min(attacker.stats.hp, attacker.hp + amount); hpRecovered += attacker.hp - before;
     events.push(event(battle, `${attacker.nickname}의 HP가 회복되었다.`, 'status'));
   }
-  if (move.id === 156) { attacker.hp = attacker.stats.hp; attacker.status = 'sleep'; attacker.statusTurns = 3; events.push(event(battle, `${attacker.nickname}은(는) 잠들어 완전히 회복했다.`, 'status')); }
+  if (move.id === 156) { const before = attacker.hp; attacker.hp = attacker.stats.hp; hpRecovered += attacker.hp - before; attacker.status = 'sleep'; attacker.statusTurns = 3; events.push(event(battle, `${attacker.nickname}은(는) 잠들어 완전히 회복했다.`, 'status')); }
 
   const selfByCategory = move.metaCategory === 8;
   const foeByCategory = move.metaCategory === 7;
@@ -444,6 +453,7 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
   if (move.statChanges?.length && random(state) * 100 < statChance) for (const change of move.statChanges) {
     const stat = battleStat(change.stat); if (!stat) continue;
     const applied = changeStage(battle, stageTarget, stat, change.change);
+    statStageDelta += Math.abs(applied);
     if (applied) events.push(event(battle, `${stageTarget.nickname}의 ${change.stat} 단계가 ${applied > 0 ? '올랐다' : '내려갔다'}.`, 'status'));
   }
 
@@ -453,13 +463,16 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
     const types = getSpecies(effectiveSpeciesId(battle, ailmentTarget)).types;
     const immune = (move.ailment === 'poison' && (types.includes('poison') || types.includes('steel'))) || (move.ailment === 'burn' && types.includes('fire')) || (move.ailment === 'freeze' && types.includes('ice')) || (move.ailment === 'paralysis' && types.includes('electric'));
     if (immune) events.push(event(battle, `${ailmentTarget.nickname}에게는 상태이상이 통하지 않았다.`, 'status'));
-    else { ailmentTarget.status = move.ailment; ailmentTarget.statusTurns = move.ailment === 'sleep' ? 2 + Math.floor(random(state) * 3) : move.ailment === 'confusion' || move.ailment === 'trap' ? 2 + Math.floor(random(state) * 4) : undefined; events.push(event(battle, `${ailmentTarget.nickname}은(는) ${move.ailment} 상태가 되었다.`, 'status')); }
+    else { ailmentTarget.status = move.ailment; ailmentTarget.statusTurns = move.ailment === 'sleep' ? 2 + Math.floor(random(state) * 3) : move.ailment === 'confusion' || move.ailment === 'trap' ? 2 + Math.floor(random(state) * 4) : undefined; ailmentApplied = true; events.push(event(battle, `${ailmentTarget.nickname}은(는) ${move.ailment} 상태가 되었다.`, 'status')); }
   }
   if (!totalDamage && !move.statChanges?.length && !move.healing && !move.ailment && move.id !== 144) events.push(event(battle, `${move.name}의 특수 효과는 이 로컬 규칙에서 축약되어 변화가 없었다.`));
   const failed = isOhko && attacker.level < defender.level;
+  const hasHealing = !!((move.healing ?? 0) > 0 || (move.drain ?? 0) > 0 || move.id === 156), hasBuff = !!move.statChanges?.length, hasStatus = !!(move.ailment && move.ailment !== 'none');
+  const category = damagingMove && (hasHealing || hasBuff || hasStatus) ? 'mixed' : hasHealing ? 'healing' : hasBuff ? 'buff' : hasStatus || move.damageClass === 'status' ? 'status' : 'damage';
   executedMoves.push({ actorInstanceId: attacker.instanceId, targetInstanceId: defender.instanceId,
     moveId: move.id, moveType: move.type, damageClass: move.damageClass, damagingMove,
-    executed: true, hit: true, typeMultiplier: multiplier, damage: totalDamage,
+    executed: true, hit: true, typeMultiplier: multiplier, damage: totalDamage, category, hpRecovered, statStageDelta, ailmentApplied,
+    strategicEffect: hpRecovered > 0 || statStageDelta > 0 || ailmentApplied || move.id === 144,
     result: multiplier === 0 ? 'immune' : failed ? 'failed' : damagingMove ? 'hit' : 'status' });
 }
 
@@ -787,6 +800,10 @@ export function validateGame(value: unknown): GameState {
     for (const slot of monster.moves) { const move = getMove(slot.moveId); if (!Number.isInteger(slot.pp) || slot.pp < 0 || slot.pp > move.pp) throw new Error('PP가 잘못되었습니다.'); }
     if (monster.status !== undefined && (typeof monster.status !== 'string' || !monster.status || monster.status.length > 40)) throw new Error('상태이상이 잘못되었습니다.');
     if (monster.statusTurns !== undefined && (!Number.isInteger(monster.statusTurns) || monster.statusTurns < 1 || monster.statusTurns > 10)) throw new Error('상태이상 지속 시간이 잘못되었습니다.');
+    if (monster.moveLearning !== undefined) for (const [moveId, stats] of Object.entries(monster.moveLearning)) {
+      if (!/^\d+$/.test(moveId) || !stats || ![stats.choices, stats.executed, stats.effective].every(value => Number.isSafeInteger(value) && value >= 0 && value <= 1e9) || !Number.isFinite(stats.reward) || Math.abs(stats.reward) > 1e9 || stats.executed > stats.choices || stats.effective > stats.executed) throw new Error('기술 학습 통계가 잘못되었습니다.');
+      getMove(Number(moveId));
+    }
     if (monster.brain !== undefined) Brain.restore(monster.brain);
   }
   if (state.nextInstanceId <= maximumGeneratedId) throw new Error('다음 개체 ID가 기존 ID보다 커야 합니다.');

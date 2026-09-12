@@ -5,6 +5,13 @@ import { join, relative, resolve, sep } from 'node:path';
 
 const source = resolve('dist');
 const target = resolve('artifacts', `deploy-${new Date().toISOString().replace(/[:.]/g, '-')}`);
+const git = (args: string[]) => {
+  try { return execFileSync('git', args, { encoding: 'utf8' }).trim(); }
+  catch { return undefined; }
+};
+const gitCommit = process.env.GITHUB_SHA ?? git(['rev-parse', 'HEAD']);
+const builtAt = new Date().toISOString();
+if (!gitCommit || !/^[a-f0-9]{40}$/i.test(gitCommit)) throw new Error('A 40-character git commit is required for deployment');
 await mkdir(target, { recursive: true });
 const excluded = (path: string) => {
   const normalized = path.replaceAll(sep, '/');
@@ -12,6 +19,7 @@ const excluded = (path: string) => {
     || /(^|\/)[^/]+\.(gb|gbc|gba|rom)$/i.test(normalized);
 };
 await cp(source, target, { recursive: true, filter: path => !excluded(relative(source, path)) });
+await writeFile(join(target, 'version.json'), JSON.stringify({ gitCommit, builtAt }, null, 2) + '\n');
 const files: { path: string; bytes: number; sha256: string }[] = [];
 async function walk(path: string) {
   for (const entry of await readdir(path, { withFileTypes: true })) {
@@ -23,17 +31,13 @@ async function walk(path: string) {
 await walk(target);
 files.sort((a, b) => a.path.localeCompare(b.path));
 if (!files.some(file => file.path === 'index.html') || files.some(file => excluded(file.path))) throw new Error('Invalid deployment payload');
-const git = (args: string[]) => {
-  try { return execFileSync('git', args, { encoding: 'utf8' }).trim(); }
-  catch { return undefined; }
-};
 const receipt = {
   schemaVersion: 2,
   createdAt: new Date().toISOString(),
   directory: target,
   bytes: files.reduce((n, file) => n + file.bytes, 0),
   manifestSha256: createHash('sha256').update(JSON.stringify(files)).digest('hex'),
-  source: { gitCommit: git(['rev-parse', 'HEAD']), gitDirty: Boolean(git(['status', '--porcelain'])) },
+  source: { gitCommit, gitDirty: Boolean(git(['status', '--porcelain'])), builtAt },
   exclusions: ['models/pokemon/{id}.glb', 'pokemon/{id}.png', 'pokemon/back/{id}.png', '*.gb', '*.gbc', '*.gba', '*.rom'],
   files,
 };

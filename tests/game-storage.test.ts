@@ -77,11 +77,30 @@ describe('full game checkpoint integration', () => {
     save.graph.provenance.note = 'Older documentation text';
     expect(unpackSave(save, graph).graph).toEqual(graph);
   });
+  it('restores server JSON whose object keys were reordered without accepting changed edges', () => {
+    const save = packSave(createGame(4, 2026), graph, defaultView());
+    const sorted = JSON.parse(JSON.stringify(save, (_key, value) => value && typeof value === 'object' && !Array.isArray(value)
+      ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => b.localeCompare(a))) : value));
+    expect(unpackSave(sorted, graph).game.player.team[0].speciesId).toBe(4);
+    sorted.graph.edges[0].weight += .001;
+    expect(() => unpackSave(sorted, graph)).toThrow(/커넥톰/);
+  });
   it('restores healing on the same monster after a saved battle', () => {
     const original = battleGame();
     original.battle!.player.team[0].hp = 2;
     const restored = unpackSave(packSave(original, graph, defaultView()), graph).game;
     delete restored.battle; heal(restored);
     expect(restored.player.team[0].hp).toBe(restored.player.team[0].stats.hp);
+  });
+  it('enables technique learning once for legacy views and preserves a later opt-out', () => {
+    expect(defaultView()).toMatchObject({ learning: true, learningDefaultsVersion: 1 });
+    const legacy = packSave(createGame(1, 991), graph, defaultView());
+    legacy.view.learning = false; delete legacy.view.learningDefaultsVersion;
+    expect(unpackSave(legacy, graph).view).toMatchObject({ learning: true, learningDefaultsVersion: 1 });
+
+    const optedOut = packSave(createGame(1, 992), graph, { ...defaultView(), learning: false });
+    expect(unpackSave(optedOut, graph).view).toMatchObject({ learning: false, learningDefaultsVersion: 1 });
+    (optedOut.view as { learningDefaultsVersion?: number }).learningDefaultsVersion = 2;
+    expect(() => unpackSave(optedOut, graph)).toThrow(/위치/);
   });
 });

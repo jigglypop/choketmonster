@@ -10,6 +10,7 @@ export type RewardBreakdown = {
   damageDealt: number;
   damageReceived: number;
   typeChoice: number;
+  moveEffect: number;
   outcome: number;
   growth: number;
   evolution: number;
@@ -51,6 +52,11 @@ export type BattleTurnRewardInput = RewardCredit & {
   actionExecuted?: boolean;
   /** True only when the executed move reached its target; misses receive no type credit. */
   attackHit?: boolean;
+  moveCategory?: 'damage' | 'healing' | 'buff' | 'status' | 'mixed';
+  hpRecovered?: number;
+  statStageDelta?: number;
+  ailmentApplied?: boolean;
+  strategicEffect?: boolean;
   outcome?: RewardOutcome;
   levelsGained?: number;
   evolved?: boolean;
@@ -61,6 +67,7 @@ const ZERO: RewardBreakdown = {
   damageDealt: 0,
   damageReceived: 0,
   typeChoice: 0,
+  moveEffect: 0,
   outcome: 0,
   growth: 0,
   evolution: 0,
@@ -106,12 +113,23 @@ export function rewardBattleTurn(input: BattleTurnRewardInput): EngineeredReward
     if (!Number.isFinite(multiplier) || multiplier < 0 || multiplier > 4) throw new Error('Invalid executed move matchup');
     typeChoice = multiplier > 1 ? 0.18 : multiplier < 1 ? -0.12 : 0;
   }
+  if (input.hpRecovered !== undefined && (!Number.isFinite(input.hpRecovered) || input.hpRecovered < 0 || input.hpRecovered > input.selfMaxHp)) throw new Error('Recovered HP is invalid');
+  if (input.statStageDelta !== undefined && (!Number.isInteger(input.statStageDelta) || input.statStageDelta < 0 || input.statStageDelta > 42)) throw new Error('Stat stage delta is invalid');
+  let moveEffect = 0;
+  if (input.actionExecuted && input.attackHit && input.moveCategory && input.moveCategory !== 'damage') {
+    const recovery = clamp((input.hpRecovered ?? 0) / input.selfMaxHp, 0, 1) * .65;
+    const stage = Math.min(input.statStageDelta ?? 0, 3) * .08;
+    const ailment = input.ailmentApplied ? .18 : 0;
+    moveEffect = recovery + stage + ailment;
+    if (!input.strategicEffect) moveEffect = -.12;
+  }
   const outcome = input.outcome === 'won' ? 1 : input.outcome === 'lost' ? -0.8 : 0;
   return credit(input, {
     ...ZERO,
     damageDealt: dealt * 0.9,
     damageReceived: received ? received * -0.75 : 0,
     typeChoice,
+    moveEffect,
     outcome,
     growth: Math.min(input.levelsGained ?? 0, 2) * 0.25,
     evolution: input.evolved ? 0.45 : 0,
@@ -145,7 +163,7 @@ export type RewardLedger = {
 const COMPONENTS = Object.keys(ZERO) as Array<keyof RewardBreakdown>;
 const emptyComponentCounts = (): RewardComponentCounts => ({
   engagement: 0, damageDealt: 0, damageReceived: 0, typeChoice: 0,
-  outcome: 0, growth: 0, evolution: 0,
+  moveEffect: 0, outcome: 0, growth: 0, evolution: 0,
 });
 
 export function emptyRewardLedger(individualId: string): RewardLedger {
@@ -198,6 +216,9 @@ export function validateRewardLedger(value: unknown): asserts value is RewardLed
   const ledger = value as RewardLedger;
   const finiteBounded = (number: unknown, bound: number) => typeof number === 'number' && Number.isFinite(number) && Math.abs(number) <= bound;
   const count = (number: unknown, maximum = 1e9) => Number.isSafeInteger(number) && (number as number) >= 0 && (number as number) <= maximum;
+  const migrateBreakdown = (item: unknown) => { if (item && typeof item === 'object' && (item as Partial<RewardBreakdown>).moveEffect === undefined) (item as Partial<RewardBreakdown>).moveEffect = 0; };
+  migrateBreakdown(ledger?.lifetime?.componentTotals); if (ledger?.lifetime?.componentCounts && ledger.lifetime.componentCounts.moveEffect === undefined) ledger.lifetime.componentCounts.moveEffect = 0;
+  if (Array.isArray(ledger?.latest)) for (const entry of ledger.latest) migrateBreakdown(entry?.breakdown);
   const breakdown = (item: unknown, bound: number) => !!item && typeof item === 'object' && COMPONENTS.every(component => finiteBounded((item as RewardBreakdown)[component], bound));
   if (!ledger || ledger.rewardModel !== REWARD_MODEL || typeof ledger.individualId !== 'string' || !ledger.individualId || ledger.individualId.length > 200 || !Array.isArray(ledger.latest) || ledger.latest.length > 32) throw new Error('Invalid reward ledger');
   if (!ledger.lifetime || !count(ledger.lifetime.events, 2e9) || !ledger.lifetime.eventCounts || !count(ledger.lifetime.eventCounts.engagement) || !count(ledger.lifetime.eventCounts.battle) || ledger.lifetime.eventCounts.engagement + ledger.lifetime.eventCounts.battle !== ledger.lifetime.events || !finiteBounded(ledger.lifetime.total, 1e9) || !breakdown(ledger.lifetime.componentTotals, 1e9) || !ledger.lifetime.componentCounts || !COMPONENTS.every(component => count(ledger.lifetime.componentCounts[component]))) throw new Error('Invalid reward ledger lifetime');

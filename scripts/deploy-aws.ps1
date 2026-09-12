@@ -29,9 +29,15 @@ if ($account -ne $ExpectedAccount) { throw "Refusing deployment to AWS account $
 Push-Location $projectRoot
 try {
   Invoke-Aws cloudformation validate-template --region $Region --template-body "file://$template" | Out-Null
-  $existingWebAcl = (& aws cloudformation describe-stacks --region $Region --stack-name $StackName --query "Stacks[0].Parameters[?ParameterKey=='WebAclArn'].ParameterValue | [0]" --output text 2>$null).Trim()
   $overrides = @("BucketName=$BucketName")
-  if ($existingWebAcl -and $existingWebAcl -ne 'None') { $overrides += "WebAclArn=$existingWebAcl" }
+  $existingParameters = & aws cloudformation describe-stacks --region $Region --stack-name $StackName --query 'Stacks[0].Parameters' --output json 2>$null
+  if ($LASTEXITCODE -eq 0) {
+    foreach ($parameter in ($existingParameters | ConvertFrom-Json)) {
+      if ($parameter.ParameterKey -in @('WebAclArn', 'ApiVpcOriginId', 'ApiPrivateDns')) {
+        $overrides += "$($parameter.ParameterKey)=$($parameter.ParameterValue)"
+      }
+    }
+  }
   Invoke-Aws cloudformation deploy --region $Region --stack-name $StackName --template-file $template --parameter-overrides @overrides --no-fail-on-empty-changeset --tags application=choketmonster
 
   $status = (& aws cloudformation describe-stacks --region $Region --stack-name $StackName --query 'Stacks[0].StackStatus' --output text).Trim()

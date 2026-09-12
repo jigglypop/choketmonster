@@ -18,6 +18,9 @@ $stack = & aws cloudformation describe-stacks --region $Region --stack-name $Sta
 if ($LASTEXITCODE -ne 0) { throw 'Unable to read the existing site stack.' }
 $outputs = @{}; foreach ($item in $stack.Outputs) { $outputs[$item.OutputKey] = $item.OutputValue }
 $distributionArn = if ($outputs.DistributionArn) { $outputs.DistributionArn } else { "arn:aws:cloudfront::$account`:distribution/$($outputs.DistributionId)" }
+$apiVpcOriginParameter = @($stack.Parameters | Where-Object { $_.ParameterKey -eq 'ApiVpcOriginId' })
+$apiVpcOriginId = if ($apiVpcOriginParameter.Count -gt 0) { [string]$apiVpcOriginParameter[0].ParameterValue } else { '' }
+$hasVpcOrigin = -not [string]::IsNullOrWhiteSpace($apiVpcOriginId)
 $subscriptionList = & aws cloudcontrol list-resources --region us-east-1 --type-name AWS::PricingPlanManager::Subscription --output json | ConvertFrom-Json
 if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect existing flat-rate subscriptions.' }
 $subscriptions = @($subscriptionList.ResourceDescriptions | ForEach-Object { $_.Properties | ConvertFrom-Json })
@@ -36,10 +39,13 @@ $preview = [ordered]@{
   plan = 'CloudFront FREE (USD 0/month; 1M requests and 100GB transfer allowance)'
   existingSubscriptionCount = $subscriptions.Count
   distributionAlreadySubscribed = ($currentSubscription.Count -gt 0)
+  vpcOriginId = $apiVpcOriginId
+  freePlanCompatible = (-not $hasVpcOrigin)
   changes = @('create a CLOUDFRONT-scope WAF web ACL in us-east-1', 'attach it and use PriceClass_All with AWS managed policies', 'activate an AWS::PricingPlanManager::Subscription fixed to FREE')
 }
 $preview | ConvertTo-Json -Depth 4
 if (-not $Apply) { return }
+if ($hasVpcOrigin) { throw "CloudFront FREE activation is blocked because distribution $($outputs.DistributionId) uses VPC origin $apiVpcOriginId. Keep pay-as-you-go or remove the API VPC origin first." }
 if ($currentSubscription.Count -gt 0) {
   $activeFree = @($currentSubscription | Where-Object { $_.Status -eq 'ACTIVE' -and $_.CurrentPlanTier -eq 'FREE' })
   if ($activeFree.Count -eq 1) {

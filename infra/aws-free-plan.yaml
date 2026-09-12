@@ -9,13 +9,19 @@ Parameters:
     Type: String
     Default: 'false'
     AllowedValues: ['false', 'true']
+  KeepWebAcl:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['false', 'true']
 
 Conditions:
   Activate: !Equals [!Ref ActivateSubscription, 'true']
+  KeepAcl: !Equals [!Ref KeepWebAcl, 'true']
 
 Resources:
   WebAcl:
     Type: AWS::WAFv2::WebACL
+    Condition: KeepAcl
     Properties:
       Name: !Sub '${AWS::StackName}-web-acl'
       Scope: CLOUDFRONT
@@ -42,6 +48,7 @@ Resources:
 
 Outputs:
   WebAclArn:
+    Condition: KeepAcl
     Value: !GetAtt WebAcl.Arn
   SubscriptionArn:
     Condition: Activate

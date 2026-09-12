@@ -56,6 +56,8 @@ export type PlayerMove = { x: number; z: number; heading: WorldHeading };
 export type OpenWorldViewOptions = {
   getSnapshot: () => OpenWorldRenderSnapshot;
   onPlayerMove: (next: PlayerMove) => boolean | void;
+  /** Selects manual control before a click-to-move route begins. */
+  onNavigationStart?: () => boolean | void;
   onSelect: (instanceId: string | null) => void;
   onInteract?: (instanceId: string) => void;
   modelUrl?: (speciesId: number) => string;

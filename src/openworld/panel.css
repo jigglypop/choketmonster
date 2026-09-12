@@ -290,3 +290,93 @@
   .world-respawn{top:244px;right:10px}
 }
 @media(max-width:640px){.adventure{height:calc(100dvh - 80px)}}
+
+/* Readable, stable adventure controls and partner status. */
+.world-tools{align-items:stretch}
+.world-tools button,.world-tools label{min-height:34px;font-size:11px;line-height:1.2}
+.world-tools label{display:flex;align-items:center;gap:6px;white-space:nowrap}
+.world-tools input{width:15px;height:15px;margin:0;accent-color:#efd48d}
+.world-control-mode{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;width:min(430px,calc(100% - 40px));max-width:none;padding:6px}
+.world-mode-buttons{display:flex;gap:4px}
+.world-control-mode .world-mode-buttons button{min-width:55px;min-height:38px;padding:7px 10px;font-size:11px}
+.world-control-copy{display:grid;align-content:center;min-width:0;padding-right:5px}
+.world-control-copy strong{font-size:11px;line-height:1.2;color:#fff0c9}
+.world-control-mode .world-control-copy small{display:block;padding:2px 0 0;font-size:10px;line-height:1.25;white-space:normal;overflow:visible;text-overflow:clip;color:#d8e9df}
+.world-battle-hud>summary{min-height:54px;padding:9px 12px}
+.world-battle-hud>summary strong{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;gap:8px;font-size:13px}
+.world-summary-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.world-summary-hp{color:#fff0c9;font-size:12px;white-space:nowrap}
+.world-combatant{display:grid;grid-template-columns:48px minmax(0,1fr);align-items:center;gap:9px}
+.world-combatant img{width:48px;height:48px}
+.world-combatant-copy{display:grid;min-width:0}
+.world-combatant-copy>small{font-size:10px;line-height:1.3;color:#c8dcd3}
+.world-combatant-copy>strong{font-size:15px;line-height:1.25;margin:1px 0 3px}
+.world-hp-row{display:flex;align-items:baseline;gap:6px;font-size:10px;color:#d5e6de}
+.world-hp-row b{font-size:13px;color:#fff8dc}
+.world-hp-row em{margin-left:auto;padding:2px 5px;border-radius:5px;background:#e9cc7c2b;color:#f8dc91;font-size:9px;font-style:normal}
+.world-combatant .world-hp{height:7px;margin:4px 0}
+.world-combatant .world-combatant-meta{font-size:10px;line-height:1.35;color:#bdcfc8}
+.world-move small,.world-move>span{font-size:10px;line-height:1.35}
+.world-move strong{font-size:14px}
+.world-battle-actions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));align-items:stretch}
+.world-battle-actions button,.world-battle-actions label{min-height:34px;font-size:10px;display:flex;align-items:center;justify-content:center}
+.world-battle-actions>span{grid-column:1/-1;padding:7px 9px;border-radius:7px;background:#0e3028a6;font-size:10px;line-height:1.35;text-align:center}
+#world-emergency-action:not(:empty){margin:8px 0}
+#world-emergency-action button{width:100%;min-height:34px;border:1px solid #f0d48066;border-radius:8px;background:#7f4d32;color:#fff2cf;font-size:11px;font-weight:800}
+.world-target strong{font-size:14px;line-height:1.3}
+.world-target small{font-size:11px;line-height:1.45}
+.world-target small b{color:#ffe08a}
+.world-target-actions button,.world-target-actions summary{min-height:32px;font-size:10px}
+#world-nearby button span{font-size:11px}
+#world-nearby button small{font-size:9px;line-height:1.35}
+
+@media(max-width:720px){
+  .world-heading p{font-size:10px}
+  .world-tools{left:10px;top:84px;max-width:calc(100% - 108px);gap:4px}
+  .world-tools button,.world-tools label{min-height:30px;padding:5px 7px;font-size:10px}
+  .world-tools input{width:14px;height:14px}
+  .world-control-mode{left:10px;top:120px;width:270px;max-width:calc(100% - 20px);gap:6px;padding:5px}
+  .world-control-mode .world-mode-buttons button{min-width:49px;min-height:34px;padding:6px 8px;font-size:10px}
+  .world-control-copy strong{font-size:10px}
+  .world-control-mode .world-control-copy small{font-size:9px;line-height:1.2}
+  .world-objective{left:10px;top:174px;width:165px}
+  .world-objective summary span,.world-objective summary strong{font-size:10px}
+  .world-objective>small{font-size:9px;line-height:1.4}
+  .world-shop{left:10px;top:238px}
+  .world-gym{left:10px;top:278px}
+  .adventure .ow-camera-controls{top:174px;right:10px;width:166px}
+  .world-lower-hud>.world-target{left:10px;bottom:62px;width:200px;padding:9px 10px}
+  .world-lower-hud>.world-battle-hud{right:10px;bottom:62px;width:290px;max-width:calc(100% - 20px)}
+  .world-lower-hud:has(.world-target:not([hidden]))>.world-battle-hud:not([open]){width:calc(100% - 222px)}
+  .world-lower-hud>.world-battle-hud[open]{bottom:62px;max-height:min(52dvh,430px)}
+  .world-lower-hud:has(.world-target:not([hidden]))>.world-battle-hud[open]{bottom:160px;max-height:32dvh}
+  .world-lower-hud>.world-battle-hud[open] .world-battle-deck{max-height:calc(min(52dvh,430px) - 58px);overflow:auto}
+  .world-lower-hud:has(.world-target:not([hidden]))>.world-battle-hud[open] .world-battle-deck{max-height:calc(32dvh - 58px)}
+  .world-battle-hud>summary{min-height:48px;padding:7px 10px}
+  .world-battle-hud>summary strong{grid-template-columns:1fr;gap:1px;font-size:11px}
+  .world-summary-hp{font-size:11px}
+  .world-combatant{grid-template-columns:43px minmax(0,1fr);gap:7px}
+  .world-combatant img{width:43px;height:43px}
+  .world-combatant-copy>small,.world-combatant .world-combatant-meta{font-size:9px}
+  .world-combatant-copy>strong{font-size:13px}
+  .world-hp-row{font-size:9px}.world-hp-row b{font-size:12px}
+  .world-moves{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+  .world-move{min-width:0;padding:7px}
+  .world-move strong{font-size:12px}
+  .world-move small,.world-move>span{font-size:9px}
+  .world-battle-actions{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+  .world-battle-actions button,.world-battle-actions label{min-height:32px;padding:6px;font-size:9px}
+  .world-battle-actions>span{font-size:9px}
+  .world-target strong{font-size:13px}
+  .world-target small{font-size:10px}
+  .world-target-actions{display:grid;grid-template-columns:1fr 1fr auto auto}
+  .world-target-actions button,.world-target-actions summary{font-size:9px;padding:6px}
+}
+
+@media(max-width:410px){
+  .world-tools{max-width:calc(100% - 104px)}
+  .world-tools button,.world-tools label{padding-inline:5px;font-size:9px}
+  .world-tools label{gap:3px}
+  .world-control-mode{width:calc(100% - 20px)}
+  .world-lower-hud>.world-battle-hud[open]{width:calc(100% - 20px)}
+}

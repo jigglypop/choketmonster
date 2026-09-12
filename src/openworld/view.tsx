@@ -3,7 +3,7 @@ import { OrbitControls } from '@react-three/drei';
 import { Physics, RigidBody } from '@react-three/rapier';
 import { GaesupWorld, createCameraPlugin } from 'gaesup-world';
 import { createGaesupRuntime } from 'gaesup-world/runtime';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import {
   AnimationMixer,
@@ -20,6 +20,7 @@ import {
   InstancedMesh,
   Material,
   Matrix4,
+  MOUSE,
   MathUtils,
   Mesh,
   MeshStandardMaterial,
@@ -41,6 +42,7 @@ import type {
   OpenWorldView,
   OpenWorldViewOptions,
   WorldCreature,
+  WorldPoint,
   WorldSample,
 } from './types';
 import { createSceneryPlacements, SCENERY_ASSETS, type SceneryPlacement } from './scenery';
@@ -52,16 +54,25 @@ import './view.css';
 import { RenderProbe } from './render-probe';
 import { SkyLighting, SurfaceMaterial, WaterMaterial, detailCanopy, detailSurface, useSurfaceTextures, type SurfaceTextures } from './materials';
 import { AdaptiveResolution } from './adaptive-resolution';
+import { applyCameraAction, MAX_CAMERA_DISTANCE, MIN_CAMERA_DISTANCE, type CameraAction } from './camera-navigation';
+import { findWorldPath, headingForStep } from './navigation';
 
 const WORLD_MIN = -120;
 const WORLD_MAX = 120;
 const MAX_VISIBLE = 12;
 const MODEL_LOD_DISTANCE = 54;
 const MODEL_CACHE_LIMIT = 16;
+const NATURE_DETAIL_RADIUS = 68;
+// Fog is fully opaque at 85 world units. The rounded 16-unit streaming cell can
+// be eight units from the player, so 94 keeps every potentially visible prop.
+const NATURE_VISIBLE_RADIUS = 94;
+const NATURE_SHADOW_CASTERS = new Set([
+  'tree-round', 'tree-oak', 'tree-pine', 'tree-fat', 'tree-thin',
+  'rock-large', 'rock-moss', 'rock-tall', 'rock-ridge', 'cliff', 'moss-boulder',
+  'stump', 'fallen-log',
+]);
 const loader = new GLTFLoader();
-const DEFAULT_CAMERA_OFFSET = new Vector3(12, 18, 16);
-
-type CameraAction = 'left' | 'right' | 'up' | 'down' | 'zoom-in' | 'zoom-out' | 'reset';
+const DEFAULT_CAMERA_OFFSET = new Vector3(7, 10, 11);
 type CameraCommand = { id: number; action: CameraAction };
 
 type CachedModel = {
@@ -168,7 +179,7 @@ function fallbackSample(x: number, z: number): WorldSample {
   return { height, biome: Math.abs(x) + Math.abs(z) > 175 ? 'rock' : 'meadow', blocked: false };
 }
 
-function Terrain({ sampleWorld, visual = true }: { sampleWorld: (x: number, z: number) => WorldSample; visual?: boolean }) {
+function Terrain({ sampleWorld, visual = true, onNavigate }: { sampleWorld: (x: number, z: number) => WorldSample; visual?: boolean; onNavigate?: (point: WorldPoint) => void }) {
   const geometry = useMemo(() => {
     const plane = new PlaneGeometry(240, 240, TERRAIN_SEGMENTS, TERRAIN_SEGMENTS);
     plane.rotateX(-Math.PI / 2);
@@ -202,7 +213,11 @@ function Terrain({ sampleWorld, visual = true }: { sampleWorld: (x: number, z: n
   useEffect(() => () => geometry.dispose(), [geometry]);
   return (
     <RigidBody type="fixed" colliders="trimesh" friction={1}>
-      <mesh geometry={geometry} receiveShadow userData={{ gaesupWorldObject: 'terrain' }}>
+      <mesh geometry={geometry} receiveShadow userData={{ gaesupWorldObject: 'terrain' }} onClick={event => {
+        event.stopPropagation();
+        if (event.button !== 0 || event.delta > 5) return;
+        onNavigate?.({ x: event.point.x, z: event.point.z });
+      }}>
         <SurfaceMaterial surface="ground" vertexColors visible={visual} />
       </mesh>
     </RigidBody>
@@ -253,9 +268,9 @@ function InstancedAsset({ url, placements, shadows, wind, rockTextures }: { url:
         const clone = material.clone();
         if (clone instanceof MeshStandardMaterial) {
           clone.metalness = 0;
-          // Scanned assets retain their authored UVs and roughness/normal maps.
+          // Imported assets retain their painted colors, UVs and normal maps.
           if (!clone.roughnessMap) clone.roughness = .95;
-          if (url.includes('/tree-')) detailCanopy(clone);
+          if (url.includes('/props/tree-')) detailCanopy(clone);
           if (rockTextures) detailSurface(clone, rockTextures, 'rock');
           if (wind) {
             clone.onBeforeCompile = shader => {
@@ -306,17 +321,21 @@ function Nature({ sampleWorld, player }: { sampleWorld: (x: number, z: number) =
   const placements = useMemo(() => createSceneryPlacements(sampleWorld), [sampleWorld]);
   const rockTextures = useSurfaceTextures('rock');
   const cellX = Math.round(player.x / 16) * 16, cellZ = Math.round(player.z / 16) * 16;
-  // 85m fog + 42m camera reach + 12m cell margin: unload only fully hidden props.
-  const nearby = useMemo(() => Object.fromEntries(SCENERY_ASSETS.map(asset => [asset.id,
-    placements[asset.id].filter(item => Math.hypot(item.x - cellX, item.z - cellZ) < (['moss-boulder', 'moss-stone', 'fern'].includes(asset.id) ? 68 : 140))])), [placements, cellX, cellZ]);
+  // 85m fog + 48m camera reach + 12m cell margin: unload only fully hidden props.
+  const nearby = useMemo(() => Object.fromEntries(SCENERY_ASSETS.map(asset => {
+    const visible = placements[asset.id]
+      .filter(item => Math.hypot(item.x - cellX, item.z - cellZ) < (['moss-boulder', 'moss-stone', 'fern'].includes(asset.id) ? NATURE_DETAIL_RADIUS : NATURE_VISIBLE_RADIUS))
+      .map(item => ({ ...item, scale: item.scale * asset.scale }));
+    return [asset.id, visible];
+  })), [placements, cellX, cellZ]);
   return (
     <group userData={{ gaesupWorldObject: 'imported-nature-instances' }}>
       {SCENERY_ASSETS.map(asset => <InstancedAsset
         key={asset.id}
         url={asset.url}
         placements={nearby[asset.id]}
-        rockTextures={asset.id.startsWith('rock') || asset.id === 'cliff' ? rockTextures : undefined}
-        shadows={!asset.id.startsWith('flower') && asset.id !== 'grass-tuft'}
+        rockTextures={!asset.authoredMaterials && (asset.id.startsWith('rock') || asset.id === 'cliff') ? rockTextures : undefined}
+        shadows={NATURE_SHADOW_CASTERS.has(asset.id)}
         wind={asset.id === 'grass-tuft' || asset.id === 'grass-soft' || asset.id.startsWith('flower') || asset.id === 'bush' || asset.id === 'lily' || asset.id === 'fern'}
       />)}
     </group>
@@ -675,10 +694,12 @@ function Creature({ creature, selected, distance, options, showLabels }: {
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {
-  return target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
+  if (!(target instanceof HTMLElement)) return false;
+  if (target instanceof HTMLInputElement) return !['checkbox', 'button', 'submit', 'reset'].includes(target.type);
+  return target.isContentEditable || ['TEXTAREA', 'SELECT'].includes(target.tagName);
 }
 
-function PlayerCamera({ snapshot, options, command }: { snapshot: OpenWorldRenderSnapshot; options: OpenWorldViewOptions; command: CameraCommand }) {
+function PlayerCamera({ snapshot, options, command, destination, onDestination }: { snapshot: OpenWorldRenderSnapshot; options: OpenWorldViewOptions; command: CameraCommand; destination: WorldPoint | null; onDestination: (point: WorldPoint | null) => void }) {
   const controls = useRef<OrbitControlsImpl>(null);
   const keys = useRef(new Set<string>());
   const position = useRef(new Vector3(snapshot.player.x, terrainSurfaceHeight(options.sampleWorld ?? fallbackSample, snapshot.player.x, snapshot.player.z), snapshot.player.z));
@@ -690,9 +711,19 @@ function PlayerCamera({ snapshot, options, command }: { snapshot: OpenWorldRende
   const orbitOffset = useRef(new Vector3());
   const spherical = useRef(new Spherical());
   const listenersReady = useRef(false);
+  const path = useRef<WorldPoint[]>([]);
   const announcedReady = useRef(false);
   const { camera } = useThree();
   const sample = options.sampleWorld ?? fallbackSample;
+
+  useEffect(() => {
+    path.current = destination ? findWorldPath(position.current, destination, sample) : [];
+    if (destination && !path.current.length) onDestination(null);
+    else if (destination) {
+      const resolved = path.current[path.current.length - 1];
+      if (Math.hypot(resolved.x - destination.x, resolved.z - destination.z) > .01) onDestination(resolved);
+    }
+  }, [destination, onDestination, sample]);
 
   useEffect(() => {
     external.current.set(snapshot.player.x, terrainSurfaceHeight(sample, snapshot.player.x, snapshot.player.z), snapshot.player.z);
@@ -723,12 +754,8 @@ function PlayerCamera({ snapshot, options, command }: { snapshot: OpenWorldRende
     }
     orbitOffset.current.copy(camera.position).sub(control.target);
     spherical.current.setFromVector3(orbitOffset.current);
-    if (command.action === 'left') spherical.current.theta += .22;
-    if (command.action === 'right') spherical.current.theta -= .22;
-    if (command.action === 'up') spherical.current.phi = Math.max(.38, spherical.current.phi - .14);
-    if (command.action === 'down') spherical.current.phi = Math.min(1.18, spherical.current.phi + .14);
-    if (command.action === 'zoom-in') spherical.current.radius = Math.max(10, spherical.current.radius * .84);
-    if (command.action === 'zoom-out') spherical.current.radius = Math.min(42, spherical.current.radius * 1.18);
+    const next = applyCameraAction(spherical.current, command.action);
+    spherical.current.set(next.radius, next.phi, next.theta);
     orbitOffset.current.setFromSpherical(spherical.current);
     camera.position.copy(control.target).add(orbitOffset.current);
     control.update();
@@ -738,6 +765,8 @@ function PlayerCamera({ snapshot, options, command }: { snapshot: OpenWorldRende
       if (isTypingTarget(event.target)) return;
       if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowRight', 'ArrowDown', 'ArrowLeft'].includes(event.code)) {
         event.preventDefault();
+        path.current = [];
+        onDestination(null);
         keys.current.add(event.code);
       }
     };
@@ -755,7 +784,7 @@ function PlayerCamera({ snapshot, options, command }: { snapshot: OpenWorldRende
       window.removeEventListener('blur', clear);
       document.removeEventListener('visibilitychange', clear);
     };
-  }, []);
+  }, [onDestination]);
 
   useFrame((_, delta) => {
     if (listenersReady.current && !announcedReady.current) {
@@ -766,19 +795,34 @@ function PlayerCamera({ snapshot, options, command }: { snapshot: OpenWorldRende
     let forwardAxis = Number(pressed.has('KeyW') || pressed.has('ArrowUp')) - Number(pressed.has('KeyS') || pressed.has('ArrowDown'));
     let sideAxis = Number(pressed.has('KeyD') || pressed.has('ArrowRight')) - Number(pressed.has('KeyA') || pressed.has('ArrowLeft'));
     const target = position.current;
+    if (!forwardAxis && !sideAxis && path.current.length) {
+      const waypoint = path.current[0];
+      const dx = waypoint.x - target.x, dz = waypoint.z - target.z, remaining = Math.hypot(dx, dz);
+      if (remaining <= .12) {
+        path.current.shift();
+        if (!path.current.length) onDestination(null);
+      } else {
+        forwardAxis = dz / remaining;
+        sideAxis = dx / remaining;
+        movement.current.set(dx / remaining, 0, dz / remaining);
+      }
+    }
     if (forwardAxis || sideAxis) {
-      camera.getWorldDirection(forward.current);
-      forward.current.y = 0;
-      forward.current.normalize();
-      right.current.set(-forward.current.z, 0, forward.current.x);
-      movement.current.copy(forward.current).multiplyScalar(forwardAxis).addScaledVector(right.current, sideAxis).normalize().multiplyScalar(Math.min(delta, .05) * (snapshot.entities.find(entity => entity.id.startsWith('companion:'))?.movementSpeed ?? 2.2));
+      if (!path.current.length) {
+        camera.getWorldDirection(forward.current);
+        forward.current.y = 0;
+        forward.current.normalize();
+        right.current.set(-forward.current.z, 0, forward.current.x);
+        movement.current.copy(forward.current).multiplyScalar(forwardAxis).addScaledVector(right.current, sideAxis).normalize();
+      }
+      movement.current.multiplyScalar(Math.min(delta, .05) * (snapshot.entities.find(entity => entity.id.startsWith('companion:'))?.movementSpeed ?? 2.2));
       const x = MathUtils.clamp(target.x + movement.current.x, WORLD_MIN, WORLD_MAX);
       const z = MathUtils.clamp(target.z + movement.current.z, WORLD_MIN, WORLD_MAX);
       const terrain = sample(x, z);
       if (!terrain.blocked) {
         const nextHeading = Math.abs(movement.current.x) > Math.abs(movement.current.z)
           ? (movement.current.x > 0 ? 1 : 3)
-          : (movement.current.z > 0 ? 2 : 0);
+          : headingForStep(movement.current.x, movement.current.z);
         const accepted = options.onPlayerMove({ x, z, heading: nextHeading });
         if (accepted !== false) {
           camera.position.x += x - target.x;
@@ -787,6 +831,9 @@ function PlayerCamera({ snapshot, options, command }: { snapshot: OpenWorldRende
           camera.position.z += z - target.z;
           target.set(x, groundY, z);
           external.current.copy(target);
+        } else if (path.current.length) {
+          path.current = [];
+          onDestination(null);
         }
       }
     }
@@ -799,7 +846,7 @@ function PlayerCamera({ snapshot, options, command }: { snapshot: OpenWorldRende
     }
   });
 
-  return <OrbitControls ref={controls} makeDefault enablePan={false} enableDamping dampingFactor={.08} minDistance={10} maxDistance={42} minPolarAngle={.38} maxPolarAngle={1.18} />;
+  return <OrbitControls ref={controls} makeDefault enablePan={false} enableDamping dampingFactor={.08} mouseButtons={{ LEFT: undefined as unknown as MOUSE, MIDDLE: MOUSE.DOLLY, RIGHT: MOUSE.ROTATE }} minDistance={MIN_CAMERA_DISTANCE} maxDistance={MAX_CAMERA_DISTANCE} minPolarAngle={.38} maxPolarAngle={1.18} />;
 }
 
 function Sunlight({ player }: { player: { x: number; z: number } }) {
@@ -810,7 +857,7 @@ function Sunlight({ player }: { player: { x: number; z: number } }) {
   return <><primitive object={target} /><directionalLight ref={sun} target={target} position={[x + 28, 52, z + 22]} intensity={2.6} color="#fff0d5" castShadow
     shadow-mapSize={[1024, 1024]} shadow-camera-near={1} shadow-camera-far={150}
     shadow-camera-left={-44} shadow-camera-right={44} shadow-camera-top={44} shadow-camera-bottom={-44}
-    shadow-normalBias={.045} shadow-bias={-.00015} /></>;
+    shadow-normalBias={.10} shadow-bias={-.0004} /></>;
 }
 
 function FoodInstances({ foods, sampleWorld }: { foods: OpenWorldRenderSnapshot['foods']; sampleWorld: (x: number, z: number) => WorldSample }) {
@@ -826,7 +873,7 @@ function FoodInstances({ foods, sampleWorld }: { foods: OpenWorldRenderSnapshot[
   return <instancedMesh ref={ref} args={[undefined, undefined, foods.length]}><icosahedronGeometry args={[.24, 1]} /><meshStandardMaterial color="#efca58" emissive="#785e16" emissiveIntensity={.35} /></instancedMesh>;
 }
 
-function Scene({ snapshot, options, cameraCommand, showLabels }: { snapshot: OpenWorldRenderSnapshot; options: OpenWorldViewOptions; cameraCommand: CameraCommand; showLabels: boolean }) {
+function Scene({ snapshot, options, cameraCommand, showLabels, destination, onNavigate, onDestination }: { snapshot: OpenWorldRenderSnapshot; options: OpenWorldViewOptions; cameraCommand: CameraCommand; showLabels: boolean; destination: WorldPoint | null; onNavigate: (point: WorldPoint) => void; onDestination: (point: WorldPoint | null) => void }) {
   const sample = options.sampleWorld ?? fallbackSample;
   const visible = useMemo(() => [...snapshot.entities]
     .sort((a, b) => {
@@ -843,7 +890,7 @@ function Scene({ snapshot, options, cameraCommand, showLabels }: { snapshot: Ope
       <SkyLighting />
       <Sunlight player={snapshot.player} />
       <Physics gravity={[0, -18, 0]} timeStep="vary">
-        <Terrain sampleWorld={sample} />
+        <Terrain sampleWorld={sample} onNavigate={onNavigate} />
         <Nature sampleWorld={sample} player={snapshot.player} />
         <TrailAndWater sampleWorld={sample} player={snapshot.player} badges={(snapshot as OpenWorldRenderSnapshot & { badges?: number }).badges ?? 0} />
         {options.terrainUrl && <StaticModel item={{
@@ -860,7 +907,11 @@ function Scene({ snapshot, options, cameraCommand, showLabels }: { snapshot: Ope
         <FoodInstances foods={snapshot.foods} sampleWorld={sample} />
       </Physics>
       {visible.map(creature => <Creature key={creature.id} creature={creature} selected={creature.id === snapshot.selectedWildId} showLabels={showLabels} distance={Math.hypot(creature.x - snapshot.player.x, creature.z - snapshot.player.z)} options={options} />)}
-      <PlayerCamera snapshot={snapshot} options={options} command={cameraCommand} />
+      {destination && <group position={[destination.x, terrainSurfaceHeight(sample, destination.x, destination.z) + .08, destination.z]}>
+        <mesh rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[.42, .62, 28]} /><meshBasicMaterial color="#ffe27a" transparent opacity={.9} /></mesh>
+        <mesh position={[0, .08, 0]} rotation={[-Math.PI / 2, 0, 0]}><circleGeometry args={[.13, 20]} /><meshBasicMaterial color="#fff4b8" /></mesh>
+      </group>}
+      <PlayerCamera snapshot={snapshot} options={options} command={cameraCommand} destination={destination} onDestination={onDestination} />
     </>
   );
 }
@@ -873,6 +924,11 @@ function OpenWorldApp({ store, options }: { store: SnapshotStore; options: OpenW
   const [showLabels, setShowLabels] = useState(() => { try { return localStorage.getItem('choketmon-nameplates') === 'true'; } catch { return false; } });
   const toggleLabels = () => setShowLabels(previous => { try { localStorage.setItem('choketmon-nameplates', String(!previous)); } catch { /* Session-only preference when storage is unavailable. */ } return !previous; });
   const [cameraCommand, setCameraCommand] = useState<CameraCommand>({ id: 0, action: 'reset' });
+  const [destination, setDestination] = useState<WorldPoint | null>(null);
+  const navigate = useCallback((point: WorldPoint) => {
+    if (options.onNavigationStart?.() === false) return;
+    setDestination(point);
+  }, [options]);
   const moveCamera = (action: CameraAction) => setCameraCommand(previous => ({ id: previous.id + 1, action }));
   useEffect(() => {
     let active = true;
@@ -893,7 +949,7 @@ function OpenWorldApp({ store, options }: { store: SnapshotStore; options: OpenW
         <AdaptiveResolution setDpr={setRenderDpr} />
         {new URLSearchParams(location.search).has('renderProbe') && <RenderProbe />}
         <group name="gaesup-world">
-          <Scene snapshot={snapshot} options={options} cameraCommand={cameraCommand} showLabels={showLabels} />
+          <Scene snapshot={snapshot} options={options} cameraCommand={cameraCommand} showLabels={showLabels} destination={destination} onNavigate={navigate} onDestination={setDestination} />
         </group>
       </Canvas>
       {!ready && <div className="ow-loading">Gaesup World 준비 중…</div>}

@@ -1,7 +1,8 @@
 import { Brain, validateGraph, type BrainState, type Graph } from '../core/brain';
 import { Random, clamp } from '../core/random';
 import { POKEMON, getMove, getSpecies } from '../data/pokemon';
-import { ConnectomeController } from '../game/connectome';
+import { ConnectomeController, type NeuralMonster } from '../game/connectome';
+import { chooseServerBrains, usesServerBrain, type ServerDecision } from '../game/server-brain';
 import { actBattle, availableEvolutions, captureDefeatedWild, createMonster, evolve, validateGame, type BallItem, type BattleAction, type BattleTurnResult, type GameState, type Monster } from '../game/engine';
 import { KANTO_START, KANTO_LOCATIONS, KANTO_GYMS, KANTO_MAP_VERSION, locationAt, encountersForLocation, sampleKantoWorld, evaluateKantoTraversal, nearestKantoWalkable, kantoTravelPoint, safeKantoArrival } from './kanto';
 import { REGIONS } from '../game/regions';
@@ -28,6 +29,7 @@ export type OpenWorldEntity = {
 export type OpenWorldEntitySnapshot = Omit<OpenWorldEntity, 'brain'> & { brain: WorldBrainState };
 export type OpenWorldSnapshot = {
   schema: 1; model: typeof OPEN_WORLD_MODEL; graphId: string; seed: number; rng: number; tick: number;
+  serverFinalizations?: ServerFinalization[];
   player: WorldPosition; selectedWildId?: string; autoCapture: boolean; autoHunt?: boolean; battleWildId?: string;
   battleElapsed: number; pendingCapture: boolean; pendingBall?: BallItem; lastPlayerReward: number | null; lastEnemyReward: number | null;
   pendingAction?: BattleAction;
@@ -41,6 +43,7 @@ export type OpenWorldSnapshot = {
   densityRemaining?: number;
   spawnSerial: number; nextFoodId: number; foods: WorldFood[]; respawnQueue?: WorldRespawn[]; entities: OpenWorldEntitySnapshot[]; companionMemories?: OpenWorldEntitySnapshot[];
 };
+type ServerFinalization = { self: NeuralMonster; other: NeuralMonster; turn: number; reward: number; learning: boolean; episode: string };
 export type OpenWorldEvent =
   | { type: 'move' | 'wait' | 'collision' | 'food'; entityId: string; x: number; z: number; reward: number }
   | { type: 'encounter'; entityId: string; speciesId: number; level: number }
@@ -136,6 +139,48 @@ export class OpenWorldSimulation {
   private readonly companionMemories = new Map<string, OpenWorldEntity>();
   private readonly battleController: ConnectomeController;
   private readonly policy?: FieldPolicy;
+  private serverTurn?: { battle: NonNullable<GameState['battle']>; turn: number; decisions: Map<string, ServerDecision> };
+  private serverFinalizations: ServerFinalization[] = [];
+
+  /** Resolve one matching battle frame before advancing it. Network timing never consumes simulation RNG. */
+  async prepareServerBattle(learning: boolean): Promise<void> {
+    if (!usesServerBrain()) return;
+    while (this.serverFinalizations.length) {
+      const tasks = this.serverFinalizations.slice(0, 2);
+      if (tasks.length === 2 && tasks[0].self.instanceId === tasks[1].self.instanceId) tasks.pop();
+      await chooseServerBrains(this.battleController, tasks.map(task => ({ self: task.self, foe: task.other,
+        turn: task.turn, reward: task.reward, learning: task.learning, battleId: task.episode, terminal: true })));
+      this.serverFinalizations.splice(0, tasks.length);
+    }
+    const battle = this.game.battle;
+    if (!battle || (this.controlMode === 'manual' && !this.pendingAction && !this.pendingCapture)) return;
+    const player = battle.player.team[battle.player.activeIndex], enemy = battle.enemy.team[battle.enemy.activeIndex];
+    const frame = this.serverTurn?.battle === battle && this.serverTurn.turn === battle.turn
+      ? this.serverTurn : { battle, turn: battle.turn, decisions: new Map<string, ServerDecision>() };
+    const automatic = !battle.awaitingSwitch && !this.pendingAction && !this.pendingCapture;
+    const participants = (automatic ? [player, enemy] : [enemy]).filter(monster => !frame.decisions.has(monster.instanceId));
+    if (participants.length) {
+      const decisions = await chooseServerBrains(this.battleController, participants.map(monster => {
+      const other = monster === player ? enemy : player;
+      const self = { ...monster, ...(battle.transformations?.[monster.instanceId] ?? {}) }, foe = { ...other, ...(battle.transformations?.[other.instanceId] ?? {}) };
+      return { self, foe, turn: frame.turn, reward: monster === player ? this.lastPlayerReward : this.lastEnemyReward,
+        learning, battleId: this.serverBattleId(battle), context: { automatic: true,
+          selfStatStages: battle.statStages?.[monster.instanceId], otherStatStages: battle.statStages?.[other.instanceId] } };
+      }));
+      participants.forEach((monster, index) => frame.decisions.set(monster.instanceId, decisions[index]));
+    }
+    if (this.game.battle === battle && battle.turn === frame.turn) this.serverTurn = frame;
+  }
+
+  private serverBattleId(battle: NonNullable<GameState['battle']>) { return `${this.seed}:${battle.enemy.team[0].instanceId}`; }
+
+  private serverBattleReady(): boolean {
+    const battle = this.game.battle, frame = this.serverTurn;
+    if (!battle || frame?.battle !== battle || frame.turn !== battle.turn) return false;
+    if (!frame.decisions.has(battle.enemy.team[battle.enemy.activeIndex].instanceId)) return false;
+    return Boolean(battle.awaitingSwitch || this.pendingAction || this.pendingCapture
+      || frame.decisions.has(battle.player.team[battle.player.activeIndex].instanceId));
+  }
 
   constructor(graph: Graph, game: GameState, seed: number, checkpoint?: OpenWorldSnapshot, policy?: FieldPolicy, wildCount = DEFAULT_WILD_COUNT) {
     validateGraph(graph); if (graph.kind !== 'connectome-subset') throw new Error('Open world requires a real connectome subset');
@@ -334,6 +379,9 @@ export class OpenWorldSimulation {
       if (this.controlMode === 'manual' && !this.pendingAction && !this.pendingCapture) { this.battleElapsed = 0; this.tick++; return { tick: this.tick, events, battleActive: true }; }
       this.battleElapsed += deltaSeconds;
       while (this.game.battle && this.battleElapsed >= BATTLE_INTERVAL) {
+        if (usesServerBrain() && !this.serverBattleReady()) {
+          this.battleElapsed = BATTLE_INTERVAL - 0.001; break;
+        }
         this.battleElapsed -= BATTLE_INTERVAL;
         const battleEvent = this.advanceBattle(learning, events); if (battleEvent) events.push(battleEvent);
         if (this.controlMode === 'manual') { this.battleElapsed = 0; break; }
@@ -350,6 +398,7 @@ export class OpenWorldSimulation {
   snapshot(): OpenWorldSnapshot {
     const pack = (entity: OpenWorldEntity): OpenWorldEntitySnapshot => { const { brain: _brain, ...rest } = entity; return { ...structuredClone(rest), brain: stripGraph(this.brain(entity.id).state) }; };
     return { schema: 1, model: OPEN_WORLD_MODEL, graphId: this.graph.id, seed: this.seed, rng: this.rng.state, tick: this.tick,
+      serverFinalizations: this.serverFinalizations.length ? structuredClone(this.serverFinalizations) : undefined,
       player: structuredClone(this.player), selectedWildId: this.selectedWildId, autoCapture: this.autoCapture, autoHunt: this.autoHunt, battleWildId: this.battleWildId,
       battleElapsed: this.battleElapsed, pendingCapture: this.pendingCapture, pendingBall: this.pendingBall, lastPlayerReward: this.lastPlayerReward, lastEnemyReward: this.lastEnemyReward,
       pendingAction: structuredClone(this.pendingAction), manualControlRemaining: this.manualControlRemaining,
@@ -410,8 +459,8 @@ export class OpenWorldSimulation {
       action = { type: 'catch', ball: captureBall }; this.pendingCapture = false; this.pendingBall = undefined;
     } else {
       const decision = this.chooseBattle(player, enemy, battle, this.lastPlayerReward, learning);
-      if (decision.action < 4 && (!this.autoHunt || this.isDamagingAttack(player, battle, decision.action))) { action = { type: 'move', index: decision.action }; learnedPlayerAction = decision.rawAction === decision.action; }
-      else if (this.autoHunt) action = { type: 'move', index: this.fallbackAttack(player, battle) };
+      if (decision.action < 4) { action = { type: 'move', index: decision.action }; learnedPlayerAction = decision.rawAction === decision.action; }
+      else if (this.autoHunt && !this.serverTurn?.decisions.has(player.instanceId)) action = { type: 'move', index: this.fallbackAttack(player, battle) };
       else { action = { type: 'wait' }; learnedPlayerAction = true; }
       source = learnedPlayerAction ? 'connectome' : 'fallback';
     }
@@ -422,19 +471,26 @@ export class OpenWorldSimulation {
     const enemyTypes = getSpecies(battle.transformations?.[enemy.instanceId]?.speciesId ?? enemy.speciesId).types;
     const enemyDecision = this.chooseBattle(enemy, player, battle, this.lastEnemyReward, learning);
     const enemySource: RewardDecisionSource = enemyDecision.rawAction === enemyDecision.action ? 'connectome' : 'fallback';
+    const playerMoveId = action.type === 'move' ? (battle.transformations?.[player.instanceId]?.moves ?? player.moves)[action.index]?.moveId : undefined;
+    const enemyMoveId = (battle.transformations?.[enemy.instanceId]?.moves ?? enemy.moves)[enemyDecision.action]?.moveId;
     const result = actBattle(this.game, action, enemyDecision.action);
     if (result.battleEnded && result.outcome === 'won') this.autoEvolve(events);
     const playerAttack = result.executedMoves.find(move => move.actorInstanceId === player.instanceId), enemyAttack = result.executedMoves.find(move => move.actorInstanceId === enemy.instanceId);
     const playerMaxHp = Math.max(playerMaxBefore, player.stats.hp), enemyMaxHp = Math.max(enemyMaxBefore, enemy.stats.hp);
+    const resolvedPlayerHp = result.outcome === 'lost' ? 0 : player.hp;
     const playerReward = rewardBattleTurn({ individualId: player.instanceId, decisionSource: source, learningEnabled: learning,
-      selfHpBefore: playerHp, selfHpAfter: player.hp, selfMaxHp: playerMaxHp, opponentHpBefore: enemyHp, opponentHpAfter: enemy.hp, opponentMaxHp: enemyMaxHp,
+      selfHpBefore: playerHp, selfHpAfter: resolvedPlayerHp, selfMaxHp: playerMaxHp, opponentHpBefore: enemyHp, opponentHpAfter: enemy.hp, opponentMaxHp: enemyMaxHp,
       chosenAttackType: playerAttack?.moveType, defenderTypes: enemyTypes, damagingMove: playerAttack?.damagingMove, actionExecuted: playerAttack?.executed, attackHit: playerAttack?.hit, typeEffectiveness: playerAttack?.typeMultiplier,
+      moveCategory: playerAttack?.category, hpRecovered: playerAttack?.hpRecovered, statStageDelta: playerAttack?.statStageDelta, ailmentApplied: playerAttack?.ailmentApplied, strategicEffect: playerAttack?.strategicEffect,
       outcome: result.outcome, levelsGained: player.level - playerLevel, evolved: events.some(event => event.type === 'evolved' && event.entityId === player.instanceId) });
     const enemyReward = rewardBattleTurn({ individualId: enemy.instanceId, decisionSource: enemySource, learningEnabled: learning,
-      selfHpBefore: enemyHp, selfHpAfter: enemy.hp, selfMaxHp: enemyMaxHp, opponentHpBefore: playerHp, opponentHpAfter: player.hp, opponentMaxHp: playerMaxHp,
+      selfHpBefore: enemyHp, selfHpAfter: enemy.hp, selfMaxHp: enemyMaxHp, opponentHpBefore: playerHp, opponentHpAfter: resolvedPlayerHp, opponentMaxHp: playerMaxHp,
       chosenAttackType: enemyAttack?.moveType, defenderTypes: playerTypes, damagingMove: enemyAttack?.damagingMove, actionExecuted: enemyAttack?.executed, attackHit: enemyAttack?.hit, typeEffectiveness: enemyAttack?.typeMultiplier,
+      moveCategory: enemyAttack?.category, hpRecovered: enemyAttack?.hpRecovered, statStageDelta: enemyAttack?.statStageDelta, ailmentApplied: enemyAttack?.ailmentApplied, strategicEffect: enemyAttack?.strategicEffect,
       outcome: result.outcome === 'won' ? 'lost' : result.outcome === 'lost' ? 'won' : result.outcome, levelsGained: enemy.level - enemyLevel });
     this.recordReward(playerReward, 'battle', source); this.recordReward(enemyReward, 'battle', enemySource);
+    if (playerReward.learningEligible && playerMoveId !== undefined) this.recordMoveLearning(player, playerMoveId, playerAttack, playerReward.total);
+    if (enemyReward.learningEligible && enemyMoveId !== undefined) this.recordMoveLearning(enemy, enemyMoveId, enemyAttack, enemyReward.total);
     for (const gain of result.experienceGains.filter(gain => gain.shared && gain.levelsGained > 0)) {
       const member = this.game.player.team.find(monster => monster.instanceId === gain.instanceId)!;
       this.recordReward(rewardBattleTurn({ individualId: member.instanceId, decisionSource: 'fallback', learningEnabled: false,
@@ -443,8 +499,17 @@ export class OpenWorldSimulation {
     }
     this.lastPlayerReward = playerReward.learningEligible ? playerReward.total : null; this.lastEnemyReward = enemyReward.learningEligible ? enemyReward.total : null;
     if (result.battleEnded) {
-      this.battleController.finish(player, playerReward.total, playerReward.learningEligible);
-      this.battleController.finish(enemy, enemyReward.total, enemyReward.learningEligible);
+      if (usesServerBrain()) {
+        const episode = this.serverBattleId(battle), turn = battle.turn;
+        for (const [self, other, reward, eligible] of [[player, enemy, playerReward.total, playerReward.learningEligible], [enemy, player, enemyReward.total, enemyReward.learningEligible]] as const) {
+          const savedSelf = structuredClone(self), savedOther = structuredClone(other);
+          delete savedSelf.brain; delete savedOther.brain;
+          this.serverFinalizations.push({ self: savedSelf, other: savedOther, turn, reward, learning: eligible, episode });
+        }
+      } else {
+        this.battleController.finish(player, playerReward.total, playerReward.learningEligible);
+        this.battleController.finish(enemy, enemyReward.total, enemyReward.learningEligible);
+      }
       const removed = this.entities.find(entity => entity.id === entityId);
       if (removed) this.removeWild(entityId);
       if (result.outcome === 'won' && battle.kind === 'wild') {
@@ -467,9 +532,26 @@ export class OpenWorldSimulation {
   }
 
   private chooseBattle(monster: Monster, other: Monster, battle: NonNullable<GameState['battle']>, reward: number | null, learning: boolean) {
+    const remote = this.serverTurn?.battle === battle && this.serverTurn.turn === battle.turn ? this.serverTurn.decisions.get(monster.instanceId) : undefined;
+    if (usesServerBrain()) {
+      if (!remote) throw new Error('서버 회로의 해당 턴 결정을 기다리고 있습니다.');
+      return { ...remote, rawAction: remote.action };
+    }
     const selfForm = battle.transformations?.[monster.instanceId], otherForm = battle.transformations?.[other.instanceId];
     const self = { ...monster, ...(selfForm ?? {}), brain: monster.brain }, foe = { ...other, ...(otherForm ?? {}), brain: other.brain };
-    const decision = this.battleController.choose(self, foe, battle.turn, reward, learning); monster.brain = self.brain; return decision;
+    const decision = this.battleController.choose(self, foe, battle.turn, reward, learning, {
+      automatic: true, selfStatStages: battle.statStages?.[monster.instanceId], otherStatStages: battle.statStages?.[other.instanceId],
+    }); monster.brain = self.brain; return decision;
+  }
+
+  private recordMoveLearning(monster: Monster, moveId: number, executed: BattleTurnResult['executedMoves'][number] | undefined, reward: number): void {
+    monster.moveLearning ??= {};
+    const stats = monster.moveLearning[String(moveId)] ?? { choices: 0, executed: 0, effective: 0, reward: 0 };
+    stats.choices = Math.min(1e9, stats.choices + 1);
+    if (executed) stats.executed = Math.min(1e9, stats.executed + 1);
+    if (executed?.damage || executed?.strategicEffect) stats.effective = Math.min(1e9, stats.effective + 1);
+    stats.reward = clamp(stats.reward + reward, -1e9, 1e9);
+    monster.moveLearning[String(moveId)] = stats;
   }
 
   private clearPendingLearning(monster: Monster): void {
@@ -758,6 +840,11 @@ export class OpenWorldSimulation {
     }
     this.controlMode = checkpoint.controlMode ?? 'auto';
     this.rng = new Random(checkpoint.rng); this.tick = checkpoint.tick; this.player = structuredClone(checkpoint.player); this.foods = structuredClone(checkpoint.foods);
+    if (checkpoint.serverFinalizations !== undefined) {
+      if (!Array.isArray(checkpoint.serverFinalizations) || checkpoint.serverFinalizations.length > 12 || checkpoint.serverFinalizations.some(task =>
+        !task || !task.self?.instanceId || !task.other?.instanceId || !Number.isSafeInteger(task.turn) || typeof task.learning !== 'boolean' || !Number.isFinite(task.reward) || Math.abs(task.reward) > 4 || typeof task.episode !== 'string')) throw new Error('서버 보상 대기 기록이 손상되었습니다.');
+      this.serverFinalizations = structuredClone(checkpoint.serverFinalizations);
+    }
     this.selectedWildId = checkpoint.selectedWildId; this.autoCapture = checkpoint.autoCapture; this.autoHunt = checkpoint.autoHunt ?? true; this.battleWildId = checkpoint.battleWildId; this.battleElapsed = checkpoint.battleElapsed;
     this.pendingCapture = checkpoint.pendingCapture; this.pendingBall = checkpoint.pendingBall; this.lastPlayerReward = checkpoint.lastPlayerReward; this.lastEnemyReward = checkpoint.lastEnemyReward;
     this.pendingAction = structuredClone(checkpoint.pendingAction);

@@ -2,7 +2,7 @@
 
 [게임 실행](https://d3b0jo8g1tseoa.cloudfront.net) · [구현과 검증 결과](docs/openworld-delivery.md)
 
-실제 포켓몬 **001 이상해씨부터 151 뮤까지** 만나고, 잡고, 키우고, 진화시키는 로컬 팬 게임이다. 포켓몬마다 실제 초파리 커넥톰의 부분 회로와 독립적인 신경 상태를 연결한다. 작업은 Astra가 통합하고 Sol medium이 범위가 나뉜 구현을 담당한다.
+포켓몬 **001 이상해씨부터 151 뮤까지** 만나고, 잡고, 키우고, 진화시키는 팬 게임이다. 로그인한 계정의 배틀은 Rust 서버의 MaleCNS 166,700개 curated neuron 회로로 기술을 선택한다. 계정·개체별 기억은 PostgreSQL에 저장한다. 비로그인 모험과 월드 이동에는 브라우저의 128개 부분 회로를 사용한다. 감각·동역학·행동·학습은 게임용 설계이며 생물학적 뇌 재현을 주장하지 않는다.
 
 Gaesup World 기반 240×240 오픈월드에서 내 파트너 포켓몬을 직접 움직인다. 카메라는 파트너를 따라가며 별도 원통형 트레이너는 표시하지 않는다. 초원·숲·호수·고원을 탐험하며 같은 화면에서 자동 배틀, 포획, 성장과 진화를 진행한다. [수정한 계획과 완료 조건](docs/openworld-plan.md), [AWS 배포](docs/deployment.md)를 확인한다. 포켓몬 3D/스프라이트 바이너리는 Git에 포함하지 않으며 공개 빌드는 고정한 원본 CDN URL을 사용한다.
 
@@ -14,10 +14,16 @@ Node.js 22.13 이상에서 실행한다. 이 작업의 실행 환경은 Windows,
 npm ci
 npm run data:pokemon
 npx tsx scripts/fetch-pokemon-models.ts --all --concurrency 6
-npm run dev
+pnpm dev
 ```
 
 브라우저에서 **http://127.0.0.1:5173** 을 연다. 위 준비 명령을 실행하면 포켓몬 이미지 302개와 모델이 로컬 캐시에 저장된다. 커넥톰과 데이터, CC0 자연 소품 12종은 저장소에 포함된다. 개발 서버가 출력한 포트가 다르면 그 주소를 사용한다. 공개 빌드는 포켓몬 이미지·모델을 원본 URL에서 읽으므로 인터넷 연결이 필요하다.
+
+로그인·서버 저장·전체 회로를 개발할 때는 PostgreSQL 18과 Rust를 설치한 뒤 별도 터미널에서 `pnpm server:dev`를 실행한다. 이 명령은 기존 PostgreSQL 서비스와 구분되는 `data/local/postgres-server` 클러스터(127.0.0.1:55432)와 Rust API(8080)를 사용한다. 프론트엔드는 위처럼 터미널의 `pnpm dev`로 실행하며 `/api`를 Rust 서버로 프록시한다. 실제 데이터 파생 파일은 `uv run --with pyarrow --with numpy scripts/prepare-full-connectome.py`로 기존 검증 원본에서 생성한다. [서버 구조·운영](docs/rust-server.md), [전체 회로 출처](docs/full-connectome.md).
+
+2026-09-12 최신판은 **https://d3b0jo8g1tseoa.cloudfront.net/** 에 배포했다. 운영 가입·세이브 복원·전체 회로 배틀·서버 재시작 후 상태 유지까지 검증했다. 월 예상 기본 운영비는 USD 45~50이며 상세 근거와 확인하지 못한 범위는 [전달 기록](docs/delivery-2026-09-12.md)에 있다.
+
+게스트의 기존 IndexedDB 모험은 보존하고, 로그인 계정은 별도 저장공간을 사용한다. 서버와 다른 기기의 저장이 충돌하면 서버를 덮어쓰지 않고 로컬 복구본을 남긴다. 게스트 모험을 계정으로 옮길 때는 연구실에서 내보낸 뒤 로그인해서 불러온다. 이전 `server/*.ts` SQLite 구현은 호환성 참고용이며 기본 개발·운영 경로는 Rust/PostgreSQL이다.
 
 ## 모험
 

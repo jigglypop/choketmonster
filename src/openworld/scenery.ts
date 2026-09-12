@@ -20,18 +20,33 @@ export type SceneryPlacement = {
 };
 
 const ASSET_VERSION = '20260911-woodland';
-const assetUrl = (id: SceneryAssetId) => ['moss-boulder', 'moss-stone', 'fern'].includes(id)
+const cozyModels: Partial<Record<SceneryAssetId, { model: string; scale: number }>> = {
+  'tree-round': { model: 'tree-round', scale: 1 }, 'tree-oak': { model: 'tree-oak', scale: 1 },
+  'tree-fat': { model: 'tree-fat', scale: 1 }, 'tree-thin': { model: 'tree-thin', scale: 1 },
+  'tree-pine': { model: 'tree-pine', scale: 1 },
+  'rock-large': { model: 'rock-round', scale: 1 }, 'rock-moss': { model: 'rock-wide', scale: .85 },
+  'rock-small': { model: 'rock-round', scale: .3 }, 'rock-flat': { model: 'rock-wide', scale: .48 },
+  'rock-tall': { model: 'rock-tall', scale: 1 }, 'rock-ridge': { model: 'rock-wide', scale: 1.5 },
+  cliff: { model: 'rock-tall', scale: 1.2 },
+  'moss-boulder': { model: 'rock-round', scale: .65 }, 'moss-stone': { model: 'rock-wide', scale: .36 },
+  fern: { model: 'fern', scale: 1 },
+};
+const cozyUrl = (model: string) => `/models/openworld/cute-nature/${model}.glb?v=20260912-lowpoly`;
+const assetUrl = (id: SceneryAssetId) => cozyModels[id] ? cozyUrl(cozyModels[id]!.model) : ['moss-boulder', 'moss-stone', 'fern'].includes(id)
   ? `/models/openworld/nature-detail/${id}.glb?v=20260911` : ['rock-tall', 'rock-ridge', 'cliff'].includes(id)
   ? `/models/openworld/rocks/${id}.glb?v=20260911` : `/models/openworld/props/${id}.glb?v=${ASSET_VERSION}`;
 
-export const SCENERY_ASSETS: ReadonlyArray<{ id: SceneryAssetId; url: string }> = [
+export const SCENERY_ASSETS: ReadonlyArray<{ id: SceneryAssetId; url: string; authoredMaterials: boolean; scale: number }> = [
   'tree-round', 'tree-oak', 'tree-pine', 'tree-fat', 'tree-thin',
   'rock-large', 'rock-moss', 'rock-small', 'rock-flat',
   'rock-tall', 'rock-ridge', 'cliff',
   'moss-boulder', 'moss-stone', 'fern',
   'grass-tuft', 'grass-soft', 'flower-red', 'flower-yellow', 'flower-purple',
   'bush', 'mushroom-cluster', 'lily', 'stump', 'fence', 'fallen-log',
-].map(id => ({ id: id as SceneryAssetId, url: assetUrl(id as SceneryAssetId) }));
+].map(name => {
+  const id = name as SceneryAssetId, replacement = cozyModels[id];
+  return { id, url: assetUrl(id), scale: replacement?.scale ?? 1, authoredMaterials: !!replacement };
+});
 
 const emptyPlacements = (): Record<SceneryAssetId, SceneryPlacement[]> => ({
   'tree-round': [], 'tree-oak': [], 'tree-pine': [], 'tree-fat': [], 'tree-thin': [],

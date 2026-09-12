@@ -229,6 +229,34 @@ describe('151종 로컬 게임 엔진', () => {
     expect(restored.battle?.transformations?.[restored.player.team[0].instanceId]?.speciesId).toBe(7);
   });
 
+  it('회복·버프·상태 기술의 실제 효과를 기술 선택 학습용 텔레메트리로 반환한다', () => {
+    const state = createGame(1, 'strategic-move-telemetry');
+    const player = state.player.team[0];
+    player.moves = [105, 14, 50, 33].map(moveId => ({ moveId, pp: getMove(moveId).pp }));
+    player.hp = Math.floor(player.stats.hp / 2);
+    const battle = wildBattle(state, 4, 5);
+
+    const recovery = actBattle(state, { type: 'move', index: 0 }, 4).executedMoves[0];
+    expect(recovery).toMatchObject({ moveId: 105, category: 'healing', strategicEffect: true });
+    expect(recovery.hpRecovered).toBeGreaterThan(0);
+
+    const buff = actBattle(state, { type: 'move', index: 1 }, 4).executedMoves[0];
+    expect(buff).toMatchObject({ moveId: 14, category: 'buff', statStageDelta: 2, strategicEffect: true });
+    expect(battle.statStages?.[player.instanceId]?.attack).toBe(2);
+
+    const status = actBattle(state, { type: 'move', index: 2 }, 4).executedMoves[0];
+    expect(status).toMatchObject({ moveId: 50, category: 'status', ailmentApplied: true, strategicEffect: true });
+  });
+
+  it('기술별 학습 통계를 개체 저장과 함께 검증하고 복원한다', () => {
+    const state = createGame(1, 'move-learning-save');
+    const moveId = state.player.team[0].moves[0].moveId;
+    state.player.team[0].moveLearning = { [moveId]: { choices: 4, executed: 3, effective: 2, reward: .75 } };
+    expect(restoreGame(serializeGame(state)).player.team[0].moveLearning?.[moveId]).toEqual({ choices: 4, executed: 3, effective: 2, reward: .75 });
+    state.player.team[0].moveLearning[moveId].effective = 4;
+    expect(() => restoreGame(serializeGame(state))).toThrow('기술 학습 통계');
+  });
+
   it('이브이의 세 진화 분기를 아이템으로 구분한다', () => {
     for (const [item, targetId] of [['water-stone', 134], ['thunder-stone', 135], ['fire-stone', 136]] as const) {
       const state = createGame(1, `eevee-${item}`);

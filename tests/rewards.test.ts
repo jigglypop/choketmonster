@@ -34,6 +34,14 @@ describe('engineered Kanto rewards', () => {
     expect(result.total).toBe(0);
   });
 
+  it('credits useful recovery, buffs, and ailments while penalizing a resolved no-effect status move', () => {
+    const base = { ...credit, selfHpBefore: 40, selfHpAfter: 70, selfMaxHp: 100, opponentHpBefore: 100, opponentHpAfter: 100, opponentMaxHp: 100, actionExecuted: true, attackHit: true };
+    expect(rewardBattleTurn({ ...base, moveCategory: 'healing', hpRecovered: 30, strategicEffect: true }).breakdown.moveEffect).toBeCloseTo(.195);
+    expect(rewardBattleTurn({ ...base, selfHpAfter: 40, moveCategory: 'buff', statStageDelta: 2, strategicEffect: true }).breakdown.moveEffect).toBe(.16);
+    expect(rewardBattleTurn({ ...base, selfHpAfter: 40, moveCategory: 'status', ailmentApplied: true, strategicEffect: true }).breakdown.moveEffect).toBe(.18);
+    expect(rewardBattleTurn({ ...base, selfHpAfter: 40, moveCategory: 'status', strategicEffect: false }).breakdown.moveEffect).toBe(-.12);
+  });
+
   it('combines normalized HP, victory, level and evolution events within bounds', () => {
     const result = rewardBattleTurn({
       ...credit,
@@ -96,5 +104,13 @@ describe('engineered Kanto rewards', () => {
     expect(() => appendReward(ledger, { event: 'engagement', tick: 1, source: 'manual' }, rewardEncounter({ ...credit, movementLedToEncounter: true }))).toThrow('Only connectome');
     expect(() => validateRewardLedger({ ...ledger, latest: Array(33).fill({}) })).toThrow('Invalid reward ledger');
     expect(() => validateRewardLedger({ ...ledger, lifetime: { ...ledger.lifetime, total: Number.NaN } })).toThrow('Invalid reward ledger lifetime');
+  });
+
+  it('migrates pre-move-effect reward ledgers with a zero component', () => {
+    const legacy = structuredClone(emptyRewardLedger('legacy')) as unknown as { lifetime: { componentTotals: Record<string, number>; componentCounts: Record<string, number> }; latest: Array<{ breakdown: Record<string, number> }> };
+    delete legacy.lifetime.componentTotals.moveEffect; delete legacy.lifetime.componentCounts.moveEffect;
+    validateRewardLedger(legacy);
+    expect(legacy.lifetime.componentTotals.moveEffect).toBe(0);
+    expect(legacy.lifetime.componentCounts.moveEffect).toBe(0);
   });
 });

@@ -1,0 +1,100 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Main-branch GitHub OIDC deployment for the existing Choketmon site and Rust API.
+Resources:
+  DeployDocument:
+    Type: AWS::SSM::Document
+    Properties:
+      Name: ChoketmonDeployRelease
+      DocumentType: Command
+      UpdateMethod: NewVersion
+      Content:
+        schemaVersion: '2.2'
+        description: Install a verified CI binary while retaining the existing graph, database and environment.
+        parameters:
+          Release:
+            type: String
+            allowedPattern: '^[0-9a-f]{40}$'
+          Sha256:
+            type: String
+            allowedPattern: '^[0-9a-f]{64}$'
+        mainSteps:
+          - action: aws:runShellScript
+            name: deploy
+            inputs:
+              timeoutSeconds: '240'
+              runCommand:
+                - |
+                  set -eu
+                  exec 9>/run/choketmon-deploy.lock
+                  flock -w 120 9
+                  release='{{Release}}'
+                  expected='{{Sha256}}'
+                  root=/opt/choketmon
+                  install -d -m 750 "$root/ci-staging"
+                  aws s3 cp "s3://choketmon-runtime-960243570517-ap-northeast-2/ci/$release/choketmon-server" "$root/ci-staging/choketmon-server" --region ap-northeast-2 --no-progress --only-show-errors
+                  printf '%s  %s\n' "$expected" "$root/ci-staging/choketmon-server" | sha256sum -c -
+                  test -f "$root/connectome/manifest.json"
+                  test -f /etc/choketmon/server.env
+                  cp -p "$root/choketmon-server" "$root/choketmon-server.previous"
+                  install -m 755 "$root/ci-staging/choketmon-server" "$root/choketmon-server.next"
+                  mv -f "$root/choketmon-server.next" "$root/choketmon-server"
+                  healthy=false
+                  if systemctl restart choketmon; then
+                    for attempt in $(seq 1 30); do
+                      if curl --max-time 3 -fsS http://127.0.0.1:8080/api/health > "$root/ci-staging/health.json" && python3 -c 'import json,sys; h=json.load(open(sys.argv[1])); sys.exit(not (h.get("status")=="ok" and h.get("server")=="rust" and h.get("database")=="postgresql" and h.get("connectome") is True))' "$root/ci-staging/health.json"; then healthy=true; break; fi
+                      sleep 2
+                    done
+                  fi
+                  if [ "$healthy" != true ]; then
+                    mv -f "$root/choketmon-server.previous" "$root/choketmon-server"
+                    systemctl restart choketmon
+                    echo 'New binary failed health check; restored previous executable.' >&2
+                    exit 1
+                  fi
+                  printf '{"gitCommit":"%s","binarySha256":"%s"}\n' "$release" "$expected" > "$root/release.json"
+                  cat "$root/ci-staging/health.json"
+                  systemctl is-active choketmon
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: choketmon-github-deploy
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: arn:aws:iam::960243570517:oidc-provider/token.actions.githubusercontent.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: repo:jigglypop@52653682/choketmonster@1364221925:ref:refs/heads/main
+      Policies:
+        - PolicyName: DeployChoketmonOnly
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [s3:ListBucket, s3:GetBucketLocation]
+                Resource: arn:aws:s3:::choketmonster-960243570517-apne2
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject]
+                Resource:
+                  - arn:aws:s3:::choketmonster-960243570517-apne2/*
+                  - arn:aws:s3:::choketmon-runtime-960243570517-ap-northeast-2/ci/*
+              - Effect: Allow
+                Action: [cloudfront:CreateInvalidation, cloudfront:GetInvalidation]
+                Resource: arn:aws:cloudfront::960243570517:distribution/E1P12YSCXY1AKT
+              - Effect: Allow
+                Action: ssm:SendCommand
+                Resource:
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:document/${DeployDocument}'
+                  - arn:aws:ec2:ap-northeast-2:960243570517:instance/i-0edb04b57d4e1361b
+              - Effect: Allow
+                Action: ssm:GetCommandInvocation
+                Resource: '*'
+      Tags: [{Key: application, Value: choketmonster}]
+Outputs:
+  DeployRoleArn: {Value: !GetAtt DeployRole.Arn}
+  DeployDocument: {Value: !Ref DeployDocument}

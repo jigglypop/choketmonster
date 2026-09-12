@@ -20,3 +20,4 @@ assets/source-world/
 src/data/.cache/
 __pycache__/
 *.pyc
+rust-server/target/

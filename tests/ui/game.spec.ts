@@ -26,6 +26,24 @@ async function exported(page: Page) {
   const file = await download; return JSON.parse(await readFile((await file.path())!, 'utf8'));
 }
 
+test('device-only save UI restores locally and shows server connectome status', async ({ page }) => {
+  const apiWrites: string[] = [];
+  page.on('request', request => { if (request.method() !== 'GET' && new URL(request.url()).pathname.startsWith('/api/')) apiWrites.push(new URL(request.url()).pathname); });
+  await page.route('**/api/auth/me', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user: null }) }));
+  await page.route('**/api/connectome', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ available: true, graphId: 'male-cns-full', kind: 'connectome-full', nodes: 139255, edges: 52496440, activeEdges: 3100200 }) }));
+  await page.goto('/');
+  await expect(page.locator('.device-storage')).toHaveText('이 기기에만 저장');
+  await expect(page.locator('#account-dialog,[data-open-auth],#logout-button')).toHaveCount(0);
+  await page.locator('[data-starter="1"]').click(); await page.locator('[data-tab="lab"]').click();
+  await expect(page.locator('.graph-numbers')).toContainText('브라우저 뉴런');
+  await expect(page.locator('.server-circuit')).toContainText('139,255'); await expect(page.locator('.server-circuit')).toContainText('52,496,440');
+  await page.screenshot({ path: 'artifacts/ui-lab-server.png', fullPage: true });
+  await page.locator('#save-now').click(); await expect(page.locator('#save-state')).toContainText('이 기기에 저장됨');
+  await page.reload(); await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 20_000 });
+  await page.locator('[data-tab="team"]').click(); await expect(page.locator('.detail-title h2')).toHaveText('이상해씨');
+  expect(apiWrites.filter(path => path.startsWith('/api/auth/') || path.startsWith('/api/saves/'))).toEqual([]);
+});
+
 test('real starter, map, all 151 local sprites, search, and an error-free desktop', async ({ page }) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await start(page);
@@ -40,6 +58,32 @@ test('real starter, map, all 151 local sprites, search, and an error-free deskto
   await expect(page.locator('.dex-card img')).toHaveAttribute('src', '/pokemon/151.png');
   await expect.poll(() => page.locator('img').evaluateAll(images => images.filter(image => !(image as HTMLImageElement).complete || !(image as HTMLImageElement).naturalWidth).length)).toBe(0);
   expect(errors).toEqual([]);
+});
+
+test('a 200-monster collection stays searchable, paginated, distinct, and mobile-safe', async ({ page }) => {
+  test.setTimeout(90000);
+  await start(page);
+  const game = createGame(1, 'ui-large-box');
+  const monsters = Array.from({ length: 200 }, (_, index) => createMonster(game, index % 151 + 1, 5 + index % 50));
+  game.player.team = monsters.slice(0, 6); game.player.box = monsters.slice(6);
+  await importGame(page, game); await page.locator('[data-tab="team"]').click();
+  await expect(page.locator('.team-slots .team-monster')).toHaveCount(6);
+  await expect(page.locator('.box-grid .box-monster')).toHaveCount(24);
+  await expect(page.locator('.box-result-line')).toContainText('194마리');
+  await page.locator('[data-box-page="1"]').click();
+  await expect(page.locator('.box-pagination')).toContainText('2 / 9');
+
+  const search = page.locator('#box-search'); await search.fill('피카츄');
+  await expect(search).toBeFocused(); await expect(page.locator('.box-grid .box-monster')).toHaveCount(2);
+  const ids = await page.locator('.box-grid .box-monster').evaluateAll(cards => cards.map(card => card.getAttribute('data-monster')));
+  expect(new Set(ids).size).toBe(2);
+  await page.locator('.box-grid .box-monster').nth(1).press('Enter');
+  await expect(page.locator('.detail-title code')).toHaveText(ids[1]!);
+  await expect(page.locator('.brain-memory')).toContainText('회로 상태 · 저장됨');
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const size = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, viewport: innerWidth }));
+  expect(size.scroll).toBeLessThanOrEqual(size.viewport);
 });
 
 test('browser capture, candy, evolution, save/reload and validated import', async ({ page }) => {

@@ -1,0 +1,2 @@
+ALTER TABLE saves ADD COLUMN IF NOT EXISTS payload_hash text NOT NULL DEFAULT '';
+ALTER TABLE neural_requests ADD COLUMN IF NOT EXISTS request_hash text NOT NULL DEFAULT '';

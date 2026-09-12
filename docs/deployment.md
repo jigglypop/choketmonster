@@ -1,14 +1,14 @@
-# AWS 정적 배포
+# AWS 웹·Rust 서버 배포
 
-초켓몬스터 웹 앱은 서울 리전의 비공개 S3 버킷과 CloudFront로 제공한다. CloudFormation 스택 이름은 `choketmonster-web`, 버킷 이름은 `choketmonster-960243570517-apne2`다.
+초켓몬스터는 정적 웹 앱과 계정·저장·전체 MaleCNS 회로 API를 같은 CloudFront 주소로 제공하도록 구성했다. 정적 파일은 서울 리전의 비공개 S3 버킷에서, `/api/*`는 CloudFront VPC origin을 통해 퍼블릭 인바운드가 없는 EC2 Rust 서버에서 읽는다. Rust 서버는 비공개 RDS PostgreSQL에 계정, 저장, 개체별 회로 상태와 재시도 영수증을 보관한다. 서버 런타임 묶음과 전체 회로 파일은 별도 비공개 S3 버킷에서 EC2로 전달하며 DB 관리자 비밀번호는 Secrets Manager가 관리한다.
 
 운영 주소: **https://d3b0jo8g1tseoa.cloudfront.net**
 
-최신 배포는 2026-09-11 KST의 `artifacts/deploy-2026-09-11T12-14-41-855Z.deployed.json`이다. 관동 v2 이동 경계, 순간이동, 선택·추적, 경험치 공유와 보상 기록을 포함한 44개 파일(6,884,964바이트)을 운영 URL에서 다시 내려받아 SHA-256이 모두 일치함을 확인했다. 전체 목록 해시는 `fd595563e496aa4704d3a36432fe1babd87f766f9738e366499a76f2e2313967`이다. CloudFront 캐시 무효화는 완료됐으며 스택은 `UPDATE_COMPLETE`, 배포판은 `Deployed`, 없는 GLB는 XML 403이다. 작업 트리의 수정본을 배포했으며 이번 변경을 GitHub에 푸시하지 않았다.
+2026-09-12의 `choketmon-server` 스택은 `infra/aws-server.yaml`의 EC2 `t3.small`, RDS PostgreSQL `db.t4g.micro` Single-AZ, CloudFront VPC origin 구성을 사용한다. 서버 릴리스는 `artifacts/release-20260912T093014Z/receipt.json`, 최신 화면은 `artifacts/deploy-2026-09-12T09-49-18-556Z.deployed.json`에 기록했다. HTTPS API 25개 검사는 `artifacts/rust-api-production.json`, 실제 가입·학습 배틀·저장·로그아웃·재로그인 복원은 `artifacts/rust-production-ui.json`에서 통과했다. EC2 서비스를 재시작한 뒤 세션, 정확한 세이브 내용, 학습 상태가 유지되는 검사도 `artifacts/rust-production-persistence.json`에서 통과했다. 구체적 범위와 제한은 [이번 전달 기록](delivery-2026-09-12.md)을 읽는다.
 
-파일 검증은 `artifacts/aws-deploy-verification.json`에 저장한다. 최신 빌드는 로컬 `http://localhost:5173/`에도 동일한 보존 배포 폴더를 Vite preview로 제공한다. 소스 개발과 Playwright의 기본 포트는 검사 중 충돌을 피하도록 5174를 사용했다. 실제 배포 화면 검사는 `KANTO_URL=https://d3b0jo8g1tseoa.cloudfront.net npx playwright test tests/ui/kanto.spec.ts`이며 스크린샷은 `artifacts/kanto-browser/`에 기록한다.
+`artifacts/deploy-2026-09-11T12-14-41-855Z.deployed.json`은 정적 전용 배포의 역사적 기록이다. 당시 검사를 Rust API 배포의 성공 근거로 사용하지 않는다. `artifacts/aws-deploy-verification.json`은 배포 스크립트가 갱신하는 최신 정적 파일 검사다. 실제 계정·전체 회로 화면 검사는 `CHOKETMON_LIVE_RUST=1`, `CHOKETMON_BASE_URL=https://d3b0jo8g1tseoa.cloudfront.net` 환경에서 `pnpm exec playwright test tests/ui/rust-live.spec.ts`로 실행한다.
 
-최신 운영 주소에서 관동 조작·구매·모바일, 야생 정보·추적·순간이동·경험치 공유 저장, 수동 배틀·승리 후 포획·재접속, 이전 v1 좌표와 개체 뇌 보존 복원까지 브라우저 시나리오 4개가 통과했고 각 시나리오의 JavaScript 실행 오류는 0개였다. 로컬 5173의 동일 빌드에서도 선택·추적·순간이동·공유 설정 저장을 다시 확인했다. 코어 테스트 84개와 `npm run build`가 통과했다. Vite의 큰 번들 경고는 남아 있다.
+역사적 정적 배포에서는 관동 조작·구매·모바일, 선택·추적·순간이동, 경험치 공유와 저장 복원 브라우저 검사가 통과했다. 새 배포의 완료 판정에는 여기에 계정 간 저장 격리, 동시 저장 충돌, 재로그인 복원, 요청 재전송의 멱등성, CSRF 거부, 전체 회로 응답과 평가 중 가중치 불변 검사를 추가해야 한다.
 
 ## 구성
 
@@ -16,8 +16,10 @@
 - S3 Object Ownership은 `BucketOwnerEnforced`, 저장 암호화는 AES-256이다.
 - CloudFront Origin Access Control은 SigV4 `always` 서명을 사용한다.
 - 버킷 정책은 이 스택의 CloudFront 배포 ARN에만 `s3:GetObject`를 허용한다.
+- `/api/*`는 CloudFront VPC origin으로 EC2의 8080 포트에 전달한다. 최종 EC2 보안 그룹은 CloudFront VPC origin 서비스 보안 그룹만 허용한다. EC2의 공인 IPv4는 패키지·SSM 아웃바운드용이며 퍼블릭 API·SSH 인바운드는 열지 않는다.
+- Rust 서버는 HttpOnly·SameSite 세션 쿠키, Origin 검사, 계정별 저장 revision과 request ID, 개체별 요청 영수증을 사용한다. RDS는 공개 액세스를 끄고 서버 보안 그룹에서만 5432를 허용한다.
 - HTTP 요청은 HTTPS로 리디렉션하고 CloudFront 기본 인증서를 사용한다.
-- 종량제 상태에서는 비용 범위를 줄이기 위해 `PriceClass_100`을 사용한다. 무료 정액 플랜에서는 플랜 호환 조건에 맞춰 `PriceClass_All`을 사용하며 이 배포판의 CDN 요금은 플랜에 포함된다.
+- VPC origin을 쓰는 현재 배포판은 CloudFront 무료 정액 플랜 대상이 아니므로 종량제 `PriceClass_100`을 사용한다.
 - Vite의 `/assets/*`는 1년 동안 캐시하고, `index.html`, JSON 등 변경 가능한 파일은 짧게 캐시한다.
 - 확장자가 없는 브라우저 경로만 CloudFront Function에서 `/index.html`로 바꾼다. 존재하지 않는 `.glb`, `.json`, `.js` 요청에는 HTML을 반환하지 않는다.
 - 버킷과 객체는 스택 삭제 시에도 보존되도록 버킷에 `Retain` 정책을 둔다.
@@ -80,26 +82,10 @@ curl.exe -I "$url/missing-model.glb"
 
 이 명령도 파일 해시를 먼저 검사하고, HTML을 마지막에 게시하고, 캐시 무효화와 운영 URL 재검증을 마친다. 로컬 영수증을 잃었을 때는 S3 버전 관리에서 필요한 객체의 이전 VersionId를 확인해 복원한 뒤 `./scripts/verify-aws-deploy.ps1`로 검사한다.
 
-## CloudFront 무료 정액 플랜
+## 비용과 이전 무료 플랜 기록
 
-AWS는 2026-09-03부터 [PricingPlanManager API와 CloudFormation 지원](https://aws.amazon.com/about-aws/whats-new/2026/09/cloudfront-flat-rate-pricing-plans-api/)을 제공한다. [무료 플랜](https://docs.aws.amazon.com/PricingPlanManager/latest/UserGuide/plans.html)은 월 USD 0, 데이터 전송 100GB, 요청 100만 건과 S3 Standard 5GB 크레딧을 포함하며 CloudFront 배포에 트래픽 초과 요금을 붙이지 않는다. 허용량은 차단선이 아니며 장기간 크게 초과하면 AWS가 전송 성능을 조정할 수 있다. 다만 AWS Free Tier 계정은 이 플랜을 사용할 수 없고, 배포에 전용 `CLOUDFRONT` 범위 WAF Web ACL이 연결되어야 한다. 지원하지 않는 기능과 계정·리소스 제약은 [CloudFront 공식 문서](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/flat-rate-pricing-plan.html)에서 확인한다.
+현재 VPC origin 구성은 CloudFront 무료 정액 플랜이 지원하지 않으므로 2026-09-12부터 종량제로 운영한다. 서울 리전 공개 가격 조회 원본인 `artifacts/ec2-pricing.json`은 Linux `t3.small` On-Demand를 시간당 USD 0.026, `artifacts/rds-pricing.json`은 PostgreSQL Single-AZ `db.t4g.micro`를 시간당 USD 0.025로 기록한다. 두 인스턴스를 730시간 실행하면 약 USD 37.23이며, RDS·EBS 저장 공간, Secrets Manager, S3, CloudFront 요청·전송량을 더한 현재 계획치는 월 USD 45~50에 트래픽과 세금이 추가되는 범위다. 실제 청구액은 사용량과 환율에 따라 달라지므로 Cost Explorer와 예산 경보로 확인한다.
 
-다음 명령은 기본적으로 계정, 기존 배포 ARN, 두 CloudFormation 템플릿만 읽고 검증하며 AWS 리소스를 바꾸지 않는다.
+2026-09-11에는 정적 S3 배포판에 CloudFront `FREE` 정액 플랜과 전용 WAF를 연결했다. 이는 이전 정적 전용 구성의 역사적 기록이며 현재 VPC origin 배포에 적용할 수 없다. Rust 서버 배포 절차는 기존 무료 구독을 비활성화하고 WAF를 분리한 뒤 `PriceClass_100` 종량제 설정과 API VPC origin을 적용한다.
 
-```powershell
-./scripts/manage-aws-free-plan.ps1
-```
-
-검토 후 무료 플랜을 적용할 때만 `-Apply`를 명시한다.
-
-```powershell
-./scripts/manage-aws-free-plan.ps1 -Apply
-```
-
-적용은 `us-east-1`에 전용 WAF를 만들고 기존 배포에 연결한 다음, `FREE`와 `DEFAULT` 사용량으로 고정된 구독을 활성화한다. 플랜 모드에서는 AWS 관리형 `CachingOptimized` 캐시 정책과 `SecurityHeadersPolicy` 응답 헤더 정책을 사용하고 `PriceClass_All`로 전환한다. `UseOriginCacheControlHeaders` 관리형 정책은 뷰어의 `Host` 헤더를 전달해 비공개 S3 REST 원본을 404로 만들기 때문에 사용하지 않는다. `CachingOptimized`는 `Host`를 전달하지 않고 S3 객체의 `Cache-Control`을 존중한다.
-
-스크립트와 템플릿에는 유료 tier나 유료 승인 작업이 없다. 미리보기는 Cloud Control API로 기존 구독 수도 확인하며, 이미 이 배포판에 활성 무료 구독이 있으면 성공으로 종료한다. 계정의 무료 플랜 3개 한도를 채웠거나 기존 구독 상태가 `ACTIVE/FREE`가 아니면 적용을 중단한다. WAF 연결 뒤 구독 활성화 또는 검증이 실패하면 같은 실행에서 `WebAclArn`을 비우고 종량제용 `PriceClass_100`과 사용자 정의 정책을 복원한 뒤 임시 WAF 스택을 삭제한다.
-
-2026-09-11 현재 배포판 `E1P12YSCXY1AKT`에는 무료 구독 `arn:aws:pricingplanmanager::960243570517:subscription:sub_3JBD7uJGoTmxs5Tcuij7xYfF6xr`가 `ACTIVE` 상태로 연결되어 있다. 구독의 `ResourceArns`에는 이 배포판과 전용 WAF `choketmonster-free-plan-web-acl`이 모두 들어 있으므로 이 WAF의 기본 요금과 요청 요금도 플랜에 포함된다. 계정에는 다른 배포용 활성 `FREE` 구독 1개가 별도로 있다. 운영 루트는 HTTPS 200, 없는 GLB는 XML 403으로 다시 확인했다.
-
-현재 설치된 AWS CLI 2.34.43은 `pricingplanmanager` 직접 명령을 아직 노출하지 않지만 CloudFormation은 새 리소스 타입을 검증하므로 이 경로를 사용한다. WAF 생성과 무료 구독 활성화 사이의 짧은 시간에는 표준 WAF 요금이 계산될 가능성이 있다. S3의 최근 30일 롤백 버전 저장량처럼 플랜에 포함되지 않거나 허용량을 벗어난 서비스 비용도 별도로 발생할 수 있다.
+`./scripts/manage-aws-free-plan.ps1`은 여전히 읽기 전용 미리보기를 제공하지만, 사이트 스택의 `ApiVpcOriginId`가 설정되어 있으면 `freePlanCompatible: false`를 표시한다. 이 상태에서 `-Apply`를 실행하면 AWS 리소스를 변경하기 전에 중단한다. 다시 무료 플랜을 검토하려면 먼저 API VPC origin을 제거하는 별도 아키텍처 변경이 필요하다.

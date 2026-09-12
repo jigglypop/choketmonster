@@ -8,6 +8,9 @@
   },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "start": "cargo run --release --manifest-path rust-server/Cargo.toml",
+    "server:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-rust-server.ps1",
+    "check:server": "tsx scripts/verify-rust-api.ts --brain",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",

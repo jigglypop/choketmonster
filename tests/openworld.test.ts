@@ -128,14 +128,19 @@ describe('connectome open world', () => {
   it('uses transformed moves for neural choices and excludes queued manual turns from player learning', async () => {
     const graph = await loadGraph(), policy = await loadPolicy(), game = createGame(1, 'open-world-transform');
     game.player.team = [createMonster(game, 1, 16)];
-    const player = game.player.team[0], brain = new Brain(991, graph); brain.state.sensoryBypass = false; brain.state.readout.forEach(row => row.fill(0)); player.brain = brain.snapshot();
+    const player = game.player.team[0], brain = new Brain(991, graph); brain.state.sensoryBypass = false;
+    brain.state.inputWeights.forEach(row => { row.fill(0); row[0] = 1; });
+    brain.state.readout.forEach((row, action) => { row.fill(0); for (let i = 12; i < row.length; i++) row[i] = action === 2 ? 1 : -1; });
+    player.brain = brain.snapshot();
     const world = new OpenWorldSimulation(graph, game, 912, undefined, policy), target = world.entities.find(entity => entity.kind === 'wild')!;
     world.startEncounter(target.id);
-    const form = createMonster(game, 7, 16), transformedMoves = structuredClone(player.moves); transformedMoves.forEach(move => { move.pp = 0; }); transformedMoves[2].pp = 3;
+    const form = createMonster(game, 7, 16), transformedMoves = structuredClone(player.moves); transformedMoves.forEach(move => { move.pp = 0; }); transformedMoves[2] = { moveId: 14, pp: 3 };
     game.battle!.transformations = { [player.instanceId]: { speciesId: form.speciesId, stats: form.stats, moves: transformedMoves } };
     const automatic = world.step({ deltaSeconds: 1, learning: true }).events.find(event => event.type === 'battle-turn');
     expect(automatic?.type === 'battle-turn' && automatic.result.playerAction).toEqual({ type: 'move', index: 2 });
+    expect(automatic?.type === 'battle-turn' && automatic.result.executedMoves.find(move => move.actorInstanceId === player.instanceId)).toMatchObject({ moveId: 14, category: 'buff', strategicEffect: true });
     expect(game.battle!.transformations![player.instanceId].moves[2].pp).toBe(2);
+    expect(player.moveLearning?.[14]).toMatchObject({ choices: 1, executed: 1, effective: 1 });
     player.hp = Math.max(1, player.hp - 1);
     const updatesBeforeManual = player.brain!.updates;
     expect(world.requestAction({ type: 'item', item: 'potion' })).toBe(true);
