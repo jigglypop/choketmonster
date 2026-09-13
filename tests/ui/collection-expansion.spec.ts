@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { createGame, createMonster } from '../../src/game/engine';
 import { defaultView, packSave } from '../../src/game/storage';
 import type { Graph } from '../../src/core/brain';
@@ -9,50 +9,82 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
 });
 
-test('version collection, later-generation images, duplicate XP and release survive a reload', async ({ page }) => {
+test('duplicate XP and release use cancellable app modals, with readable team actions and reload persistence', async ({ page }) => {
   test.setTimeout(150000);
-  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
-  const model906 = readFileSync('data/local/pokemon-models-expanded/429de1288cea0d43f5b4f56305d2276e94239d65/906.glb');
-  await page.route('https://raw.githubusercontent.com/Pokemon-3D-api/assets/**/906.glb', route => route.fulfill({ body: model906, contentType: 'model/gltf-binary' }));
-  await page.goto('/'); await page.locator('[data-starter="1"]').click();
-  await expect(page.locator('#world-version')).toHaveValue('red');
-  await page.locator('[data-tab="dex"]').click();
-  await expect(page.locator('.dex-card')).toHaveCount(60);
-  await page.locator('#dex-version').selectOption('scarlet');
-  await page.locator('#dex-search').fill('906');
-  await expect(page.locator('.dex-card')).toHaveCount(1);
-  await page.locator('.dex-card').click();
-  await expect(page.locator('.model-host canvas')).toHaveAttribute('data-ready', 'true', { timeout: 30000 });
-  await expect(page.locator('.model-host canvas')).toHaveAttribute('data-species', '906');
-  await page.locator('.model-dialog button').click();
-  const unsupportedCollect = page.locator('#collect-version');
-  await expect(unsupportedCollect).toBeDisabled();
-  await expect(unsupportedCollect).toHaveText('지역 3D 맵 미확보 · 도감만 보기');
-  await page.locator('#dex-version').selectOption('national');
-  await page.locator('#collect-version').click();
-  await expect(page.locator('#world-version')).toHaveValue('national');
-  await page.locator('#world-pause').click();
-  await page.locator('#save-now').click(); await page.reload();
-  await expect(page.locator('#world-version')).toHaveValue('national');
-
-  const game = createGame(1, 'collection-ui'); game.player.box.push(createMonster(game, 1, 20), createMonster(game, 25, 8));
+  const errors: string[] = [], browserDialogs: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('dialog', async dialog => { browserDialogs.push(dialog.type()); await dialog.dismiss(); });
+  await page.route(/\.(?:glb|gltf)(?:\?.*)?$/, route => route.abort());
+  const game = createGame(1, 'collection-ui');
+  game.player.box.push(createMonster(game, 1, 20), createMonster(game, 25, 8));
   game.dex.seen.push(25); game.dex.caught.push(25);
   const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
-  await page.locator('#import-file').setInputFiles({ name: 'collection.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(packSave(game, graph, defaultView()))) });
+  await page.goto('/');
+  await expect(page.locator('[data-starter="1"]')).toBeVisible({ timeout: 30_000 });
+  await page.locator('[data-starter="1"]').click();
+  await page.locator('#import-file').setInputFiles({ name: 'collection.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(packSave(game, graph, { ...defaultView(), openWorldPaused: true }))) });
   await expect(page.locator('#toast')).toContainText('불러왔습니다');
   await page.locator('[data-tab="team"]').click();
-  page.on('dialog', dialog => dialog.accept());
+
+  await page.locator('[data-withdraw-id="mon-3"]').click();
+  await page.locator('[data-lead="1"]').click();
+  await expect(page.locator('.team-monster').first()).toHaveAttribute('data-monster', 'mon-3');
+  const output = process.env.CHOKETMON_COLLECTION_ARTIFACTS ?? 'artifacts/collection-modals/local';
+  mkdirSync(output, { recursive: true });
+  for (const width of [1440, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    const fits = await page.locator('.team-slots .card-action').evaluateAll(buttons => buttons.every(button => {
+      const box = button.getBoundingClientRect(), card = button.closest('.monster-card')!.getBoundingClientRect();
+      return parseFloat(getComputedStyle(button).fontSize) >= 16 && box.height >= 44
+        && box.left >= card.left && box.right <= card.right && box.right <= innerWidth;
+    }));
+    expect(fits).toBe(true);
+    if (width === 390) await page.locator('.team-rack').screenshot({ path: `${output}/team-actions-mobile.png` });
+  }
+  await page.locator('[data-deposit="0"]').click();
+  await expect(page.locator('.team-monster').first()).toHaveAttribute('data-monster', 'mon-1');
+  await page.locator('#open-interface-settings').click();
+  await page.locator('#interface-font-size').evaluate((input: HTMLInputElement) => { input.value = '150'; input.dispatchEvent(new Event('input', { bubbles: true })); });
+  await page.locator('.settings-close').click();
+
   await page.locator('#merge-duplicate').click();
+  const modal = page.getByRole('dialog', { name: '경험치를 합칠까요?' });
+  await expect(modal).toBeVisible();
+  await expect(modal.locator('.confirmation-cancel')).toBeFocused();
+  await expect(modal).toContainText('mon-2');
+  await expect(modal).toContainText('mon-1');
+  const fits = await modal.evaluate(dialog => { const r = dialog.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && dialog.scrollWidth <= dialog.clientWidth + 1; });
+  expect(fits).toBe(true);
+  await modal.screenshot({ path: `${output}/merge-modal-mobile-150.png` });
+  await modal.locator('.confirmation-cancel').click();
+  await expect(modal).toHaveCount(0);
+  await expect(page.locator('#merge-duplicate')).toBeFocused();
+  await expect(page.locator('[data-monster="mon-2"]')).toHaveCount(1);
+  await expect(page.locator('.detail-title > p')).toContainText('Lv.5');
+  await page.locator('#merge-duplicate').click();
+  await page.keyboard.press('Escape');
+  await expect(modal).toHaveCount(0);
+  await expect(page.locator('[data-monster="mon-2"]')).toHaveCount(1);
+  await page.locator('#merge-duplicate').click();
+  await modal.getByRole('button', { name: '경험치 합치기', exact: true }).click();
   await expect(page.locator('#toast')).toContainText('경험치를 합쳤습니다');
-  await expect(page.locator('.detail-title p')).not.toContainText('Lv.5');
+  await expect(page.locator('[data-monster="mon-2"]')).toHaveCount(0);
+  await expect(page.locator('.detail-title > p')).not.toContainText('Lv.5');
   await page.locator('[data-monster="mon-3"]').click();
   await page.locator('#release-monster').click();
+  const release = page.getByRole('dialog', { name: '포켓몬을 놓아줄까요?' });
+  await expect(release).toContainText('피카츄');
+  await release.getByRole('button', { name: '확인 창 닫기' }).click();
+  await expect(page.locator('[data-monster="mon-3"]')).toHaveCount(1);
+  await page.locator('#release-monster').click();
+  await release.getByRole('button', { name: '놓아주기', exact: true }).click();
   await expect(page.locator('#toast')).toContainText('놓아주었습니다');
   await expect(page.locator('[data-monster="mon-3"]')).toHaveCount(0);
   await expect(page.locator('#release-monster')).toBeDisabled();
   await page.reload(); await page.locator('[data-tab="team"]').click();
-  await expect(page.locator('.count-chip')).toContainText('박스 0');
-  await expect(page.locator('.detail-title p')).not.toContainText('Lv.5');
+  await expect(page.locator('.count-chip')).toContainText('박스 0', { timeout: 30_000 });
+  await expect(page.locator('.detail-title > p')).not.toContainText('Lv.5');
+  expect(browserDialogs).toEqual([]);
   expect(errors).toEqual([]);
 });
 

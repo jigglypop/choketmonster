@@ -33,6 +33,7 @@ import { defaultView, getSaveStorageStatus, onSaveStorageStatus, packSave, readS
 import './responsive.css';
 import './ui/appearance.css';
 import { mountInterfaceSettings } from './ui/settings';
+import { confirmAction } from './ui/confirm-action';
 
 type Tab = 'map' | 'team' | 'dex' | 'shop' | 'lab';
 type PersistentView = ViewState & { rewards?: Record<string, number>; openWorld?: OpenWorldSnapshot };
@@ -296,14 +297,30 @@ function renderSelectedDetail() {
   $<HTMLButtonElement>('#use-potion').onclick = () => action(() => useItem(game!, 'potion', selected.instanceId)); $<HTMLButtonElement>('#use-candy').onclick = () => action(() => useItem(game!, 'rare-candy', selected.instanceId));
   const duplicates = owned().filter(monster => monster.speciesId === selected.speciesId && monster.instanceId !== selected.instanceId);
   detail.insertAdjacentHTML('beforeend', `<section class="collection-actions"><h3>개체 관리</h3><p>경험치를 합치면 선택한 중복 개체를 놓아주고, 현재 개체의 회로 기억을 유지합니다.</p>${duplicates.length ? `<label for="merge-donor">경험치를 보낼 중복 개체</label><select id="merge-donor">${duplicates.map(monster => `<option value="${monster.instanceId}">Lv.${monster.level} · ${monster.instanceId} · 경험치 ${monster.xp.toLocaleString()}</option>`).join('')}</select><button id="merge-duplicate" ${selected.level >= 100 ? 'disabled' : ''}>이 포켓몬에게 경험치 합치기</button>` : '<small>같은 종을 더 잡으면 경험치를 합칠 수 있습니다.</small>'}<button id="release-monster" class="danger" ${game.player.team.length === 1 && game.player.team[0].instanceId === selected.instanceId ? 'disabled' : ''}>이 포켓몬 놓아주기</button></section>`);
+  let managingCollection = false;
   const remove = async (donorId: string, merge: boolean) => {
-    if (!game || !confirm(merge ? `${donorId}을(를) 놓아주고 ${selected.nickname}에게 경험치를 합칠까요? 남긴 개체의 기억은 유지됩니다.` : `${selected.nickname} (${donorId})을(를) 놓아줄까요? 도감 기록은 유지됩니다.`)) return;
+    if (!game || managingCollection) return;
+    const editedGame = game, donor = owned().find(monster => monster.instanceId === donorId);
+    if (!donor) return;
+    managingCollection = true;
     try {
-      captureWorld(); await writeSave(packSave(game, controller.graph, view), 'backup-before-release');
-      if (merge) mergeDuplicateMonster(game, selected.instanceId, donorId); else releaseMonster(game, donorId);
+      const confirmed = await confirmAction({
+        title: merge ? '경험치를 합칠까요?' : '포켓몬을 놓아줄까요?',
+        message: merge
+          ? `${donor.nickname} (Lv.${donor.level} · ${donorId})의 경험치 ${donor.xp.toLocaleString()}을 ${selected.nickname} (${selected.instanceId})에게 보냅니다.`
+          : `${donor.nickname} (Lv.${donor.level} · ${donorId})을 놓아줍니다.`,
+        detail: merge ? '경험치를 보낸 포켓몬은 팀·박스에서 떠납니다. 남긴 포켓몬의 회로 기억은 유지합니다.' : '이 포켓몬은 팀·박스에서 떠나며, 도감의 수집 기록은 유지합니다.',
+        confirmLabel: merge ? '경험치 합치기' : '놓아주기', destructive: !merge,
+      });
+      if (!confirmed) return;
+      if (game !== editedGame) throw new Error('모험이 바뀌었습니다. 현재 포켓몬을 다시 선택해 주세요.');
+      captureWorld(); await writeSave(packSave(editedGame, controller.graph, view), 'backup-before-release');
+      if (game !== editedGame) throw new Error('모험이 바뀌었습니다. 현재 포켓몬을 다시 선택해 주세요.');
+      if (merge) mergeDuplicateMonster(editedGame, selected.instanceId, donorId); else releaseMonster(editedGame, donorId);
       if (view.rewards) delete view.rewards[donorId];
       captureWorld(); renderTeam(); shellStats(); await saveNow(false, true); notify(merge ? '경험치를 합쳤습니다.' : '포켓몬을 놓아주었습니다.');
     } catch (error) { notify(String(error), true); }
+    finally { managingCollection = false; }
   };
   detail.querySelector<HTMLButtonElement>('#merge-duplicate')?.addEventListener('click', () => void remove($<HTMLSelectElement>('#merge-donor').value, true));
   $('#release-monster').onclick = () => void remove(selected.instanceId, false);

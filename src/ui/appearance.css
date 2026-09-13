@@ -74,8 +74,13 @@ input[type=search], input[type=text], select { border: 1px solid var(--ui-border
 .team-slots .monster-card-copy > span, .team-slots .monster-card-copy > small, .box-grid .monster-card-copy > span, .box-grid .monster-card-copy > small { font-size: calc(12px * var(--ui-font-scale)); white-space: normal; line-height: 1.5; }
 .team-slots .type, .box-grid .monster-card-copy .type { font-size: calc(11px * var(--ui-font-scale)); padding: 3px 6px; border-radius: 5px; }
 .team-page .monster-card.selected { border-color: #7aa3ed; background: #eff5ff; box-shadow: 0 0 0 1px #7aa3ed; }
-.card-action { font-size: calc(12px * var(--ui-font-scale)); min-height: 30px; }
-.team-slots .card-actions { position: static; display: flex; flex-wrap: wrap; margin-top: 8px; }
+.team-page .card-action { font-size: calc(16px * var(--ui-font-scale)); font-weight: 650; line-height: 1.35; min-height: 44px; padding: 9px 12px; border: 1px solid #bfd0ea; border-radius: 9px; background: #eaf1ff; color: #2457ab; }
+.team-page .card-action:disabled { opacity: 1; color: #68788d; background: #f0f3f7; border-color: #dce3ec; }
+.team-slots .monster-card { flex-wrap: wrap; }
+.team-slots .monster-card-copy { flex: 1; }
+.team-slots .card-actions .card-action { flex: 1 1 90px; min-width: 0; }
+.box-grid .card-action { position: static; grid-column: 1 / -1; margin-top: 8px; width: 100%; }
+.team-slots .card-actions { position: static; display: flex; flex-wrap: wrap; gap: 8px; width: 100%; flex-shrink: 0; margin-top: 8px; }
 .team-layout { grid-template-columns: minmax(0, 1fr) minmax(360px, 440px); gap: 22px; }
 .box-panel { padding: 22px; }
 .box-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; min-height: 220px; }
@@ -310,3 +315,18 @@ input[type=search], input[type=text], select { border: 1px solid var(--ui-border
 }
 @media(max-width:400px) { .topbar #save-now { display: none; } .topbar .trainer-summary { gap: 4px; } }
 @media(prefers-reduced-motion:reduce) { button { transition: none; } }
+
+.confirmation-dialog { width: min(520px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 24px; border: 1px solid var(--ui-border); border-radius: 18px; background: var(--ui-surface); color: var(--ui-text); box-shadow: 0 24px 80px #0e192345; }
+.confirmation-dialog::backdrop { background: #111d32a8; backdrop-filter: blur(5px); }
+.confirmation-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.confirmation-dialog h2 { font-size: calc(23px * var(--ui-font-scale)); line-height: 1.35; margin: 0; word-break: keep-all; }
+.confirmation-close { flex: 0 0 44px; width: 44px; height: 44px; border: 0; border-radius: 9px; background: var(--ui-tint); color: var(--ui-text); font-size: 26px; }
+.confirmation-dialog p { font-size: calc(16px * var(--ui-font-scale)); line-height: 1.7; word-break: keep-all; overflow-wrap: anywhere; }
+#confirmation-message { margin: 20px 0 14px; }
+#confirmation-detail { padding: 14px; background: var(--ui-tint); border-radius: 10px; color: var(--ui-muted); }
+.confirmation-dialog form { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+.confirmation-dialog form button { flex: 1 1 120px; min-height: 48px; padding: 11px 14px; border: 1px solid var(--ui-border); border-radius: 10px; font-size: calc(16px * var(--ui-font-scale)); font-weight: 650; }
+.confirmation-cancel { background: var(--ui-surface); color: var(--ui-text); }
+.confirmation-accept { background: var(--ui-accent); color: white; }
+.confirmation-accept.destructive { background: #b64148; }
+@media(max-width:720px) { .confirmation-dialog { padding: 20px; } .team-slots .monster-card-copy { flex: 0 1 auto; } }
