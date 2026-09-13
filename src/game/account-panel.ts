@@ -61,10 +61,10 @@ export function mountAccountPanel(options: AccountPanelOptions) {
         await options.beforeSwitch?.(change);
         await checkpointSave('logout');
         await logout();
-        const save = await activateSaveProfile(null);
+        const save = await activateSaveProfile(null, { continueLocally: true });
         if (disposed) return;
         await options.afterSwitch?.({ from, to: null, reason: 'logout', save });
-        options.notify?.('로그아웃했습니다. 계정 저장은 서버에 체크포인트로 보관했습니다.');
+        options.notify?.('로그아웃했습니다. 방금 하던 모험을 이 기기에서 이어갑니다.');
       } catch (failure) {
         try { await options.onSwitchError?.(change, failure); } catch { /* Preserve the original error. */ }
         showError(failure);

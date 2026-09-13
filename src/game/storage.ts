@@ -177,10 +177,38 @@ async function reconcileRemote(profile: NonNullable<SaveProfile>, remote: Remote
   });
 }
 
+/** Explicit logout handoff. Never search unrelated account slots on guest startup. */
+async function copyAccountToDevice(profile: NonNullable<SaveProfile>): Promise<unknown | undefined> {
+  const db = await database(), backupKey = `backup-before-logout-${requestId()}-${Date.now()}`;
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite'), saves = tx.objectStore(STORE);
+    const account = saves.get(profileSlot('current', profile)), device = saves.get('current');
+    let result: unknown;
+    const copy = () => {
+      if (account.readyState !== 'done' || device.readyState !== 'done') return;
+      result = account.result ?? device.result;
+      if (account.result === undefined) return;
+      // Backup and replacement commit together. The account save and sync outbox
+      // stay untouched, so neither a failed transaction nor logout loses progress.
+      if (device.result !== undefined) saves.put(device.result, backupKey);
+      saves.put(account.result, 'current');
+    };
+    account.onsuccess = copy; device.onsuccess = copy;
+    tx.oncomplete = () => resolve(result); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
+  });
+}
+
 /** Switches the IndexedDB namespace and reconciles that account with PostgreSQL. */
-export async function activateSaveProfile(profile: SaveProfile): Promise<unknown | undefined> {
+export async function activateSaveProfile(profile: SaveProfile, options: { continueLocally?: boolean } = {}): Promise<unknown | undefined> {
   await localWriteQueue.catch(() => {});
   const generation = ++profileGeneration;
+  if (!profile && options.continueLocally && activeProfile) {
+    const save = await copyAccountToDevice(activeProfile);
+    if (generation !== profileGeneration) return undefined;
+    activeProfile = null;
+    announceStorage({ state: 'local', profileId: 'device' });
+    return save;
+  }
   activeProfile = profile ? { ...profile } : null;
   if (!profile) { announceStorage({ state: 'local', profileId: 'device' }); return readLocal('current'); }
   let remote: RemoteSave | undefined;

@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 test.skip(!process.env.CHOKETMON_LIVE_AUTH, 'Requires the local Rust/PostgreSQL server.');
 
-test('account save survives logout and login without replacing the guest adventure', async ({ page }) => {
+test('account save continues locally after logout and survives login', async ({ page }) => {
   const username = `live_${Date.now().toString(36)}`, password = `Test-${crypto.randomUUID()}-pass`;
   await page.goto('/');
   await expect(page.locator('#starter-dialog')).toBeVisible();
@@ -32,7 +32,7 @@ test('account save survives logout and login without replacing the guest adventu
   await page.locator('.logout-button').click();
   await expect(page.locator('[data-open-auth]')).toBeVisible();
   await page.locator('[data-tab="team"]').click();
-  await expect(page.locator('.monster-card strong').first()).toContainText('이상해씨');
+  await expect(page.locator('.monster-card strong').first()).toContainText('파이리');
 
   await page.locator('[data-open-auth]').click();
   await page.locator('.account-dialog input[name="username"]').fill(username);

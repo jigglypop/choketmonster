@@ -2,6 +2,45 @@ import { expect, test } from '@playwright/test';
 
 const save = (marker: string, savedAt = new Date().toISOString()) => ({ format: 'choketmon', version: 2, model: 'pokemon-recurrent-v1', savedAt, graph: {}, game: { marker }, view: {} });
 
+test('logout handoff rolls back a failed device write and includes the latest queued account save on retry', async ({ page }) => {
+  await page.route('**/api/saves/current', route => route.fulfill({ status: 404, json: {} }));
+  await page.goto('/data/connectome.json');
+  const result = await page.evaluate(async payload => {
+    const modulePath = '/src/game/storage.ts', storage = await import(/* @vite-ignore */ modulePath);
+    await storage.writeSave(payload.guest);
+    await storage.activateSaveProfile({ id: 'handoff-user' }); await storage.writeSave(payload.account);
+    const originalPut = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function (...args: Parameters<IDBObjectStore['put']>) {
+      const request = originalPut.apply(this, args);
+      if (this.name === 'saves' && args[1] === 'current') this.transaction.abort();
+      return request;
+    };
+    let failed = false;
+    try { await storage.activateSaveProfile(null, { continueLocally: true }); } catch { failed = true; }
+    finally { IDBObjectStore.prototype.put = originalPut; }
+    const profileAfterFailure = storage.currentSaveProfile();
+    await storage.activateSaveProfile(null); const guestAfterFailure = await storage.readSave();
+    await storage.activateSaveProfile({ id: 'handoff-user' });
+    const queuedWrite = storage.writeSave(payload.latest);
+    const restored = await storage.activateSaveProfile(null, { continueLocally: true }); await queuedWrite;
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('choketmon-151', 2); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+    });
+    const entries = await new Promise<Record<string, any>>((resolve, reject) => {
+      const tx = db.transaction('saves', 'readonly'), store = tx.objectStore('saves'), keys = store.getAllKeys(), values = store.getAll();
+      tx.oncomplete = () => resolve(Object.fromEntries(keys.result.map((key, i) => [String(key), values.result[i]]))); tx.onerror = () => reject(tx.error);
+    }); db.close();
+    return { failed, profileAfterFailure, guestAfterFailure, restored, entries };
+  }, { guest: save('guest'), account: save('account'), latest: save('latest') });
+  expect(result.failed).toBe(true);
+  expect(result.profileAfterFailure?.id).toBe('handoff-user');
+  expect(result.guestAfterFailure.game.marker).toBe('guest');
+  expect(result.restored.game.marker).toBe('latest');
+  expect(result.entries['account:handoff-user:current'].game.marker).toBe('latest');
+  const backups = Object.entries(result.entries).filter(([key]) => key.startsWith('backup-before-logout-'));
+  expect(backups).toHaveLength(1); expect(backups[0][1].game.marker).toBe('guest');
+});
+
 test('account writes stay in IndexedDB until an explicit checkpoint and never use the guest slot', async ({ page }) => {
   const puts: unknown[] = [];
   await page.route('**/api/saves/current', async route => {

@@ -55,6 +55,7 @@ let view: PersistentView = { ...defaultView(), rewards: {} };
 let tab: Tab = 'map', selectedMonsterId = '', dexQuery = '', boxQuery = '';
 let dexVersion = 'national', dexPage = 0;
 let pausedBeforeAccountSwitch = false;
+let switchingAccount = false;
 let accountPanel: ReturnType<typeof mountAccountPanel> | undefined;
 let dexMode: 'all' | 'seen' | 'caught' = 'all';
 let boxType = 'all', boxSort: 'number' | 'level' | 'name' | 'recent' = 'number', boxPage = 0;
@@ -95,11 +96,16 @@ function clearPendingLearning(monster: Monster) {
 }
 function monsterCard(monster: Monster, action = '', variant = '') { const species = getSpecies(monster.speciesId), interactive = Boolean(variant); return `<article class="monster-card ${variant} ${monster.instanceId === selectedMonsterId ? 'selected' : ''}" data-monster="${monster.instanceId}"${interactive ? ` tabindex="0" role="button" aria-label="${escapeHtml(monster.nickname)}, 레벨 ${monster.level}, 개체 ${escapeHtml(monster.instanceId.slice(-8))} 상세 보기"` : ''}><img src="${species.frontSprite}" alt=""><div class="monster-card-copy"><span>No.${String(species.id).padStart(3, '0')} · Lv.${monster.level}</span><strong>${escapeHtml(monster.nickname)}</strong><div>${typesHtml(species.id)}</div><small>HP ${monster.hp}/${monster.stats.hp} · ID ${escapeHtml(monster.instanceId.slice(-8))}</small></div>${action}</article>`; }
 function setSaveState(state: 'pending' | 'saving' | 'saved' | 'error' | 'local' | 'synced', message = '') { const badge = document.querySelector<HTMLElement>('#save-state'); if (!badge) return; badge.dataset.state = state; badge.title = message; badge.lastChild!.textContent = ` ${state === 'pending' ? '변경 있음' : state === 'saving' ? '저장 중' : state === 'error' ? '동기화 확인 필요' : state === 'synced' ? '서버 동기화 완료' : '이 기기에 저장됨'}`; }
-async function saveNow(announce = false, throwOnError = false) { if (!game || !controller) return; if (autosaveTimer) { clearTimeout(autosaveTimer); autosaveTimer = 0; } setSaveState('saving'); try { captureWorld(); await writeSave(packSave(game, controller.graph, view)); const status = getSaveStorageStatus(); setSaveState(status?.state ?? 'local', status?.message); if (announce) notify('이 기기에 저장했습니다.'); } catch (error) { setSaveState('error'); notify(`저장하지 못했습니다: ${error instanceof Error ? error.message : error}`, true); if (throwOnError) throw error; } }
-function queueSave() { setSaveState('pending'); if (!autosaveTimer) autosaveTimer = window.setTimeout(() => { autosaveTimer = 0; void saveNow(); }, 1000); }
+async function saveNow(announce = false, throwOnError = false, duringAccountSwitch = false) { if (!game || !controller || (switchingAccount && !duringAccountSwitch)) return; if (autosaveTimer) { clearTimeout(autosaveTimer); autosaveTimer = 0; } setSaveState('saving'); try { captureWorld(); await writeSave(packSave(game, controller.graph, view)); const status = getSaveStorageStatus(); setSaveState(status?.state ?? 'local', status?.message); if (announce) notify('이 기기에 저장했습니다.'); } catch (error) { setSaveState('error'); notify(`저장하지 못했습니다: ${error instanceof Error ? error.message : error}`, true); if (throwOnError) throw error; } }
+function queueSave() { if (switchingAccount) return; setSaveState('pending'); if (!autosaveTimer) autosaveTimer = window.setTimeout(() => { autosaveTimer = 0; void saveNow(); }, 1000); }
 function shellStats() { if (!game) return; $('#money').textContent = `₩${game.player.money.toLocaleString('ko-KR')}`; $('#badges').textContent = `도감 ${game.dex.caught.filter(isPlayableSpecies).length}/${PLAYABLE_SPECIES_IDS.length}`; $('.topbar').classList.toggle('map-overlay', tab === 'map'); document.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === tab)); }
 onSaveStorageStatus(status => setSaveState(status.state, status.message));
-function captureWorld() { if (worldPanel) { view.openWorld = worldPanel.simulation.snapshot(); view.openWorldPaused = worldPanel.paused; } }
+function captureWorld() { if (worldPanel) { view.openWorld = worldPanel.simulation.snapshot(); view.openWorldPaused = switchingAccount ? pausedBeforeAccountSwitch : worldPanel.paused; } }
+function setAccountSwitching(value: boolean) {
+  switchingAccount = value;
+  $('#screen').inert = value;
+  document.querySelectorAll<HTMLButtonElement>('[data-tab], #save-now').forEach(button => { button.disabled = value; });
+}
 function prepareWorld() {
   worldPanel?.unmount(); worldPanel = undefined;
   if (!game) return;
@@ -455,11 +461,17 @@ async function boot() { try { controller = await ConnectomeController.load();
   const legacyPolicyResponse = await fetch('/data/openworld-policy-legacy.json');
   if (!legacyPolicyResponse.ok) throw new Error('기존 관동 이동 정책을 확인하지 못했습니다.');
   legacyOpenWorldPolicy = await legacyPolicyResponse.json() as FieldPolicy;
-  const runtime = createFieldRuntime(() => { if (tab === 'map') { try { worldPanel?.tick(); } catch (error) { if (worldPanel) worldPanel.paused = true; notify(error instanceof Error ? error.message : '월드 실행 오류', true); } } }, 250);
+  const runtime = createFieldRuntime(() => { if (!switchingAccount && tab === 'map') { try { worldPanel?.tick(); } catch (error) { if (worldPanel) worldPanel.paused = true; notify(error instanceof Error ? error.message : '월드 실행 오류', true); } } }, 250);
   await runtime.start();
   accountPanel = mountAccountPanel({ container: $('#account-controls'), notify,
-    beforeSwitch: async () => { pausedBeforeAccountSwitch = worldPanel?.paused ?? false; if (worldPanel) await worldPanel.pauseAndSettle(); await saveNow(false, true); },
+    beforeSwitch: async () => {
+      pausedBeforeAccountSwitch = worldPanel?.paused ?? false; setAccountSwitching(true);
+      if (autosaveTimer) { clearTimeout(autosaveTimer); autosaveTimer = 0; }
+      if (worldPanel) await worldPanel.pauseAndSettle();
+      await saveNow(false, true, true);
+    },
     onSwitchError: change => {
+      setAccountSwitching(false);
       if (currentAccount()?.id !== change.from?.id) {
         worldPanel?.unmount(); worldPanel = undefined; game = undefined;
         if (autosaveTimer) { clearTimeout(autosaveTimer); autosaveTimer = 0; }
@@ -475,8 +487,10 @@ async function boot() { try { controller = await ConnectomeController.load();
       game = undefined; view = { ...defaultView(), rewards: {} }; selectedMonsterId = ''; tab = 'map';
       if (change.save) {
         const loaded = unpackSave(change.save, controller.graph); game = loaded.game; view = loaded.view;
+        $<HTMLDialogElement>('#starter-dialog').close();
         selectedMonsterId = game.player.team[0].instanceId; prepareWorld(); render();
       } else { $('#screen').innerHTML = '<section class="loading"><h1>새 모험을 시작하세요</h1></section>'; $<HTMLDialogElement>('#starter-dialog').showModal(); }
+      setAccountSwitching(false);
     },
   });
   await accountPanel.ready;
