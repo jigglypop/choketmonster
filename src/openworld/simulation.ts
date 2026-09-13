@@ -48,7 +48,9 @@ export type OpenWorldSnapshot = {
   rewardLedgers?: Record<string, RewardLedger>;
   regionId?: WorldRegionId;
   mapVersion?: string;
+  /** Legacy timer is accepted on import but no longer drives encounters. */
   densityRemaining?: number;
+  spawnAnchor?: { x: number; z: number };
   spawnSerial: number; nextFoodId: number; foods: WorldFood[]; respawnQueue?: WorldRespawn[]; entities: OpenWorldEntitySnapshot[]; companionMemories?: OpenWorldEntitySnapshot[];
 };
 type ServerFinalization = { self: NeuralMonster; other: NeuralMonster; turn: number; reward: number; learning: boolean; episode: string };
@@ -62,9 +64,8 @@ export type OpenWorldSave = { schema: 1; model: typeof OPEN_WORLD_MODEL; graphId
 
 const PATH_SAMPLE_DISTANCE = .45;
 const MANUAL_CONTROL_HOLD = .3;
-const DENSITY_MIN_RADIUS = 6;
-const DENSITY_MAX_RADIUS = 18;
-const DENSITY_TARGET = 6;
+const SPAWN_TRAVEL_DISTANCE = 24;
+const WILD_UNLOAD_DISTANCE = 38;
 const BATTLE_INTERVAL = 0.9;
 const UNIQUE_SPECIES = new Set([144, 145, 146, 150, 151]);
 const DIRECTIONS = [{ x: 0, z: -1 }, { x: 1, z: 0 }, { x: 0, z: 1 }, { x: -1, z: 0 }] as const;
@@ -141,7 +142,7 @@ export class OpenWorldSimulation {
   nextFoodId = 1;
   respawnQueue: WorldRespawn[] = [];
   manualControlRemaining = 0;
-  densityRemaining = 2.5;
+  private spawnAnchor: { x: number; z: number };
   private pendingCapture = false;
   private pendingBall?: BallItem;
   private pendingAction?: BattleAction;
@@ -213,6 +214,7 @@ export class OpenWorldSimulation {
     // Resolve eagerly so unknown checkpoint regions fail before any entity state is accepted.
     getWorldAtlas(this.regionId);
     this.player = { ...this.atlas.start, heading: 0 };
+    this.spawnAnchor = { ...this.player };
     this.visitedTownIds = this.initialVisitedTowns(this.atlas);
     this.visitedTownsByRegion = { [this.regionId]: [...this.visitedTownIds] };
     this.battleController = new ConnectomeController(this.graph); this.policy = policy ? structuredClone(policy) : undefined;
@@ -289,7 +291,7 @@ export class OpenWorldSimulation {
     this.respawnQueue = []; this.foods = [];
     while (this.wildEntities().length < count) this.spawnWild();
     while (this.foods.length < 24) this.spawnFood();
-    this.densityRemaining = 2.5; this.recordTownVisit();
+    this.spawnAnchor = { ...this.player }; this.recordTownVisit();
   }
 
   selectWild(id: string | null, inspectOnly = false): void {
@@ -391,7 +393,7 @@ export class OpenWorldSimulation {
       else { this.tick++; return { tick: this.tick, events, battleActive: false }; }
     }
     if (!this.game.battle) {
-      this.advanceDensity(deltaSeconds);
+      this.streamTravelEncounters();
       this.advanceRespawns(deltaSeconds);
       if (this.autoHunt && this.controlMode === 'auto' && !this.selectionPinned) {
         const companion = this.entities.find(entity => entity.kind === 'companion'), nearest = this.nearestWildToCompanion();
@@ -446,7 +448,7 @@ export class OpenWorldSimulation {
       player: structuredClone(this.player), selectedWildId: this.selectedWildId, autoCapture: this.autoCapture, autoHunt: this.autoHunt, battleWildId: this.battleWildId,
       battleElapsed: this.battleElapsed, pendingCapture: this.pendingCapture, pendingBall: this.pendingBall, lastPlayerReward: this.lastPlayerReward, lastEnemyReward: this.lastEnemyReward,
       pendingAction: structuredClone(this.pendingAction), manualControlRemaining: this.manualControlRemaining,
-      densityRemaining: this.densityRemaining, controlMode: this.controlMode, regionId: this.regionId, mapVersion: this.atlas.mapVersion,
+      spawnAnchor: { ...this.spawnAnchor }, controlMode: this.controlMode, regionId: this.regionId, mapVersion: this.atlas.mapVersion,
       selectionPinned: this.selectionPinned, trackingSelected: this.trackingSelected, visitedTownIds: [...this.visitedTownIds], visitedTownsByRegion: structuredClone(this.visitedTownsByRegion),
       rewardLedgers: structuredClone(Object.fromEntries(Object.entries(this.rewardLedgers).filter(([id]) => this.rewardOwnerIds().has(id)))),
       spawnSerial: this.spawnSerial, nextFoodId: this.nextFoodId, foods: structuredClone(this.foods), respawnQueue: structuredClone(this.respawnQueue), entities: this.entities.map(pack), companionMemories: [...this.companionMemories.values()].map(pack) };
@@ -673,6 +675,7 @@ export class OpenWorldSimulation {
       return;
     }
     this.game.adventureVersion = version;
+    this.spawnAnchor = { ...this.player };
     this.game.versionCaught ??= {}; this.game.versionCaught[version] ??= [];
     const count = this.rosterStatus().total;
     for (const entity of this.wildEntities()) { this.entities.splice(this.entities.indexOf(entity), 1); this.brains.delete(entity.id); }
@@ -696,6 +699,7 @@ export class OpenWorldSimulation {
     this.visitedTownsByRegion[this.regionId] = [...this.visitedTownIds];
     this.regionId = regionId;
     this.game.adventureVersion = version;
+    this.spawnAnchor = { ...this.player };
     this.game.versionCaught ??= {};
     this.game.versionCaught[version] ??= [];
     this.visitedTownIds = [...(this.visitedTownsByRegion[regionId] ?? this.initialVisitedTowns(next))];
@@ -709,7 +713,7 @@ export class OpenWorldSimulation {
     this.battleElapsed = 0; this.lastPlayerReward = null; this.lastEnemyReward = null;
     while (this.wildEntities().length < count) this.spawnWild();
     while (this.foods.length < 24) this.spawnFood();
-    this.densityRemaining = 2.5; this.manualControlRemaining = 0; this.recordTownVisit();
+    this.spawnAnchor = { ...this.player }; this.manualControlRemaining = 0; this.recordTownVisit();
   }
 
   private initialVisitedTowns(atlas: WorldAtlas): string[] {
@@ -750,12 +754,12 @@ export class OpenWorldSimulation {
     for (const _pending of ready) this.spawnWild();
   }
 
-  private advanceDensity(deltaSeconds: number): void {
-    this.densityRemaining -= deltaSeconds; if (this.densityRemaining > 0) return;
-    this.densityRemaining = 2 + this.rng.next();
-    // Retire out-of-range individuals and create new local individuals with new IDs.
-    const candidates = this.wildEntities().filter(entity => distance(entity, this.player) > 38 && entity.id !== this.selectedWildId && entity.id !== this.battleWildId);
-    for (const donor of candidates.slice(0, 4)) {
+  private streamTravelEncounters(): void {
+    // Movement opens the next area. Standing still never rerolls distant individuals.
+    if (distance(this.player, this.spawnAnchor) < SPAWN_TRAVEL_DISTANCE) return;
+    this.spawnAnchor = { ...this.player };
+    const candidates = this.wildEntities().filter(entity => distance(entity, this.player) > WILD_UNLOAD_DISTANCE && entity.id !== this.selectedWildId && entity.id !== this.battleWildId);
+    for (const donor of candidates) {
       this.entities.splice(this.entities.indexOf(donor), 1); this.brains.delete(donor.id); this.spawnWild();
     }
   }
@@ -983,6 +987,7 @@ export class OpenWorldSimulation {
     if ((checkpoint.autoHunt !== undefined && typeof checkpoint.autoHunt !== 'boolean') || (checkpoint.respawnQueue !== undefined && !Array.isArray(checkpoint.respawnQueue))) throw new Error('Invalid open-world automation checkpoint');
     if (checkpoint.manualControlRemaining !== undefined && (!finite(checkpoint.manualControlRemaining) || checkpoint.manualControlRemaining < 0 || checkpoint.manualControlRemaining > MANUAL_CONTROL_HOLD)) throw new Error('Invalid manual-control hold');
     if (checkpoint.densityRemaining !== undefined && (!finite(checkpoint.densityRemaining) || checkpoint.densityRemaining < 0 || checkpoint.densityRemaining > 3)) throw new Error('Invalid density timer');
+    if (checkpoint.spawnAnchor !== undefined && (!checkpoint.spawnAnchor || ![checkpoint.spawnAnchor.x, checkpoint.spawnAnchor.z].every(value => finite(value) && value >= WORLD_MIN && value <= WORLD_MAX))) throw new Error('Invalid encounter streaming anchor');
     if (![checkpoint.player?.x, checkpoint.player?.z, checkpoint.player?.heading].every(finite) || !Number.isInteger(checkpoint.player.heading) || checkpoint.player.heading < 0 || checkpoint.player.heading > 4 || invalidTerrain(checkpoint.player.x, checkpoint.player.z)) throw new Error('Invalid open-world player');
     const memories = checkpoint.companionMemories ?? [], respawns = checkpoint.respawnQueue ?? [], savedEntities = [...checkpoint.entities, ...memories];
     const wildCount = checkpoint.entities.filter(entity => entity.kind === 'wild').length;
@@ -1042,7 +1047,7 @@ export class OpenWorldSimulation {
     this.selectedWildId = checkpoint.selectedWildId; this.autoCapture = checkpoint.autoCapture; this.autoHunt = checkpoint.autoHunt ?? true; this.battleWildId = checkpoint.battleWildId; this.battleElapsed = checkpoint.battleElapsed;
     this.pendingCapture = checkpoint.pendingCapture; this.pendingBall = checkpoint.pendingBall; this.lastPlayerReward = checkpoint.lastPlayerReward; this.lastEnemyReward = checkpoint.lastEnemyReward;
     this.pendingAction = structuredClone(checkpoint.pendingAction);
-    this.spawnSerial = checkpoint.spawnSerial; this.nextFoodId = checkpoint.nextFoodId; this.respawnQueue = structuredClone(respawns); this.manualControlRemaining = checkpoint.manualControlRemaining ?? 0; this.densityRemaining = checkpoint.densityRemaining ?? 0;
+    this.spawnSerial = checkpoint.spawnSerial; this.nextFoodId = checkpoint.nextFoodId; this.respawnQueue = structuredClone(respawns); this.manualControlRemaining = checkpoint.manualControlRemaining ?? 0; this.spawnAnchor = { ...(checkpoint.spawnAnchor ?? checkpoint.player) };
   }
 }
 

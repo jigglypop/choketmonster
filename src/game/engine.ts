@@ -80,9 +80,11 @@ export type ExecutedMove = {
   result: 'hit' | 'missed' | 'immune' | 'failed' | 'status' | 'struggle';
 };
 export type ExperienceGain = { instanceId: string; amount: number; levelsGained: number; shared: boolean };
+export type GymVictory = { badge: number; money: number };
 export type BattleTurnResult = {
   battleEnded: boolean;
   outcome?: 'won' | 'lost' | 'caught' | 'escaped';
+  gymVictory?: GymVictory;
   playerAction: BattleAction;
   enemyAction?: { type: 'move'; index: number } | { type: 'wait' };
   events: BattleLogEntry[];
@@ -709,6 +711,9 @@ export function actBattle(state: GameState, action: BattleAction, aiChoice?: num
   const outcome = concludeIfNeeded(state, battle, events, experienceGains);
   if (outcome) { result.battleEnded = true; result.outcome = outcome; }
   else battle.turn++;
+  if (outcome === 'won' && battle.kind === 'gym' && battle.gymBadge) {
+    result.gymVictory = { badge: battle.gymBadge, money: 1500 * battle.gymBadge };
+  }
   for (const entry of events) addLog(state, entry.text);
   return result;
 }
@@ -928,6 +933,36 @@ export function mergeDuplicateMonster(state: GameState, targetId: string, donorI
   const gain = gainExperience(target, donor.xp)?.amount ?? 0;
   addLog(state, `${target.nickname} (${targetId})에게 경험치 ${gain}을(를) 합쳤다. 남긴 개체의 회로 기억을 유지한다.`);
   return gain;
+}
+
+/** Freeze the explicitly selected donor IDs so a later capture cannot join an approved merge. */
+export function previewDuplicateMerge(state: GameState, targetId: string, donorIds: readonly string[]) {
+  if (state.battle || state.captureOffer) throw new Error('배틀과 포획 선택을 마친 뒤 합칠 수 있습니다.');
+  if (!donorIds.length || new Set(donorIds).size !== donorIds.length || donorIds.includes(targetId)) throw new Error('서로 다른 중복 개체를 선택하세요.');
+  const target = findOwned(state, targetId), donors = donorIds.map(id => findOwned(state, id));
+  if (donors.some(donor => donor.speciesId !== target.speciesId)) throw new Error('같은 종끼리만 경험치를 합칠 수 있습니다.');
+  if (target.level >= 100) throw new Error('이미 최고 레벨입니다.');
+  const totalXp = donors.reduce((sum, donor) => sum + donor.xp, 0);
+  const gainedXp = Math.min(totalXp, experienceAtLevel(100, getSpecies(target.speciesId).growthRate) - target.xp);
+  return { donorIds: [...donorIds], count: donors.length, totalXp, gainedXp, excessXp: totalXp - gainedXp,
+    movesToTeam: state.player.team.every(monster => donorIds.includes(monster.instanceId)) };
+}
+
+/** Commit a validated batch once, even when its combined XP reaches level 100 partway through. */
+export function mergeDuplicateMonsters(state: GameState, targetId: string, donorIds: readonly string[]) {
+  const plan = previewDuplicateMerge(state, targetId, donorIds), target = findOwned(state, targetId);
+  const ids = new Set(plan.donorIds);
+  const team = state.player.team.filter(monster => !ids.has(monster.instanceId));
+  const box = state.player.box.filter(monster => !ids.has(monster.instanceId) && (!plan.movesToTeam || monster !== target));
+  if (plan.movesToTeam) team.push(target);
+  // Stage growth before any collection mutation; keep the original neural objects intact.
+  const grown: Monster = { ...target, moves: structuredClone(target.moves), moveOrder: target.moveOrder?.slice(), movePpReserve: structuredClone(target.movePpReserve) };
+  gainExperience(grown, plan.totalXp);
+  Object.assign(target, { xp: grown.xp, level: grown.level, stats: grown.stats, hp: grown.hp,
+    moves: grown.moves, moveOrder: grown.moveOrder, movePpReserve: grown.movePpReserve });
+  state.player.team = team; state.player.box = box;
+  addLog(state, `${target.nickname} (${targetId})에게 같은 종 ${plan.count}마리의 경험치 ${plan.gainedXp}을(를) 합쳤다. 남긴 개체의 회로 기억을 유지한다.`);
+  return plan;
 }
 
 export function serializeGame(state: GameState): string { assertPlayable(state); return JSON.stringify(state); }

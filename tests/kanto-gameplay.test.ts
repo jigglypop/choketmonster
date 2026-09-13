@@ -149,7 +149,12 @@ describe('Kanto player flows', () => {
     const restored = restoreOpenWorld(graph, serializeOpenWorld(game, world), policy);
     restored.game.battle!.enemy.team[0].hp = 1; restored.game.battle!.enemy.team[0].status = 'sleep'; restored.game.battle!.enemy.team[0].statusTurns = 3;
     restored.game.player.team[0].moves = [{ moveId: 33, pp: 35 }];
-    restored.simulation.requestAction({ type: 'move', index: 0 }); restored.simulation.step({ deltaSeconds: 1 });
+    restored.simulation.requestAction({ type: 'move', index: 0 });
+    const money = restored.game.player.money, result = restored.simulation.step({ deltaSeconds: 1 });
+    const victory = result.events.find(event => event.type === 'battle-turn');
+    expect(victory?.type === 'battle-turn' && victory.result.gymVictory).toEqual({ badge: 1, money: 1500 });
+    expect(restored.game.player.money - money).toBe(1500);
+    expect(restored.simulation.step({ deltaSeconds: .25 }).events.some(event => event.type === 'battle-turn' && event.result.gymVictory)).toBe(false);
     expect(restored.game.player.badges).toBe(1); expect(restored.game.captureOffer).toBeUndefined();
     expect(restored.simulation.challengeLocalGym()).toBe(false);
     expect(() => validateGame(restored.game)).not.toThrow();

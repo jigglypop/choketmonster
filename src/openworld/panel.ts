@@ -12,6 +12,7 @@ import { lastServerDecision } from '../game/server-brain';
 import { mountOpenWorld } from './view';
 import type { OpenWorldRenderSnapshot, OpenWorldView, WorldCreature, WorldHeading } from './types';
 import './panel.css';
+import { showGymVictory } from '../ui/gym-victory';
 
 const biomes = { meadow: '바람 초원', forest: '초록 숲', lake: '물빛 호수', rock: '돌바람 고원' };
 const types: Record<string, string> = { normal: '노말', fire: '불꽃', water: '물', grass: '풀', electric: '전기', ice: '얼음', fighting: '격투', poison: '독', ground: '땅', flying: '비행', psychic: '에스퍼', bug: '벌레', rock: '바위', ghost: '고스트', dragon: '드래곤', steel: '강철', dark: '악', fairy: '페어리' };
@@ -182,6 +183,7 @@ export class OpenWorldPanel {
 
   private canAcceptMovement(): boolean {
     return !this.paused
+      && !document.querySelector('dialog[open]')
       && !this.options.game.battle
       && !this.options.game.captureOffer
       && this.options.game.player.team.some(monster => monster.hp > 0)
@@ -209,7 +211,7 @@ export class OpenWorldPanel {
 
   async tick(): Promise<void> {
     if (this.tickPending || !this.renderer || !this.ready) return;
-    if (this.paused || document.hidden || this.host?.querySelector<HTMLDialogElement>('#world-map-dialog')?.open) { this.manualIdleSeconds = 0; return; }
+    if (this.paused || document.hidden || document.querySelector('dialog[open]')) { this.manualIdleSeconds = 0; return; }
     this.tickPending = true;
     try {
     // Count active exploration time only. Input also resets this when a wall
@@ -236,8 +238,12 @@ export class OpenWorldPanel {
         event.result.executedMoves.filter(move => move.executed).forEach((move, index) => {
           this.attacks.set(move.actorInstanceId, { start: now + index * 300, end: now + index * 300 + 280, type: move.moveType });
         });
-        if (event.result.battleEnded) this.options.notify(event.result.outcome === 'won' ? '승리! 경험치와 보상을 받았습니다.' : event.result.outcome === 'caught' ? '포획 성공! 팀과 도감에 등록했습니다.' : event.result.outcome === 'lost' ? '파트너가 쓰러졌습니다. 회복한 뒤 다시 탐험하세요.' : '배틀에서 벗어났습니다.');
+        if (event.result.battleEnded && !event.result.gymVictory) this.options.notify(event.result.outcome === 'won' ? '승리! 경험치와 보상을 받았습니다.' : event.result.outcome === 'caught' ? '포획 성공! 팀과 도감에 등록했습니다.' : event.result.outcome === 'lost' ? '파트너가 쓰러졌습니다. 회복한 뒤 다시 탐험하세요.' : '배틀에서 벗어났습니다.');
         await this.options.changed(true);
+        if (event.result.gymVictory) {
+          this.refresh(); await showGymVictory(event.result.gymVictory);
+          this.manualIdleSeconds = 0;
+        }
       }
       if (event.type === 'evolved') this.options.notify(`${getSpecies(event.fromSpeciesId).name} → ${getSpecies(event.speciesId).name} 진화!`);
     }

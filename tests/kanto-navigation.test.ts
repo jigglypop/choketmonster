@@ -76,7 +76,6 @@ describe('Kanto navigation state', () => {
 
   it('keeps an inspected wild pinned until tracking follows that exact individual', () => {
     const { world } = setup(41_005);
-    world.densityRemaining = 3;
     const wilds = world.entities.filter(entity => entity.kind === 'wild');
     const chosen = wilds[0], nearer = wilds[1];
     Object.assign(chosen, { x: -68, z: 70 });

@@ -72,7 +72,7 @@ describe('connectome open world', () => {
     expect(stopped.x).toBeCloseTo(-75.1); expect(stopped.z).toBe(78); expect(stopped.collisions).toBeGreaterThan(tracked.collisions);
   });
 
-  it('streams new local individuals near a traveling player without changing surviving brains', async () => {
+  it('loads new local individuals only after traveling without changing surviving brains', async () => {
     const graph = await loadGraph(), policy = await loadOpenWorldPolicy();
     for (const seed of [4_401, 4_501, 4_601]) {
       const game = createGame(1, `open-world-density-${seed}`), world = new OpenWorldSimulation(graph, game, seed, undefined, policy); world.setAutoHunt(false);
@@ -95,6 +95,26 @@ describe('connectome open world', () => {
       expect(traceA).toEqual(traceB); expect(a.simulation.snapshot()).toEqual(b.simulation.snapshot());
     }
   }, 15_000);
+
+  it('never rerolls distant Red encounters on a timer and restores old saves without the adjustment', async () => {
+    const graph = await loadGraph(), policy = await loadOpenWorldPolicy();
+    const game = createGame(1, 'red-stationary'), source = new OpenWorldSimulation(graph, game, 4401, undefined, policy);
+    const snapshot = source.snapshot();
+    snapshot.player = { x: -68, z: -7, heading: 0 };
+    Object.assign(snapshot.entities.find(entity => entity.kind === 'companion')!, snapshot.player);
+    delete snapshot.spawnAnchor; snapshot.densityRemaining = .01;
+    snapshot.autoHunt = false; snapshot.controlMode = 'manual';
+    const world = new OpenWorldSimulation(graph, game, source.seed, snapshot, policy);
+    const ids = world.entities.map(entity => entity.id), serial = world.spawnSerial;
+    for (let tick = 0; tick < 24; tick++) world.step({ deltaSeconds: .5, learning: false });
+    expect(world.spawnSerial).toBe(serial); expect(world.entities.map(entity => entity.id)).toEqual(ids);
+    expect(world.snapshot().densityRemaining).toBeUndefined();
+    expect(world.snapshot().spawnAnchor).toMatchObject({ x: -68, z: -7 });
+    const restored = restoreOpenWorld(graph, serializeOpenWorld(game, world), policy);
+    expect(restored.simulation.snapshot()).toEqual(world.snapshot());
+    const bad = world.snapshot(); bad.spawnAnchor = { x: NaN, z: 0 };
+    expect(() => new OpenWorldSimulation(graph, game, world.seed, bad, policy)).toThrow(/anchor/);
+  });
 
   it('keeps per-instance learning state isolated and freezes weights during evaluation', async () => {
     const graph = await loadGraph(), policy = await loadPolicy(), game = createGame(1, 'open-world-frozen');
@@ -209,7 +229,6 @@ describe('connectome open world', () => {
     companion.x = -45; companion.z = -12; target.x = -40; target.z = -12; target.speciesId = 10; target.level = 2;
     checkpoint.entities.filter(entity => entity.kind === 'wild' && entity.id !== target.id).forEach((entity, index) => Object.assign(entity, REMOTE_FIXTURE_POINTS[index]));
     const hunt = new OpenWorldSimulation(graph, game, 557, checkpoint, policy), companionStart = { x: companion.x, z: companion.z };
-    hunt.densityRemaining = 99;
     let encounter = false;
     for (let tick = 0; tick < 40 && !game.battle; tick++) {
       const step = hunt.step({ deltaSeconds: .25 }); encounter ||= step.events.some(event => event.type === 'encounter');
@@ -222,12 +241,10 @@ describe('connectome open world', () => {
     for (let turn = 0; turn < 500 && game.battle; turn++) for (const event of hunt.step({ deltaSeconds: 1 }).events) if (event.type === 'battle-turn') outcome = event.result.outcome ?? outcome;
     expect(outcome).toBe('won'); expect(game.player.money).toBeGreaterThan(moneyBefore); expect(game.player.team[0].xp).toBeGreaterThan(xpBefore);
     expect(hunt.rosterStatus()).toEqual({ alive: 14, pending: 1, total: 15 });
-    hunt.densityRemaining = 3;
     const pendingSave = serializeOpenWorld(game, hunt), restored = restoreOpenWorld(graph, pendingSave, policy);
     expect(restored.simulation.respawnQueue).toEqual(hunt.respawnQueue); expect(restored.simulation.rosterStatus()).toEqual(hunt.rosterStatus());
     restored.simulation.releaseVictory();
-    restored.simulation.setAutoHunt(false);
-    restored.simulation.densityRemaining = 99;
+    restored.simulation.setAutoHunt(false); restored.simulation.setControlMode('manual');
     const idsBeforeRespawn = new Set(restored.simulation.entities.filter(entity => entity.kind === 'wild').map(entity => entity.id));
     for (let tick = 0; tick < 13 && restored.simulation.rosterStatus().pending; tick++) restored.simulation.step({ deltaSeconds: .5 });
     expect(restored.simulation.rosterStatus()).toEqual({ alive: 15, pending: 0, total: 15 });
@@ -249,7 +266,6 @@ describe('connectome open world', () => {
     });
     checkpoint.entities.filter(entity => entity.kind === 'wild').slice(2).forEach((entity, index) => Object.assign(entity, REMOTE_FIXTURE_POINTS[index]));
     const world = new OpenWorldSimulation(graph, game, 6_012_044, checkpoint, policy, 12);
-    world.densityRemaining = 99;
     world.setAutoCapture(true);
     const moneyBefore = game.player.money, xpBefore = game.player.team[0].xp; let encounters = 0, wins = 0, replacements = 0, previousPending = 0, moneyRewards = 0;
     for (let tick = 0; tick < 400; tick++) {

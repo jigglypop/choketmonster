@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { Graph } from '../src/core/brain';
 import { ConnectomeController } from '../src/game/connectome';
-import { ITEM_PRICES, captureDefeatedWild, createGame, createMonster, experienceAtLevel, mergeDuplicateMonster, releaseMonster, replenishBalls, validateGame } from '../src/game/engine';
+import { ITEM_PRICES, captureDefeatedWild, createGame, createMonster, experienceAtLevel, mergeDuplicateMonster, mergeDuplicateMonsters, previewDuplicateMerge, releaseMonster, replenishBalls, validateGame } from '../src/game/engine';
 import { POKEMON } from '../src/data/pokemon';
 import { hasPokemonModel } from '../src/data/pokemon-models';
 import { KANTO_LOCATIONS } from '../src/openworld/kanto';
@@ -67,6 +67,52 @@ describe('expanded collection and individual lifecycle', () => {
     releaseMonster(game, duplicate.instanceId);
     expect(game.dex.caught).toContain(1);
     expect(game.versionCaught?.red).toEqual([1]);
+  });
+
+  it('merges a whole species once across team and box while preserving the chosen brain and records', () => {
+    const game = createGame(1, 'batch-merge'), target = game.player.team[0];
+    const controller = new ConnectomeController(graph); controller.ensure(target);
+    target.moveLearning = { '33': { choices: 4, executed: 4, effective: 3, reward: 2 } };
+    const brain = target.brain, memory = structuredClone(brain), learning = structuredClone(target.moveLearning);
+    const a = createMonster(game, 1, 12), b = createMonster(game, 1, 20), other = createMonster(game, 25, 8);
+    game.player.team.push(a); game.player.box.push(b, other);
+    game.dex.seen.push(25); game.dex.caught.push(25);
+    const expectedXp = target.xp + a.xp + b.xp, dex = structuredClone(game.dex);
+    const result = mergeDuplicateMonsters(game, target.instanceId, [a.instanceId, b.instanceId]);
+    expect(result).toMatchObject({ count: 2, gainedXp: a.xp + b.xp, movesToTeam: false });
+    expect(game.player.team).toEqual([target]); expect(game.player.box).toEqual([other]);
+    expect(target.xp).toBe(expectedXp); expect(target.brain).toBe(brain); expect(target.brain).toEqual(memory);
+    expect(target.moveLearning).toEqual(learning); expect(game.dex).toEqual(dex);
+    expect(() => validateGame(game)).not.toThrow();
+    expect(() => mergeDuplicateMonsters(game, target.instanceId, [a.instanceId, b.instanceId])).toThrow();
+    expect(target.xp).toBe(expectedXp);
+  });
+
+  it('moves a boxed survivor into the team and commits every donor even when XP hits the cap', () => {
+    const game = createGame(1, 'batch-cap'), target = createMonster(game, 1, 99), donor = createMonster(game, 1, 100);
+    game.player.box.push(target, donor);
+    const ids = [game.player.team[0].instanceId, donor.instanceId];
+    const before = JSON.stringify(game), plan = previewDuplicateMerge(game, target.instanceId, ids);
+    expect(JSON.stringify(game)).toBe(before); expect(plan.movesToTeam).toBe(true); expect(plan.excessXp).toBeGreaterThan(0);
+    expect(mergeDuplicateMonsters(game, target.instanceId, ids)).toEqual(plan);
+    expect(game.player.team).toEqual([target]); expect(game.player.box).toEqual([]);
+    expect(target.level).toBe(100); expect(target.xp).toBe(experienceAtLevel(100, 'medium-slow'));
+    expect(() => validateGame(game)).not.toThrow();
+  });
+
+  it('rejects the entire batch before changing XP or removing any donor', () => {
+    const game = createGame(1, 'batch-invalid'), target = game.player.team[0];
+    const donor = createMonster(game, 1, 20), other = createMonster(game, 25, 8);
+    game.player.box.push(donor, other);
+    for (const ids of [[], [donor.instanceId, 'missing'], [donor.instanceId, donor.instanceId], [donor.instanceId, other.instanceId], [target.instanceId]]) {
+      const before = JSON.stringify(game);
+      expect(() => mergeDuplicateMonsters(game, target.instanceId, ids)).toThrow();
+      expect(JSON.stringify(game)).toBe(before);
+    }
+    game.captureOffer = createMonster(game, 19, 3);
+    const before = JSON.stringify(game);
+    expect(() => mergeDuplicateMonsters(game, target.instanceId, [donor.instanceId])).toThrow(/포획/);
+    expect(JSON.stringify(game)).toBe(before);
   });
 
   it('refills only on active elapsed time with a cap and a replayable partial timer', () => {

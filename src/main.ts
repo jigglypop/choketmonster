@@ -21,7 +21,7 @@ import { pokemonSpriteUrl } from './game/assets';
 import { drawBrain } from './render';
 import {
   actBattle, availableEvolutions, buyItem, challengeChampion, challengeGym, createGame,
-  depositMonster, evolve, explore, heal, mergeDuplicateMonster, releaseMonster, reorderMonsterMoves, availableMonsterMoveIds, replaceMonsterMove, recoverableAttackMoveIds, recoverAttackMove, ITEM_LABELS, ITEM_PRICES, useItem, withdrawMonster,
+  depositMonster, evolve, explore, heal, mergeDuplicateMonster, mergeDuplicateMonsters, previewDuplicateMerge, releaseMonster, reorderMonsterMoves, availableMonsterMoveIds, replaceMonsterMove, recoverableAttackMoveIds, recoverAttackMove, ITEM_LABELS, ITEM_PRICES, useItem, withdrawMonster,
   type BallItem, type BattleAction, type GameState, type InventoryItem, type Monster,
 } from './game/engine';
 import { BRAIN_ASSUMPTIONS, ConnectomeController } from './game/connectome';
@@ -34,6 +34,7 @@ import './responsive.css';
 import './ui/appearance.css';
 import { mountInterfaceSettings } from './ui/settings';
 import { confirmAction } from './ui/confirm-action';
+import { showGymVictory } from './ui/gym-victory';
 
 type Tab = 'map' | 'team' | 'dex' | 'shop' | 'lab';
 type PersistentView = ViewState & { rewards?: Record<string, number>; openWorld?: OpenWorldSnapshot };
@@ -200,6 +201,7 @@ async function performTurn(playerAction: BattleAction | null, learnedChoice: boo
       autoBattle = false; view.rewards = {};
     }
     await saveNow(false, true);
+    if (result.gymVictory) await showGymVictory(result.gymVictory, false);
   }
   catch (error) { autoBattle = false; enemy.brain = enemyBrainBefore; player.brain = playerBrainBefore; notify(error instanceof Error ? error.message : '행동을 처리하지 못했습니다.', true); } finally { brainTurnPending = false; render(); if (autoBattle && game?.battle) scheduleAutoTurn(); }
 }
@@ -296,7 +298,7 @@ function renderSelectedDetail() {
   detail.querySelectorAll<HTMLButtonElement>('[data-evolve]').forEach(button => button.onclick = () => action(() => evolve(game!, selected.instanceId, { targetId: Number(button.dataset.evolve) }), '진화가 완료됐습니다.'));
   $<HTMLButtonElement>('#use-potion').onclick = () => action(() => useItem(game!, 'potion', selected.instanceId)); $<HTMLButtonElement>('#use-candy').onclick = () => action(() => useItem(game!, 'rare-candy', selected.instanceId));
   const duplicates = owned().filter(monster => monster.speciesId === selected.speciesId && monster.instanceId !== selected.instanceId);
-  detail.insertAdjacentHTML('beforeend', `<section class="collection-actions"><h3>개체 관리</h3><p>경험치를 합치면 선택한 중복 개체를 놓아주고, 현재 개체의 회로 기억을 유지합니다.</p>${duplicates.length ? `<label for="merge-donor">경험치를 보낼 중복 개체</label><select id="merge-donor">${duplicates.map(monster => `<option value="${monster.instanceId}">Lv.${monster.level} · ${monster.instanceId} · 경험치 ${monster.xp.toLocaleString()}</option>`).join('')}</select><button id="merge-duplicate" ${selected.level >= 100 ? 'disabled' : ''}>이 포켓몬에게 경험치 합치기</button>` : '<small>같은 종을 더 잡으면 경험치를 합칠 수 있습니다.</small>'}<button id="release-monster" class="danger" ${game.player.team.length === 1 && game.player.team[0].instanceId === selected.instanceId ? 'disabled' : ''}>이 포켓몬 놓아주기</button></section>`);
+  detail.insertAdjacentHTML('beforeend', `<section class="collection-actions"><h3>개체 관리</h3><p>경험치를 합치면 선택한 중복 개체를 놓아주고, 현재 개체의 회로 기억을 유지합니다.</p>${duplicates.length ? `<button id="merge-all-duplicates" ${selected.level >= 100 ? 'disabled' : ''}>같은 포켓몬 ${duplicates.length}마리 한 번에 합치기</button><label for="merge-donor">경험치를 보낼 중복 개체</label><select id="merge-donor">${duplicates.map(monster => `<option value="${monster.instanceId}">Lv.${monster.level} · ${monster.instanceId} · 경험치 ${monster.xp.toLocaleString()}</option>`).join('')}</select><button id="merge-duplicate" ${selected.level >= 100 ? 'disabled' : ''}>이 포켓몬에게 경험치 합치기</button>` : '<small>같은 종을 더 잡으면 경험치를 합칠 수 있습니다.</small>'}<button id="release-monster" class="danger" ${game.player.team.length === 1 && game.player.team[0].instanceId === selected.instanceId ? 'disabled' : ''}>이 포켓몬 놓아주기</button></section>`);
   let managingCollection = false;
   const remove = async (donorId: string, merge: boolean) => {
     if (!game || managingCollection) return;
@@ -323,6 +325,32 @@ function renderSelectedDetail() {
     finally { managingCollection = false; }
   };
   detail.querySelector<HTMLButtonElement>('#merge-duplicate')?.addEventListener('click', () => void remove($<HTMLSelectElement>('#merge-donor').value, true));
+  detail.querySelector<HTMLButtonElement>('#merge-all-duplicates')?.addEventListener('click', async () => {
+    if (!game || managingCollection) return;
+    const editedGame = game;
+    managingCollection = true;
+    try {
+      const donorIds = [...editedGame.player.team, ...editedGame.player.box]
+        .filter(monster => monster.speciesId === selected.speciesId && monster.instanceId !== selected.instanceId)
+        .map(monster => monster.instanceId);
+      const plan = previewDuplicateMerge(editedGame, selected.instanceId, donorIds);
+      const confirmed = await confirmAction({
+        title: '모두 합치기',
+        message: `${selected.nickname} (Lv.${selected.level} · ${selected.instanceId}) 한 마리를 남기고, 같은 종 ${plan.count}마리의 경험치 ${plan.gainedXp.toLocaleString()}을 한 번에 보냅니다.`,
+        detail: `합친 ${plan.count}마리는 팀·박스에서 떠납니다. 남긴 포켓몬의 회로 기억과 학습 기록은 유지합니다.${plan.movesToTeam ? ' 남긴 포켓몬은 박스에서 팀으로 나옵니다.' : ''}${plan.excessXp ? ` 레벨 100 상한으로 초과 경험치 ${plan.excessXp.toLocaleString()}은 사라집니다.` : ''}`,
+        confirmLabel: `${plan.count}마리 합치기`,
+      });
+      if (!confirmed) return;
+      if (game !== editedGame) throw new Error('모험이 바뀌었습니다. 현재 포켓몬을 다시 선택해 주세요.');
+      captureWorld(); await writeSave(packSave(editedGame, controller.graph, view), 'backup-before-merge-all');
+      if (game !== editedGame) throw new Error('모험이 바뀌었습니다. 현재 포켓몬을 다시 선택해 주세요.');
+      const result = mergeDuplicateMonsters(editedGame, selected.instanceId, donorIds);
+      if (view.rewards) for (const id of donorIds) delete view.rewards[id];
+      captureWorld(); renderTeam(); shellStats(); await saveNow(false, true);
+      notify(`${result.count}마리를 합쳐 경험치 ${result.gainedXp.toLocaleString()}을 보냈습니다.`);
+    } catch (error) { notify(error instanceof Error ? error.message : String(error), true); }
+    finally { managingCollection = false; }
+  });
   $('#release-monster').onclick = () => void remove(selected.instanceId, false);
   if (game.battle) detail.querySelectorAll<HTMLButtonElement>('button').forEach(button => { button.disabled = true; });
   if (hasPokemonModel(selected.speciesId)) getPokemonScene().showSpecimen($('.detail-portrait'), selected.speciesId); else getPokemonScene().detach();
