@@ -37,7 +37,7 @@ function fixture() {
 async function bootstrap(page: Page) {
   await page.route(/\.(?:glb|gltf)(?:\?.*)?$/, route => route.abort());
   await page.goto('/');
-  await expect(page.locator('#starter-dialog [data-starter="1"]')).toBeVisible();
+  await expect(page.locator('#starter-dialog [data-starter="1"]')).toBeVisible({ timeout: 30_000 });
   await page.locator('#starter-dialog [data-starter="1"]').click();
 }
 
@@ -135,7 +135,7 @@ test('a learned move can replace a displayed slot and restoring it keeps its PP 
   const { game, lead } = fixture();
   const originalPp = lead.moves.find(slot => slot.moveId === 22)!.pp;
   await bootstrap(page);
-  await importSave(page, packSave(game, graph, defaultView()));
+  await importSave(page, packSave(game, graph, { ...defaultView(), openWorldPaused: true }));
   await page.locator('[data-tab="team"]').click();
   await expect.poll(() => displayedMoveIds(page)).toEqual([33, 22, 45, 73]);
 
@@ -173,7 +173,7 @@ test('classic battle uses the saved presentation order and disables editing', as
     turn: 1, canRun: true,
   };
   await bootstrap(page);
-  await importSave(page, packSave(game, graph, defaultView()));
+  await importSave(page, packSave(game, graph, { ...defaultView(), openWorldPaused: true }));
 
   await expect(page.locator('[data-battle-move]')).toHaveCount(4);
   await expect(page.locator('[data-battle-move]').evaluateAll(buttons => buttons.map(button => Number((button as HTMLElement).dataset.battleMove)))).resolves.toEqual([3, 1, 2, 0]);
@@ -232,7 +232,7 @@ test('a legacy status-only set recovers one legal attack with a backup and uses 
   const originalBrain = brainState(lead.brain);
 
   await bootstrap(page);
-  await importSave(page, packSave(game, graph, defaultView()));
+  await importSave(page, packSave(game, graph, { ...defaultView(), openWorldPaused: true }));
   await page.locator('[data-tab="team"]').click();
   await expect.poll(() => displayedMoveIds(page)).toEqual([487, 244, 133, 472]);
   await expect(page.locator('#recover-attack')).toBeVisible();

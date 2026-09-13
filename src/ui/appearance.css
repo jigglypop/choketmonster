@@ -172,6 +172,11 @@ input[type=search], input[type=text], select { border: 1px solid var(--ui-border
 .world-battle-actions { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
 .world-battle-actions > span { color: #9db6db; background: #0e1726; border-radius: 8px; font-size: calc(12px * var(--ui-font-scale)); padding: 10px; }
 .world-battle-actions label, .world-exp-share, .world-rewards summary { font-size: calc(12px * var(--ui-font-scale)); color: #bbcee9; min-height: 36px; }
+.adventure .world-capture-offer { background: var(--ui-hud); border: 1px solid var(--ui-hud-line); color: #e5eefc; box-shadow: 0 12px 36px #10182730; }
+.world-capture-offer strong { color: #edf4ff; }
+.world-capture-offer p, .world-capture-offer small { color: #b8cce8; }
+.adventure .world-capture-offer button { background: #ffffff0e; border: 1px solid var(--ui-hud-line); color: #e5eefc; border-radius: 8px; }
+.adventure .world-capture-offer #world-win-catch { background: #386dd1; color: white; border-color: transparent; }
 .world-dpad button { background: var(--ui-hud); border: 1px solid #829cb750; color: #dce9fd; box-shadow: 0 4px 12px #12234022; border-radius: 12px; }
 .world-method { font-size: calc(12px * var(--ui-font-scale)); }
 .interface-settings { width: min(620px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); overflow: auto; padding: 28px; border: 1px solid var(--ui-border); border-radius: 20px; background: var(--ui-surface); color: var(--ui-text); box-shadow: 0 32px 100px #0e19234a; }
@@ -275,8 +280,8 @@ input[type=search], input[type=text], select { border: 1px solid var(--ui-border
   .adventure .world-radar { top: 74px; right: 12px; width: 82px; padding: 5px; }
   .adventure .world-radar canvas { width: 70px; height: 70px; }
   .adventure .ow-camera-controls { top: 210px; right: 12px; left: auto; transform: none; width: 82px; grid-template-columns: repeat(2,minmax(0,1fr)); }
-  .adventure .ow-camera-controls button { min-height: 34px; }
-  .adventure .ow-camera-controls .ow-camera-reset, .adventure .ow-camera-controls #world-nameplates { grid-column: 1 / -1; }
+  .adventure .ow-camera-controls button { min-height: 34px; min-width: 0; padding: 6px 3px; font-size: calc(11px * var(--ui-font-scale)); white-space: normal; overflow-wrap: anywhere; line-height: 1.4; }
+  .adventure .ow-camera-controls .ow-camera-reset, .adventure .ow-camera-controls #world-nameplates { grid-column: 1 / -1; font-size: calc(11px * var(--ui-font-scale)); white-space: normal; padding: 6px 3px; }
   .adventure .world-respawn { display: none; }
   .adventure .world-lower-hud > .world-battle-hud { width: calc(100% - 24px); max-width: none; right: 12px; left: auto; bottom: 22px; transform: none; }
   .adventure .world-lower-hud:has(.world-target:not([hidden])) > .world-battle-hud:not([open]) { width: calc(100% - 24px); }
@@ -285,7 +290,7 @@ input[type=search], input[type=text], select { border: 1px solid var(--ui-border
   .adventure .world-lower-hud > .world-target { bottom: 104px; left: 12px; width: calc(100% - 24px); }
   .adventure .world-lower-hud:has(.world-target:not([hidden])) > .world-battle-hud[open] { bottom: 22px; }
   .adventure:has(.world-battle-hud[open]) .world-target { display: none; }
-  .adventure .world-dpad, .adventure:has(.world-target:not([hidden])) .world-dpad { bottom: 108px; }
+  .adventure .world-dpad, .adventure:has(.world-target:not([hidden])) .world-dpad { bottom: calc(100px * var(--ui-font-scale) + 24px); }
   .adventure .world-method { display: none; }
   .world-battle-hud > summary { min-height: 64px; padding: 12px 14px; }
   .world-battle-hud > summary strong { grid-template-columns: minmax(0,1fr) auto; font-size: calc(14px * var(--ui-font-scale)); }

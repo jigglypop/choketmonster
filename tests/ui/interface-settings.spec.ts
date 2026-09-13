@@ -12,7 +12,7 @@ test.setTimeout(150_000);
 async function bootstrap(page: Page) {
   await page.route(/\.(?:glb|gltf)(?:\?.*)?$/, route => route.abort());
   await page.goto('/');
-  await expect(page.locator('#starter-dialog [data-starter="1"]')).toBeVisible();
+  await expect(page.locator('#starter-dialog [data-starter="1"]')).toBeVisible({ timeout: 30_000 });
   await page.locator('#starter-dialog [data-starter="1"]').click();
 }
 
@@ -29,6 +29,7 @@ async function importSave(page: Page, save: unknown) {
 test('interface preferences apply immediately, persist in IndexedDB, reset, and fit a 390px viewport', async ({ page }) => {
   await bootstrap(page);
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
+  if (await page.locator('#ow-host').getAttribute('data-paused') !== 'true') await page.locator('#world-pause').click();
   const originalFont = await page.locator('.brand').evaluate(element => Number.parseFloat(getComputedStyle(element).fontSize));
   const originalPanel = await page.locator('.world-battle-hud').boundingBox();
   expect(originalPanel).not.toBeNull();
@@ -83,6 +84,20 @@ test('interface preferences apply immediately, persist in IndexedDB, reset, and 
   await mkdir('artifacts/interface-refresh/ui-tests', { recursive: true });
   await page.screenshot({ path: 'artifacts/interface-refresh/ui-tests/mobile-high-scale-settings.png' });
 
+  await page.locator('.settings-close').click();
+  await page.locator('[data-tab="map"]').click();
+  await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
+  // Walking controls sit above the collapsed battle panel on mobile.
+  if (await page.locator('.world-battle-hud').evaluate((panel: HTMLDetailsElement) => panel.open)) {
+    await page.locator('.world-battle-hud > summary').click();
+  }
+  const dpad = await page.locator('.world-dpad').boundingBox();
+  const hud = await page.locator('.world-battle-hud').boundingBox();
+  expect(dpad!.y + dpad!.height).toBeLessThanOrEqual(hud!.y);
+  const cameraFits = await page.locator('.ow-camera-controls').evaluate(panel =>
+    panel.scrollWidth <= panel.clientWidth + 1 && panel.getBoundingClientRect().right <= innerWidth);
+  expect(cameraFits).toBe(true);
+  await page.locator('#open-interface-settings').click();
   await page.locator('#interface-reset').click();
   await expect(page.locator('#interface-font-value')).toHaveText('100%');
   await expect(page.locator('html')).toHaveAttribute('data-ui-density', 'comfortable');
