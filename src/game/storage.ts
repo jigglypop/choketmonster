@@ -56,9 +56,14 @@ export function unpackSave(input: unknown, expectedGraph?: Graph): { game: GameS
 
 const DATABASE = 'choketmon-151', STORE = 'saves', SYNC_STORE = 'server-sync';
 export type SaveProfile = { id: string; username?: string } | null;
-export type SaveStorageStatus = { state: 'local' | 'synced' | 'error'; profileId: string; message?: string };
-type SyncOutbox = { save: SaveEnvelope; revision: number; requestId: string; localVersion: number };
-type SyncRecord = { profileId: string; serverRevision: number; localVersion: number; dirty: boolean; outbox?: SyncOutbox };
+export type SaveConflictSummary = { deviceSavedAt: string; serverSavedAt: string; serverRevision: number };
+export type SaveStorageStatus = { state: 'local' | 'synced' | 'error' | 'conflict'; profileId: string; message?: string; conflict?: SaveConflictSummary };
+// The save itself already lives in the account's current slot. Keeping another
+// full copy in sync metadata made every checkpoint write and then delete a
+// second ~1MB IndexedDB value. `save` remains optional for legacy outboxes.
+type SyncOutbox = { save?: SaveEnvelope; revision: number; requestId: string; localVersion: number };
+type SyncConflict = { remote: SaveEnvelope; remoteRevision: number };
+type SyncRecord = { profileId: string; serverRevision: number; localVersion: number; dirty: boolean; outbox?: SyncOutbox; conflict?: SyncConflict };
 let storageStatus: SaveStorageStatus | undefined;
 const storageListeners = new Set<(status: SaveStorageStatus) => void>();
 export function getSaveStorageStatus() { return storageStatus; }
@@ -106,6 +111,12 @@ async function updateSync(key: string, update: (value: SyncRecord | undefined) =
 }
 export async function readSave(key = 'current'): Promise<unknown | undefined> {
   const slot = profileSlot(key), local = await readLocal(slot);
+  if (activeProfile && key === 'current') {
+    const sync = await readSync(syncKey(activeProfile.id));
+    if (sync?.conflict) announceConflict(activeProfile.id, local, sync.conflict);
+    else announceStorage({ state: sync && !sync.dirty ? 'synced' : 'local', profileId: activeProfile.id });
+    return local;
+  }
   if (local !== undefined) { announceStorage({ state: 'local', profileId: activeProfile?.id ?? 'device' }); return local; }
   announceStorage({ state: 'local', profileId: activeProfile?.id ?? 'device' });
   return undefined;
@@ -114,7 +125,7 @@ let localWriteQueue: Promise<void> = Promise.resolve();
 export function writeSave(save: SaveEnvelope, key = 'current'): Promise<void> {
   const snapshot = structuredClone(save), profile = activeProfile, baseSlot = key === 'current' || /-\d{13}$/.test(key) ? key : `${key}-${Date.now()}`, slot = profileSlot(baseSlot, profile);
   const operation = localWriteQueue.catch(() => {}).then(async () => {
-    const db = await database();
+    const db = await database(); let retainedConflict: SyncConflict | undefined;
     await new Promise<void>((resolve, reject) => {
       const stores = profile ? [STORE, SYNC_STORE] : [STORE], tx = db.transaction(stores, 'readwrite');
       tx.objectStore(STORE).put(snapshot, slot);
@@ -122,12 +133,14 @@ export function writeSave(save: SaveEnvelope, key = 'current'): Promise<void> {
         const syncStore = tx.objectStore(SYNC_STORE), request = syncStore.get(syncKey(profile.id));
         request.onsuccess = () => {
           const prior = request.result as SyncRecord | undefined;
-          syncStore.put({ profileId: profile.id, serverRevision: prior?.serverRevision ?? 0, localVersion: (prior?.localVersion ?? 0) + 1, dirty: true } satisfies SyncRecord, syncKey(profile.id));
+          retainedConflict = prior?.conflict;
+          syncStore.put({ profileId: profile.id, serverRevision: prior?.serverRevision ?? 0, localVersion: (prior?.localVersion ?? 0) + 1, dirty: true, conflict: prior?.conflict } satisfies SyncRecord, syncKey(profile.id));
         };
       }
       tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
     });
-    announceStorage({ state: 'local', profileId: profile?.id ?? 'device', message: profile ? '이 기기에 저장됨 · 서버 체크포인트 대기' : undefined });
+    if (profile && retainedConflict) announceConflict(profile.id, snapshot, retainedConflict);
+    else announceStorage({ state: 'local', profileId: profile?.id ?? 'device', message: profile ? '이 기기에 저장됨 · 서버 체크포인트 대기' : undefined });
   });
   localWriteQueue = operation; return operation;
 }
@@ -137,11 +150,29 @@ const profileSlot = (slot: string, profile: SaveProfile = activeProfile) => prof
 const syncKey = (profileId: string) => `account:${profileId}:current`;
 const requestId = () => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `save_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 const validRemote = (value: unknown): value is SaveEnvelope => Boolean(value && typeof value === 'object' && (value as SaveEnvelope).format === 'choketmon' && (value as SaveEnvelope).version === 2);
-const timestamp = (save: unknown) => validRemote(save) && Number.isFinite(Date.parse(save.savedAt)) ? Date.parse(save.savedAt) : 0;
+const equivalentSave = (left: unknown, right: unknown) => validRemote(left) && validRemote(right)
+  && canonicalJson({ ...left, savedAt: undefined }) === canonicalJson({ ...right, savedAt: undefined });
 export function currentSaveProfile() { return activeProfile ? { ...activeProfile } : null; }
 
 type RemoteSave = { save: SaveEnvelope; revision: number };
 const profileHeaders = (profileId: string) => ({ 'x-choketmon-profile': profileId });
+async function readSync(key: string): Promise<SyncRecord | undefined> {
+  const db = await database();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(SYNC_STORE, 'readonly'), request = tx.objectStore(SYNC_STORE).get(key);
+    tx.oncomplete = () => resolve(request.result as SyncRecord | undefined); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
+  });
+}
+const conflictSummary = (local: unknown, conflict: SyncConflict): SaveConflictSummary => ({
+  deviceSavedAt: validRemote(local) ? local.savedAt : '', serverSavedAt: conflict.remote.savedAt, serverRevision: conflict.remoteRevision,
+});
+const announceConflict = (profileId: string, local: unknown, conflict: SyncConflict) => announceStorage({
+  state: 'conflict', profileId, conflict: conflictSummary(local, conflict),
+  message: '이 기기와 서버에 서로 다른 진행이 있습니다. 사용할 진행을 선택해 주세요.',
+});
+export class SaveConflictError extends Error {
+  constructor() { super('이 기기와 서버의 진행이 달라 자동 동기화를 멈췄습니다. 사용할 진행을 선택해 주세요.'); this.name = 'SaveConflictError'; }
+}
 async function loadRemote(profileId: string): Promise<RemoteSave | undefined> {
   const response = await fetch('/api/saves/current', { credentials: 'same-origin', cache: 'no-store', headers: profileHeaders(profileId), signal: AbortSignal.timeout(10000) });
   if (response.status === 404) return undefined;
@@ -159,7 +190,23 @@ async function reconcileRemote(profile: NonNullable<SaveProfile>, remote: Remote
     const decide = () => {
       if (localRequest.readyState !== 'done' || syncRequest.readyState !== 'done') return;
       const local = localRequest.result, prior = syncRequest.result as SyncRecord | undefined;
-      if (local !== undefined && (prior?.dirty || timestamp(local) > timestamp(remote?.save))) {
+      if (local !== undefined && remote && equivalentSave(local, remote.save)) {
+        saves.put(structuredClone(remote.save), localKey);
+        syncs.put({ profileId: profile.id, serverRevision: remoteRevision, localVersion: prior?.localVersion ?? 1, dirty: false } satisfies SyncRecord, key);
+        result = { save: remote.save, upload: false }; return;
+      }
+      if (local !== undefined && remote && !equivalentSave(local, remote.save)
+        && (prior?.conflict || !prior || (prior.dirty && remoteRevision > prior.serverRevision))) {
+        const conflict = prior?.conflict?.remoteRevision === remoteRevision ? prior.conflict : { remote: structuredClone(remote.save), remoteRevision };
+        if (!prior?.conflict || prior.conflict.remoteRevision !== remoteRevision) {
+          const suffix = `${Date.now()}-${requestId()}`;
+          saves.put(structuredClone(local), profileSlot(`backup-conflict-device-${suffix}`, profile));
+          saves.put(structuredClone(remote.save), profileSlot(`backup-conflict-server-${suffix}`, profile));
+        }
+        syncs.put({ profileId: profile.id, serverRevision: prior?.serverRevision ?? 0, localVersion: prior?.localVersion ?? 1, dirty: true, conflict } satisfies SyncRecord, key);
+        result = { save: local, upload: false }; return;
+      }
+      if (local !== undefined && (!remote || prior?.dirty)) {
         const outbox = prior?.outbox?.revision === remoteRevision ? prior.outbox : undefined;
         syncs.put({ profileId: profile.id, serverRevision: remoteRevision, localVersion: prior?.localVersion ?? 1, dirty: true, outbox } satisfies SyncRecord, key);
         result = { save: local, upload: true }; return;
@@ -216,15 +263,19 @@ export async function activateSaveProfile(profile: SaveProfile, options: { conti
   catch (error) {
     if (generation !== profileGeneration || activeProfile?.id !== profile.id) return undefined;
     if (generation === profileGeneration && activeProfile?.id === profile.id) announceStorage({ state: 'error', profileId: profile.id, message: error instanceof Error ? error.message : String(error) });
-    return readLocal(profileSlot('current', profile));
+    const local = await readLocal(profileSlot('current', profile));
+    if (local === undefined) throw error;
+    return local;
   }
   if (generation !== profileGeneration || activeProfile?.id !== profile.id) return undefined;
   const reconciled = await reconcileRemote(profile, remote);
   if (generation !== profileGeneration || activeProfile?.id !== profile.id) return undefined;
-  if (reconciled.upload) {
+  const reconciledSync = await readSync(syncKey(profile.id));
+  if (reconciledSync?.conflict) announceConflict(profile.id, reconciled.save, reconciledSync.conflict);
+  else if (reconciled.upload) {
     try { await checkpointSave('login'); }
     catch (error) {
-      if (generation === profileGeneration && activeProfile?.id === profile.id) announceStorage({ state: 'error', profileId: profile.id, message: error instanceof Error ? error.message : String(error) });
+      if (!(error instanceof SaveConflictError) && generation === profileGeneration && activeProfile?.id === profile.id) announceStorage({ state: 'error', profileId: profile.id, message: error instanceof Error ? error.message : String(error) });
       // Authentication already changed scope. Keep rendering this account's
       // IndexedDB copy and leave its outbox dirty for the next checkpoint.
     }
@@ -234,18 +285,19 @@ export async function activateSaveProfile(profile: SaveProfile, options: { conti
 
 export type CheckpointReason = 'login' | 'logout' | 'auto' | 'manual';
 export type CheckpointResult = { uploaded: boolean; reason: CheckpointReason; revision?: number };
-async function prepareOutbox(profile: NonNullable<SaveProfile>): Promise<SyncRecord | undefined> {
+async function prepareOutbox(profile: NonNullable<SaveProfile>): Promise<{ sync: SyncRecord; save: SaveEnvelope } | undefined> {
   const db = await database(), key = syncKey(profile.id), localKey = profileSlot('current', profile), proposedId = requestId();
   return new Promise((resolve, reject) => {
     const tx = db.transaction([STORE, SYNC_STORE], 'readwrite'), saves = tx.objectStore(STORE), syncs = tx.objectStore(SYNC_STORE);
-    const localRequest = saves.get(localKey), syncRequest = syncs.get(key); let result: SyncRecord | undefined;
+    const localRequest = saves.get(localKey), syncRequest = syncs.get(key); let result: { sync: SyncRecord; save: SaveEnvelope } | undefined;
     const decide = () => {
       if (localRequest.readyState !== 'done' || syncRequest.readyState !== 'done') return;
       const local = localRequest.result as SaveEnvelope | undefined;
       if (!local) return;
       const current = (syncRequest.result as SyncRecord | undefined) ?? { profileId: profile.id, serverRevision: 0, localVersion: 1, dirty: true };
-      result = current.outbox || !current.dirty ? current : { ...current, dirty: true, outbox: { save: structuredClone(local), revision: current.serverRevision, requestId: proposedId, localVersion: current.localVersion } };
-      if (result !== current || !syncRequest.result) syncs.put(structuredClone(result), key);
+      const next = current.outbox || !current.dirty ? current : { ...current, dirty: true, outbox: { revision: current.serverRevision, requestId: proposedId, localVersion: current.localVersion } };
+      result = { sync: next, save: next.outbox?.save ?? local };
+      if (next !== current || !syncRequest.result) syncs.put(next, key);
     };
     localRequest.onsuccess = decide; syncRequest.onsuccess = decide;
     tx.oncomplete = () => resolve(result); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
@@ -259,26 +311,38 @@ async function performCheckpoint(reason: CheckpointReason, expectedProfile: Save
   const key = syncKey(profile.id), scopeValid = () => generation === profileGeneration && activeProfile?.id === profile.id;
   for (let attempt = 0; attempt < 3; attempt++) {
     if (!scopeValid()) return { uploaded: false, reason };
-    const sync = await prepareOutbox(profile);
+    const prepared = await prepareOutbox(profile), sync = prepared?.sync;
     if (!scopeValid()) return { uploaded: false, reason };
     if (!sync) return { uploaded: false, reason };
+    if (sync.conflict) { announceConflict(profile.id, await readLocal(profileSlot('current', profile)), sync.conflict); throw new SaveConflictError(); }
     if (!sync.dirty && !sync.outbox) { announceStorage({ state: 'synced', profileId: profile.id }); return { uploaded: false, reason, revision: sync.serverRevision }; }
     const pending = sync.outbox!;
     try {
       if (!scopeValid()) return { uploaded: false, reason };
-      const response = await fetch('/api/saves/current', { method: 'PUT', credentials: 'same-origin', headers: { 'content-type': 'application/json', ...profileHeaders(profile.id) }, body: JSON.stringify({ save: pending.save, revision: pending.revision, requestId: pending.requestId }), signal: AbortSignal.timeout(20000) });
+      const response = await fetch('/api/saves/current', { method: 'PUT', credentials: 'same-origin', headers: { 'content-type': 'application/json', ...profileHeaders(profile.id) }, body: JSON.stringify({ save: prepared!.save, revision: pending.revision, requestId: pending.requestId }), signal: AbortSignal.timeout(20000) });
       const body = await response.json().catch(() => ({})) as { revision?: number; message?: string };
       if (!scopeValid()) return { uploaded: false, reason };
       if (response.status === 409) {
         const remote = await loadRemote(profile.id);
         if (!scopeValid()) return { uploaded: false, reason };
-        await updateSync(key, latest => {
-          if (!latest) return latest;
-          const remoteRevision = remote?.revision ?? latest.serverRevision;
-          if (latest.outbox?.requestId === pending.requestId || remoteRevision > latest.serverRevision) return { ...latest, serverRevision: remoteRevision, dirty: true, outbox: undefined };
-          return latest;
+        if (!remote) throw new Error('서버 저장 충돌을 확인했지만 서버 저장을 다시 읽지 못했습니다.');
+        const db = await database(), local = await readLocal(profileSlot('current', profile));
+        await new Promise<void>((resolve, reject) => {
+          const tx = db.transaction([STORE, SYNC_STORE], 'readwrite'), saves = tx.objectStore(STORE), syncs = tx.objectStore(SYNC_STORE);
+          const request = syncs.get(key);
+          request.onsuccess = () => {
+            const latest = request.result as SyncRecord | undefined;
+            if (!latest) return;
+            const conflict = { remote: structuredClone(remote.save), remoteRevision: remote.revision };
+            const suffix = `${Date.now()}-${requestId()}`;
+            if (local !== undefined) saves.put(structuredClone(local), profileSlot(`backup-conflict-device-${suffix}`, profile));
+            saves.put(structuredClone(remote.save), profileSlot(`backup-conflict-server-${suffix}`, profile));
+            syncs.put({ ...latest, dirty: true, outbox: undefined, conflict }, key);
+          };
+          tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
         });
-        continue;
+        announceConflict(profile.id, local, { remote: remote.save, remoteRevision: remote.revision });
+        throw new SaveConflictError();
       }
       if (!response.ok || !Number.isSafeInteger(body.revision)) throw new Error(body.message ?? '서버 체크포인트 저장에 실패했습니다.');
       const latest = await updateSync(key, latest => {
@@ -293,11 +357,43 @@ async function performCheckpoint(reason: CheckpointReason, expectedProfile: Save
       return { uploaded: true, reason, revision: body.revision };
     } catch (error) {
       if (!scopeValid()) return { uploaded: false, reason };
-      if (generation === profileGeneration && activeProfile?.id === profile.id) announceStorage({ state: 'error', profileId: profile.id, message: error instanceof Error ? error.message : String(error) });
+      if (!(error instanceof SaveConflictError) && generation === profileGeneration && activeProfile?.id === profile.id) announceStorage({ state: 'error', profileId: profile.id, message: error instanceof Error ? error.message : String(error) });
       throw error;
     }
   }
   throw new Error('다른 기기의 저장과 충돌했습니다. 이 기기의 최신 진행은 보존되어 있습니다.');
+}
+
+/** Resolves a preserved device/server conflict only after an explicit UI choice. */
+export async function resolveSaveConflict(choice: 'device' | 'server'): Promise<SaveEnvelope> {
+  await localWriteQueue.catch(() => {});
+  const profile = activeProfile, generation = profileGeneration;
+  if (!profile) throw new Error('계정 저장 충돌이 없습니다.');
+  const db = await database(), key = syncKey(profile.id), localKey = profileSlot('current', profile);
+  const selected = await new Promise<SaveEnvelope>((resolve, reject) => {
+    const tx = db.transaction([STORE, SYNC_STORE], 'readwrite'), saves = tx.objectStore(STORE), syncs = tx.objectStore(SYNC_STORE);
+    const localRequest = saves.get(localKey), syncRequest = syncs.get(key); let result: SaveEnvelope | undefined;
+    const apply = () => {
+      if (localRequest.readyState !== 'done' || syncRequest.readyState !== 'done') return;
+      const local = localRequest.result as SaveEnvelope | undefined, sync = syncRequest.result as SyncRecord | undefined;
+      if (!local || !sync || (!sync.conflict && !(choice === 'device' && sync.dirty))) { tx.abort(); return; }
+      if (!sync.conflict) { result = structuredClone(local); return; }
+      if (choice === 'server') {
+        result = structuredClone(sync.conflict.remote); saves.put(result, localKey);
+        syncs.put({ profileId: profile.id, serverRevision: sync.conflict.remoteRevision, localVersion: sync.localVersion + 1, dirty: false } satisfies SyncRecord, key);
+      } else {
+        result = structuredClone(local);
+        syncs.put({ ...sync, serverRevision: sync.conflict.remoteRevision, dirty: true, outbox: undefined, conflict: undefined } satisfies SyncRecord, key);
+      }
+    };
+    localRequest.onsuccess = apply; syncRequest.onsuccess = apply;
+    tx.oncomplete = () => result ? resolve(result) : reject(new Error('계정 저장 충돌이 없습니다.'));
+    tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error ?? new Error('계정 저장 충돌이 없습니다.'));
+  });
+  if (generation !== profileGeneration || activeProfile?.id !== profile.id) throw new Error('계정이 바뀌어 저장 충돌 처리를 중단했습니다.');
+  if (choice === 'device') await checkpointSave('manual');
+  else announceStorage({ state: 'synced', profileId: profile.id, message: '서버 진행을 이 기기에 불러왔습니다.' });
+  return selected;
 }
 export function checkpointSave(reason: CheckpointReason = 'manual'): Promise<CheckpointResult> {
   const expectedProfile = activeProfile ? { ...activeProfile } : null, expectedGeneration = profileGeneration;

@@ -28,7 +28,7 @@ describe('full game checkpoint integration', () => {
     expect(loaded.view.openWorld).toEqual(save.view.openWorld);
     const backup = packSave(loaded.game, graph, loaded.view);
     new OpenWorldSimulation(graph, loaded.game, world.seed, loaded.view.openWorld);
-    expect(loaded.game.adventureVersion).toBe('national');
+    expect(loaded.game.adventureVersion).toBe('gold');
     expect((backup.game as GameState).adventureVersion).toBe('gold');
     expect((backup.game as GameState).versionCaught?.gold).toEqual([1]);
     expect(backup.view.openWorld).toEqual(save.view.openWorld);

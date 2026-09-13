@@ -37,7 +37,14 @@ GRANT USAGE,CREATE ON SCHEMA public TO choketmon_app;
 """ % (password, password)
 subprocess.run(['psql', '-h', args.endpoint, '-U', secret['username'], '-d', 'choketmon', '-v', 'ON_ERROR_STOP=1'], input=sql, text=True, env=env, check=True, stdout=subprocess.DEVNULL)
 url = f"postgres://choketmon_app:{urllib.parse.quote(password, safe='')}@{args.endpoint}:5432/choketmon?sslmode=verify-full&sslrootcert={root}/global-bundle.pem"
-content = '\n'.join([f'DATABASE_URL={url}', 'LISTEN_ADDR=0.0.0.0:8080', f'APP_ORIGIN={args.origin}', 'COOKIE_SECURE=true', f'CONNECTOME_DIR={root}/connectome', 'RUST_LOG=info', 'RAYON_NUM_THREADS=2'])+'\n'
+origins = [value.strip() for value in args.origin.split(',') if value.strip()]
+existing_config = config / 'server.env'
+if existing_config.exists():
+    for line in existing_config.read_text().splitlines():
+        if line.startswith('APP_ORIGIN='):
+            origins.extend(value.strip() for value in line.split('=', 1)[1].split(',') if value.strip())
+allowed_origins = ','.join(dict.fromkeys(origins))
+content = '\n'.join([f'DATABASE_URL={url}', 'LISTEN_ADDR=0.0.0.0:8080', f'APP_ORIGIN={allowed_origins}', 'COOKIE_SECURE=true', f'CONNECTOME_DIR={root}/connectome', 'RUST_LOG=info', 'RAYON_NUM_THREADS=2'])+'\n'
 (config / 'server.env').write_text(content)
 (config / 'server.env').chmod(0o600)
 service = '''[Unit]

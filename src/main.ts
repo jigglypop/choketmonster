@@ -10,6 +10,7 @@ import { mountAccountPanel } from './game/account-panel';
 import { VERSIONS, getPokemonVersion, getPokemonForms } from './data/pokemon-versions';
 import './three/scene.css';
 import { detachPokemonScene, getPokemonScene } from './three/scene';
+import { withSaveRenderBudget } from './three/render-budget';
 import { OpenWorldPanel } from './openworld/panel';
 import type { OpenWorldSnapshot } from './openworld/simulation';
 import { movementSpeed, needsRedEncounterMigration } from './openworld/simulation';
@@ -28,7 +29,7 @@ import { BRAIN_ASSUMPTIONS, ConnectomeController } from './game/connectome';
 import { chooseServerBrains, initializeServerBrain, lastServerDecision, setServerBrainScope, usesServerBrain } from './game/server-brain';
 import { tileAt, walk } from './game/map';
 import { REGIONS, getRegion } from './game/regions';
-import { defaultView, getSaveStorageStatus, onSaveStorageStatus, packSave, readSave, unpackSave, writeSave, type ViewState } from './game/storage';
+import { defaultView, getSaveStorageStatus, onSaveStorageStatus, packSave, unpackSave, writeSave, type ViewState } from './game/storage';
 
 import './responsive.css';
 import './ui/appearance.css';
@@ -69,7 +70,7 @@ app.innerHTML = `
     <div class="trainer-summary"><span id="money">₩0</span><span id="badges">도감 0/${PLAYABLE_SPECIES_IDS.length}</span><span id="save-state" class="save-state" data-state="local" aria-live="polite"><i></i> 이 기기에 저장됨</span><button id="save-now" class="quiet">지금 저장</button><span class="device-storage">이 기기에 저장</span><span id="account-controls"></span><button id="open-interface-settings" class="interface-settings-trigger" aria-label="화면 설정" title="화면 설정"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3" fill="var(--ui-surface, white)"/><circle cx="15" cy="17" r="3" fill="var(--ui-surface, white)"/></svg><span>화면 설정</span></button></div></header>
   <main id="screen" tabindex="-1"><section class="loading"><span class="spinner"></span><h1>실제 커넥톰을 불러오는 중</h1><p>Male CNS 부분 회로를 확인하고 있습니다.</p></section></main>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div><input id="import-file" type="file" accept="application/json" hidden>
-  <dialog id="starter-dialog" class="starter-dialog"><div class="starter-copy"><span class="kicker">PALLET LAB · 첫 파트너</span><h1>함께 떠날 포켓몬을<br>선택하세요</h1><p>선택한 한 마리만 처음 팀에 들어옵니다. 각 개체는 서로 다른 회로 상태와 학습 기록을 이 기기에 보관합니다.</p><div class="starter-account"><span>진행 상황은 이 브라우저의 IndexedDB에 자동 저장됩니다.</span></div></div><div class="starter-grid">
+  <dialog id="starter-dialog" class="starter-dialog"><div class="starter-copy"><span class="kicker">PALLET LAB · 첫 파트너</span><h1>함께 떠날 포켓몬을<br>선택하세요</h1><p>선택한 한 마리만 처음 팀에 들어옵니다. 각 개체는 서로 다른 회로 상태와 학습 기록을 이 기기에 보관합니다.</p><div class="starter-account"><span>진행 상황은 이 브라우저의 IndexedDB에 자동 저장됩니다.</span><button type="button" class="quiet" data-load-account>계정 저장 불러오기</button></div></div><div class="starter-grid">
     ${[1, 4, 7].map(id => { const s = getSpecies(id); return `<button data-starter="${id}" class="starter-card"><span>No.${String(id).padStart(3, '0')}</span><img src="${s.frontSprite}" alt="${s.name}"><strong>${s.name}</strong><small>${s.types.map(type => typeLabel[type]).join(' · ')}</small><em>이 파트너로 시작</em></button>`; }).join('')}</div></dialog>`;
 
 mountInterfaceSettings($<HTMLButtonElement>('#open-interface-settings'));
@@ -95,7 +96,7 @@ function clearPendingLearning(monster: Monster) {
   const brain = controller.ensure(monster); brain.state.previous = null; monster.brain = brain.snapshot();
 }
 function monsterCard(monster: Monster, action = '', variant = '') { const species = getSpecies(monster.speciesId), interactive = Boolean(variant); return `<article class="monster-card ${variant} ${monster.instanceId === selectedMonsterId ? 'selected' : ''}" data-monster="${monster.instanceId}"${interactive ? ` tabindex="0" role="button" aria-label="${escapeHtml(monster.nickname)}, 레벨 ${monster.level}, 개체 ${escapeHtml(monster.instanceId.slice(-8))} 상세 보기"` : ''}><img src="${species.frontSprite}" alt=""><div class="monster-card-copy"><span>No.${String(species.id).padStart(3, '0')} · Lv.${monster.level}</span><strong>${escapeHtml(monster.nickname)}</strong><div>${typesHtml(species.id)}</div><small>HP ${monster.hp}/${monster.stats.hp} · ID ${escapeHtml(monster.instanceId.slice(-8))}</small></div>${action}</article>`; }
-function setSaveState(state: 'pending' | 'saving' | 'saved' | 'error' | 'local' | 'synced', message = '') { const badge = document.querySelector<HTMLElement>('#save-state'); if (!badge) return; badge.dataset.state = state; badge.title = message; badge.lastChild!.textContent = ` ${state === 'pending' ? '변경 있음' : state === 'saving' ? '저장 중' : state === 'error' ? '동기화 확인 필요' : state === 'synced' ? '서버 동기화 완료' : '이 기기에 저장됨'}`; }
+function setSaveState(state: 'pending' | 'saving' | 'saved' | 'error' | 'local' | 'synced' | 'conflict', message = '') { const badge = document.querySelector<HTMLElement>('#save-state'); if (!badge) return; badge.dataset.state = state; badge.title = message; badge.lastChild!.textContent = ` ${state === 'pending' ? '변경 있음' : state === 'saving' ? '저장 중' : state === 'error' ? '동기화 확인 필요' : state === 'conflict' ? '저장 선택 필요' : state === 'synced' ? '서버 동기화 완료' : '이 기기에 저장됨'}`; }
 async function saveNow(announce = false, throwOnError = false, duringAccountSwitch = false) { if (!game || !controller || (switchingAccount && !duringAccountSwitch)) return; if (autosaveTimer) { clearTimeout(autosaveTimer); autosaveTimer = 0; } setSaveState('saving'); try { captureWorld(); await writeSave(packSave(game, controller.graph, view)); const status = getSaveStorageStatus(); setSaveState(status?.state ?? 'local', status?.message); if (announce) notify('이 기기에 저장했습니다.'); } catch (error) { setSaveState('error'); notify(`저장하지 못했습니다: ${error instanceof Error ? error.message : error}`, true); if (throwOnError) throw error; } }
 function queueSave() { if (switchingAccount) return; setSaveState('pending'); if (!autosaveTimer) autosaveTimer = window.setTimeout(() => { autosaveTimer = 0; void saveNow(); }, 1000); }
 function shellStats() { if (!game) return; $('#money').textContent = `₩${game.player.money.toLocaleString('ko-KR')}`; $('#badges').textContent = `도감 ${game.dex.caught.filter(isPlayableSpecies).length}/${PLAYABLE_SPECIES_IDS.length}`; $('.topbar').classList.toggle('map-overlay', tab === 'map'); document.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === tab)); }
@@ -104,7 +105,7 @@ function captureWorld() { if (worldPanel) { view.openWorld = worldPanel.simulati
 function setAccountSwitching(value: boolean) {
   switchingAccount = value;
   $('#screen').inert = value;
-  document.querySelectorAll<HTMLButtonElement>('[data-tab], #save-now').forEach(button => { button.disabled = value; });
+  document.querySelectorAll<HTMLButtonElement>('[data-tab], [data-starter], #save-now').forEach(button => { button.disabled = value; });
 }
 function prepareWorld() {
   worldPanel?.unmount(); worldPanel = undefined;
@@ -112,7 +113,7 @@ function prepareWorld() {
   setServerBrainScope(currentAccount() ? `account:${currentAccount()!.id}:${game.seed}` : game.seed);
   if (game.battle && !view.openWorld) return;
   if (view.openWorld && (!isPlayableWorldRegion(view.openWorld.regionId ?? 'kanto') || !isPlayableAdventureVersion(game.adventureVersion ?? 'red') || view.openWorld.mapVersion !== getWorldAtlas(view.openWorld.regionId ?? 'kanto').mapVersion)) {
-    void writeSave(packSave(game, controller.graph, view), `backup-before-kanto-${Date.now()}`).catch(error => notify(String(error), true));
+    void writeSave(packSave(game, controller.graph, view), `backup-before-map-${Date.now()}`).catch(error => notify(String(error), true));
   }
   if (view.openWorld && (view.openWorld.entities.some(entity => entity.kind === 'wild' && entity.id !== view.openWorld!.battleWildId && !isPlayableSpecies(entity.speciesId)) || view.openWorld.respawnQueue?.some(entity => !isPlayableSpecies(entity.speciesId)))) {
     void writeSave(packSave(game, controller.graph, view), `backup-before-roster-${Date.now()}`).catch(error => notify(String(error), true));
@@ -250,6 +251,9 @@ function moveLayoutHtml(monster: Monster) {
 }
 function modelMotionHtml(id: number) {
   const support = getPokemonMotionSupport(id);
+  if (id >= 152 && id <= 251 && support !== 'rigged-animated') {
+    return '<details class="model-motion"><summary>3D · 자체 리깅 동작</summary><p>확보한 모델에 골격 또는 관절 동작을 추가했습니다. 대기·이동·공격·피격은 이 게임에서 제작한 동작입니다.</p></details>';
+  }
   const [label, description] = {
     'rigged-animated': ['3D 동작 지원', '관절과 애니메이션이 포함된 모델입니다.'],
     'rigged-static': ['3D · 동작 없음', '관절은 있지만 원본에 재생할 애니메이션이 없습니다.'],
@@ -392,14 +396,18 @@ function renderDex() {
   const filtered = pool.filter(s => (!q || s.name.includes(q) || s.englishName.toLowerCase().includes(q) || String(s.id) === q || s.types.some(type => type.includes(q) || typeLabel[type].includes(q)))
     && (dexMode === 'all' || (dexMode === 'caught' ? caughtIds : game!.dex.seen).includes(s.id)));
   const pageSize = 60, pages = Math.max(1, Math.ceil(filtered.length / pageSize)); dexPage = Math.min(dexPage, pages - 1);
-  const versionName = dexVersion === 'national' ? '관동 통합 도감' : getPokemonVersion(dexVersion).name;
+  const versionName = dexVersion === 'national' ? '관동·성도 통합 도감' : getPokemonVersion(dexVersion).name;
   const playable = isPlayableAdventureVersion(dexVersion);
   $('#screen').innerHTML = `<div class="page dex-page"><section class="section-heading"><div><span class="kicker">POKÉDEX · COLLECTION</span><h1>${escapeHtml(versionName)}</h1><p>수록 ${pool.length}종 · 3D 지원 ${pool.filter(s => hasPokemonModel(s.id)).length}종 · 수집 ${caughtIds.filter(id => pool.some(s => s.id === id)).length}종</p></div>
-    <div class="dex-tools"><label for="dex-version">버전별 도감</label><select id="dex-version"><option value="national">관동 통합 · ${PLAYABLE_SPECIES_IDS.length}종</option>${VERSIONS.filter(version => isPlayableAdventureVersion(version.id) && getPlayableSpeciesIds(version.id).length).map(version => `<option value="${version.id}" ${version.speciesIds.length ? '' : 'disabled'}>${escapeHtml(version.name)}${version.id.endsWith('-japan') ? ' (일본판)' : ''} · ${version.speciesIds.length ? `${getPlayableSpeciesIds(version.id).length}종` : '원본 도감 없음'}</option>`).join('')}</select><input id="dex-search" type="search" aria-label="도감 검색" value="${escapeHtml(dexQuery)}" placeholder="이름, 번호, 타입 검색"><div>${(['all', 'seen', 'caught'] as const).map(mode => `<button data-dex-mode="${mode}" class="${dexMode === mode ? 'active' : ''}">${mode === 'all' ? '전체' : mode === 'seen' ? '발견' : '수집'}</button>`).join('')}</div></div></section>
-    <section class="collection-note"><p>야생 포켓몬 배치는 레드 기준으로 고정됩니다. 버전 선택은 수집 기록에 적용됩니다. 기존에 보유한 다른 지역의 포켓몬과 개체 기록은 팀·박스에 보관됩니다.</p><button id="collect-version" class="primary" ${!playable || game.adventureVersion === dexVersion ? 'disabled' : ''}>${!playable ? '지역 3D 맵 미확보 · 도감만 보기' : game.adventureVersion === dexVersion ? '이 버전 수집 중' : '이 버전에서 수집'}</button></section>
+    <div class="dex-tools"><label for="dex-version">버전별 도감</label><select id="dex-version"><option value="national">관동·성도 통합 · ${PLAYABLE_SPECIES_IDS.length}종</option>${VERSIONS.filter(version => isPlayableAdventureVersion(version.id) && getPlayableSpeciesIds(version.id).length).map(version => `<option value="${version.id}" ${version.speciesIds.length ? '' : 'disabled'}>${escapeHtml(version.name)}${version.id.endsWith('-japan') ? ' (일본판)' : ''} · ${version.speciesIds.length ? `${getPlayableSpeciesIds(version.id).length}종` : '원본 도감 없음'}</option>`).join('')}</select><input id="dex-search" type="search" aria-label="도감 검색" value="${escapeHtml(dexQuery)}" placeholder="이름, 번호, 타입 검색"><div>${(['all', 'seen', 'caught'] as const).map(mode => `<button data-dex-mode="${mode}" class="${dexMode === mode ? 'active' : ''}">${mode === 'all' ? '전체' : mode === 'seen' ? '발견' : '수집'}</button>`).join('')}</div></div></section>
+    <section class="collection-note"><p>야생 배치는 관동은 레드, 성도는 골드의 장소별 자료로 고정됩니다. 버전 선택은 수집 기록에 적용됩니다. 기존에 보유한 다른 지역의 포켓몬과 개체 기록은 팀·박스에 보관됩니다.</p><button id="collect-version" class="primary" ${!playable || game.adventureVersion === dexVersion ? 'disabled' : ''}>${!playable ? '지역 3D 맵 미확보 · 도감만 보기' : game.adventureVersion === dexVersion ? '이 버전 수집 중' : '이 버전에서 수집'}</button></section>
     <div class="dex-grid">${filtered.slice(dexPage * pageSize, (dexPage + 1) * pageSize).map(s => {
       const seen = game!.dex.seen.includes(s.id), caught = caughtIds.includes(s.id);
-      const regions = !hasPokemonModel(s.id) ? '3D 미지원 · 도감 자료만 제공' : isPlayableSpecies(s.id) ? kantoSpeciesSources(s.id).join(' / ') : '현재 탐험 지도 없음';
+      const johtoSources = getWorldAtlas('johto').locations.filter(location => location.encounters.includes(s.id)).map(location => `성도 ${location.name}`);
+      const sourceNames = [...(s.id <= 151 ? kantoSpeciesSources(s.id) : []), ...johtoSources];
+      const parents = POKEMON.filter(species => species.evolutions.some(evolution => evolution.target === s.id));
+      const regions = !hasPokemonModel(s.id) ? '3D 미지원 · 도감 자료만 제공' : isPlayableSpecies(s.id)
+        ? (sourceNames.join(' / ') || (parents.length ? `${parents.map(parent => parent.name).join(' / ')}에서 진화` : '야생 출현 없음 · 별도 입수 경로 확인 필요')) : '현재 탐험 지도 없음';
       return `<article class="dex-card" data-species="${s.id}" tabindex="0" role="button" aria-label="${escapeHtml(s.name)} 상세 보기"><span>No.${String(s.id).padStart(3, '0')} · ${escapeHtml(s.englishName)}</span><img loading="lazy" src="${s.frontSprite}" alt="${escapeHtml(s.name)}"><strong>${escapeHtml(s.name)}</strong><div>${typesHtml(s.id)}</div><small>${caught ? '● 수집' : seen ? '○ 발견' : '미발견'}</small><p><b>출현</b> ${escapeHtml(regions)}</p></article>`;
     }).join('') || '<p class="empty">검색 조건에 맞는 포켓몬이 없습니다.</p>'}</div>
     <nav class="box-pagination" aria-label="도감 페이지"><button id="dex-prev" ${dexPage === 0 ? 'disabled' : ''}>이전</button><span>${dexPage + 1} / ${pages} · 검색 ${filtered.length}종</span><button id="dex-next" ${dexPage + 1 >= pages ? 'disabled' : ''}>다음</button></nav></div>`;
@@ -444,7 +452,14 @@ function action(operation: () => unknown, success?: string) { try { operation();
 function exportSave() { if (!game) return; captureWorld(); const blob = new Blob([JSON.stringify(packSave(game, controller.graph, view), null, 2)], { type: 'application/json' }), url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = `choketmon-${new Date().toISOString().slice(0, 10)}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
 async function newGame() { if (!game) return; captureWorld(); await writeSave(packSave(game, controller.graph, view), 'backup-before-new-game'); worldPanel?.unmount(); worldPanel = undefined; game = undefined; view = { ...defaultView(), rewards: {} }; selectedMonsterId = ''; $<HTMLDialogElement>('#starter-dialog').showModal(); notify('현재 모험을 백업했습니다. 새 파트너를 골라 주세요.'); }
 
-document.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b => b.onclick = e => { e.preventDefault(); if (!game?.battle || worldPanel) { tab = b.dataset.tab as Tab; render(); } else notify('배틀을 마친 뒤 다른 화면으로 이동할 수 있습니다.'); }); $('#save-now').onclick = () => { void (async () => { try { await saveNow(false, true); await accountPanel?.checkpoint(); notify(getSaveStorageStatus()?.state === 'synced' ? '서버와 동기화했습니다.' : '이 기기에 저장했습니다.'); } catch (error) { notify(String(error), true); } })(); };
+document.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b => b.onclick = e => { e.preventDefault(); if (!game?.battle || worldPanel) { tab = b.dataset.tab as Tab; render(); } else notify('배틀을 마친 뒤 다른 화면으로 이동할 수 있습니다.'); }); $('#save-now').onclick = () => {
+  const button = $<HTMLButtonElement>('#save-now'); if (button.disabled) return; button.disabled = true;
+  void withSaveRenderBudget(async () => {
+    try { await saveNow(false, true); await accountPanel?.checkpoint(); notify(getSaveStorageStatus()?.state === 'synced' ? '서버와 동기화했습니다.' : '이 기기에 저장했습니다.'); }
+    catch (error) { notify(String(error), true); }
+    finally { button.disabled = switchingAccount; }
+  });
+};
 document.querySelectorAll<HTMLButtonElement>('[data-starter]').forEach(b => b.onclick = () => { const id = Number(b.dataset.starter) as 1 | 4 | 7; game = createGame(id, `${Date.now()}-${crypto.getRandomValues(new Uint32Array(1))[0]}`); view = { ...defaultView(), rewards: {} }; controller.ensure(game.player.team[0]); selectedMonsterId = game.player.team[0].instanceId; prepareWorld(); $<HTMLDialogElement>('#starter-dialog').close(); tab = 'map'; render(); queueSave(); });
 $<HTMLInputElement>('#import-file').onchange = async e => { const input = e.target as HTMLInputElement, file = input.files?.[0]; if (!file) return; try { if (file.size > 20_000_000) throw new Error('저장 파일은 20MB 이하여야 합니다.'); const loaded = unpackSave(await file.text(), controller.graph); captureWorld(); if (game) await writeSave(packSave(game, controller.graph, view), 'backup-before-import'); game = loaded.game; view = { ...loaded.view, rewards: (loaded.view as PersistentView).rewards ?? {} }; selectedMonsterId = game.player.team[0].instanceId; prepareWorld(); tab = 'map'; render(); await saveNow(); notify('저장 파일을 불러왔습니다. 이전 모험은 백업했습니다.'); } catch (error) { notify(error instanceof Error ? error.message : '저장 파일을 읽지 못했습니다.', true); } finally { input.value = ''; } };
 document.addEventListener('visibilitychange', () => { if (document.hidden) void saveNow(); });
@@ -471,6 +486,7 @@ async function boot() { try { controller = await ConnectomeController.load();
       await saveNow(false, true, true);
     },
     onSwitchError: change => {
+      if (change.reason === 'recovery') { setAccountSwitching(true); return; }
       setAccountSwitching(false);
       if (currentAccount()?.id !== change.from?.id) {
         worldPanel?.unmount(); worldPanel = undefined; game = undefined;
@@ -481,7 +497,6 @@ async function boot() { try { controller = await ConnectomeController.load();
       } else if (worldPanel) worldPanel.paused = pausedBeforeAccountSwitch;
     },
     afterSwitch: async change => {
-      if (change.reason === 'initialize') return;
       worldPanel?.unmount(); worldPanel = undefined;
       if (autosaveTimer) { clearTimeout(autosaveTimer); autosaveTimer = 0; }
       game = undefined; view = { ...defaultView(), rewards: {} }; selectedMonsterId = ''; tab = 'map';
@@ -490,14 +505,10 @@ async function boot() { try { controller = await ConnectomeController.load();
         $<HTMLDialogElement>('#starter-dialog').close();
         selectedMonsterId = game.player.team[0].instanceId; prepareWorld(); render();
       } else { $('#screen').innerHTML = '<section class="loading"><h1>새 모험을 시작하세요</h1></section>'; $<HTMLDialogElement>('#starter-dialog').showModal(); }
-      setAccountSwitching(false);
+      setAccountSwitching(getSaveStorageStatus()?.state === 'conflict');
     },
   });
+  $<HTMLButtonElement>('[data-load-account]').onclick = () => accountPanel?.open();
   await accountPanel.ready;
-  const stored = await readSave();
-  if (stored) {
-    const loaded = unpackSave(stored, controller.graph); game = loaded.game; view = { ...loaded.view, rewards: (loaded.view as PersistentView).rewards ?? {} };
-    selectedMonsterId = game.player.team[0].instanceId; prepareWorld(); render();
-  } else $<HTMLDialogElement>('#starter-dialog').showModal();
 } catch (error) { $('#screen').innerHTML = `<section class="fatal"><span>!</span><h1>게임을 시작할 수 없습니다</h1><p>${escapeHtml(error instanceof Error ? error.message : error)}</p><button onclick="location.reload()">다시 시도</button></section>`; } }
 void boot();

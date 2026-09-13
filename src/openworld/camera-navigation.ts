@@ -1,5 +1,7 @@
 export const MIN_CAMERA_DISTANCE = 4;
-export const MAX_CAMERA_DISTANCE = 48;
+// The radar provides the map overview; keeping play zoom closer preserves the
+// readable character/building ratio after the player deliberately zooms out.
+export const MAX_CAMERA_DISTANCE = 32;
 export type CameraAction = 'left' | 'right' | 'up' | 'down' | 'zoom-in' | 'zoom-out' | 'reset';
 export type CameraOrbit = { radius: number; phi: number; theta: number };
 

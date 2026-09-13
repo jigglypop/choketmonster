@@ -59,6 +59,8 @@ import { SkyLighting, SurfaceMaterial, WaterMaterial, detailCanopy, detailSurfac
 import { AdaptiveResolution } from './adaptive-resolution';
 import { applyCameraAction, MAX_CAMERA_DISTANCE, MIN_CAMERA_DISTANCE, type CameraAction } from './camera-navigation';
 import { findWorldPath, headingForStep } from './navigation';
+import { blockedBoundarySegments } from './blocked-boundaries';
+import { onRenderSuspension, renderingSuspended } from '../three/render-budget';
 
 const WORLD_MIN = -120;
 const WORLD_MAX = 120;
@@ -73,7 +75,7 @@ const NATURE_SHADOW_CASTERS = new Set([
   'stump', 'fallen-log',
 ]);
 const loader = createGLTFLoader();
-const DEFAULT_CAMERA_OFFSET = new Vector3(7, 10, 11);
+const DEFAULT_CAMERA_OFFSET = new Vector3(5.6, 7.6, 8.8);
 type CameraCommand = { id: number; action: CameraAction };
 
 type CachedModel = {
@@ -198,7 +200,8 @@ function fallbackSample(x: number, z: number): WorldSample {
 }
 
 function Terrain({ sampleWorld, chunk, atlas, onNavigate }: { sampleWorld: (x: number, z: number) => WorldSample; chunk: TerrainChunk; atlas: WorldAtlas; onNavigate?: (point: WorldPoint) => void }) {
-  const { geometry, skirt } = useMemo(() => {
+  const showBlockedBoundary = chunk.distance <= 44;
+  const { geometry, skirt, blockedBoundary } = useMemo(() => {
     const n = chunk.segments, stride = n + 1;
     const vertices: number[] = [], colors: number[] = [], indices: number[] = [];
     const palette: Record<WorldSample['biome'], Color> = {
@@ -231,15 +234,32 @@ function Terrain({ sampleWorld, chunk, atlas, onNavigate }: { sampleWorld: (x: n
     }
     const skirt = new BufferGeometry(); skirt.setAttribute('position', new Float32BufferAttribute(skirtVertices, 3));
     skirt.setAttribute('color', new Float32BufferAttribute(skirtColors, 3)); skirt.setIndex(skirtIndices); skirt.computeVertexNormals();
-    return { geometry, skirt };
-  }, [chunk.x, chunk.z, chunk.segments, sampleWorld, atlas]);
-  useEffect(() => () => { geometry.dispose(); skirt.dispose(); }, [geometry, skirt]);
+    const blockedVertices: number[] = [], blockedIndices: number[] = [];
+    if (showBlockedBoundary) for (const segment of blockedBoundarySegments(sampleWorld, chunk.x, chunk.z)) {
+      const dx = segment.x2 - segment.x1, dz = segment.z2 - segment.z1, length = Math.hypot(dx, dz) || 1;
+      const sideX = -dz / length * .09, sideZ = dx / length * .09;
+      const start = blockedVertices.length / 3;
+      const y1 = terrainSurfaceHeight(sampleWorld, segment.x1, segment.z1) + .11;
+      const y2 = terrainSurfaceHeight(sampleWorld, segment.x2, segment.z2) + .11;
+      blockedVertices.push(segment.x1 + sideX, y1, segment.z1 + sideZ, segment.x1 - sideX, y1, segment.z1 - sideZ,
+        segment.x2 + sideX, y2, segment.z2 + sideZ, segment.x2 - sideX, y2, segment.z2 - sideZ);
+      blockedIndices.push(start, start + 2, start + 1, start + 1, start + 2, start + 3);
+    }
+    const blockedBoundary = new BufferGeometry();
+    blockedBoundary.setAttribute('position', new Float32BufferAttribute(blockedVertices, 3));
+    blockedBoundary.setIndex(blockedIndices);
+    return { geometry, skirt, blockedBoundary };
+  }, [chunk.x, chunk.z, chunk.segments, showBlockedBoundary, sampleWorld, atlas]);
+  useEffect(() => () => { geometry.dispose(); skirt.dispose(); blockedBoundary.dispose(); }, [geometry, skirt, blockedBoundary]);
   const surface = <mesh geometry={geometry} receiveShadow name={`terrain-chunk:${chunk.key}:${chunk.segments}`} onClick={event => {
     event.stopPropagation(); if (event.button === 0 && event.delta <= 5) onNavigate?.({ x: event.point.x, z: event.point.z });
   }}><SurfaceMaterial surface="ground" vertexColors /></mesh>;
   return <group>
     {chunk.distance <= 20 ? <RigidBody type="fixed" colliders="trimesh" friction={1}>{surface}</RigidBody> : surface}
     <mesh geometry={skirt}><SurfaceMaterial surface="ground" vertexColors /></mesh>
+    {blockedBoundary.getAttribute('position').count > 0 && <mesh name={`blocked-boundary:${chunk.key}`} geometry={blockedBoundary} renderOrder={4}>
+      <meshBasicMaterial color="#f4c95d" transparent opacity={.82} depthWrite={false} />
+    </mesh>}
   </group>;
 }
 
@@ -993,8 +1013,15 @@ function Scene({ snapshot, options, cameraCommand, showLabels, destination, onNa
   );
 }
 
+function SaveRenderBudget() {
+  const setFrameloop = useThree(state => state.setFrameloop);
+  useLayoutEffect(() => onRenderSuspension(suspended => setFrameloop(suspended ? 'never' : 'always')), [setFrameloop]);
+  return null;
+}
+
 function OpenWorldApp({ store, options }: { store: SnapshotStore; options: OpenWorldViewOptions }) {
   const snapshot = useSyncExternalStore(store.subscribe, store.get, store.get);
+  const renderPaused = useSyncExternalStore(onRenderSuspension, renderingSuspended, renderingSuspended);
   const runtime = useMemo(() => createGaesupRuntime({ plugins: [createCameraPlugin()], pluginRuntime: 'client' }), []);
   const [ready, setReady] = useState(false);
   const [renderDpr, setRenderDpr] = useState(() => Math.min(window.devicePixelRatio || 1, 1.5));
@@ -1023,8 +1050,9 @@ function OpenWorldApp({ store, options }: { store: SnapshotStore; options: OpenW
       enablePhysics
       gravity={[0, -18, 0]}
     >
-      <Canvas shadows dpr={renderDpr} camera={{ position: [12, 18, 16], fov: 48, near: .1, far: 160 }} gl={{ antialias: true, powerPreference: 'high-performance' }} onPointerMissed={() => options.onSelect(null)}>
+      <Canvas frameloop={renderPaused ? 'never' : 'always'} shadows dpr={renderDpr} camera={{ position: [12, 18, 16], fov: 48, near: .1, far: 160 }} gl={{ antialias: true, powerPreference: 'high-performance' }} onPointerMissed={() => options.onSelect(null)}>
         <AdaptiveResolution setDpr={setRenderDpr} />
+        <SaveRenderBudget />
         {new URLSearchParams(location.search).has('renderProbe') && <RenderProbe />}
         <group name="gaesup-world">
           <Scene snapshot={snapshot} options={options} cameraCommand={cameraCommand} showLabels={showLabels} destination={destination} onNavigate={navigate} onDestination={setDestination} />
@@ -1041,6 +1069,7 @@ function OpenWorldApp({ store, options }: { store: SnapshotStore; options: OpenW
         <button type="button" className="ow-camera-reset" onClick={() => moveCamera('reset')}>시점 초기화</button>
         <button type="button" id="world-nameplates" className="ow-camera-reset" aria-label="포켓몬 이름·HP 표시" aria-pressed={showLabels} onClick={toggleLabels}>이름·HP</button>
       </div>
+      <div className="ow-terrain-key"><i aria-hidden="true" />노란 선 · 통행 불가 지형 경계</div>
       <div className="ow-help">WASD / 방향키 이동 · 드래그 시점 · 휠 확대 · 포켓몬 선택</div>
     </GaesupWorld>
   );

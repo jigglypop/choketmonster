@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { renderingSuspended } from './render-budget';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { createGLTFLoader } from './gltf-loader';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -264,7 +265,7 @@ export class PokemonScene {
   private error(message: string) { this.notice.textContent = message; this.notice.hidden = false; this.canvas.dataset.ready = 'error'; }
   private frame(now: number) {
     const delta = Math.min((now - this.then) / 1000 || 0, .05); this.then = now;
-    if (!this.host?.isConnected || document.hidden || this.disposed) return;
+    if (!this.host?.isConnected || document.hidden || this.disposed || renderingSuspended()) return;
     for (const actor of this.actors.values()) {
       const distance = actor.group.position.distanceTo(actor.target);
       if (this.mode === 'map') {

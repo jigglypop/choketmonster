@@ -3,12 +3,12 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createGame, createMonster } from '../../src/game/engine';
 import { defaultView, packSave } from '../../src/game/storage';
 import { OpenWorldSimulation } from '../../src/openworld/simulation';
-import { getWorldAtlas } from '../../src/openworld/atlas';
+import { getWorldAtlas, getLegacyJohtoAtlas } from '../../src/openworld/atlas';
 import type { Graph } from '../../src/core/brain';
 
 const model152 = readFileSync('data/local/pokemon-models-expanded/429de1288cea0d43f5b4f56305d2276e94239d65/152.glb');
 
-test('migrates a legacy Johto save to playable Kanto and renders the preserved real model', async ({ page }) => {
+test('migrates a legacy Johto save to reconstructed Johto and renders the preserved real model', async ({ page }) => {
   test.setTimeout(150000);
   const errors: string[] = [], modelRequests = new Set<string>();
   page.on('pageerror', error => errors.push(error.message));
@@ -24,7 +24,7 @@ test('migrates a legacy Johto save to playable Kanto and renders the preserved r
   game.player.team = [partner]; game.dex.seen.push(152); game.dex.caught.push(152);
   game.dex.seen.sort((a, b) => a - b); game.dex.caught.sort((a, b) => a - b);
   game.versionCaught = { red: [1], gold: [152] };
-  const world = new OpenWorldSimulation(graph, game, 9402), checkpoint = world.snapshot(), johto = getWorldAtlas('johto');
+  const world = new OpenWorldSimulation(graph, game, 9402), checkpoint = world.snapshot(), johto = getLegacyJohtoAtlas();
   world.setControlMode('manual');
   checkpoint.regionId = 'johto'; checkpoint.mapVersion = johto.mapVersion; checkpoint.player = { ...johto.start, heading: 0 };
   checkpoint.visitedTownIds = ['new-bark']; checkpoint.visitedTownsByRegion = { kanto: ['pallet'], johto: ['new-bark'] };
@@ -39,11 +39,11 @@ test('migrates a legacy Johto save to playable Kanto and renders the preserved r
   const save = packSave(game, graph, { ...defaultView(), openWorld: checkpoint, openWorldPaused: true });
   await page.locator('#import-file').setInputFiles({ name: 'legacy-johto.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(save)) });
 
-  await expect(page.locator('#ow-host')).toHaveAttribute('data-region', 'kanto');
-  await expect(page.locator('#world-version')).toHaveValue('national');
+  await expect(page.locator('#ow-host')).toHaveAttribute('data-region', 'johto');
+  await expect(page.locator('#world-version')).toHaveValue('gold');
   await page.locator('#world-map-open').click();
-  await expect(page.locator('#world-region option')).toHaveCount(1);
-  await expect(page.locator('#world-region')).toHaveValue('kanto');
+  await expect(page.locator('#world-region option')).toHaveCount(2);
+  await expect(page.locator('#world-region')).toHaveValue('johto');
   await page.locator('#world-map-close').click();
 
   const probe = () => page.evaluate(() => (window as any).__renderProbe?.read());
@@ -63,12 +63,12 @@ test('migrates a legacy Johto save to playable Kanto and renders the preserved r
     };
     request.onerror = () => reject(request.error);
   }));
-  expect(stored.current.game.adventureVersion).toBe('national');
+  expect(stored.current.game.adventureVersion).toBe('gold');
   expect(stored.current.game.versionCaught.gold).toEqual([152]);
-  expect(stored.current.view.openWorld.regionId).toBe('kanto');
+  expect(stored.current.view.openWorld.regionId).toBe('johto');
   expect(stored.current.view.openWorld.visitedTownsByRegion.johto).toEqual(['new-bark']);
   expect(stored.current.view.openWorld.entities.find((entity: { kind: string }) => entity.kind === 'companion').brain).toEqual(companionMemory);
-  const backupIndex = stored.keys.findIndex((key: IDBValidKey) => String(key).startsWith('backup-before-kanto-'));
+  const backupIndex = stored.keys.findIndex((key: IDBValidKey) => String(key).startsWith('backup-before-map-'));
   expect(backupIndex).toBeGreaterThanOrEqual(0);
   const backup = stored.values[backupIndex];
   expect(backup.game.adventureVersion).toBe('gold');
@@ -76,8 +76,8 @@ test('migrates a legacy Johto save to playable Kanto and renders the preserved r
   expect(backup.view.openWorld.entities.find((entity: { kind: string }) => entity.kind === 'companion').brain).toEqual(companionMemory);
 
   await page.reload();
-  await expect(page.locator('#ow-host')).toHaveAttribute('data-region', 'kanto');
-  await expect(page.locator('#world-version')).toHaveValue('national');
+  await expect(page.locator('#ow-host')).toHaveAttribute('data-region', 'johto');
+  await expect(page.locator('#world-version')).toHaveValue('gold');
   await expect.poll(async () => (await probe())?.loadedPokemon ?? [], { timeout: 45000 }).toContain(152);
   const restored = await probe();
   expect(restored.streaming.detailedCreatures).toBeLessThanOrEqual(8);
@@ -92,7 +92,7 @@ test('migrates a legacy Johto save to playable Kanto and renders the preserved r
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.waitForTimeout(1000);
   mkdirSync('artifacts/world-expansion', { recursive: true });
-  await page.screenshot({ path: 'artifacts/world-expansion/kanto-migrated-mobile.png' });
-  writeFileSync('artifacts/world-expansion/kanto-migration-browser.json', JSON.stringify({ first, restored, mobile: await probe(), modelRequests: [...modelRequests], errors }, null, 2));
+  await page.screenshot({ path: 'artifacts/world-expansion/johto-migrated-mobile.png' });
+  writeFileSync('artifacts/world-expansion/johto-migration-browser.json', JSON.stringify({ first, restored, mobile: await probe(), modelRequests: [...modelRequests], errors }, null, 2));
   expect(errors).toEqual([]);
 });

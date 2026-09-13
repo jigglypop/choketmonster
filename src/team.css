@@ -11,6 +11,7 @@
 .save-state[data-state="saving"] i { background: #4a8294; animation: save-pulse 1s ease-in-out infinite; }
 .save-state[data-state="local"] i { background: #b88936; box-shadow: 0 0 0 3px rgba(184, 137, 54, .15); }
 .save-state[data-state="error"] i { background: #b64d45; box-shadow: 0 0 0 3px rgba(182, 77, 69, .14); }
+.save-state[data-state="conflict"] i { background: #b64d45; box-shadow: 0 0 0 3px rgba(182, 77, 69, .14); }
 @keyframes save-pulse { 50% { opacity: .35; transform: scale(.75); } }
 
 .team-page { max-width: 1500px; padding-top: 28px; }

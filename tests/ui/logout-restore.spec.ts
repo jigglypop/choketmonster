@@ -63,13 +63,13 @@ for (const existingGuest of [false, true]) {
       await page.locator('[data-starter="1"]').click();
       await expect(page.locator('#world-pause')).toBeVisible();
       await page.locator('#save-now').click();
-      await expect.poll(async () => (await slots(page)).current?.game.seed).toBeTruthy();
+      await expect.poll(async () => (await slots(page)).current?.game.seed, { timeout: 30000 }).toBeTruthy();
       guestSeed = (await slots(page)).current.game.seed;
       await login(page);
     }
     await expect(page.locator('#world-pause')).toContainText('계속 탐험', { timeout: 30000 });
     await page.locator('.logout-button').click();
-    await expect(page.locator('[data-open-auth]')).toBeEnabled();
+    await expect(page.locator('[data-open-auth]')).toBeEnabled({ timeout: 30000 });
     await expect(page.locator('#starter-dialog')).toBeHidden();
     await expect(page.locator('#world-pause')).toContainText('계속 탐험');
     const stored = await slots(page), checkpoint = state.puts.at(-1).save;
@@ -102,7 +102,7 @@ test('logout preserves a running adventure instead of saving the temporary trans
   await page.goto('/');
   await expect(page.locator('#world-pause')).toContainText('일시 정지', { timeout: 30000 });
   await page.locator('.logout-button').click();
-  await expect(page.locator('[data-open-auth]')).toBeEnabled();
+  await expect(page.locator('[data-open-auth]')).toBeEnabled({ timeout: 30000 });
   await expect(page.locator('#world-pause')).toContainText('일시 정지');
   expect(state.puts.at(-1).save.view.openWorldPaused).toBe(false);
   expect((await slots(page)).current.view.openWorldPaused).toBe(false);

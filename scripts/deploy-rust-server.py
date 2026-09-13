@@ -119,6 +119,7 @@ def main():
         subprocess.run(['aws','cloudformation','deploy','--region','us-east-1','--stack-name','choketmonster-free-plan','--template-file',str(ROOT/'infra/aws-free-plan.yaml'),
             '--parameter-overrides',f"DistributionArn={site_outputs['DistributionArn']}",'ActivateSubscription=false','KeepWebAcl=true','--no-fail-on-empty-changeset'],check=True)
     overrides=[f"BucketName={site_outputs['BucketName']}",'WebAclArn=',f"ApiVpcOriginId={outputs['VpcOriginId']}",f"ApiPrivateDns={outputs['ApiPrivateDns']}"]
+    overrides.extend(f'{name}={params[name]}' for name in ('CustomDomainName', 'CustomCertificateArn') if params.get(name))
     subprocess.run(['aws','cloudformation','deploy','--region',REGION,'--stack-name','choketmonster-web','--template-file',str(ROOT/'infra/aws-static.yaml'),'--parameter-overrides',*overrides,'--no-fail-on-empty-changeset'],check=True)
     if plan_params.get('KeepWebAcl','true')=='true':
         subprocess.run(['aws','cloudformation','deploy','--region','us-east-1','--stack-name','choketmonster-free-plan','--template-file',str(ROOT/'infra/aws-free-plan.yaml'),

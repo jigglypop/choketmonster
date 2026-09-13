@@ -2,8 +2,9 @@ import { WORLDS, regionForVersion, type WorldRegionId } from './atlas';
 import { getVersionSpeciesIds } from '../data/pokemon-versions';
 
 // Atlas definitions also decode old saves. They are not a list of shipped maps.
-// Additional regions stay out of gameplay until actual 3D map assets are acquired.
-const playableRegions = new Set<WorldRegionId>(['kanto']);
+// Public map facts may be reconstructed with our own 3D terrain and cleared assets.
+// Only regions with a verified geometry, traversal and encounter implementation ship.
+const playableRegions = new Set<WorldRegionId>(['kanto', 'johto']);
 export const PLAYABLE_WORLDS = WORLDS.filter(world => playableRegions.has(world.id));
 const playableSpeciesIds = Object.freeze([...new Set(PLAYABLE_WORLDS.flatMap(world => getVersionSpeciesIds(world.defaultVersion)))].sort((a, b) => a - b));
 const playableSpecies = new Set(playableSpeciesIds);

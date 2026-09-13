@@ -7,18 +7,18 @@ import { buyItem, experienceAtLevel, heal, ITEM_LABELS, ITEM_PRICES, statsFor, t
 import { getWorldAtlas } from './atlas';
 import { PLAYABLE_WORLDS, getPlayableSpeciesIds, isPlayableSpecies, isPlayableAdventureVersion } from './availability';
 import type { FieldPolicy } from '../game/field';
-import { movementSpeed, OpenWorldSimulation, redEncounters, type OpenWorldSnapshot } from './simulation';
+import { movementSpeed, OpenWorldSimulation, regionalEncounters, type OpenWorldSnapshot } from './simulation';
 import { lastServerDecision } from '../game/server-brain';
 import { mountOpenWorld } from './view';
 import type { OpenWorldRenderSnapshot, OpenWorldView, WorldCreature, WorldHeading } from './types';
 import './panel.css';
 import { showGymVictory } from '../ui/gym-victory';
+import { pokemonWorldDisplayHeight } from './visual-scale';
 
 const biomes = { meadow: '바람 초원', forest: '초록 숲', lake: '물빛 호수', rock: '돌바람 고원' };
 const types: Record<string, string> = { normal: '노말', fire: '불꽃', water: '물', grass: '풀', electric: '전기', ice: '얼음', fighting: '격투', poison: '독', ground: '땅', flying: '비행', psychic: '에스퍼', bug: '벌레', rock: '바위', ghost: '고스트', dragon: '드래곤', steel: '강철', dark: '악', fairy: '페어리' };
 const escape = (text: unknown) => String(text).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
-// Display size only; movement speed, collision and saved species data stay in world units.
-const pokemonDisplayHeight = (speciesId: number) => Math.min(4.8, Math.max(1.3, (getSpecies(speciesId).heightMeters ?? 1) * 2.5));
+const pokemonDisplayHeight = (speciesId: number) => pokemonWorldDisplayHeight(getSpecies(speciesId).heightMeters);
 const MANUAL_IDLE_SECONDS = 3;
 type Options = { game: GameState; graph: Graph; policy: FieldPolicy; checkpoint?: OpenWorldSnapshot; learning(): boolean; setLearning(value: boolean): void; editMoves?(instanceId: string): void; notify(message: string, error?: boolean): void; changed(immediate?: boolean): void | Promise<void> };
 
@@ -60,8 +60,8 @@ export class OpenWorldPanel {
     this.unmount(); this.host = host;
     host.innerHTML = `<section class="adventure" aria-label="오픈월드 모험">
       <div id="ow-host"></div>
-      <details class="world-explore-panel" open><summary class="world-explore-toggle">탐험 조작 <span>⌄</span></summary><div class="world-explore-scroll">
-      <div class="world-heading"><label class="world-eyebrow" for="world-version"><span id="world-region-label">관동</span> · 수집 기록 <select id="world-version"><option value="national">관동 통합</option>${VERSIONS.filter(version => version.speciesIds.length && isPlayableAdventureVersion(version.id)).map(version => `<option value="${version.id}">${escape(version.name)}${version.id.endsWith('-japan') ? ' (일본판)' : ''}</option>`).join('')}</select></label><span id="world-encounter-layout" class="world-encounter-layout">야생 배치 · 레드 고정</span><h1 id="world-biome">태초마을</h1><p id="world-zone-level">1번도로에서 첫 모험을 시작하세요</p></div>
+      <details class="world-explore-panel" ${window.matchMedia('(max-width: 720px)').matches ? '' : 'open'}><summary class="world-explore-toggle">탐험 조작 <span>⌄</span></summary><div class="world-explore-scroll">
+      <div class="world-heading"><label class="world-eyebrow" for="world-version"><span id="world-region-label">관동</span> · 수집 기록 <select id="world-version"><option value="national">관동·성도 통합</option>${VERSIONS.filter(version => version.speciesIds.length && isPlayableAdventureVersion(version.id)).map(version => `<option value="${version.id}">${escape(version.name)}${version.id.endsWith('-japan') ? ' (일본판)' : ''}</option>`).join('')}</select></label><span id="world-encounter-layout" class="world-encounter-layout">야생 배치 · 레드 고정</span><h1 id="world-biome">태초마을</h1><p id="world-zone-level">1번도로에서 첫 모험을 시작하세요</p></div>
       <div class="world-tools"><button id="world-pause">Ⅱ 일시 정지</button><button id="world-heal">캠프 회복</button><label><input id="world-auto-hunt" type="checkbox" checked><span>자동 사냥</span></label><label><input id="world-learning" type="checkbox"><span id="world-learning-label">기술 학습</span></label></div>
       <div class="world-control-mode" role="group" aria-label="조작 모드"><div class="world-mode-buttons"><button id="world-mode-auto">자동</button><button id="world-mode-manual">수동</button></div><div class="world-control-copy"><strong id="world-control-title"></strong><small id="world-control-help"></small></div></div>
       <details class="world-shop"><summary>프렌들리숍 · <span id="world-ball-stock"></span></summary><div id="world-shop-items"></div><small id="world-shop-note">승리 후에는 볼 1개로 확정 포획합니다.</small></details>
@@ -295,7 +295,9 @@ export class OpenWorldPanel {
     host.dataset.runtime = 'gaesup-world'; host.dataset.graphId = this.options.graph.id;
     host.dataset.region = world.regionId;
     this.html('#world-region-label', world.atlas.name);
+    this.html('#world-encounter-layout', world.regionId === 'johto' ? '야생 배치 · 골드 고정' : '야생 배치 · 레드 고정');
     this.html('#world-map-caption', `${world.atlas.name} 지도 ↗`);
+    this.html('#world-map-note', world.regionId === 'johto' ? '지도 정보로 재구성한 성도 탐험 지역입니다. 방문한 마을로 이동할 수 있습니다. 성도 체육관·배지 진행은 아직 제공하지 않습니다.' : '방문한 마을로 무료 이동합니다. 도시 연결·지형·출현은 게임용으로 구성한 지도입니다.');
     for (const [id, value] of [['world-version', game.adventureVersion ?? 'red'], ['world-region', world.regionId]]) {
       const select = this.host.querySelector<HTMLSelectElement>(`#${id}`)!; if (select.value !== value) select.value = value;
       select.disabled = Boolean(battle || game.captureOffer);
@@ -322,11 +324,11 @@ export class OpenWorldPanel {
     this.html('#world-emergency-action', battle && !battle.awaitingSwitch && moves.every(slot => slot.pp <= 0) ? '<button id="world-struggle">발버둥 (PP 소진)</button>' : '');
     const location = this.simulation.locationAt(world.player.x, world.player.z);
     this.html('#world-biome', location.name);
-    const pool = redEncounters(location.id, game.player.badges, world.regionId);
+    const pool = regionalEncounters(location.id, game.player.badges, world.regionId);
     this.html('#world-zone-level', pool.length ? `야생 Lv.${location.minLevel}–${location.maxLevel} · ${pool.slice(0, 3).map(id => getSpecies(id).name).join(' · ')}` : '도시와 길을 따라 다음 구역으로 탐험하세요');
     this.html('#world-position', `${world.player.x.toFixed(0)}, ${world.player.z.toFixed(0)}`);
     const collectionSpecies = new Set(getPlayableSpeciesIds(game.adventureVersion ?? 'red'));
-    this.html('#world-objective', `${(game.versionCaught?.[game.adventureVersion ?? 'red'] ?? []).filter(id => collectionSpecies.has(id)).length} / ${collectionSpecies.size}종 수집 · 관동 ${game.dex.caught.filter(isPlayableSpecies).length}종`);
+    this.html('#world-objective', `${(game.versionCaught?.[game.adventureVersion ?? 'red'] ?? []).filter(id => collectionSpecies.has(id)).length} / ${collectionSpecies.size}종 수집 · 전체 ${game.dex.caught.filter(isPlayableSpecies).length}종`);
     this.html('#world-feed', game.logs.slice(-3).map(log => `<p>${escape(log)}</p>`).join(''));
     this.html('#world-battle-state', game.captureOffer ? '승리! 포획 여부를 선택하세요' : battle ? `${battle.awaitingSwitch ? '다음 파트너로 자동 교대 중' : world.escaping ? '도망 시도 중' : world.controlMode === 'manual' ? (battle.canRun ? '기술 선택 · 이동키로 도주' : '기술 선택 대기') : '자동 배틀'} · 턴 ${battle.turn}` : !world.hasBalls ? '볼 소진 · 구매 후 자동 사냥 가능' : this.paused ? '탐험 일시 정지' : world.controlMode === 'manual' ? '수동 탐험 · 배틀 버튼으로만 전투' : world.autoHunt ? '자동 추적 · 접근하면 배틀' : '접근하면 자동 배틀');
     this.button('#world-mode-auto').setAttribute('aria-pressed', String(world.controlMode === 'auto'));

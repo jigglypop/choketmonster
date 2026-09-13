@@ -51,10 +51,16 @@ Windows 로컬 PostgreSQL 18이 설치되어 있다면 첫 터미널에서 `pnpm
 
 전체 회로는 topology가 고정된 희소 recurrent 모델이다. 각 턴 활동·readout·RNG는 `choketmon-neural-cache` IndexedDB에 체크포인트와 제한된 이력으로 저장되며 렌더링은 서버 RNG를 소비하지 않는다. 같은 요청의 재시도와 캐시 복원 규칙은 위 기기 전용 회로 API 절의 계약을 따른다. `learning=false`에서 readout과 update count는 고정된다. 종료 보상은 terminal 요청으로 반영하며 오픈월드의 전송 대기 기록도 클라이언트 세이브에 보존한다.
 
-IndexedDB는 기기의 저장 슬롯과 서버 동기화 메타데이터를 분리한다. HTTP 저장 ACK는 같은 requestId의 동기화 기록만 갱신하므로 다른 탭의 최신 스냅샷을 덮어쓰지 않는다. 저장 충돌 시 자동 병합하지 않으므로 내보내기로 현재 진행을 보관한 후 기기를 선택한다. JSON 내보내기는 게임·브라우저 회로·기술 통계를 포함하고, 전체 회로 체크포인트·재현 이력은 별도 기기 IndexedDB에 남는다.
+IndexedDB는 기기의 저장 슬롯과 서버 동기화 메타데이터를 분리한다. HTTP 저장 ACK는 같은 requestId의 동기화 기록만 갱신하므로 다른 탭의 최신 스냅샷을 덮어쓰지 않는다. 서버 revision이 달라지면 양쪽 진행을 계정별 IndexedDB 백업에 보존하고 월드를 일시정지한다. 앱 복구 모달에서 이 기기 진행을 서버에 올릴지, 서버 진행을 내려받을지 선택한다. 기기 선택 후 원격 revision이 다시 바뀌면 다시 충돌을 표시한다. 로그인 중 복구 준비는 해당 계정의 화면을 적용한 뒤 실행하여 이전 게스트의 진행이 계정 슬롯에 들어가지 않게 한다. JSON 내보내기는 게임·브라우저 회로·기술 통계를 포함하고, 전체 회로 체크포인트·재현 이력은 별도 기기 IndexedDB에 남는다.
 
 ## 검증
 
-`pnpm check:server`는 실제 API에 테스트 계정 두 개를 생성해 로그인, 계정 격리, 프로필과 쿠키가 바뀐 교차 탭 쓰기 차단, 세이브 충돌·재시도 영수증, 에딧몬 거부, 로그아웃 폐기, 재로그인 복원, 레거시 DB 회로 API 종료를 검증한다. 생성 계정명은 산출물에 남으며 비밀번호와 쿠키는 기록하지 않는다. 전체 그래프 계산·체크포인트·DB 쓰기 불변은 `scripts/verify-local-brains.ts`가 별도로 확인한다. `CHOKETMON_LIVE_RUST=1`에서 `tests/ui/rust-live.spec.ts`를 실행하면 실제 브라우저 사용자 흐름을 검사한다. `tests/ui/save-race.spec.ts`는 두 탭의 늦은 ACK 경합을 검사한다.
+`pnpm check:server`는 실제 API에 테스트 계정 두 개를 생성해 로그인, 계정 격리, 프로필과 쿠키가 바뀐 교차 탭 쓰기 차단, 세이브 충돌·재시도 영수증, 에딧몬 거부, 로그아웃 폐기, 재로그인 복원, 레거시 DB 회로 API 종료를 검증한다. 생성 계정명은 산출물에 남으며 비밀번호와 쿠키는 기록하지 않는다. 전체 그래프 계산·체크포인트·DB 쓰기 불변은 `scripts/verify-local-brains.ts`가 별도로 확인한다. `CHOKETMON_LIVE_AUTH=1`에서 `tests/ui/auth-live.spec.ts`를 실행하면 실제 브라우저 사용자 흐름을 검사한다. 이 검사는 새 브라우저 컨텍스트의 스타터 화면에서 계정 저장을 불러와 성도 지방, 골드 수집 기록, 파트너 종과 게임 seed가 서버 저장과 같은지도 확인한다. `tests/ui/save-race.spec.ts`는 두 탭의 늦은 ACK 경합을 검사한다.
+
+2026-09-14 로컬 Rust/PostgreSQL과 renderer 없는 headless Chromium에서 1,085,115바이트 오픈월드 저장을 단계별로 측정했다. JSON 직렬화 2.6ms, `structuredClone` 5.1ms, 1MB IndexedDB 트랜잭션 4.8ms, `writeSave` 전체 10.8ms, 체크포인트 준비 9.4ms, 실제 PUT 응답 45.4ms, ACK 메타데이터 반영 0.7ms로 저장과 서버 체크포인트 코어는 약 66ms였다. 결과는 `artifacts/save-performance-final/stages.json`에 남긴다.
+
+같은 날 동일 페이지·계정·1,085,124바이트 저장으로 3D 렌더링 영향을 분리했다. 정상 animation frame 상태에서는 349~456ms long task 17개가 이어져 IndexedDB current 완료가 1.80초, PUT 호출이 3.58초, ACK 메타데이터 완료가 6.00초, 사용자 완료 표시가 6.74초까지 밀렸다. 페이지의 animation frame만 잠시 멈춘 대조 조건에서는 저장 중 long task가 없었고, IndexedDB current 15ms, PUT 호출 91ms, HTTP 응답 포함 ACK 메타데이터 163ms, 사용자 완료 표시 169ms였다. 따라서 이 환경의 긴 저장 시간은 저장 크기나 PostgreSQL 처리보다 극저 FPS 렌더 long task가 IndexedDB와 fetch callback을 지연시킨 결과다. 결과는 `artifacts/save-gui-profile-final/gui-stages.json`에 남긴다.
+
+수동 저장 중 Canvas frameloop과 기존 scene 렌더를 최대 1초 쉬도록 고친 뒤 같은 정상 animation frame 조건에서 IndexedDB current 완료 394ms, PUT 호출 408ms, HTTP 응답 461ms, ACK 메타데이터 완료 513ms, 사용자 완료 표시 960ms로 줄었다. 클릭 전에 시작된 long task 하나가 349ms에 끝난 뒤 ACK까지 새 long task가 없었고, ACK 직후 렌더가 재개됐다. 원격 응답을 인위적으로 3초 늦춘 검사에서는 1초 상한 뒤 렌더가 재개되어 네트워크 오류나 지연이 화면을 계속 멈추지 않았다. `node scripts/profile-save-gui.mjs`로 정상 렌더 상태를 재측정하며, `CHOKETMON_GUI_PROFILE_SUSPEND_RAF=1`은 진단용 animation frame 중단 대조군, `CHOKETMON_GUI_PROFILE_PUT_DELAY_MS=3000`은 지연 응답 검사다. 최종 결과는 `artifacts/save-gui-profile-final-fixed/gui-stages.json`에 남긴다.
 
 승률 향상은 아직 확인하지 못했다. 제한 비교에서 학습 전·후 승리 수가 같았으며 일부 학습 시드가 회복·상태 기술을 과도하게 선택했다. 정확한 결과는 [배틀 비교](battle-benchmark.md)에 있다.

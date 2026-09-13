@@ -100,9 +100,9 @@ describe('regional open worlds', () => {
     const atlas = getWorldAtlas('paldea');
     const encountered = new Set(atlas.locations.flatMap(location => versionEncounters(location.id, 'scarlet', 8, 'paldea')));
     expect([...encountered]).toEqual([]);
-    expect(getPlayableSpeciesIds('national')).toEqual(Array.from({ length: 151 }, (_, index) => index + 1));
+    expect(getPlayableSpeciesIds('national')).toEqual(Array.from({ length: 251 }, (_, index) => index + 1));
     expect(getPlayableSpeciesIds('red')).toEqual(Array.from({ length: 151 }, (_, index) => index + 1));
-    expect(getPlayableSpeciesIds('gold')).toEqual([]);
+    expect(getPlayableSpeciesIds('gold')).toEqual(Array.from({ length: 251 }, (_, index) => index + 1));
     expect(getPlayableSpeciesIds('missing')).toEqual([]);
   });
 

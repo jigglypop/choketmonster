@@ -7,7 +7,12 @@ export function AdaptiveResolution({ setDpr }: { setDpr: (value: number) => void
   const windowed = useRef({ seconds: 0, frames: 0, cooldown: 3 });
   useFrame((_, delta) => {
     const stats = windowed.current;
-    if (document.hidden || delta > .8) { stats.seconds = 0; stats.frames = 0; return; }
+    if (document.hidden || !Number.isFinite(delta)) { stats.seconds = 0; stats.frames = 0; return; }
+    if (delta > .25 && gl.getPixelRatio() > .7) {
+      // Slow frames are evidence to lower resolution, not samples to discard.
+      setDpr(Math.max(.7, Math.round((gl.getPixelRatio() - .2) * 100) / 100));
+      stats.seconds = 0; stats.frames = 0; stats.cooldown = 3; return;
+    }
     if (stats.cooldown > 0) { stats.cooldown -= delta; return; }
     stats.seconds += delta; stats.frames++;
     if (stats.seconds < 2) return;

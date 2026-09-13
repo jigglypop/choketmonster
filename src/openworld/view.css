@@ -68,6 +68,32 @@
   backdrop-filter: blur(7px);
 }
 
+.ow-terrain-key {
+  position: absolute;
+  z-index: 3;
+  left: .8rem;
+  bottom: 3.55rem;
+  display: flex;
+  align-items: center;
+  gap: .42rem;
+  padding: .42rem .65rem;
+  color: #fff6d7;
+  font: 750 .7rem/1.2 system-ui, sans-serif;
+  background: rgba(20, 58, 48, .82);
+  border: 1px solid rgba(241, 226, 157, .48);
+  border-radius: .65rem;
+  pointer-events: none;
+  backdrop-filter: blur(7px);
+}
+
+.ow-terrain-key i {
+  width: 1.35rem;
+  height: .18rem;
+  background: #f4c95d;
+  border-radius: 999px;
+  box-shadow: 0 0 .35rem rgba(244, 201, 93, .65);
+}
+
 .ow-camera-controls {
   position: absolute;
   z-index: 3;
@@ -116,6 +142,7 @@
 @media (max-width: 720px) {
   .choketmon-openworld { min-height: 23rem; }
   .ow-help { left: .55rem; bottom: .55rem; max-width: calc(100% - 1.1rem); font-size: .65rem; }
+  .ow-terrain-key { left: .55rem; bottom: 3.2rem; max-width: calc(100% - 1.1rem); font-size: .62rem; }
   .ow-creature-label { min-width: 6.5rem; transform: scale(.88) translateY(-.35rem); }
   .ow-camera-controls { right: .55rem; bottom: 3.35rem; grid-template-columns: repeat(4, 2.15rem); }
   .ow-camera-controls button { min-width: 2.15rem; min-height: 2.15rem; }

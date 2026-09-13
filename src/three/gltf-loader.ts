@@ -1,10 +1,20 @@
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { prepareJohtoRig } from './johto-rig';
+
+class PokemonGLTFLoader extends GLTFLoader {
+  override async loadAsync(url: string, onProgress?: (event: ProgressEvent) => void) {
+    const gltf = await super.loadAsync(url, onProgress);
+    const match = url.match(/\/(?:regular|pokemon)\/(\d+)\.glb(?:[?#]|$)/);
+    if (match) prepareJohtoRig(gltf, Number(match[1]));
+    return gltf;
+  }
+}
 
 // Lazy decoder initialization: WebAssembly and workers are requested only by a
 // visible compressed model. All loaders share at most two decoder workers.
 let decoder: DRACOLoader | undefined;
 export function createGLTFLoader(): GLTFLoader {
   decoder ??= new DRACOLoader().setDecoderPath('/draco/').setWorkerLimit(2);
-  return new GLTFLoader().setDRACOLoader(decoder);
+  return new PokemonGLTFLoader().setDRACOLoader(decoder);
 }

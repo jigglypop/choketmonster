@@ -8,7 +8,13 @@ export function currentAccount() { return account; }
 export function onAccountChange(listener: (user: User | null) => void) { listeners.add(listener); listener(account); return () => { listeners.delete(listener); }; }
 export function getAccount(): Promise<User | null> {
   return initialized ??= serialized(() => fetch('/api/auth/me', { credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(5000) })
-    .then(async response => response.ok ? announce((await response.json()).user ?? null) : announce(null)).catch(() => announce(null)));
+    .then(async response => {
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.message ?? '계정 서버 상태를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+      if (body.user === null) return announce(null);
+      if (!body.user || typeof body.user.id !== 'string' || typeof body.user.username !== 'string') throw new Error('계정 서버 응답이 올바르지 않습니다.');
+      return announce(body.user);
+    }));
 }
 const serialized = <T>(operation: () => Promise<T>): Promise<T> => {
   const result = accountQueue.catch(() => {}).then(operation);

@@ -2,13 +2,15 @@
 
 초켓몬스터는 정적 웹 앱과 계정·저장·전체 MaleCNS 회로 API를 같은 CloudFront 주소로 제공하도록 구성했다. 정적 파일은 서울 리전의 비공개 S3 버킷에서, `/api/*`는 CloudFront VPC origin을 통해 퍼블릭 인바운드가 없는 EC2 Rust 서버에서 읽는다. Rust 서버는 비공개 RDS PostgreSQL에 계정, 저장, 개체별 회로 상태와 재시도 영수증을 보관한다. 서버 런타임 묶음과 전체 회로 파일은 별도 비공개 S3 버킷에서 EC2로 전달하며 DB 관리자 비밀번호는 Secrets Manager가 관리한다.
 
-운영 주소: **https://d3b0jo8g1tseoa.cloudfront.net**
+운영 주소: **https://chocketmon.com**
+
+기존 **https://d3b0jo8g1tseoa.cloudfront.net** 주소도 유지한다. 도메인과 HTTPS 구성은 [사용자 도메인 운영](custom-domain.md)에 기록했다.
 
 현재 배포는 `git push origin main`으로 실행한다. [GitHub OIDC 자동 배포](auto-deploy.md)가 검증·빌드·설치·정적 파일 공개·HTTPS 해시 확인을 순서대로 수행한다. `/version.json`의 `gitCommit`으로 최신 main 반영 여부를 확인한다. 게임은 로그인 UI와 계정별 IndexedDB 저장을 사용하며 로그인·로그아웃·60초 자동저장·수동 저장에서 PostgreSQL에 동기화한다. 전체 회로 기억은 기기 IndexedDB에 남고 회로 배치 API는 PostgreSQL에 기록하지 않는다. 기존 RDS 계정 자료는 보존한다. 아래 계정 기반 검증 결과는 초기 버전의 기록이다.
 
 2026-09-12의 `choketmon-server` 스택은 `infra/aws-server.yaml`의 EC2 `t3.small`, RDS PostgreSQL `db.t4g.micro` Single-AZ, CloudFront VPC origin 구성을 사용한다. 서버 릴리스는 `artifacts/release-20260912T093014Z/receipt.json`, 최신 화면은 `artifacts/deploy-2026-09-12T09-49-18-556Z.deployed.json`에 기록했다. HTTPS API 25개 검사는 `artifacts/rust-api-production.json`, 실제 가입·학습 배틀·저장·로그아웃·재로그인 복원은 `artifacts/rust-production-ui.json`에서 통과했다. EC2 서비스를 재시작한 뒤 세션, 정확한 세이브 내용, 학습 상태가 유지되는 검사도 `artifacts/rust-production-persistence.json`에서 통과했다. 구체적 범위와 제한은 [이번 전달 기록](delivery-2026-09-12.md)을 읽는다.
 
-`artifacts/deploy-2026-09-11T12-14-41-855Z.deployed.json`은 정적 전용 배포의 역사적 기록이다. 당시 검사를 Rust API 배포의 성공 근거로 사용하지 않는다. `artifacts/aws-deploy-verification.json`은 배포 스크립트가 갱신하는 최신 정적 파일 검사다. 실제 계정·전체 회로 화면 검사는 `CHOKETMON_LIVE_RUST=1`, `CHOKETMON_BASE_URL=https://d3b0jo8g1tseoa.cloudfront.net` 환경에서 `pnpm exec playwright test tests/ui/rust-live.spec.ts`로 실행한다.
+`artifacts/deploy-2026-09-11T12-14-41-855Z.deployed.json`은 정적 전용 배포의 역사적 기록이다. 당시 검사를 Rust API 배포의 성공 근거로 사용하지 않는다. `artifacts/aws-deploy-verification.json`은 배포 스크립트가 갱신하는 최신 정적 파일 검사다. 실제 계정·전체 회로 화면 검사는 `CHOKETMON_LIVE_AUTH=1`, `CHOKETMON_BASE_URL=https://chocketmon.com` 환경에서 `pnpm exec playwright test tests/ui/auth-live.spec.ts`로 실행한다.
 
 역사적 정적 배포에서는 관동 조작·구매·모바일, 선택·추적·순간이동, 경험치 공유와 저장 복원 브라우저 검사가 통과했다. 새 배포의 완료 판정에는 여기에 계정 간 저장 격리, 동시 저장 충돌, 재로그인 복원, 요청 재전송의 멱등성, CSRF 거부, 전체 회로 응답과 평가 중 가중치 불변 검사를 추가해야 한다.
 
@@ -20,7 +22,7 @@
 - 버킷 정책은 이 스택의 CloudFront 배포 ARN에만 `s3:GetObject`를 허용한다.
 - `/api/*`는 CloudFront VPC origin으로 EC2의 8080 포트에 전달한다. 최종 EC2 보안 그룹은 CloudFront VPC origin 서비스 보안 그룹만 허용한다. EC2의 공인 IPv4는 패키지·SSM 아웃바운드용이며 퍼블릭 API·SSH 인바운드는 열지 않는다.
 - Rust 서버는 HttpOnly·SameSite 세션 쿠키, Origin 검사, 계정별 저장 revision과 request ID, 개체별 요청 영수증을 사용한다. RDS는 공개 액세스를 끄고 서버 보안 그룹에서만 5432를 허용한다.
-- HTTP 요청은 HTTPS로 리디렉션하고 CloudFront 기본 인증서를 사용한다.
+- HTTP 요청은 HTTPS로 리디렉션한다. 사용자 도메인은 us-east-1 ACM 인증서를 사용하며 기존 CloudFront 주소도 접근할 수 있다.
 - VPC origin을 쓰는 현재 배포판은 CloudFront 무료 정액 플랜 대상이 아니므로 종량제 `PriceClass_100`을 사용한다.
 - Vite의 `/assets/*`는 1년 동안 캐시하고, `index.html`, JSON 등 변경 가능한 파일은 짧게 캐시한다.
 - 확장자가 없는 브라우저 경로만 CloudFront Function에서 `/index.html`로 바꾼다. 존재하지 않는 `.glb`, `.json`, `.js` 요청에는 HTML을 반환하지 않는다.

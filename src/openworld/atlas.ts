@@ -1,4 +1,5 @@
 import type { WorldSample } from './types';
+import { JOHTO_ATLAS } from './johto';
 import {
   KANTO_CONNECTIONS, KANTO_GATES, KANTO_GYMS, KANTO_LOCATIONS, KANTO_MAP_VERSION, KANTO_START, KANTO_SURFACE_CONNECTIONS,
   distanceToKantoPath, encountersForLocation, evaluateKantoTraversal, kantoGateHalfWidth, kantoTravelPoint, locationAt,
@@ -150,7 +151,10 @@ const kanto: WorldAtlas = {
   encounters: encountersForLocation, gateHalfWidth: kantoGateHalfWidth,
 };
 
-export const WORLDS: readonly WorldAtlas[] = [kanto, ...plans.map(createAtlas)];
+const legacyJohto = createAtlas(plans.find(plan => plan.id === 'johto')!);
+/** Validate old coordinates before migrating them into the reconstructed map. */
+export const getLegacyJohtoAtlas = (): WorldAtlas => legacyJohto;
+export const WORLDS: readonly WorldAtlas[] = [kanto, JOHTO_ATLAS, ...plans.filter(plan => plan.id !== 'johto').map(createAtlas)];
 const worldsById = new Map(WORLDS.map(world => [world.id, world]));
 export function getWorldAtlas(id: string): WorldAtlas {
   const world = worldsById.get(id as WorldRegionId); if (!world) throw new RangeError(`Unknown world region: ${id}`); return world;

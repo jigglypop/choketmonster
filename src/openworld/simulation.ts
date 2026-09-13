@@ -9,7 +9,7 @@ import { ConnectomeController, type NeuralMonster } from '../game/connectome';
 import { chooseServerBrains, usesServerBrain, type ServerDecision } from '../game/server-brain';
 import { actBattle, availableEvolutions, captureDefeatedWild, createMonster, evolve, validateGame, type BallItem, type BattleAction, type BattleTurnResult, type GameState, type Monster } from '../game/engine';
 import { KANTO_START, KANTO_MAP_VERSION } from './kanto';
-import { getWorldAtlas, type WorldAtlas, type WorldRegionId } from './atlas';
+import { getWorldAtlas, getLegacyJohtoAtlas, type WorldAtlas, type WorldRegionId } from './atlas';
 import { getPlayableSpeciesIds, isPlayableAdventureVersion, isPlayableSpecies, isPlayableWorldRegion, playableWorldRegionForVersion } from './availability';
 import { REGIONS } from '../game/regions';
 import type { FieldPolicy } from '../game/field';
@@ -51,7 +51,7 @@ export type OpenWorldSnapshot = {
   /** Legacy timer is accepted on import but no longer drives encounters. */
   densityRemaining?: number;
   spawnAnchor?: { x: number; z: number };
-  encounterLayout?: typeof RED_ENCOUNTER_LAYOUT;
+  encounterLayout?: typeof RED_ENCOUNTER_LAYOUT | typeof GOLD_ENCOUNTER_LAYOUT;
   spawnSerial: number; nextFoodId: number; foods: WorldFood[]; respawnQueue?: WorldRespawn[]; entities: OpenWorldEntitySnapshot[]; companionMemories?: OpenWorldEntitySnapshot[];
 };
 type ServerFinalization = { self: NeuralMonster; other: NeuralMonster; turn: number; reward: number; learning: boolean; episode: string };
@@ -64,8 +64,11 @@ export type OpenWorldStep = { tick: number; events: OpenWorldEvent[]; battleActi
 export type OpenWorldSave = { schema: 1; model: typeof OPEN_WORLD_MODEL; graphId: string; game: unknown; world: OpenWorldSnapshot };
 
 export const RED_ENCOUNTER_LAYOUT = 'red-v1';
+export const GOLD_ENCOUNTER_LAYOUT = 'gold-v1';
 
 export function needsRedEncounterMigration(world: OpenWorldSnapshot, version = 'red'): boolean {
+  if (world.regionId === 'johto') return world.encounterLayout !== GOLD_ENCOUNTER_LAYOUT;
+  if (world.encounterLayout === GOLD_ENCOUNTER_LAYOUT) return true;
   return world.encounterLayout === undefined && (!['red', 'blue', 'yellow'].includes(version) || (world.regionId ?? 'kanto') !== 'kanto');
 }
 
@@ -80,7 +83,18 @@ const finite = (value: number) => typeof value === 'number' && Number.isFinite(v
 const key = (x: number, z: number) => `${x.toFixed(2)}:${z.toFixed(2)}`;
 const distance = (a: { x: number; z: number }, b: { x: number; z: number }) => Math.hypot(a.x - b.x, a.z - b.z);
 function hash(text: string): number { let value = 2166136261; for (const char of text) value = Math.imul(value ^ char.charCodeAt(0), 16777619) >>> 0; return value || 0x6d2b79f5; }
-function stripGraph(state: BrainState): WorldBrainState { const { graph, ...rest } = structuredClone(state); return { ...rest, graphId: graph.id }; }
+function stripGraph(state: BrainState): WorldBrainState {
+  // This runs once per world creature on every save. Copy the small mutable
+  // matrices directly; cloning the full state repeatedly made a 16-creature
+  // checkpoint block the UI for several seconds in Chromium.
+  return {
+    schema: state.schema, seed: state.seed, graphId: state.graph.id,
+    inputWeights: state.inputWeights.map(row => [...row]), readout: state.readout.map(row => [...row]),
+    activity: [...state.activity], previous: state.previous ? [...state.previous] : null,
+    action: state.action, rng: state.rng, updates: state.updates,
+    ...(state.sensoryBypass === undefined ? {} : { sensoryBypass: state.sensoryBypass }),
+  };
+}
 
 /** Shared deterministic terrain contract. Rendering may sample it freely without consuming simulation RNG. */
 export function sampleWorld(x: number, z: number): WorldSample {
@@ -161,8 +175,9 @@ export class OpenWorldSimulation {
   private readonly policy?: FieldPolicy;
   private serverTurn?: { battle: NonNullable<GameState['battle']>; turn: number; decisions: Map<string, ServerDecision> };
   private serverFinalizations: ServerFinalization[] = [];
+  private restoringAtlas?: WorldAtlas;
 
-  get atlas(): WorldAtlas { return getWorldAtlas(this.regionId); }
+  get atlas(): WorldAtlas { return this.restoringAtlas ?? getWorldAtlas(this.regionId); }
   sampleWorld(x: number, z: number): WorldSample { return this.atlas.sample(x, z); }
   locationAt(x: number, z: number) { return this.atlas.locationAt(x, z); }
 
@@ -220,6 +235,8 @@ export class OpenWorldSimulation {
     this.regionId = checkpoint ? checkpoint.regionId ?? 'kanto' : playableWorldRegionForVersion(game.adventureVersion ?? 'red');
     // Resolve eagerly so unknown checkpoint regions fail before any entity state is accepted.
     getWorldAtlas(this.regionId);
+    const legacyJohto = this.regionId === 'johto' && checkpoint?.mapVersion === 'johto-atlas-v1';
+    if (legacyJohto) this.restoringAtlas = getLegacyJohtoAtlas();
     this.player = { ...this.atlas.start, heading: 0 };
     this.spawnAnchor = { ...this.player };
     this.visitedTownIds = this.initialVisitedTowns(this.atlas);
@@ -228,6 +245,7 @@ export class OpenWorldSimulation {
     if (this.policy && (this.policy.graphId !== graph.id || this.policy.schema !== 1)) throw new Error('Open-world field policy does not match graph');
     if (checkpoint) {
       this.restore(checkpoint);
+      this.restoringAtlas = undefined;
       if (!isPlayableWorldRegion(this.regionId)) this.migrateUnavailableRegion();
       else {
         if (!isPlayableAdventureVersion(this.game.adventureVersion ?? 'red')) {
@@ -235,6 +253,7 @@ export class OpenWorldSimulation {
         }
         if (this.regionId === 'kanto' && !checkpoint.mapVersion) this.migrateLegacyMap();
         else if (this.regionId === 'kanto' && checkpoint.mapVersion !== KANTO_MAP_VERSION) this.migrateKantoBoundaries();
+        else if (legacyJohto) this.migrateJohtoMap();
       }
       this.migrateUnavailableWildSpecies(needsRedEncounterMigration(checkpoint, this.game.adventureVersion));
     }
@@ -455,7 +474,7 @@ export class OpenWorldSimulation {
       player: structuredClone(this.player), selectedWildId: this.selectedWildId, autoCapture: this.autoCapture, autoHunt: this.autoHunt, battleWildId: this.battleWildId,
       battleElapsed: this.battleElapsed, pendingCapture: this.pendingCapture, pendingBall: this.pendingBall, lastPlayerReward: this.lastPlayerReward, lastEnemyReward: this.lastEnemyReward,
       pendingAction: structuredClone(this.pendingAction), manualControlRemaining: this.manualControlRemaining,
-      encounterLayout: RED_ENCOUNTER_LAYOUT, spawnAnchor: { ...this.spawnAnchor }, controlMode: this.controlMode, regionId: this.regionId, mapVersion: this.atlas.mapVersion,
+      encounterLayout: this.regionId === 'johto' ? GOLD_ENCOUNTER_LAYOUT : RED_ENCOUNTER_LAYOUT, spawnAnchor: { ...this.spawnAnchor }, controlMode: this.controlMode, regionId: this.regionId, mapVersion: this.atlas.mapVersion,
       selectionPinned: this.selectionPinned, trackingSelected: this.trackingSelected, visitedTownIds: [...this.visitedTownIds], visitedTownsByRegion: structuredClone(this.visitedTownsByRegion),
       rewardLedgers: structuredClone(Object.fromEntries(Object.entries(this.rewardLedgers).filter(([id]) => this.rewardOwnerIds().has(id)))),
       spawnSerial: this.spawnSerial, nextFoodId: this.nextFoodId, foods: structuredClone(this.foods), respawnQueue: structuredClone(this.respawnQueue), entities: this.entities.map(pack), companionMemories: [...this.companionMemories.values()].map(pack) };
@@ -667,7 +686,7 @@ export class OpenWorldSimulation {
   private spawnPool(locationId: string): number[] {
     const version = this.game.adventureVersion ?? 'red';
     const caught = this.game.versionCaught?.[version] ?? this.game.dex.caught;
-    return redEncounters(locationId, this.game.player.badges, this.regionId).filter(speciesId => hasPokemonModel(speciesId)
+    return regionalEncounters(locationId, this.game.player.badges, this.regionId).filter(speciesId => hasPokemonModel(speciesId)
       && (!UNIQUE_SPECIES.has(speciesId) || (!caught.includes(speciesId) && !this.entities.some(entity => entity.kind === 'wild' && entity.speciesId === speciesId) && !this.respawnQueue.some(pending => pending.speciesId === speciesId))));
   }
 
@@ -676,19 +695,14 @@ export class OpenWorldSimulation {
     if (!getVersionSpeciesIds(version).length) throw new Error('도감 자료가 없는 버전입니다.');
     if (!isPlayableAdventureVersion(version)) throw new Error('실제 3D 지역 지도가 확보되지 않은 버전입니다.');
     if (version === this.game.adventureVersion) return;
-    const mappedRegion = version === 'national' ? this.regionId : playableWorldRegionForVersion(version);
-    if (mappedRegion !== this.regionId) {
-      this.changeRegionInternal(mappedRegion, version);
-      return;
-    }
-    // Collection records may change; the Red layout and living individuals do not.
+    // Collection records may change; region, fixed encounters and living individuals do not.
     this.game.adventureVersion = version;
     this.game.versionCaught ??= {}; this.game.versionCaught[version] ??= [];
   }
 
   changeRegion(regionId: WorldRegionId): void {
     if (!isPlayableWorldRegion(regionId)) throw new Error('실제 3D 지역 지도가 확보되지 않은 지역입니다.');
-    this.changeRegionInternal(regionId, getWorldAtlas(regionId).defaultVersion);
+    this.changeRegionInternal(regionId, this.game.adventureVersion ?? getWorldAtlas(regionId).defaultVersion);
   }
 
   private changeRegionInternal(regionId: WorldRegionId, version: string): void {
@@ -702,12 +716,12 @@ export class OpenWorldSimulation {
     this.visitedTownsByRegion[this.regionId] = [...this.visitedTownIds];
     this.regionId = regionId;
     this.game.adventureVersion = version;
-    this.spawnAnchor = { ...this.player };
     this.game.versionCaught ??= {};
     this.game.versionCaught[version] ??= [];
     this.visitedTownIds = [...(this.visitedTownsByRegion[regionId] ?? this.initialVisitedTowns(next))];
     this.visitedTownsByRegion[regionId] = [...this.visitedTownIds];
     this.player = { ...next.start, heading: 0 };
+    this.spawnAnchor = { ...this.player };
     const companion = this.entities.find(entity => entity.kind === 'companion');
     if (companion) { Object.assign(companion, this.player); companion.target = undefined; }
     for (const entity of this.wildEntities()) { this.entities.splice(this.entities.indexOf(entity), 1); this.brains.delete(entity.id); }
@@ -915,27 +929,28 @@ export class OpenWorldSimulation {
 
   /** Replace obsolete wild-only snapshots without touching owned monsters or an active battle. */
   private migrateUnavailableWildSpecies(resetLayout = false): void {
+    const regionalSpecies = new Set(getVersionSpeciesIds(this.atlas.defaultVersion));
     if (!isPlayableWorldRegion(this.regionId)) return;
     let changed = false;
     const replacement = (x: number, z: number, level: number, identity: string) => {
       let location = this.locationAt(x, z);
-      let pool = redEncounters(location.id, this.game.player.badges, this.regionId).filter(id => hasPokemonModel(id));
+      let pool = regionalEncounters(location.id, this.game.player.badges, this.regionId).filter(id => hasPokemonModel(id));
       if (!pool.length) {
         const nearest = [...this.atlas.locations].sort((a, b) => distance(a, { x, z }) - distance(b, { x, z }))
-          .find(item => redEncounters(item.id, this.game.player.badges, this.regionId).some(hasPokemonModel) && !this.sampleWorld(item.x, item.z).blocked);
+          .find(item => regionalEncounters(item.id, this.game.player.badges, this.regionId).some(hasPokemonModel) && !this.sampleWorld(item.x, item.z).blocked);
         if (!nearest) throw new Error('No unlocked Red replacement encounters');
         location = nearest; x = nearest.x; z = nearest.z;
-        pool = redEncounters(location.id, this.game.player.badges, this.regionId).filter(id => hasPokemonModel(id));
+        pool = regionalEncounters(location.id, this.game.player.badges, this.regionId).filter(id => hasPokemonModel(id));
       }
       return { x, z, speciesId: pool[hash(`playable:${identity}`) % pool.length], level: Math.max(location.minLevel, Math.min(location.maxLevel, level)) };
     };
     for (const entity of this.wildEntities()) {
       if (entity.id === this.battleWildId) continue;
-      if (isPlayableSpecies(entity.speciesId) && (!resetLayout || redEncounters(this.locationAt(entity.x, entity.z).id, this.game.player.badges, this.regionId).includes(entity.speciesId))) continue;
+      if (regionalSpecies.has(entity.speciesId) && (!resetLayout || regionalEncounters(this.locationAt(entity.x, entity.z).id, this.game.player.badges, this.regionId).includes(entity.speciesId))) continue;
       Object.assign(entity, replacement(entity.x, entity.z, entity.level, entity.id)); changed = true;
     }
     for (const pending of this.respawnQueue) {
-      if (isPlayableSpecies(pending.speciesId) && (!resetLayout || redEncounters(this.locationAt(pending.originX, pending.originZ).id, this.game.player.badges, this.regionId).includes(pending.speciesId))) continue;
+      if (regionalSpecies.has(pending.speciesId) && (!resetLayout || regionalEncounters(this.locationAt(pending.originX, pending.originZ).id, this.game.player.badges, this.regionId).includes(pending.speciesId))) continue;
       const next = replacement(pending.originX, pending.originZ, pending.level, pending.id);
       pending.originX = next.x; pending.originZ = next.z;
       pending.speciesId = next.speciesId; pending.level = next.level; pending.biome = biomeForSpecies(next.speciesId); changed = true;
@@ -946,9 +961,27 @@ export class OpenWorldSimulation {
     }
   }
 
+  private migrateJohtoMap(): void {
+    const previous = getLegacyJohtoAtlas();
+    // The rebuilt map moved its towns. Reusing old coordinates can turn a New
+    // Bark save into an accidental Cianwood visit even when both points are land.
+    const remap = (point: { x: number; z: number }) => {
+      const oldPlace = previous.locationAt(point.x, point.z);
+      const next = this.atlas.locations.find(place => place.id === oldPlace.id);
+      const x = next ? next.x + clamp(point.x - oldPlace.x, -4, 4) : this.atlas.start.x;
+      const z = next ? next.z + clamp(point.z - oldPlace.z, -4, 4) : this.atlas.start.z;
+      point.x = x; point.z = z;
+    };
+    remap(this.player);
+    for (const entity of [...this.entities, ...this.companionMemories.values()]) remap(entity);
+    for (const food of this.foods) remap(food);
+    for (const pending of this.respawnQueue) { const point = { x: pending.originX, z: pending.originZ }; remap(point); pending.originX = point.x; pending.originZ = point.z; }
+    this.migrateKantoBoundaries();
+  }
+
   private migrateKantoBoundaries(): void {
     const relocate = (point: { x: number; z: number }) => {
-      const arrival = getWorldAtlas('kanto').nearestWalkable(point.x, point.z, this.game.player.badges) ?? KANTO_START;
+      const arrival = this.atlas.nearestWalkable(point.x, point.z, this.game.player.badges) ?? this.atlas.start;
       point.x = arrival.x; point.z = arrival.z;
     };
     relocate(this.player);
@@ -961,7 +994,8 @@ export class OpenWorldSimulation {
     for (const food of this.foods) { relocate(food); if (!kept.some(other => distance(other, food) < 1.5)) kept.push(food); }
     this.foods = kept; while (this.foods.length < 24) this.spawnFood();
     this.recordTownVisit();
-    for (const gym of getWorldAtlas('kanto').gyms.filter(gym => gym.badge <= this.game.player.badges)) if (!this.visitedTownIds.includes(gym.locationId)) this.visitedTownIds.push(gym.locationId);
+    for (const gym of this.atlas.gyms.filter(gym => gym.badge <= this.game.player.badges)) if (!this.visitedTownIds.includes(gym.locationId)) this.visitedTownIds.push(gym.locationId);
+    this.spawnAnchor = { ...this.player };
     this.game.logs.push('도로와 벽에 맞춰 위치를 정리했습니다. 개체별 기억과 진행 상황은 그대로입니다.'); this.game.logs = this.game.logs.slice(-200);
   }
 
@@ -995,7 +1029,7 @@ export class OpenWorldSimulation {
       : this.sampleWorld(x, z).blocked;
     if (!checkpoint || checkpoint.schema !== 1 || checkpoint.model !== OPEN_WORLD_MODEL || checkpoint.graphId !== this.graph.id || checkpoint.seed !== this.seed || !Number.isInteger(checkpoint.rng) || checkpoint.rng < 0 || checkpoint.rng > 0xffffffff || !Number.isSafeInteger(checkpoint.tick) || checkpoint.tick < 0 || !finite(checkpoint.battleElapsed) || checkpoint.battleElapsed < 0 || checkpoint.battleElapsed >= BATTLE_INTERVAL || typeof checkpoint.autoCapture !== 'boolean' || typeof checkpoint.pendingCapture !== 'boolean' || (checkpoint.pendingBall !== undefined && !['poke-ball', 'great-ball', 'ultra-ball'].includes(checkpoint.pendingBall)) || (checkpoint.pendingAction !== undefined && !this.validRequestedAction(checkpoint.pendingAction)) || ![checkpoint.lastPlayerReward, checkpoint.lastEnemyReward].every(value => value === null || (finite(value) && Math.abs(value) <= 2)) || !Number.isSafeInteger(checkpoint.spawnSerial) || checkpoint.spawnSerial < 1 || !Number.isSafeInteger(checkpoint.nextFoodId) || checkpoint.nextFoodId < 1 || !Array.isArray(checkpoint.foods) || !Array.isArray(checkpoint.entities) || (checkpoint.companionMemories !== undefined && !Array.isArray(checkpoint.companionMemories))) throw new Error('Invalid open-world checkpoint');
     if ((checkpoint.autoHunt !== undefined && typeof checkpoint.autoHunt !== 'boolean') || (checkpoint.respawnQueue !== undefined && !Array.isArray(checkpoint.respawnQueue))) throw new Error('Invalid open-world automation checkpoint');
-    if (checkpoint.encounterLayout !== undefined && checkpoint.encounterLayout !== RED_ENCOUNTER_LAYOUT) throw new Error('Unknown encounter layout');
+    if (checkpoint.encounterLayout !== undefined && ![RED_ENCOUNTER_LAYOUT, GOLD_ENCOUNTER_LAYOUT].includes(checkpoint.encounterLayout)) throw new Error('Unknown encounter layout');
     if (checkpoint.manualControlRemaining !== undefined && (!finite(checkpoint.manualControlRemaining) || checkpoint.manualControlRemaining < 0 || checkpoint.manualControlRemaining > MANUAL_CONTROL_HOLD)) throw new Error('Invalid manual-control hold');
     if (checkpoint.densityRemaining !== undefined && (!finite(checkpoint.densityRemaining) || checkpoint.densityRemaining < 0 || checkpoint.densityRemaining > 3)) throw new Error('Invalid density timer');
     if (checkpoint.spawnAnchor !== undefined && (!checkpoint.spawnAnchor || ![checkpoint.spawnAnchor.x, checkpoint.spawnAnchor.z].every(value => finite(value) && value >= WORLD_MIN && value <= WORLD_MAX))) throw new Error('Invalid encounter streaming anchor');
@@ -1086,8 +1120,13 @@ export function redEncounters(locationId: string, badges: number, regionId: Worl
   return getWorldAtlas('kanto').encounters(locationId, badges);
 }
 
+/** Region geography determines encounters; collection version never reshuffles them. */
+export function regionalEncounters(locationId: string, badges: number, regionId: WorldRegionId = 'kanto'): number[] {
+  return isPlayableWorldRegion(regionId) ? getWorldAtlas(regionId).encounters(locationId, badges) : [];
+}
+
 /** Compatibility entry point: selecting a collection version never broadens the layout. */
 export function versionEncounters(locationId: string, version: string, badges: number, regionId: WorldRegionId = 'kanto'): number[] {
   if (!getPlayableSpeciesIds(version).length) return [];
-  return redEncounters(locationId, badges, regionId);
+  return regionalEncounters(locationId, badges, regionId);
 }

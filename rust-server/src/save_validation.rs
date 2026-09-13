@@ -433,7 +433,7 @@ fn validate_monster(
 
 const WORLD_MAPS: [(&str, &str); 10] = [
     ("kanto", "kanto-v2"),
-    ("johto", "johto-atlas-v1"),
+    ("johto", "johto-v2"),
     ("hoenn", "hoenn-atlas-v1"),
     ("sinnoh", "sinnoh-atlas-v1"),
     ("unova", "unova-atlas-v1"),
@@ -496,7 +496,8 @@ fn validate_open_world(view: Option<&Value>) -> Result<(), &'static str> {
                 .ok_or("오픈월드 지역이 올바르지 않습니다.")?;
             let legacy_kanto =
                 region == "kanto" && (map_version.is_none() || map_version == Some("kanto-v1"));
-            if !legacy_kanto && map_version != Some(expected) {
+            let legacy_johto = region == "johto" && map_version == Some("johto-atlas-v1");
+            if !legacy_kanto && !legacy_johto && map_version != Some(expected) {
                 return Err("오픈월드 지도 버전이 지역과 일치하지 않습니다.");
             }
         }
@@ -858,6 +859,13 @@ mod tests {
         let mut wrong_map = save.clone();
         wrong_map["view"]["openWorld"]["mapVersion"] = Value::String("kanto-v2".into());
         assert!(validate_save(&wrong_map).is_err());
+
+        for map in ["johto-v2", "johto-atlas-v1"] {
+            let mut johto = save.clone();
+            johto["view"]["openWorld"]["regionId"] = Value::String("johto".into());
+            johto["view"]["openWorld"]["mapVersion"] = Value::String(map.into());
+            validate_save(&johto).unwrap();
+        }
 
         let mut unknown_region = save.clone();
         unknown_region["view"]["openWorld"]["regionId"] = Value::String("missing".into());

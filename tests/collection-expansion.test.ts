@@ -14,7 +14,7 @@ const controller = new ConnectomeController(graph);
 
 describe('expanded collection and individual lifecycle', () => {
   it('limits national and Kanto version encounters to species whose region map is playable', () => {
-    for (const version of ['red', 'blue', 'yellow', 'national'].map(id => ({ id, speciesIds: getPlayableSpeciesIds(id) }))) {
+    for (const version of ['red', 'blue', 'yellow'].map(id => ({ id, speciesIds: getPlayableSpeciesIds(id) }))) {
       const encounters = new Set(KANTO_LOCATIONS.flatMap(location => versionEncounters(location.id, version.id, 8)));
       // The original Kanto campaign obtains evolved forms through its supported evolution rules.
       for (let pass = 0; pass < 3; pass++) for (const species of POKEMON) if (encounters.has(species.id)) for (const evolution of species.evolutions) {
@@ -22,8 +22,8 @@ describe('expanded collection and individual lifecycle', () => {
       }
       expect([...encounters].sort((a, b) => a - b), version.id).toEqual([...version.speciesIds].sort((a, b) => a - b));
     }
-    expect(versionEncounters('pallet', 'gold', 8)).toEqual([]);
-    expect(getPlayableSpeciesIds('national')).toHaveLength(151);
+    expect(versionEncounters('pallet', 'gold', 8)).toEqual(versionEncounters('pallet', 'red', 8));
+    expect(getPlayableSpeciesIds('national')).toHaveLength(251);
   });
 
   it('limits playable collection changes while retaining the partner and separate collection records', () => {
