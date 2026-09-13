@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest';
 import type { Graph } from '../src/core/brain';
 import { hasPokemonModel } from '../src/data/pokemon-models';
 import { createGame, createMonster } from '../src/game/engine';
+import { VERSIONS } from '../src/data/pokemon-versions';
+import { KANTO_LOCATIONS, encountersForLocation } from '../src/openworld/kanto';
 import { getWorldAtlas } from '../src/openworld/atlas';
-import { OpenWorldSimulation, biomeForSpecies, restoreOpenWorld, serializeOpenWorld, versionEncounters } from '../src/openworld/simulation';
+import { OpenWorldSimulation, biomeForSpecies, restoreOpenWorld, serializeOpenWorld, versionEncounters, redEncounters, RED_ENCOUNTER_LAYOUT } from '../src/openworld/simulation';
 import { getPlayableSpeciesIds, isPlayableSpecies } from '../src/openworld/availability';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
@@ -39,6 +41,50 @@ describe('regional open worlds', () => {
     expect(() => world.changeRegion('paldea')).toThrow(/3D 지역 지도/);
     world.changeVersion('yellow');
     expect(game.adventureVersion).toBe('yellow');
+  });
+
+  it('fixes every collection version to Red encounters and preserves the roster when switching records', () => {
+    const versions = ['national', ...VERSIONS.filter(version => getPlayableSpeciesIds(version.id).length).map(version => version.id)];
+    for (const version of versions) for (const badges of [0, 1, 4, 8]) for (const location of KANTO_LOCATIONS) {
+      expect(versionEncounters(location.id, version, badges), `${version}:${location.id}:${badges}`).toEqual(encountersForLocation(location.id, badges));
+    }
+    const game = createGame(1, 'fixed-red'), source = new OpenWorldSimulation(graph, game, 73009);
+    const checkpoint = source.snapshot(), wild = checkpoint.entities.find(entity => entity.kind === 'wild')!;
+    checkpoint.selectedWildId = wild.id; checkpoint.selectionPinned = true;
+    checkpoint.respawnQueue = [{ id: 'respawn:test', speciesId: 16, level: 3, biome: biomeForSpecies(16), originX: -68, originZ: 66, remainingSeconds: 5 }];
+    const world = new OpenWorldSimulation(graph, game, source.seed, checkpoint), before = world.snapshot();
+    for (const version of versions) { world.changeVersion(version); expect(world.snapshot()).toEqual(before); }
+    const national = createGame(1, 'fixed-red'); national.adventureVersion = 'national';
+    const red = new OpenWorldSimulation(graph, createGame(1, 'fixed-red'), source.seed);
+    expect(new OpenWorldSimulation(graph, national, source.seed).snapshot()).toEqual(red.snapshot());
+    expect(game.versionCaught!.red).toEqual([1]);
+  });
+
+  it('migrates the expanded roster once while preserving a battle, owned individuals and history', () => {
+    const game = createGame(1, 'legacy-national-red'); game.adventureVersion = 'national';
+    const owned = createMonster(game, 25, 20); game.player.box.push(owned);
+    game.dex.seen.push(25); game.dex.caught.push(25); game.versionCaught = { red: [1], national: [25] };
+    const source = new OpenWorldSimulation(graph, game, 73010);
+    const wilds = source.entities.filter(entity => entity.kind === 'wild');
+    wilds[0].speciesId = 25; expect(source.startEncounter(wilds[0].id)).toBe(true);
+    const battle = structuredClone(game.battle), history = structuredClone(game.versionCaught), snapshot = source.snapshot();
+    delete snapshot.encounterLayout;
+    const remapped = snapshot.entities.find(entity => entity.id === wilds[1].id)!;
+    Object.assign(remapped, { speciesId: 150, level: 70, x: -68, z: 66 });
+    snapshot.respawnQueue = [{ id: 'respawn:old-layout', speciesId: 150, level: 70, biome: 'rock', originX: -68, originZ: 66, remainingSeconds: 5 }];
+    const original = structuredClone(snapshot), world = new OpenWorldSimulation(graph, game, source.seed, snapshot);
+    const current = world.snapshot(), replacement = current.entities.find(entity => entity.id === remapped.id)!;
+    expect([16, 19]).toContain(replacement.speciesId); expect(replacement.level).toBe(4); expect(replacement.brain).toEqual(remapped.brain);
+    expect(current.respawnQueue![0]).toMatchObject({ level: 4, remainingSeconds: 5 }); expect([16, 19]).toContain(current.respawnQueue![0].speciesId);
+    expect(current.encounterLayout).toBe(RED_ENCOUNTER_LAYOUT); expect(current.rng).toBe(snapshot.rng);
+    expect(game.battle).toEqual(battle); expect(current.entities.find(entity => entity.id === wilds[0].id)!.speciesId).toBe(25);
+    expect(game.player.box[0]).toBe(owned); expect(game.versionCaught).toEqual(history); expect(snapshot).toEqual(original);
+    // A marked save may contain a legitimate wandering individual outside its original habitat.
+    replacement.speciesId = 25;
+    const restored = new OpenWorldSimulation(graph, game, source.seed, current);
+    expect(restored.snapshot()).toEqual(current);
+    expect(redEncounters('route-1', 0)).toEqual([16, 19]);
+    expect(() => new OpenWorldSimulation(graph, game, source.seed, { ...current, encounterLayout: 'unknown' as never })).toThrow(/encounter layout/);
   });
 
   it('rejects unknown regions and mismatched legacy map heads', () => {

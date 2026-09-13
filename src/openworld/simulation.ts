@@ -51,6 +51,7 @@ export type OpenWorldSnapshot = {
   /** Legacy timer is accepted on import but no longer drives encounters. */
   densityRemaining?: number;
   spawnAnchor?: { x: number; z: number };
+  encounterLayout?: typeof RED_ENCOUNTER_LAYOUT;
   spawnSerial: number; nextFoodId: number; foods: WorldFood[]; respawnQueue?: WorldRespawn[]; entities: OpenWorldEntitySnapshot[]; companionMemories?: OpenWorldEntitySnapshot[];
 };
 type ServerFinalization = { self: NeuralMonster; other: NeuralMonster; turn: number; reward: number; learning: boolean; episode: string };
@@ -61,6 +62,12 @@ export type OpenWorldEvent =
   | { type: 'evolved'; entityId: string; fromSpeciesId: number; speciesId: number };
 export type OpenWorldStep = { tick: number; events: OpenWorldEvent[]; battleActive: boolean };
 export type OpenWorldSave = { schema: 1; model: typeof OPEN_WORLD_MODEL; graphId: string; game: unknown; world: OpenWorldSnapshot };
+
+export const RED_ENCOUNTER_LAYOUT = 'red-v1';
+
+export function needsRedEncounterMigration(world: OpenWorldSnapshot, version = 'red'): boolean {
+  return world.encounterLayout === undefined && (!['red', 'blue', 'yellow'].includes(version) || (world.regionId ?? 'kanto') !== 'kanto');
+}
 
 const PATH_SAMPLE_DISTANCE = .45;
 const MANUAL_CONTROL_HOLD = .3;
@@ -229,7 +236,7 @@ export class OpenWorldSimulation {
         if (this.regionId === 'kanto' && !checkpoint.mapVersion) this.migrateLegacyMap();
         else if (this.regionId === 'kanto' && checkpoint.mapVersion !== KANTO_MAP_VERSION) this.migrateKantoBoundaries();
       }
-      this.migrateUnavailableWildSpecies();
+      this.migrateUnavailableWildSpecies(needsRedEncounterMigration(checkpoint, this.game.adventureVersion));
     }
     else {
       this.entities.push(this.makeCompanion());
@@ -448,7 +455,7 @@ export class OpenWorldSimulation {
       player: structuredClone(this.player), selectedWildId: this.selectedWildId, autoCapture: this.autoCapture, autoHunt: this.autoHunt, battleWildId: this.battleWildId,
       battleElapsed: this.battleElapsed, pendingCapture: this.pendingCapture, pendingBall: this.pendingBall, lastPlayerReward: this.lastPlayerReward, lastEnemyReward: this.lastEnemyReward,
       pendingAction: structuredClone(this.pendingAction), manualControlRemaining: this.manualControlRemaining,
-      spawnAnchor: { ...this.spawnAnchor }, controlMode: this.controlMode, regionId: this.regionId, mapVersion: this.atlas.mapVersion,
+      encounterLayout: RED_ENCOUNTER_LAYOUT, spawnAnchor: { ...this.spawnAnchor }, controlMode: this.controlMode, regionId: this.regionId, mapVersion: this.atlas.mapVersion,
       selectionPinned: this.selectionPinned, trackingSelected: this.trackingSelected, visitedTownIds: [...this.visitedTownIds], visitedTownsByRegion: structuredClone(this.visitedTownsByRegion),
       rewardLedgers: structuredClone(Object.fromEntries(Object.entries(this.rewardLedgers).filter(([id]) => this.rewardOwnerIds().has(id)))),
       spawnSerial: this.spawnSerial, nextFoodId: this.nextFoodId, foods: structuredClone(this.foods), respawnQueue: structuredClone(this.respawnQueue), entities: this.entities.map(pack), companionMemories: [...this.companionMemories.values()].map(pack) };
@@ -660,7 +667,7 @@ export class OpenWorldSimulation {
   private spawnPool(locationId: string): number[] {
     const version = this.game.adventureVersion ?? 'red';
     const caught = this.game.versionCaught?.[version] ?? this.game.dex.caught;
-    return versionEncounters(locationId, version, this.game.player.badges, this.regionId).filter(speciesId => hasPokemonModel(speciesId)
+    return redEncounters(locationId, this.game.player.badges, this.regionId).filter(speciesId => hasPokemonModel(speciesId)
       && (!UNIQUE_SPECIES.has(speciesId) || (!caught.includes(speciesId) && !this.entities.some(entity => entity.kind === 'wild' && entity.speciesId === speciesId) && !this.respawnQueue.some(pending => pending.speciesId === speciesId))));
   }
 
@@ -674,13 +681,9 @@ export class OpenWorldSimulation {
       this.changeRegionInternal(mappedRegion, version);
       return;
     }
+    // Collection records may change; the Red layout and living individuals do not.
     this.game.adventureVersion = version;
-    this.spawnAnchor = { ...this.player };
     this.game.versionCaught ??= {}; this.game.versionCaught[version] ??= [];
-    const count = this.rosterStatus().total;
-    for (const entity of this.wildEntities()) { this.entities.splice(this.entities.indexOf(entity), 1); this.brains.delete(entity.id); }
-    this.respawnQueue = []; this.selectedWildId = undefined; this.selectionPinned = false; this.trackingSelected = false;
-    while (this.wildEntities().length < count) this.spawnWild();
   }
 
   changeRegion(regionId: WorldRegionId): void {
@@ -911,23 +914,30 @@ export class OpenWorldSimulation {
   }
 
   /** Replace obsolete wild-only snapshots without touching owned monsters or an active battle. */
-  private migrateUnavailableWildSpecies(): void {
+  private migrateUnavailableWildSpecies(resetLayout = false): void {
     if (!isPlayableWorldRegion(this.regionId)) return;
     let changed = false;
     const replacement = (x: number, z: number, level: number, identity: string) => {
-      const location = this.locationAt(x, z);
-      const pool = versionEncounters(location.id, this.game.adventureVersion ?? 'national', this.game.player.badges, this.regionId)
-        .filter(id => hasPokemonModel(id));
-      if (!pool.length) throw new Error(`No playable replacement encounters at ${location.id}`);
-      return { speciesId: pool[hash(`playable:${identity}`) % pool.length], level: Math.max(location.minLevel, Math.min(location.maxLevel, level)) };
+      let location = this.locationAt(x, z);
+      let pool = redEncounters(location.id, this.game.player.badges, this.regionId).filter(id => hasPokemonModel(id));
+      if (!pool.length) {
+        const nearest = [...this.atlas.locations].sort((a, b) => distance(a, { x, z }) - distance(b, { x, z }))
+          .find(item => redEncounters(item.id, this.game.player.badges, this.regionId).some(hasPokemonModel) && !this.sampleWorld(item.x, item.z).blocked);
+        if (!nearest) throw new Error('No unlocked Red replacement encounters');
+        location = nearest; x = nearest.x; z = nearest.z;
+        pool = redEncounters(location.id, this.game.player.badges, this.regionId).filter(id => hasPokemonModel(id));
+      }
+      return { x, z, speciesId: pool[hash(`playable:${identity}`) % pool.length], level: Math.max(location.minLevel, Math.min(location.maxLevel, level)) };
     };
     for (const entity of this.wildEntities()) {
-      if (isPlayableSpecies(entity.speciesId) || entity.id === this.battleWildId) continue;
+      if (entity.id === this.battleWildId) continue;
+      if (isPlayableSpecies(entity.speciesId) && (!resetLayout || redEncounters(this.locationAt(entity.x, entity.z).id, this.game.player.badges, this.regionId).includes(entity.speciesId))) continue;
       Object.assign(entity, replacement(entity.x, entity.z, entity.level, entity.id)); changed = true;
     }
     for (const pending of this.respawnQueue) {
-      if (isPlayableSpecies(pending.speciesId)) continue;
+      if (isPlayableSpecies(pending.speciesId) && (!resetLayout || redEncounters(this.locationAt(pending.originX, pending.originZ).id, this.game.player.badges, this.regionId).includes(pending.speciesId))) continue;
       const next = replacement(pending.originX, pending.originZ, pending.level, pending.id);
+      pending.originX = next.x; pending.originZ = next.z;
       pending.speciesId = next.speciesId; pending.level = next.level; pending.biome = biomeForSpecies(next.speciesId); changed = true;
     }
     if (changed) {
@@ -985,6 +995,7 @@ export class OpenWorldSimulation {
       : this.sampleWorld(x, z).blocked;
     if (!checkpoint || checkpoint.schema !== 1 || checkpoint.model !== OPEN_WORLD_MODEL || checkpoint.graphId !== this.graph.id || checkpoint.seed !== this.seed || !Number.isInteger(checkpoint.rng) || checkpoint.rng < 0 || checkpoint.rng > 0xffffffff || !Number.isSafeInteger(checkpoint.tick) || checkpoint.tick < 0 || !finite(checkpoint.battleElapsed) || checkpoint.battleElapsed < 0 || checkpoint.battleElapsed >= BATTLE_INTERVAL || typeof checkpoint.autoCapture !== 'boolean' || typeof checkpoint.pendingCapture !== 'boolean' || (checkpoint.pendingBall !== undefined && !['poke-ball', 'great-ball', 'ultra-ball'].includes(checkpoint.pendingBall)) || (checkpoint.pendingAction !== undefined && !this.validRequestedAction(checkpoint.pendingAction)) || ![checkpoint.lastPlayerReward, checkpoint.lastEnemyReward].every(value => value === null || (finite(value) && Math.abs(value) <= 2)) || !Number.isSafeInteger(checkpoint.spawnSerial) || checkpoint.spawnSerial < 1 || !Number.isSafeInteger(checkpoint.nextFoodId) || checkpoint.nextFoodId < 1 || !Array.isArray(checkpoint.foods) || !Array.isArray(checkpoint.entities) || (checkpoint.companionMemories !== undefined && !Array.isArray(checkpoint.companionMemories))) throw new Error('Invalid open-world checkpoint');
     if ((checkpoint.autoHunt !== undefined && typeof checkpoint.autoHunt !== 'boolean') || (checkpoint.respawnQueue !== undefined && !Array.isArray(checkpoint.respawnQueue))) throw new Error('Invalid open-world automation checkpoint');
+    if (checkpoint.encounterLayout !== undefined && checkpoint.encounterLayout !== RED_ENCOUNTER_LAYOUT) throw new Error('Unknown encounter layout');
     if (checkpoint.manualControlRemaining !== undefined && (!finite(checkpoint.manualControlRemaining) || checkpoint.manualControlRemaining < 0 || checkpoint.manualControlRemaining > MANUAL_CONTROL_HOLD)) throw new Error('Invalid manual-control hold');
     if (checkpoint.densityRemaining !== undefined && (!finite(checkpoint.densityRemaining) || checkpoint.densityRemaining < 0 || checkpoint.densityRemaining > 3)) throw new Error('Invalid density timer');
     if (checkpoint.spawnAnchor !== undefined && (!checkpoint.spawnAnchor || ![checkpoint.spawnAnchor.x, checkpoint.spawnAnchor.z].every(value => finite(value) && value >= WORLD_MIN && value <= WORLD_MAX))) throw new Error('Invalid encounter streaming anchor');
@@ -1069,23 +1080,14 @@ export function restoreOpenWorld(graph: Graph, json: string, policy?: FieldPolic
   return { game, simulation: new OpenWorldSimulation(graph, game, value.world.seed, value.world, policy, value.world.entities.filter(entity => entity.kind === 'wild').length) };
 }
 
-/** Regional dex species are placed on our shared map; these are designed encounters. */
+/** All playable collection versions share the project's authored Red map encounters. */
+export function redEncounters(locationId: string, badges: number, regionId: WorldRegionId = 'kanto'): number[] {
+  if (regionId !== 'kanto') return [];
+  return getWorldAtlas('kanto').encounters(locationId, badges);
+}
+
+/** Compatibility entry point: selecting a collection version never broadens the layout. */
 export function versionEncounters(locationId: string, version: string, badges: number, regionId: WorldRegionId = 'kanto'): number[] {
-  if (!isPlayableWorldRegion(regionId)) return [];
-  const ids = getPlayableSpeciesIds(version);
-  if (!ids.length) return [];
-  const atlas = getWorldAtlas(regionId);
-  const native = atlas.encounters(locationId, badges).filter(id => ids.includes(id));
-  if (regionId === 'kanto' && (version === 'red' || version === 'blue' || version === 'yellow')) return native;
-  const location = atlas.locations.find(item => item.id === locationId);
-  if (!location || location.requiredBadges > badges) return [];
-  const biome = location.kind === 'sea' ? 'lake' : location.kind === 'forest' ? 'forest' : location.kind === 'cave' ? 'rock' : 'meadow';
-  const matching = ids.filter(id => biomeForSpecies(id) === biome);
-  const unlocked = atlas.locations.filter(item => item.requiredBadges <= badges);
-  const locationIndex = unlocked.findIndex(item => item.id === locationId);
-  const distributed = locationIndex < 0 ? [] : ids.filter((_id, index) => index % unlocked.length === locationIndex);
-  // Keep each atlas's authored local encounters while spreading the complete
-  // version dex across its biomes, so changing regions never makes collection
-  // completion impossible.
-  return [...new Set([...native, ...matching, ...distributed])];
+  if (!getPlayableSpeciesIds(version).length) return [];
+  return redEncounters(locationId, badges, regionId);
 }

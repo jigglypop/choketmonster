@@ -12,7 +12,7 @@ import './three/scene.css';
 import { detachPokemonScene, getPokemonScene } from './three/scene';
 import { OpenWorldPanel } from './openworld/panel';
 import type { OpenWorldSnapshot } from './openworld/simulation';
-import { movementSpeed } from './openworld/simulation';
+import { movementSpeed, needsRedEncounterMigration } from './openworld/simulation';
 import { kantoSpeciesSources } from './openworld/kanto';
 import { createFieldRuntime } from './three/field-runtime';
 import type { FieldPolicy } from './game/field';
@@ -110,6 +110,9 @@ function prepareWorld() {
   }
   if (view.openWorld && (view.openWorld.entities.some(entity => entity.kind === 'wild' && entity.id !== view.openWorld!.battleWildId && !isPlayableSpecies(entity.speciesId)) || view.openWorld.respawnQueue?.some(entity => !isPlayableSpecies(entity.speciesId)))) {
     void writeSave(packSave(game, controller.graph, view), `backup-before-roster-${Date.now()}`).catch(error => notify(String(error), true));
+  }
+  if (view.openWorld && needsRedEncounterMigration(view.openWorld, game.adventureVersion)) {
+    void writeSave(packSave(game, controller.graph, view), 'backup-before-red-layout').catch(error => notify(String(error), true));
   }
   if (view.openWorld && originalFieldPolicy) {
     const checkpoint = structuredClone(view.openWorld);
@@ -387,7 +390,7 @@ function renderDex() {
   const playable = isPlayableAdventureVersion(dexVersion);
   $('#screen').innerHTML = `<div class="page dex-page"><section class="section-heading"><div><span class="kicker">POKÉDEX · COLLECTION</span><h1>${escapeHtml(versionName)}</h1><p>수록 ${pool.length}종 · 3D 지원 ${pool.filter(s => hasPokemonModel(s.id)).length}종 · 수집 ${caughtIds.filter(id => pool.some(s => s.id === id)).length}종</p></div>
     <div class="dex-tools"><label for="dex-version">버전별 도감</label><select id="dex-version"><option value="national">관동 통합 · ${PLAYABLE_SPECIES_IDS.length}종</option>${VERSIONS.filter(version => isPlayableAdventureVersion(version.id) && getPlayableSpeciesIds(version.id).length).map(version => `<option value="${version.id}" ${version.speciesIds.length ? '' : 'disabled'}>${escapeHtml(version.name)}${version.id.endsWith('-japan') ? ' (일본판)' : ''} · ${version.speciesIds.length ? `${getPlayableSpeciesIds(version.id).length}종` : '원본 도감 없음'}</option>`).join('')}</select><input id="dex-search" type="search" aria-label="도감 검색" value="${escapeHtml(dexQuery)}" placeholder="이름, 번호, 타입 검색"><div>${(['all', 'seen', 'caught'] as const).map(mode => `<button data-dex-mode="${mode}" class="${dexMode === mode ? 'active' : ''}">${mode === 'all' ? '전체' : mode === 'seen' ? '발견' : '수집'}</button>`).join('')}</div></div></section>
-    <section class="collection-note"><p>현재 제공되는 관동 지도에서 수집할 포켓몬만 표시합니다. 기존에 보유한 다른 지역의 포켓몬과 개체 기록은 팀·박스에 보관됩니다.</p><button id="collect-version" class="primary" ${!playable || game.adventureVersion === dexVersion ? 'disabled' : ''}>${!playable ? '지역 3D 맵 미확보 · 도감만 보기' : game.adventureVersion === dexVersion ? '이 버전 수집 중' : '이 버전에서 수집'}</button></section>
+    <section class="collection-note"><p>야생 포켓몬 배치는 레드 기준으로 고정됩니다. 버전 선택은 수집 기록에 적용됩니다. 기존에 보유한 다른 지역의 포켓몬과 개체 기록은 팀·박스에 보관됩니다.</p><button id="collect-version" class="primary" ${!playable || game.adventureVersion === dexVersion ? 'disabled' : ''}>${!playable ? '지역 3D 맵 미확보 · 도감만 보기' : game.adventureVersion === dexVersion ? '이 버전 수집 중' : '이 버전에서 수집'}</button></section>
     <div class="dex-grid">${filtered.slice(dexPage * pageSize, (dexPage + 1) * pageSize).map(s => {
       const seen = game!.dex.seen.includes(s.id), caught = caughtIds.includes(s.id);
       const regions = !hasPokemonModel(s.id) ? '3D 미지원 · 도감 자료만 제공' : isPlayableSpecies(s.id) ? kantoSpeciesSources(s.id).join(' / ') : '현재 탐험 지도 없음';

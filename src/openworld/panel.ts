@@ -7,7 +7,7 @@ import { buyItem, experienceAtLevel, heal, ITEM_LABELS, ITEM_PRICES, statsFor, t
 import { getWorldAtlas } from './atlas';
 import { PLAYABLE_WORLDS, getPlayableSpeciesIds, isPlayableSpecies, isPlayableAdventureVersion } from './availability';
 import type { FieldPolicy } from '../game/field';
-import { movementSpeed, OpenWorldSimulation, versionEncounters, type OpenWorldSnapshot } from './simulation';
+import { movementSpeed, OpenWorldSimulation, redEncounters, type OpenWorldSnapshot } from './simulation';
 import { lastServerDecision } from '../game/server-brain';
 import { mountOpenWorld } from './view';
 import type { OpenWorldRenderSnapshot, OpenWorldView, WorldCreature, WorldHeading } from './types';
@@ -61,7 +61,7 @@ export class OpenWorldPanel {
     host.innerHTML = `<section class="adventure" aria-label="오픈월드 모험">
       <div id="ow-host"></div>
       <details class="world-explore-panel" open><summary class="world-explore-toggle">탐험 조작 <span>⌄</span></summary><div class="world-explore-scroll">
-      <div class="world-heading"><label class="world-eyebrow" for="world-version"><span id="world-region-label">관동</span> · 수집 <select id="world-version"><option value="national">관동 통합</option>${VERSIONS.filter(version => version.speciesIds.length && isPlayableAdventureVersion(version.id)).map(version => `<option value="${version.id}">${escape(version.name)}${version.id.endsWith('-japan') ? ' (일본판)' : ''}</option>`).join('')}</select></label><h1 id="world-biome">태초마을</h1><p id="world-zone-level">1번도로에서 첫 모험을 시작하세요</p></div>
+      <div class="world-heading"><label class="world-eyebrow" for="world-version"><span id="world-region-label">관동</span> · 수집 기록 <select id="world-version"><option value="national">관동 통합</option>${VERSIONS.filter(version => version.speciesIds.length && isPlayableAdventureVersion(version.id)).map(version => `<option value="${version.id}">${escape(version.name)}${version.id.endsWith('-japan') ? ' (일본판)' : ''}</option>`).join('')}</select></label><span id="world-encounter-layout" class="world-encounter-layout">야생 배치 · 레드 고정</span><h1 id="world-biome">태초마을</h1><p id="world-zone-level">1번도로에서 첫 모험을 시작하세요</p></div>
       <div class="world-tools"><button id="world-pause">Ⅱ 일시 정지</button><button id="world-heal">캠프 회복</button><label><input id="world-auto-hunt" type="checkbox" checked><span>자동 사냥</span></label><label><input id="world-learning" type="checkbox"><span id="world-learning-label">기술 학습</span></label></div>
       <div class="world-control-mode" role="group" aria-label="조작 모드"><div class="world-mode-buttons"><button id="world-mode-auto">자동</button><button id="world-mode-manual">수동</button></div><div class="world-control-copy"><strong id="world-control-title"></strong><small id="world-control-help"></small></div></div>
       <details class="world-shop"><summary>프렌들리숍 · <span id="world-ball-stock"></span></summary><div id="world-shop-items"></div><small id="world-shop-note">승리 후에는 볼 1개로 확정 포획합니다.</small></details>
@@ -170,7 +170,7 @@ export class OpenWorldPanel {
     const versionSelect = host.querySelector<HTMLSelectElement>('#world-version')!;
     versionSelect.value = this.options.game.adventureVersion ?? 'red';
     versionSelect.onchange = () => {
-      try { this.simulation.changeVersion(versionSelect.value); this.options.changed(); this.refresh(); this.options.notify(`${this.simulation.atlas.name} 지역에서 수집을 시작합니다.`); }
+      try { this.simulation.changeVersion(versionSelect.value); this.options.changed(); this.refresh(); this.options.notify(`${this.simulation.atlas.name} 수집 기록을 변경했습니다. 야생 배치는 레드로 유지됩니다.`); }
       catch (error) { versionSelect.value = this.options.game.adventureVersion ?? 'red'; this.options.notify(String(error), true); }
     };
     const regionSelect = host.querySelector<HTMLSelectElement>('#world-region')!;
@@ -322,7 +322,7 @@ export class OpenWorldPanel {
     this.html('#world-emergency-action', battle && !battle.awaitingSwitch && moves.every(slot => slot.pp <= 0) ? '<button id="world-struggle">발버둥 (PP 소진)</button>' : '');
     const location = this.simulation.locationAt(world.player.x, world.player.z);
     this.html('#world-biome', location.name);
-    const pool = versionEncounters(location.id, game.adventureVersion ?? 'red', game.player.badges, world.regionId);
+    const pool = redEncounters(location.id, game.player.badges, world.regionId);
     this.html('#world-zone-level', pool.length ? `야생 Lv.${location.minLevel}–${location.maxLevel} · ${pool.slice(0, 3).map(id => getSpecies(id).name).join(' · ')}` : '도시와 길을 따라 다음 구역으로 탐험하세요');
     this.html('#world-position', `${world.player.x.toFixed(0)}, ${world.player.z.toFixed(0)}`);
     const collectionSpecies = new Set(getPlayableSpeciesIds(game.adventureVersion ?? 'red'));

@@ -350,3 +350,5 @@ input[type=search], input[type=text], select { border: 1px solid var(--ui-border
 .gym-victory-next { color: var(--ui-muted); }
 @keyframes badge-arrive { from { opacity: 0; transform: translateY(12px) scale(.85); } to { opacity: 1; transform: none; } }
 @media(prefers-reduced-motion: reduce) { .gym-victory-emblem { animation: none; } }
+
+.world-encounter-layout { display: block; width: fit-content; padding: 5px 9px; margin: 10px 0 8px; border: 1px solid #80aaff60; border-radius: 8px; color: #dce9ff; background: #376dc92b; font-size: calc(12px * var(--ui-font-scale)); font-weight: 600; }

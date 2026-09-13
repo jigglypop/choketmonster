@@ -17,7 +17,7 @@ describe('expanded collection and individual lifecycle', () => {
     for (const version of ['red', 'blue', 'yellow', 'national'].map(id => ({ id, speciesIds: getPlayableSpeciesIds(id) }))) {
       const encounters = new Set(KANTO_LOCATIONS.flatMap(location => versionEncounters(location.id, version.id, 8)));
       // The original Kanto campaign obtains evolved forms through its supported evolution rules.
-      if (['red', 'blue', 'yellow'].includes(version.id)) for (let pass = 0; pass < 3; pass++) for (const species of POKEMON) if (encounters.has(species.id)) for (const evolution of species.evolutions) {
+      for (let pass = 0; pass < 3; pass++) for (const species of POKEMON) if (encounters.has(species.id)) for (const evolution of species.evolutions) {
         if (version.speciesIds.includes(evolution.target) && (evolution.method === 'level' || evolution.method === 'trade' || (evolution.method === 'stone' && Object.hasOwn(ITEM_PRICES, evolution.item ?? '')))) encounters.add(evolution.target);
       }
       expect([...encounters].sort((a, b) => a - b), version.id).toEqual([...version.speciesIds].sort((a, b) => a - b));
