@@ -6,6 +6,7 @@ import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import type { GameState } from '../game/engine';
 import type { MapPosition } from '../game/map';
 import { pokemonModelUrl } from '../game/assets';
+import { selectPokemonMotionClip, type PokemonMotionKind } from '../data/model-motion';
 
 type Actor = { group: THREE.Group; model: THREE.Object3D; mixer: THREE.AnimationMixer; clips: THREE.AnimationClip[]; action?: THREE.AnimationAction; target: THREE.Vector3; heading: number; restingY: number; id: number };
 type SceneMode = 'map' | 'battle' | 'specimen';
@@ -225,7 +226,7 @@ export class PokemonScene {
         const model = clone(asset.scene), group = new THREE.Group(); group.add(model);
         model.traverse(obj => { if (obj instanceof THREE.Mesh) { obj.castShadow = true; obj.receiveShadow = true; obj.frustumCulled = false; } });
         const mixer = new THREE.AnimationMixer(model);
-        const clip = asset.animations.find(c => /idle|wait|stand/i.test(c.name)) ?? asset.animations[0];
+        const { clip } = selectPokemonMotionClip(asset.animations, 'idle');
         const action = clip ? mixer.clipAction(clip).play() : undefined; mixer.setTime(0);
         model.updateMatrixWorld(true);
         const box = new THREE.Box3().setFromObject(model, true), size = box.getSize(new THREE.Vector3()), center = box.getCenter(new THREE.Vector3());
@@ -239,14 +240,14 @@ export class PokemonScene {
     }
     this.ready(); this.trimCache();
   }
-  private play(actor: Actor, kind: 'idle' | 'walk' | 'attack' | 'damage', once = false) {
-    const names = { idle: /idle|wait|stand/i, walk: /walk|run/i, attack: /attack|fight|punch/i, damage: /damage|hit|hurt/i };
-    const clip = actor.clips.find(c => names[kind].test(c.name)) ?? actor.clips.find(c => /idle|wait/i.test(c.name)) ?? actor.clips[0];
+  private play(actor: Actor, kind: PokemonMotionKind, once = false) {
+    const { clip, matched } = selectPokemonMotionClip(actor.clips, kind);
     if (!clip) return;
     const next = actor.mixer.clipAction(clip);
     if (actor.action === next && next.isRunning()) return;
     if (actor.action) actor.action.fadeOut(.16);
-    next.reset().setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, once ? 1 : Infinity).fadeIn(.16).play(); next.clampWhenFinished = once; actor.action = next;
+    const playOnce = once && matched;
+    next.reset().setLoop(playOnce ? THREE.LoopOnce : THREE.LoopRepeat, playOnce ? 1 : Infinity).fadeIn(.16).play(); next.clampWhenFinished = playOnce; actor.action = next;
   }
   private resize() {
     if (!this.host) return;

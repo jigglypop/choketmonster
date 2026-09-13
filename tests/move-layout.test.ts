@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Brain } from '../src/core/brain';
 import { getMove } from '../src/data/pokemon';
-import { createGame, createMonster, evolve, recoverableAttackMoveIds, recoverAttackMove, reorderMonsterMoves, restoreGame, serializeGame, useItem } from '../src/game/engine';
+import { availableMonsterMoveIds, createGame, createMonster, evolve, heal, recoverableAttackMoveIds, recoverAttackMove, reorderMonsterMoves, replaceMonsterMove, restoreGame, serializeGame, useItem } from '../src/game/engine';
 import { getMoveLayout } from '../src/game/move-layout';
 
 const engineDamageIds = new Set([12, 32, 49, 69, 82, 90, 101, 149, 162]);
@@ -24,7 +24,7 @@ describe('move presentation layout', () => {
     }
   });
 
-  it('groups attacks first and retains source indexes, PP and preference within each group', () => {
+  it('uses the exact saved order while legacy saves still default to attacks first', () => {
     const game = createGame(1, 'layout');
     const monster = game.player.team[0];
     monster.moves = [
@@ -33,13 +33,14 @@ describe('move presentation layout', () => {
       { moveId: 73, pp: 8 },
       { moveId: 22, pp: 6 },
     ];
-    monster.moveOrder = [22, 33, 73, 45];
+    expect(getMoveLayout(monster).map((entry) => entry.moveId)).toEqual([33, 22, 45, 73]);
+    monster.moveOrder = [45, 22, 73, 33];
 
     expect(getMoveLayout(monster)).toEqual([
-      { moveId: 22, pp: 6, sourceIndex: 3 },
-      { moveId: 33, pp: 11, sourceIndex: 1 },
-      { moveId: 73, pp: 8, sourceIndex: 2 },
       { moveId: 45, pp: 17, sourceIndex: 0 },
+      { moveId: 22, pp: 6, sourceIndex: 3 },
+      { moveId: 73, pp: 8, sourceIndex: 2 },
+      { moveId: 33, pp: 11, sourceIndex: 1 },
     ]);
   });
 
@@ -66,7 +67,7 @@ describe('move presentation layout', () => {
     expect(monster.moveLearning).toEqual(learning);
   });
 
-  it('rejects invalid, cross-group, battle-time and non-owned changes', () => {
+  it('moves across attack/status boundaries and rejects invalid, battle-time and non-owned changes', () => {
     const game = createGame(1, 'guards');
     const monster = game.player.team[0];
     monster.moves = [
@@ -75,8 +76,8 @@ describe('move presentation layout', () => {
       { moveId: 45, pp: 40 },
       { moveId: 73, pp: 10 },
     ];
-    expect(() => reorderMonsterMoves(game, monster.instanceId, 1, 2)).toThrow(/경계/);
-    expect(() => reorderMonsterMoves(game, monster.instanceId, 0, 2)).toThrow(/인접/);
+    reorderMonsterMoves(game, monster.instanceId, 0, 2);
+    expect(monster.moveOrder).toEqual([22, 45, 33, 73]);
     expect(() => reorderMonsterMoves(game, monster.instanceId, -1, 0)).toThrow(/위치/);
     expect(() => reorderMonsterMoves(game, 'mon-99999', 0, 1)).toThrow(/보유하지 않은/);
 
@@ -84,6 +85,60 @@ describe('move presentation layout', () => {
     game.battle = { kind: 'wild', regionId: game.regionId, player: { team: game.player.team, activeIndex: 0 }, enemy: { team: [enemy], activeIndex: 0 }, turn: 1, canRun: true };
     expect(() => reorderMonsterMoves(game, monster.instanceId, 0, 1)).toThrow(/전투 중/);
     expect(() => reorderMonsterMoves(game, enemy.instanceId, 0, 1)).toThrow(/전투 중/);
+  });
+
+  it('offers level-legal moves and preserves unequipped PP across unrestricted slot changes', () => {
+    const game = createGame(1, 'free-move-selection');
+    const monster = createMonster(game, 54, 39);
+    monster.moves = [487, 244, 133, 472].map((moveId, index) => ({ moveId, pp: getMove(moveId).pp - index - 1 }));
+    monster.moveOrder = [487, 244, 133, 472];
+    monster.brain = new Brain(23).state;
+    monster.brain.previous = Array(monster.brain.activity.length + 12).fill(.2);
+    monster.moveLearning = { '244': { choices: 3, executed: 2, effective: 1, reward: .4 } };
+    game.player.team = [monster];
+    const brainBefore = structuredClone(monster.brain), learningBefore = structuredClone(monster.moveLearning);
+    const oldPp = monster.moves[1].pp;
+
+    expect(availableMonsterMoveIds(monster)).toContain(401);
+    replaceMonsterMove(game, monster.instanceId, 1, 401);
+    expect(getMoveLayout(monster).map((entry) => entry.moveId)).toEqual([487, 401, 133, 472]);
+    expect(monster.moves[1]).toEqual({ moveId: 401, pp: getMove(401).pp });
+    expect(monster.movePpReserve).toEqual({ '244': oldPp });
+    expect(monster.brain).toEqual({ ...brainBefore, previous: null });
+    expect(monster.moveLearning).toEqual(learningBefore);
+
+    monster.moves[1].pp = 2;
+    replaceMonsterMove(game, monster.instanceId, 1, 244);
+    expect(monster.moves[1]).toEqual({ moveId: 244, pp: oldPp });
+    replaceMonsterMove(game, monster.instanceId, 1, 401);
+    expect(monster.moves[1]).toEqual({ moveId: 401, pp: 2 });
+    expect(() => replaceMonsterMove(game, monster.instanceId, 1, 133)).toThrow(/이미 배치/);
+
+    heal(game);
+    replaceMonsterMove(game, monster.instanceId, 1, 244);
+    expect(monster.moves[1].pp).toBe(getMove(244).pp);
+    replaceMonsterMove(game, monster.instanceId, 1, 401);
+    expect(monster.moves[1].pp).toBe(getMove(401).pp);
+    expect(restoreGame(serializeGame(game)).player.team[0].movePpReserve).toEqual(monster.movePpReserve);
+
+    for (const invalid of [{ '401': 0 }, { '244': getMove(244).pp + 1 }, { '0244': 0 }, { '999999': 0 }] as Array<Record<string, number>>) {
+      const edited = structuredClone(game);
+      edited.player.team[0].movePpReserve = invalid;
+      expect(() => restoreGame(serializeGame(edited))).toThrow(/미장착 기술 PP/);
+    }
+  });
+
+  it('blocks illegal, duplicate, battle-time and capture-time slot changes', () => {
+    const game = createGame(1, 'free-move-guards'), monster = createMonster(game, 54, 39);
+    game.player.team = [monster];
+    expect(() => replaceMonsterMove(game, monster.instanceId, -1, 401)).toThrow(/위치/);
+    expect(() => replaceMonsterMove(game, monster.instanceId, 0, 999_999)).toThrow(/배울 수 없는/);
+    expect(() => replaceMonsterMove(game, monster.instanceId, 0, monster.moves[1].moveId)).toThrow(/이미 배치/);
+    game.captureOffer = createMonster(game, 19, 3); game.captureOffer.hp = 0;
+    expect(() => replaceMonsterMove(game, monster.instanceId, 0, 401)).toThrow(/포획/);
+    game.captureOffer = undefined;
+    game.battle = { kind: 'wild', regionId: game.regionId, player: { team: game.player.team, activeIndex: 0 }, enemy: { team: [createMonster(game, 4, 5)], activeIndex: 0 }, turn: 1, canRun: true };
+    expect(() => replaceMonsterMove(game, monster.instanceId, 0, 401)).toThrow(/전투/);
   });
 
   it('keeps an engine-damaging move on generated sets that used to end with four status moves', () => {

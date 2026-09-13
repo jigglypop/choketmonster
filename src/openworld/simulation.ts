@@ -10,7 +10,7 @@ import { chooseServerBrains, usesServerBrain, type ServerDecision } from '../gam
 import { actBattle, availableEvolutions, captureDefeatedWild, createMonster, evolve, validateGame, type BallItem, type BattleAction, type BattleTurnResult, type GameState, type Monster } from '../game/engine';
 import { KANTO_START, KANTO_MAP_VERSION } from './kanto';
 import { getWorldAtlas, type WorldAtlas, type WorldRegionId } from './atlas';
-import { isPlayableAdventureVersion, isPlayableWorldRegion, playableWorldRegionForVersion } from './availability';
+import { getPlayableSpeciesIds, isPlayableAdventureVersion, isPlayableSpecies, isPlayableWorldRegion, playableWorldRegionForVersion } from './availability';
 import { REGIONS } from '../game/regions';
 import type { FieldPolicy } from '../game/field';
 import { appendReward, emptyRewardLedger, rewardEncounter, rewardBattleTurn, validateRewardLedger, type EngineeredReward, type RewardLedger, type RewardDecisionSource } from '../game/rewards';
@@ -94,22 +94,24 @@ export function movementSpeed(speciesId: number, level = 5): number {
 }
 
 export function nextSpeciesInBiome(speciesId: number): number {
-  const biome = biomeForSpecies(speciesId), candidates = POKEMON.map(species => species.id).filter(id => biomeForSpecies(id) === biome);
+  const biome = biomeForSpecies(speciesId), candidates = getPlayableSpeciesIds().filter(id => biomeForSpecies(id) === biome);
   const index = candidates.indexOf(speciesId); if (index < 0) throw new Error('Species is missing from its biome');
   return candidates[(index + 1) % candidates.length];
 }
 
 export function speciesForSpawn(serial: number): number {
   if (!Number.isSafeInteger(serial) || serial < 1) throw new Error('Spawn serial must be a positive integer');
-  return POKEMON[(serial - 1) % POKEMON.length].id;
+  const species = getPlayableSpeciesIds();
+  return species[(serial - 1) % species.length];
 }
 
 export function initialSpawnSpecies(serial: number): number {
   if (!Number.isSafeInteger(serial) || serial < 1) throw new Error('Spawn serial must be a positive integer');
-  const grouped = (biome: WorldBiome) => POKEMON.map(species => species.id).filter(id => biomeForSpecies(id) === biome);
+  const playable = getPlayableSpeciesIds();
+  const grouped = (biome: WorldBiome) => playable.filter(id => biomeForSpecies(id) === biome);
   const meadow = grouped('meadow'), forest = grouped('forest'), lake = grouped('lake'), rock = grouped('rock');
   const preferred = [...meadow.slice(0, 7), ...forest.slice(0, 3), ...lake.slice(0, 3), ...rock.slice(0, 2)];
-  const remaining = POKEMON.map(species => species.id).filter(id => !preferred.includes(id));
+  const remaining = playable.filter(id => !preferred.includes(id));
   const sequence = [...preferred, ...remaining]; return sequence[(serial - 1) % sequence.length];
 }
 
@@ -225,6 +227,7 @@ export class OpenWorldSimulation {
         if (this.regionId === 'kanto' && !checkpoint.mapVersion) this.migrateLegacyMap();
         else if (this.regionId === 'kanto' && checkpoint.mapVersion !== KANTO_MAP_VERSION) this.migrateKantoBoundaries();
       }
+      this.migrateUnavailableWildSpecies();
     }
     else {
       this.entities.push(this.makeCompanion());
@@ -449,7 +452,7 @@ export class OpenWorldSimulation {
       spawnSerial: this.spawnSerial, nextFoodId: this.nextFoodId, foods: structuredClone(this.foods), respawnQueue: structuredClone(this.respawnQueue), entities: this.entities.map(pack), companionMemories: [...this.companionMemories.values()].map(pack) };
   }
 
-  spawnCatalog(): Array<{ speciesId: number; biome: WorldBiome }> { return POKEMON.map((_, index) => { const speciesId = speciesForSpawn(index + 1); return { speciesId, biome: biomeForSpecies(speciesId) }; }); }
+  spawnCatalog(): Array<{ speciesId: number; biome: WorldBiome }> { return getPlayableSpeciesIds().map(speciesId => ({ speciesId, biome: biomeForSpecies(speciesId) })); }
   rosterStatus(): { alive: number; pending: number; total: number } { const alive = this.wildEntities().length, pending = this.respawnQueue.length; return { alive, pending, total: alive + pending }; }
   nearbyWildCount(radius = 25): number { if (!finite(radius) || radius <= 0 || radius > 100) throw new Error('Nearby radius must be 0..100'); return this.wildEntities().filter(entity => distance(entity, this.player) <= radius).length; }
 
@@ -903,6 +906,32 @@ export class OpenWorldSimulation {
     this.game.logs = this.game.logs.slice(-200);
   }
 
+  /** Replace obsolete wild-only snapshots without touching owned monsters or an active battle. */
+  private migrateUnavailableWildSpecies(): void {
+    if (!isPlayableWorldRegion(this.regionId)) return;
+    let changed = false;
+    const replacement = (x: number, z: number, level: number, identity: string) => {
+      const location = this.locationAt(x, z);
+      const pool = versionEncounters(location.id, this.game.adventureVersion ?? 'national', this.game.player.badges, this.regionId)
+        .filter(id => hasPokemonModel(id));
+      if (!pool.length) throw new Error(`No playable replacement encounters at ${location.id}`);
+      return { speciesId: pool[hash(`playable:${identity}`) % pool.length], level: Math.max(location.minLevel, Math.min(location.maxLevel, level)) };
+    };
+    for (const entity of this.wildEntities()) {
+      if (isPlayableSpecies(entity.speciesId) || entity.id === this.battleWildId) continue;
+      Object.assign(entity, replacement(entity.x, entity.z, entity.level, entity.id)); changed = true;
+    }
+    for (const pending of this.respawnQueue) {
+      if (isPlayableSpecies(pending.speciesId)) continue;
+      const next = replacement(pending.originX, pending.originZ, pending.level, pending.id);
+      pending.speciesId = next.speciesId; pending.level = next.level; pending.biome = biomeForSpecies(next.speciesId); changed = true;
+    }
+    if (changed) {
+      this.game.logs.push('현재 제공하는 지역 지도에 맞춰 저장된 야생 포켓몬을 다시 배치했습니다. 보유 포켓몬과 도감 기록은 유지했습니다.');
+      this.game.logs = this.game.logs.slice(-200);
+    }
+  }
+
   private migrateKantoBoundaries(): void {
     const relocate = (point: { x: number; z: number }) => {
       const arrival = getWorldAtlas('kanto').nearestWalkable(point.x, point.z, this.game.player.badges) ?? KANTO_START;
@@ -1037,7 +1066,9 @@ export function restoreOpenWorld(graph: Graph, json: string, policy?: FieldPolic
 
 /** Regional dex species are placed on our shared map; these are designed encounters. */
 export function versionEncounters(locationId: string, version: string, badges: number, regionId: WorldRegionId = 'kanto'): number[] {
-  const ids = getVersionSpeciesIds(version);
+  if (!isPlayableWorldRegion(regionId)) return [];
+  const ids = getPlayableSpeciesIds(version);
+  if (!ids.length) return [];
   const atlas = getWorldAtlas(regionId);
   const native = atlas.encounters(locationId, badges).filter(id => ids.includes(id));
   if (regionId === 'kanto' && (version === 'red' || version === 'blue' || version === 'yellow')) return native;

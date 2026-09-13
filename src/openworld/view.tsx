@@ -48,6 +48,7 @@ import { createSceneryPlacements, SCENERY_ASSETS, type SceneryPlacement } from '
 import { createGrounding, terrainSurfaceHeight } from './grounding';
 import { getWorldAtlas, type WorldAtlas } from './atlas';
 import { hasPokemonModel } from '../game/assets';
+import { selectPokemonMotionClip } from '../data/model-motion';
 import { createGLTFLoader } from '../three/gltf-loader';
 import { creatureLods, terrainChunks, TERRAIN_CHUNK_SIZE, type TerrainChunk, type VisibilityTest } from './lod';
 import { initialYaw, movementYaw, turnTowards } from './motion';
@@ -604,13 +605,15 @@ function PokemonModel({ creature, url }: { creature: WorldCreature; url: string 
 
   useEffect(() => {
     if (!mixer.current || !gltf?.animations.length) return;
-    const wanted = creature.action === 'attack' ? /attack|bite|skill/i : creature.action === 'walk' ? /walk|run/i : /idle/i;
-    const clip = gltf.animations.find(candidate => wanted.test(candidate.name)) ?? gltf.animations[0];
+    const { clip, matched } = selectPokemonMotionClip(gltf.animations,
+      creature.action === 'attack' ? 'attack' : creature.action === 'walk' ? 'walk' : 'idle');
+    if (!clip) return;
     const next = mixer.current.clipAction(clip), previous = activeAction.current;
     if (next === previous && next.isRunning()) return;
     next.reset().setEffectiveWeight(1).setEffectiveTimeScale(1);
-    next.setLoop(creature.action === 'attack' ? LoopOnce : LoopRepeat, creature.action === 'attack' ? 1 : Infinity);
-    next.clampWhenFinished = creature.action === 'attack';
+    const playOnce = creature.action === 'attack' && matched;
+    next.setLoop(playOnce ? LoopOnce : LoopRepeat, playOnce ? 1 : Infinity);
+    next.clampWhenFinished = playOnce;
     next.play();
     if (previous && previous !== next) next.crossFadeFrom(previous, .2, false);
     activeAction.current = next;

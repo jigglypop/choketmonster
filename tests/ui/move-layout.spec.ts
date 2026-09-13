@@ -63,7 +63,7 @@ const displayedMoveIds = (page: Page, root = '#team-detail') => page.locator(`${
   entries.map(entry => Number((entry as HTMLElement).dataset.layoutMove)));
 const brainState = (brain: Monster['brain']) => JSON.parse(JSON.stringify(brain, (key, value) => key === 'graph' ? undefined : value));
 
-test('team and box layout edits persist without changing engine slots, PP, brain, or another individual', async ({ page }) => {
+test('team and box layout edits cross attack/status boundaries and persist without changing engine slots, PP, brain, or another individual', async ({ page }) => {
   const { game, lead, boxed } = fixture();
   const originalMoves = structuredClone(lead.moves);
   const originalBrain = structuredClone(lead.brain);
@@ -81,11 +81,15 @@ test('team and box layout edits persist without changing engine slots, PP, brain
   await expect(page.locator('[data-tab="team"]')).toHaveClass(/active/);
   await expect.poll(() => displayedMoveIds(page)).toEqual([33, 22, 45, 73]);
   const boundary = page.locator('[data-reorder-from="1"][data-reorder-to="2"]');
-  await expect(boundary).toBeDisabled();
+  await expect(boundary).toBeEnabled();
+  await boundary.click();
+  await expect(page.getByRole('status')).toHaveText('기술 배치를 저장했습니다.');
+  await expect.poll(() => displayedMoveIds(page)).toEqual([33, 45, 22, 73]);
+  await expect(page.locator('[data-reorder-from="2"][data-reorder-to="1"]')).toBeFocused();
 
   await page.locator('[data-reorder-from="0"][data-reorder-to="1"]').click();
   await expect(page.getByRole('status')).toHaveText('기술 배치를 저장했습니다.');
-  await expect.poll(() => displayedMoveIds(page)).toEqual([22, 33, 45, 73]);
+  await expect.poll(() => displayedMoveIds(page)).toEqual([45, 33, 22, 73]);
   await expect(page.locator('[data-reorder-from="1"][data-reorder-to="0"]')).toBeFocused();
 
   const local = await page.evaluate(async () => {
@@ -99,7 +103,7 @@ test('team and box layout edits persist without changing engine slots, PP, brain
     });
     db.close(); return value;
   });
-  expect(local.game.player.team[0].moveOrder).toEqual([22, 33, 45, 73]);
+  expect(local.game.player.team[0].moveOrder).toEqual([45, 33, 22, 73]);
   expect(local.game.player.team[0].moves).toEqual(originalMoves);
   expect(brainState(local.game.player.team[0].brain)).toEqual(brainState(originalBrain));
   expect(local.game.player.box[0].moveOrder).toBeUndefined();
@@ -118,13 +122,45 @@ test('team and box layout edits persist without changing engine slots, PP, brain
   await page.screenshot({ path: 'artifacts/move-layout/mobile-team-layout.png', fullPage: true });
 
   const exported = await exportSave(page);
-  expect(exported.game.player.team[0].moveOrder).toEqual([22, 33, 45, 73]);
+  expect(exported.game.player.team[0].moveOrder).toEqual([45, 33, 22, 73]);
   await page.reload();
   await page.locator('[data-tab="team"]').click();
-  await expect.poll(() => displayedMoveIds(page)).toEqual([22, 33, 45, 73]);
+  await expect.poll(() => displayedMoveIds(page)).toEqual([45, 33, 22, 73]);
   await importSave(page, exported);
   await page.locator('[data-tab="team"]').click();
-  await expect.poll(() => displayedMoveIds(page)).toEqual([22, 33, 45, 73]);
+  await expect.poll(() => displayedMoveIds(page)).toEqual([45, 33, 22, 73]);
+});
+
+test('a learned move can replace a displayed slot and restoring it keeps its PP and order', async ({ page }) => {
+  const { game, lead } = fixture();
+  const originalPp = lead.moves.find(slot => slot.moveId === 22)!.pp;
+  await bootstrap(page);
+  await importSave(page, packSave(game, graph, defaultView()));
+  await page.locator('[data-tab="team"]').click();
+  await expect.poll(() => displayedMoveIds(page)).toEqual([33, 22, 45, 73]);
+
+  const choice = page.locator('[data-move-choice="1"]');
+  await expect(choice.locator('option[value="75"]')).toHaveCount(1);
+  await choice.selectOption('75');
+  await expect(page.locator('[data-replace-move="1"]')).toBeEnabled();
+  await page.locator('[data-replace-move="1"]').click();
+  await expect(page.getByRole('status')).toHaveText('기술을 교체하고 저장했습니다.');
+  await expect.poll(() => displayedMoveIds(page)).toEqual([33, 75, 45, 73]);
+
+  const restore = page.locator('[data-move-choice="1"]');
+  await expect(restore.locator('option[value="22"]')).toContainText(`PP ${originalPp}/25`);
+  await restore.selectOption('22');
+  await page.locator('[data-replace-move="1"]').click();
+  await expect(page.getByRole('status')).toHaveText('기술을 교체하고 저장했습니다.');
+  await expect.poll(() => displayedMoveIds(page)).toEqual([33, 22, 45, 73]);
+
+  const saved = await exportSave(page);
+  expect(saved.game.player.team[0].moveOrder).toEqual([33, 22, 45, 73]);
+  expect(saved.game.player.team[0].moves.find(slot => slot.moveId === 22)?.pp).toBe(originalPp);
+  await page.reload();
+  await page.locator('[data-tab="team"]').click();
+  await expect.poll(() => displayedMoveIds(page)).toEqual([33, 22, 45, 73]);
+  await expect(page.locator('[data-layout-move="22"]')).toContainText(`PP ${originalPp}/25`);
 });
 
 test('classic battle uses the saved presentation order and disables editing', async ({ page }) => {

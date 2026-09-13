@@ -374,6 +374,32 @@ fn validate_monster(
             }
         }
     }
+    if let Some(reserve) = monster.get("movePpReserve") {
+        let reserve = reserve
+            .as_object()
+            .ok_or("미장착 기술 PP가 잘못되었습니다.")?;
+        if reserve.len() > legal.len() {
+            return Err("미장착 기술 PP가 잘못되었습니다.");
+        }
+        for (move_id_text, pp) in reserve {
+            let move_id = move_id_text
+                .parse::<i64>()
+                .ok()
+                .filter(|id| *id >= 1 && *id <= MAX_SAFE_INTEGER)
+                .ok_or("미장착 기술 PP가 잘못되었습니다.")?;
+            if move_id.to_string() != *move_id_text {
+                return Err("미장착 기술 PP가 잘못되었습니다.");
+            }
+            let known = catalog()
+                .moves
+                .get(&move_id)
+                .ok_or("미장착 기술 PP가 잘못되었습니다.")?;
+            if !legal.contains(&move_id) || move_ids.contains(&move_id) {
+                return Err("미장착 기술 PP가 잘못되었습니다.");
+            }
+            integer(Some(pp), 0, known.pp)?;
+        }
+    }
     if let Some(brain) = monster.get("brain") {
         validate_brain(brain)?;
     }
@@ -719,6 +745,47 @@ mod tests {
         ] {
             let mut edited = save.clone();
             edited["game"]["player"]["team"][0]["moveOrder"] = invalid;
+            assert!(validate_save(&edited).is_err());
+        }
+    }
+
+    #[test]
+    fn validates_unequipped_move_pp_without_allowing_a_pp_refresh() {
+        let mut save = valid_save();
+        let species_id = save["game"]["player"]["team"][0]["speciesId"]
+            .as_i64()
+            .unwrap();
+        let level = save["game"]["player"]["team"][0]["level"].as_i64().unwrap();
+        let equipped = save["game"]["player"]["team"][0]["moves"][0]["moveId"]
+            .as_i64()
+            .unwrap();
+        let reserve_id = catalog()
+            .species
+            .get(&species_id)
+            .unwrap()
+            .moves
+            .iter()
+            .find(|entry| entry.level <= level && entry.move_id != equipped)
+            .unwrap()
+            .move_id;
+        let maximum = catalog().moves.get(&reserve_id).unwrap().pp;
+        let object = |id: i64, pp: i64| {
+            Value::Object(serde_json::Map::from_iter([(
+                id.to_string(),
+                Value::from(pp),
+            )]))
+        };
+        save["game"]["player"]["team"][0]["movePpReserve"] = object(reserve_id, maximum - 1);
+        validate_save(&save).unwrap();
+
+        for invalid in [
+            object(equipped, 0),
+            object(reserve_id, maximum + 1),
+            serde_json::json!({"999999": 0}),
+            Value::Null,
+        ] {
+            let mut edited = save.clone();
+            edited["game"]["player"]["team"][0]["movePpReserve"] = invalid;
             assert!(validate_save(&edited).is_err());
         }
     }

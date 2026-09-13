@@ -16,23 +16,15 @@ function preferredMoveIds(monster: Monster): number[] {
   return preferred;
 }
 
-/**
- * Returns presentation slots without changing the engine-owned move array.
- * Physical/special moves are shown before status moves; saved order applies
- * only within each group.
- */
+/** Returns presentation slots without changing the engine-owned move array. */
 export function getMoveLayout(monster: Monster): MoveLayoutEntry[] {
   const preference = preferredMoveIds(monster);
   const rank = new Map(preference.map((moveId, index) => [moveId, index]));
   return monster.moves
     .map((slot, sourceIndex) => ({ moveId: slot.moveId, pp: slot.pp, sourceIndex }))
-    .sort((a, b) => {
-      const aStatus = getMove(a.moveId).damageClass === 'status';
-      const bStatus = getMove(b.moveId).damageClass === 'status';
-      return Number(aStatus) - Number(bStatus)
-        || (rank.get(a.moveId) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.moveId) ?? Number.MAX_SAFE_INTEGER)
-        || a.sourceIndex - b.sourceIndex;
-    });
+    .sort((a, b) => monster.moveOrder === undefined
+      ? Number(getMove(a.moveId).damageClass === 'status') - Number(getMove(b.moveId).damageClass === 'status') || a.sourceIndex - b.sourceIndex
+      : (rank.get(a.moveId) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.moveId) ?? Number.MAX_SAFE_INTEGER) || a.sourceIndex - b.sourceIndex);
 }
 
 /** Keep a persisted preference aligned with learned moves after replacement. */

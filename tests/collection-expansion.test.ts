@@ -5,16 +5,16 @@ import { ConnectomeController } from '../src/game/connectome';
 import { ITEM_PRICES, captureDefeatedWild, createGame, createMonster, experienceAtLevel, mergeDuplicateMonster, releaseMonster, replenishBalls, validateGame } from '../src/game/engine';
 import { POKEMON } from '../src/data/pokemon';
 import { hasPokemonModel } from '../src/data/pokemon-models';
-import { VERSIONS, getVersionSpeciesIds } from '../src/data/pokemon-versions';
 import { KANTO_LOCATIONS } from '../src/openworld/kanto';
 import { OpenWorldSimulation, restoreOpenWorld, serializeOpenWorld, versionEncounters } from '../src/openworld/simulation';
+import { getPlayableSpeciesIds } from '../src/openworld/availability';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
 const controller = new ConnectomeController(graph);
 
 describe('expanded collection and individual lifecycle', () => {
-  it('provides an encounter for every species in every supported version without leaking another version', () => {
-    for (const version of [...VERSIONS.filter(item => item.speciesIds.length), { id: 'national', speciesIds: POKEMON.map(item => item.id) }]) {
+  it('limits national and Kanto version encounters to species whose region map is playable', () => {
+    for (const version of ['red', 'blue', 'yellow', 'national'].map(id => ({ id, speciesIds: getPlayableSpeciesIds(id) }))) {
       const encounters = new Set(KANTO_LOCATIONS.flatMap(location => versionEncounters(location.id, version.id, 8)));
       // The original Kanto campaign obtains evolved forms through its supported evolution rules.
       if (['red', 'blue', 'yellow'].includes(version.id)) for (let pass = 0; pass < 3; pass++) for (const species of POKEMON) if (encounters.has(species.id)) for (const evolution of species.evolutions) {
@@ -22,6 +22,8 @@ describe('expanded collection and individual lifecycle', () => {
       }
       expect([...encounters].sort((a, b) => a - b), version.id).toEqual([...version.speciesIds].sort((a, b) => a - b));
     }
+    expect(versionEncounters('pallet', 'gold', 8)).toEqual([]);
+    expect(getPlayableSpeciesIds('national')).toHaveLength(151);
   });
 
   it('limits playable collection changes while retaining the partner and separate collection records', () => {
@@ -32,7 +34,7 @@ describe('expanded collection and individual lifecycle', () => {
     expect(() => world.changeVersion('scarlet')).toThrow(/3D 지역 지도/);
     world.changeVersion('national');
     expect(world.entities.find(entity => entity.kind === 'companion')!.brain).toEqual(memory);
-    expect(world.entities.filter(entity => entity.kind === 'wild').every(entity => getVersionSpeciesIds('national').includes(entity.speciesId) && hasPokemonModel(entity.speciesId))).toBe(true);
+    expect(world.entities.filter(entity => entity.kind === 'wild').every(entity => getPlayableSpeciesIds('national').includes(entity.speciesId) && hasPokemonModel(entity.speciesId))).toBe(true);
     const wild = createMonster(game, 906, 5); wild.hp = 0;
     game.dex.seen.push(906); game.captureOffer = wild;
     expect(captureDefeatedWild(game, 'poke-ball')).toBe(true);

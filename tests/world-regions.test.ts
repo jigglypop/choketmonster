@@ -1,11 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { Graph } from '../src/core/brain';
-import { getVersionSpeciesIds } from '../src/data/pokemon-versions';
 import { hasPokemonModel } from '../src/data/pokemon-models';
 import { createGame, createMonster } from '../src/game/engine';
 import { getWorldAtlas } from '../src/openworld/atlas';
-import { OpenWorldSimulation, restoreOpenWorld, serializeOpenWorld, versionEncounters } from '../src/openworld/simulation';
+import { OpenWorldSimulation, biomeForSpecies, restoreOpenWorld, serializeOpenWorld, versionEncounters } from '../src/openworld/simulation';
+import { getPlayableSpeciesIds, isPlayableSpecies } from '../src/openworld/availability';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
 
@@ -33,7 +33,8 @@ describe('regional open worlds', () => {
     const world = new OpenWorldSimulation(graph, game, 73_001);
     expect(world.regionId).toBe('kanto');
     expect(game.adventureVersion).toBe('national');
-    expect(world.entities.filter(entity => entity.kind === 'wild').every(entity => hasPokemonModel(entity.speciesId))).toBe(true);
+    expect(world.entities.filter(entity => entity.kind === 'wild').every(entity => hasPokemonModel(entity.speciesId) && isPlayableSpecies(entity.speciesId))).toBe(true);
+    expect(world.spawnCatalog().map(entry => entry.speciesId)).toEqual(getPlayableSpeciesIds('national'));
     expect(() => world.changeVersion('scarlet')).toThrow(/3D 지역 지도/);
     expect(() => world.changeRegion('paldea')).toThrow(/3D 지역 지도/);
     world.changeVersion('yellow');
@@ -49,10 +50,37 @@ describe('regional open worlds', () => {
     expect(() => new OpenWorldSimulation(graph, game, world.seed, { ...paldea, mapVersion: 'kanto-v2' })).toThrow(/map version/);
   });
 
-  it('offers the complete version dex across a region without cross-version species', () => {
-    const atlas = getWorldAtlas('paldea'), expected = getVersionSpeciesIds('scarlet');
+  it('does not expose encounters for a region whose map is not shipped', () => {
+    const atlas = getWorldAtlas('paldea');
     const encountered = new Set(atlas.locations.flatMap(location => versionEncounters(location.id, 'scarlet', 8, 'paldea')));
-    expect([...encountered].sort((a, b) => a - b)).toEqual([...expected].sort((a, b) => a - b));
+    expect([...encountered]).toEqual([]);
+    expect(getPlayableSpeciesIds('national')).toEqual(Array.from({ length: 151 }, (_, index) => index + 1));
+    expect(getPlayableSpeciesIds('red')).toEqual(Array.from({ length: 151 }, (_, index) => index + 1));
+    expect(getPlayableSpeciesIds('gold')).toEqual([]);
+    expect(getPlayableSpeciesIds('missing')).toEqual([]);
+  });
+
+  it('replaces obsolete non-battle wild snapshots while preserving owned species and collection history', () => {
+    const game = createGame(1, 'obsolete-wild');
+    const owned = createMonster(game, 906, 30); game.player.box.push(owned);
+    game.dex.seen.push(906); game.dex.caught.push(906); game.adventureVersion = 'national';
+    game.versionCaught ??= {}; game.versionCaught.national = [906];
+    const world = new OpenWorldSimulation(graph, game, 73_007);
+    const checkpoint = world.snapshot(), obsolete = checkpoint.entities.find(entity => entity.kind === 'wild')!;
+    const obsoleteId = obsolete.id, obsoleteBrain = structuredClone(obsolete.brain); obsolete.speciesId = 906;
+    checkpoint.respawnQueue = [{ id: 'respawn:obsolete', speciesId: 906, level: 30, biome: biomeForSpecies(906), originX: obsolete.x, originZ: obsolete.z, remainingSeconds: 5 }];
+
+    const restored = new OpenWorldSimulation(graph, game, world.seed, checkpoint);
+    const saved = restored.snapshot(), migrated = saved.entities.find(entity => entity.id === obsoleteId)!;
+    expect(isPlayableSpecies(migrated.speciesId)).toBe(true);
+    expect(migrated.brain).toEqual(obsoleteBrain);
+    expect(saved.respawnQueue).toHaveLength(1);
+    expect(isPlayableSpecies(saved.respawnQueue![0].speciesId)).toBe(true);
+    expect(saved.respawnQueue![0].biome).toBe(biomeForSpecies(saved.respawnQueue![0].speciesId));
+    expect(game.player.box.some(monster => monster.instanceId === owned.instanceId && monster.speciesId === 906)).toBe(true);
+    expect(game.dex.caught).toContain(906);
+    expect(game.versionCaught.national).toContain(906);
+    expect(game.logs.at(-1)).toMatch(/저장된 야생 포켓몬을 다시 배치/);
   });
 
   it('moves a removed-region battle to Kanto without deleting entities, brains, or history', () => {

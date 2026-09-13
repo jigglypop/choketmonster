@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { createGame, type GameState } from '../src/game/engine.ts';
+import { availableMonsterMoveIds, createGame, createMonster, reorderMonsterMoves, replaceMonsterMove, type GameState } from '../src/game/engine.ts';
 import { defaultView, packSave } from '../src/game/storage.ts';
 import type { Graph } from '../src/core/brain.ts';
 
@@ -60,11 +60,23 @@ async function main() {
   const started = Date.now(), startedAt = new Date(started).toISOString();
   const graph = JSON.parse(await readFile(resolve('public/data/connectome.json'), 'utf8')) as Graph;
   const game = createGame(1, `rust-api-${suffix}`);
-  const moveOrder = game.player.team[0].moves.map(slot => slot.moveId).reverse();
-  game.player.team[0].moveOrder = moveOrder;
+  const starter = game.player.team[0], customized = createMonster(game, 54, 39);
+  game.player.team = [customized]; game.player.box = [starter];
+  game.dex.seen = [...new Set([...game.dex.seen, customized.speciesId])].sort((a, b) => a - b);
+  game.dex.caught = [...new Set([...game.dex.caught, customized.speciesId])].sort((a, b) => a - b);
+  game.versionCaught!.red = [...new Set([...(game.versionCaught!.red ?? []), customized.speciesId])].sort((a, b) => a - b);
+  customized.moves[1].pp -= 2;
+  const replacementMoveId = availableMonsterMoveIds(customized).find(moveId => !customized.moves.some(slot => slot.moveId === moveId));
+  if (replacementMoveId === undefined) throw new Error('PP reserve fixture requires an unequipped legal move');
+  replaceMonsterMove(game, customized.instanceId, 1, replacementMoveId);
+  reorderMonsterMoves(game, customized.instanceId, 1, 3);
+  const moveOrder = structuredClone(customized.moveOrder!);
+  const movePpReserve = structuredClone(customized.movePpReserve!);
   const save = packSave(game, graph, defaultView());
-  const hasMoveOrder = (envelope: Record<string, unknown>) => JSON.stringify((envelope.save as { game?: GameState } | undefined)?.game?.player.team[0].moveOrder) === JSON.stringify(moveOrder);
-  const creatureId = game.player.team[0].instanceId, slot = `api-check-${suffix}`;
+  const storedMonster = (envelope: Record<string, unknown>) => (envelope.save as { game?: GameState } | undefined)?.game?.player.team.find(monster => monster.instanceId === customized.instanceId);
+  const hasMoveOrder = (envelope: Record<string, unknown>) => JSON.stringify(storedMonster(envelope)?.moveOrder) === JSON.stringify(moveOrder);
+  const hasMovePpReserve = (envelope: Record<string, unknown>) => JSON.stringify(storedMonster(envelope)?.movePpReserve) === JSON.stringify(movePpReserve);
+  const creatureId = customized.instanceId, slot = `api-check-${suffix}`;
   const first = new CookieJar(), second = new CookieJar();
 
   try {
@@ -107,6 +119,7 @@ async function main() {
     call = await request(`/api/saves/${encodeURIComponent(slot)}`, {}, first); const stored = await json(call.response);
     record('saved game restores', call.response.status === 200 && Number(stored.revision) === revision && (stored.save as { format?: string } | undefined)?.format === 'choketmon', 'GET returns the same game envelope and revision', call.elapsedMs, call.response.status);
     record('move layout survives server save', call.response.status === 200 && hasMoveOrder(stored), 'GET preserves the individual move-order preference', call.elapsedMs, call.response.status);
+    record('unequipped move PP survives server save', call.response.status === 200 && hasMovePpReserve(stored), 'GET preserves spent PP for the replaced move without refreshing it', call.elapsedMs, call.response.status);
 
     call = await request('/api/auth/register', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: usernames[1], password }) });
     second.capture(call.response); const secondRegistered = await json(call.response);
@@ -129,6 +142,7 @@ async function main() {
     call = await request(`/api/saves/${encodeURIComponent(slot)}`, {}, restored); const restoredSave = await json(call.response);
     record('relogin restores save', call.response.status === 200 && Number(restoredSave.revision) === revision, 'saved revision remains attached to the account', call.elapsedMs, call.response.status);
     record('relogin restores move layout', call.response.status === 200 && hasMoveOrder(restoredSave), 'move-order preference remains attached to the individual after logout and login', call.elapsedMs, call.response.status);
+    record('relogin restores unequipped move PP', call.response.status === 200 && hasMovePpReserve(restoredSave), 'spent PP for the replaced move remains attached to the individual after logout and login', call.elapsedMs, call.response.status);
 
     call = await request(`/api/saves/cross-origin-${suffix}`, { method: 'PUT', headers: { origin: 'https://attacker.invalid', 'content-type': 'application/json' }, body: JSON.stringify({ save, revision: 0, requestId: crypto.randomUUID() }) }, restored);
     record('cross-origin mutation rejected', call.response.status === 403, 'authenticated cross-origin PUT returns 403', call.elapsedMs, call.response.status);

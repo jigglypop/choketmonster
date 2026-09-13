@@ -1,11 +1,11 @@
 import type { Graph } from '../core/brain';
 import { getMove, getSpecies } from '../data/pokemon';
-import { VERSIONS, getVersionSpeciesIds } from '../data/pokemon-versions';
+import { VERSIONS } from '../data/pokemon-versions';
 import { pokemonModelUrl, pokemonSpriteUrl } from '../game/assets';
 import { getMoveLayout } from '../game/move-layout';
 import { buyItem, experienceAtLevel, heal, ITEM_LABELS, ITEM_PRICES, statsFor, type BallItem, type GameState, type Monster } from '../game/engine';
 import { getWorldAtlas } from './atlas';
-import { PLAYABLE_WORLDS, isPlayableAdventureVersion } from './availability';
+import { PLAYABLE_WORLDS, getPlayableSpeciesIds, isPlayableSpecies, isPlayableAdventureVersion } from './availability';
 import type { FieldPolicy } from '../game/field';
 import { movementSpeed, OpenWorldSimulation, versionEncounters, type OpenWorldSnapshot } from './simulation';
 import { lastServerDecision } from '../game/server-brain';
@@ -59,13 +59,15 @@ export class OpenWorldPanel {
     this.unmount(); this.host = host;
     host.innerHTML = `<section class="adventure" aria-label="오픈월드 모험">
       <div id="ow-host"></div>
-      <div class="world-heading"><label class="world-eyebrow" for="world-version"><span id="world-region-label">관동</span> · 수집 <select id="world-version"><option value="national">전국도감</option>${VERSIONS.filter(version => version.speciesIds.length && isPlayableAdventureVersion(version.id)).map(version => `<option value="${version.id}">${escape(version.name)}${version.id.endsWith('-japan') ? ' (일본판)' : ''}</option>`).join('')}</select></label><h1 id="world-biome">태초마을</h1><p id="world-zone-level">1번도로에서 첫 모험을 시작하세요</p></div>
-      <aside class="world-radar"><button id="world-map-open" aria-label="지역 전체 지도 열기"><canvas id="world-minimap" width="180" height="180" aria-label="월드 지도"></canvas></button><span id="world-position"></span><small id="world-map-caption">지역 지도 ↗</small></aside>
+      <details class="world-explore-panel" open><summary class="world-explore-toggle">탐험 조작 <span>⌄</span></summary><div class="world-explore-scroll">
+      <div class="world-heading"><label class="world-eyebrow" for="world-version"><span id="world-region-label">관동</span> · 수집 <select id="world-version"><option value="national">관동 통합</option>${VERSIONS.filter(version => version.speciesIds.length && isPlayableAdventureVersion(version.id)).map(version => `<option value="${version.id}">${escape(version.name)}${version.id.endsWith('-japan') ? ' (일본판)' : ''}</option>`).join('')}</select></label><h1 id="world-biome">태초마을</h1><p id="world-zone-level">1번도로에서 첫 모험을 시작하세요</p></div>
       <div class="world-tools"><button id="world-pause">Ⅱ 일시 정지</button><button id="world-heal">캠프 회복</button><label><input id="world-auto-hunt" type="checkbox" checked><span>자동 사냥</span></label><label><input id="world-learning" type="checkbox"><span id="world-learning-label">기술 학습</span></label></div>
       <div class="world-control-mode" role="group" aria-label="조작 모드"><div class="world-mode-buttons"><button id="world-mode-auto">자동</button><button id="world-mode-manual">수동</button></div><div class="world-control-copy"><strong id="world-control-title"></strong><small id="world-control-help"></small></div></div>
       <details class="world-shop"><summary>프렌들리숍 · <span id="world-ball-stock"></span></summary><div id="world-shop-items"></div><small id="world-shop-note">승리 후에는 볼 1개로 확정 포획합니다.</small></details>
       <div class="world-gym" id="world-gym"></div>
       <details class="world-objective"><summary><span>주변 포켓몬 ▾</span><strong id="world-objective">첫 야생 포켓몬 발견하기</strong></summary><small>선택해 정보를 보고 추적·배틀하세요.</small><div id="world-nearby"></div></details>
+      </div></details>
+      <aside class="world-radar"><button id="world-map-open" aria-label="지역 전체 지도 열기"><canvas id="world-minimap" width="180" height="180" aria-label="월드 지도"></canvas></button><span id="world-position"></span><small id="world-map-caption">지역 지도 ↗</small></aside>
       <div class="world-lower-hud">
         <section class="world-target" id="world-target" aria-label="선택한 야생 포켓몬" hidden><div id="world-target-info"></div><div class="world-target-actions"><button id="world-target-track">추적</button><button id="world-target-battle">배틀</button><details><summary>정보</summary><p id="world-target-detail"></p></details><button id="world-target-clear" aria-label="선택 해제">✕</button></div></section>
         <details class="world-battle-hud" aria-label="파트너와 배틀">
@@ -317,7 +319,8 @@ export class OpenWorldPanel {
     const pool = versionEncounters(location.id, game.adventureVersion ?? 'red', game.player.badges, world.regionId);
     this.html('#world-zone-level', pool.length ? `야생 Lv.${location.minLevel}–${location.maxLevel} · ${pool.slice(0, 3).map(id => getSpecies(id).name).join(' · ')}` : '도시와 길을 따라 다음 구역으로 탐험하세요');
     this.html('#world-position', `${world.player.x.toFixed(0)}, ${world.player.z.toFixed(0)}`);
-    this.html('#world-objective', `${game.versionCaught?.[game.adventureVersion ?? 'red']?.length ?? 0} / ${getVersionSpeciesIds(game.adventureVersion ?? 'red').length}종 수집 · 전국 ${game.dex.caught.length}종`);
+    const collectionSpecies = new Set(getPlayableSpeciesIds(game.adventureVersion ?? 'red'));
+    this.html('#world-objective', `${(game.versionCaught?.[game.adventureVersion ?? 'red'] ?? []).filter(id => collectionSpecies.has(id)).length} / ${collectionSpecies.size}종 수집 · 관동 ${game.dex.caught.filter(isPlayableSpecies).length}종`);
     this.html('#world-feed', game.logs.slice(-3).map(log => `<p>${escape(log)}</p>`).join(''));
     this.html('#world-battle-state', game.captureOffer ? '승리! 포획 여부를 선택하세요' : battle ? `${battle.awaitingSwitch ? '다음 파트너로 자동 교대 중' : world.escaping ? '도망 시도 중' : world.controlMode === 'manual' ? (battle.canRun ? '기술 선택 · 이동키로 도주' : '기술 선택 대기') : '자동 배틀'} · 턴 ${battle.turn}` : !world.hasBalls ? '볼 소진 · 구매 후 자동 사냥 가능' : this.paused ? '탐험 일시 정지' : world.controlMode === 'manual' ? '수동 탐험 · 배틀 버튼으로만 전투' : world.autoHunt ? '자동 추적 · 접근하면 배틀' : '접근하면 자동 배틀');
     this.button('#world-mode-auto').setAttribute('aria-pressed', String(world.controlMode === 'auto'));
