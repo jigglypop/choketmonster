@@ -1,5 +1,6 @@
 import { Box3, Object3D, SkinnedMesh, Vector3 } from 'three';
 import type { WorldSample } from './types';
+export { terrainPlateauHeight, type TerrainPlateau } from './terrain-elevation';
 
 export const TERRAIN_SEGMENTS = 72;
 

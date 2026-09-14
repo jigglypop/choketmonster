@@ -5,6 +5,7 @@ import {
   johtoGoldSourceLocationId, nearestJohtoWalkable, safeJohtoArrival, sampleJohtoWorld,
 } from '../src/openworld/johto';
 import { JOHTO_GOLD_ENCOUNTERS } from '../src/data/johto-gold-encounters';
+import { terrainSurfaceHeight } from '../src/openworld/grounding';
 
 describe('Johto v2 exploration map', () => {
   it('places the ten cities in their Gold-era relative directions and covers Routes 29-46', () => {
@@ -23,7 +24,23 @@ describe('Johto v2 exploration map', () => {
       'new-bark', 'cherrygrove', 'violet', 'azalea', 'goldenrod', 'ecruteak', 'olivine', 'cianwood', 'mahogany', 'blackthorn',
     ]);
     expect(JOHTO_CONNECTIONS).toContainEqual(['new-bark', 'route-27']);
+    expect(JOHTO_CONNECTIONS).toContainEqual(['tohjo-falls', 'mt-silver']);
     for (let route = 29; route <= 46; route += 1) expect(JOHTO_LOCATIONS.some(item => item.id === `route-${route}` || item.id.startsWith(`route-${route}-`)), `Route ${route}`).toBe(true);
+  });
+
+  it('adds a source-backed, badge-locked Mt. Silver spur without moving existing locations', () => {
+    const silver = JOHTO_LOCATIONS.find(item => item.id === 'mt-silver')!;
+    const falls = JOHTO_LOCATIONS.find(item => item.id === 'tohjo-falls')!;
+    expect(falls).toMatchObject({ x: 106, z: 60 });
+    expect(silver).toMatchObject({ name: '은빛산', kind: 'cave', requiredBadges: 8 });
+    expect(Math.hypot(silver.x - falls.x, silver.z - falls.z)).toBeLessThan(16);
+    expect(silver.encounters).toEqual([195, 55, 217, 42, 246, 114, 77, 78, 84, 85, 95, 75]);
+    expect(safeJohtoArrival('mt-silver', 7)).toBeUndefined();
+    expect(safeJohtoArrival('mt-silver', 8)).toEqual({ x: silver.x, z: silver.z });
+    expect(evaluateJohtoTraversal(falls, silver, 7).allowed).toBe(false);
+    expect(evaluateJohtoTraversal(falls, silver, 8).allowed).toBe(true);
+    expect(johtoEncounters('mt-silver', 7)).toEqual([]);
+    expect(johtoEncounters('mt-silver', 8)).toEqual(silver.encounters);
   });
 
   it('keeps every surface connection continuously walkable and cave-only links out of the surface mesh', () => {
@@ -59,6 +76,17 @@ describe('Johto v2 exploration map', () => {
     expect(recovered).toBeDefined(); expect(sampleJohtoWorld(recovered!.x, recovered!.z).blocked).toBe(false);
     expect(evaluateJohtoTraversal(JOHTO_START, { x: 118, z: 118 }, 0).allowed).toBe(false);
     expect(johtoLocationAt(JOHTO_START.x, JOHTO_START.z).id).toBe('new-bark');
+  });
+
+  it('keeps every paving tile attached to a flat rendered town surface', () => {
+    for (const town of JOHTO_LOCATIONS.filter(item => item.kind === 'town')) {
+      const centerHeight = terrainSurfaceHeight(sampleJohtoWorld, town.x, town.z);
+      for (let tileX = -7; tileX <= 7; tileX += 1) for (let tileZ = -7; tileZ <= 7; tileZ += 1) {
+        if (Math.hypot(tileX, tileZ) > 7.1) continue;
+        const height = terrainSurfaceHeight(sampleJohtoWorld, town.x + tileX * 1.12, town.z + tileZ * 1.12);
+        expect(Math.abs(height - centerHeight), `${town.id}:${tileX},${tileZ}`).toBeLessThan(1e-6);
+      }
+    }
   });
 
   it('exposes habitat tables without pretending Kanto badges are Johto badges', () => {

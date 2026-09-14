@@ -62,14 +62,12 @@ function captureMove(attacker: Monster, defender: Monster): number | undefined {
 }
 
 function bestBall(state: GameState, enemy: Monster): BallItem | undefined {
-  const catchRate = getSpecies(enemy.speciesId).catchRate;
-  const order: BallItem[] = catchRate <= 45 ? ['ultra-ball', 'great-ball', 'poke-ball'] : ['poke-ball', 'great-ball', 'ultra-ball'];
-  return order.find(ball => state.inventory[ball] > 0);
+  return state.inventory['poke-ball'] > 0 ? 'poke-ball' : undefined;
 }
 
 function buySupplies(state: GameState, mode: Mode): void {
   const desiredBalls = mode === 'full' ? 30 : 12;
-  const ball: BallItem = state.player.badges >= 6 ? 'ultra-ball' : state.player.badges >= 3 ? 'great-ball' : 'poke-ball';
+  const ball: BallItem = 'poke-ball';
   const current = state.inventory['poke-ball'] + state.inventory['great-ball'] + state.inventory['ultra-ball'];
   const affordable = Math.floor(state.player.money / ITEM_PRICES[ball]);
   const quantity = Math.min(Math.max(0, desiredBalls - current), Math.max(0, affordable - 1));
@@ -203,7 +201,7 @@ export async function runCampaign(mode: Mode, seed: string, graph: Graph): Promi
     }
 
     if (mode === 'full') {
-      while (!state.championDefeated && championAttempts < 3) {
+      while (!state.championDefeated && championAttempts < 15) {
         const targetLevel = Math.min(100, 94 + championAttempts * 3);
         while (state.player.team[0].level < targetLevel) await exploreOnce(GYM_REGIONS[7].id);
         prepareChampionTeam(state); buySupplies(state, mode); heal(state); challengeChampion(state); championAttempts++;

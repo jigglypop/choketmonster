@@ -19,8 +19,8 @@ test.beforeEach(async ({ page }) => {
 
 async function load(page: Page, save: SaveEnvelope) {
   await page.goto('/');
-  await expect(page.locator('[data-starter="1"]')).toBeVisible({ timeout: 30000 });
-  await page.locator('[data-starter="1"]').click();
+  await expect(page.locator('[data-starter="152"]')).toBeVisible({ timeout: 30000 });
+  await page.locator('[data-starter="152"]').click();
   await page.locator('#import-file').setInputFiles({ name: 'flow.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(save)) });
   await expect(page.locator('#toast')).toContainText('불러왔습니다');
 }
@@ -91,7 +91,9 @@ test('bulk merge previews every donor, cancels safely, keeps a boxed survivor an
     request.onerror = () => reject(request.error);
   }));
   expect(backup.game.player.team[0].instanceId).toBe('mon-1'); expect(backup.game.player.box).toHaveLength(2);
-  await page.reload(); await page.locator('[data-tab="team"]').click();
+  await page.reload();
+  await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30000 });
+  await page.locator('[data-tab="team"]').click();
   await expect(page.locator('.team-monster')).toHaveAttribute('data-monster', 'mon-2', { timeout: 30000 });
   await expect(page.locator('.team-monster')).toContainText('Lv.100');
   expect(dialogs).toEqual([]); expect(errors).toEqual([]);

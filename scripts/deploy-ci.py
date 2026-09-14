@@ -73,27 +73,41 @@ def load_receipt(path: Path, commit: str) -> tuple[dict, Path]:
     return receipt, payload
 
 
-def deploy_server(binary: Path, commit: str, output_dir: Path) -> dict:
+def realtime_target() -> tuple[str, str]:
+    stack = json.loads(aws('cloudformation', 'describe-stacks', '--region', REGION,
+        '--stack-name', 'choketmon-realtime', '--output', 'json'))['Stacks'][0]
+    if stack['StackStatus'] not in {'CREATE_COMPLETE', 'UPDATE_COMPLETE', 'UPDATE_ROLLBACK_COMPLETE'}:
+        raise RuntimeError('Realtime infrastructure has not finished provisioning')
+    outputs = {row['OutputKey']: row['OutputValue'] for row in stack['Outputs']}
+    instance, document = outputs.get('InstanceId', ''), outputs.get('DeployDocument', '')
+    if not re.fullmatch(r'i-[0-9a-f]{8,17}', instance) or document != 'ChoketmonDeployRealtime':
+        raise RuntimeError('Unexpected realtime deployment target')
+    return instance, document
+
+
+def deploy_server(binary: Path, commit: str, output_dir: Path, *, instance: str = INSTANCE,
+                  document: str = DOCUMENT, component: str = 'server', upload: bool = True) -> dict:
     digest = sha256(binary)
     key = f"ci/{commit}/choketmon-server"
-    aws("s3", "cp", str(binary), f"s3://{RUNTIME_BUCKET}/{key}", "--region", REGION, "--no-progress", "--metadata", f"sha256={digest}")
+    if upload:
+        aws("s3", "cp", str(binary), f"s3://{RUNTIME_BUCKET}/{key}", "--region", REGION, "--no-progress", "--metadata", f"sha256={digest}")
     response = json.loads(aws(
-        "ssm", "send-command", "--region", REGION, "--document-name", DOCUMENT,
-        "--instance-ids", INSTANCE, "--parameters", json.dumps({"Release": [commit], "Sha256": [digest]}), "--output", "json",
+        "ssm", "send-command", "--region", REGION, "--document-name", document,
+        "--instance-ids", instance, "--parameters", json.dumps({"Release": [commit], "Sha256": [digest]}), "--output", "json",
     ))
     command_id = response["Command"]["CommandId"]
-    receipt = {"schema": 1, "release": commit, "sha256": digest, "runtimeKey": key, "commandId": command_id, "status": "Submitted", "submittedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
-    command_receipt = output_dir / "server-command.json"
+    receipt = {"schema": 1, "component": component, "instanceId": instance, "release": commit, "sha256": digest, "runtimeKey": key, "commandId": command_id, "status": "Submitted", "submittedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    command_receipt = output_dir / f"{component}-command.json"
     write_json(command_receipt, receipt)
     deadline = time.monotonic() + 20 * 60
     while time.monotonic() < deadline:
         try:
-            invocation = json.loads(aws("ssm", "get-command-invocation", "--region", REGION, "--command-id", command_id, "--instance-id", INSTANCE, "--output", "json"))
+            invocation = json.loads(aws("ssm", "get-command-invocation", "--region", REGION, "--command-id", command_id, "--instance-id", instance, "--output", "json"))
         except Exception as error:
             if isinstance(error, subprocess.CalledProcessError) and b'InvocationDoesNotExist' in (error.stderr or b''):
                 time.sleep(3)
                 continue
-            write_json(output_dir / "pending-ssm.json", {**receipt, "status": "PollingUncertain", "errorType": type(error).__name__})
+            write_json(output_dir / f"pending-{component}-ssm.json", {**receipt, "status": "PollingUncertain", "errorType": type(error).__name__})
             raise RuntimeError(f"SSM command {command_id} was submitted; polling became uncertain and must not be resubmitted") from error
         status = invocation.get("Status")
         if status == "Success":
@@ -105,7 +119,7 @@ def deploy_server(binary: Path, commit: str, output_dir: Path) -> dict:
             write_json(command_receipt, receipt)
             raise RuntimeError(f"SSM deployment failed with status {status}; command {command_id} will not be repeated")
         time.sleep(5)
-    write_json(output_dir / "pending-ssm.json", {**receipt, "status": "PollingTimedOut"})
+    write_json(output_dir / f"pending-{component}-ssm.json", {**receipt, "status": "PollingTimedOut"})
     raise RuntimeError(f"SSM command {command_id} is still pending; do not resubmit it")
 
 
@@ -150,11 +164,15 @@ def verify_production(receipt: dict, commit: str) -> dict:
         raise RuntimeError(f"HTTPS checksum mismatch: {mismatches[:5]}")
     with urlopen(Request(f"{SITE_URL}/api/health", headers={"User-Agent": "choketmon-ci-verifier"}), timeout=30) as response:
         health = json.load(response)
+    with urlopen(Request(f"{SITE_URL}/api/realtime/health", headers={"User-Agent": "choketmon-ci-verifier"}), timeout=30) as response:
+        realtime = json.load(response)
     with urlopen(Request(f"{SITE_URL}/version.json", headers={"User-Agent": "choketmon-ci-verifier", "Cache-Control": "no-cache"}), timeout=30) as response:
         version = json.load(response)
     if health.get("status") != "ok" or health.get("server") != "rust" or health.get('database') != 'postgresql' or health.get('connectome') is not True or version.get("gitCommit") != commit:
         raise RuntimeError("Production health or version commit verification failed")
-    return {"filesVerified": len(actual), "health": {"status": health.get("status"), "server": health.get("server"), "database": health.get("database"), "connectome": health.get("connectome")}, "version": version}
+    if realtime.get('status') != 'ok' or realtime.get('schema') != 1:
+        raise RuntimeError('Production realtime health verification failed')
+    return {"filesVerified": len(actual), "health": {"status": health.get("status"), "server": health.get("server"), "database": health.get("database"), "connectome": health.get("connectome")}, "realtime": realtime, "version": version}
 
 
 def main() -> int:
@@ -181,13 +199,16 @@ def main() -> int:
         print(json.dumps({'skipped': 'superseded main commit', 'latest': latest, 'commit': args.commit}))
         return 0
     output_dir = Path("artifacts") / f"ci-deploy-{args.commit}"
+    realtime_instance, realtime_document = realtime_target()
     server = deploy_server(Path(args.binary), args.commit, output_dir) if args.binary else None
+    realtime = deploy_server(Path(args.binary), args.commit, output_dir, instance=realtime_instance,
+        document=realtime_document, component='realtime', upload=False) if args.binary else None
     invalidation_id = deploy_static(payload, receipt)
     verification = verify_production(receipt, args.commit)
     deployment = {
         "schema": 1, "gitCommit": args.commit, "deployedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "region": REGION, "staticBucket": STATIC_BUCKET, "distributionId": DISTRIBUTION, "siteUrl": SITE_URL,
-        "manifestSha256": receipt["manifestSha256"], "invalidationId": invalidation_id, "server": server, "verification": verification,
+        "manifestSha256": receipt["manifestSha256"], "invalidationId": invalidation_id, "server": server, "realtime": realtime, "verification": verification,
     }
     write_json(output_dir / "receipt.json", deployment)
     print(json.dumps({"deployed": True, "gitCommit": args.commit, "filesVerified": verification["filesVerified"], "receipt": str(output_dir / "receipt.json")}))

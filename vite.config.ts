@@ -8,6 +8,9 @@ export default defineConfig(({ mode }) => {
   const hash = createHash('sha256').update(readFileSync('public/chocketmon.png')).digest('hex').slice(0, 12);
   return {
   plugins: [{ name: 'share-metadata', transformIndexHtml: html => html.replaceAll('__PUBLIC_SITE_URL__', origin).replaceAll('__SHARE_IMAGE_HASH__', hash) }],
-  server: { proxy: { '/api': { target: process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:8080', changeOrigin: false } } },
+  server: { proxy: {
+    '/api/realtime': { target: process.env.REALTIME_PROXY_TARGET ?? process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:8080', changeOrigin: false, ws: true },
+    '/api': { target: process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:8080', changeOrigin: false },
+  } },
   };
 });

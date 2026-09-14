@@ -23,7 +23,7 @@ test('an imported zero-ball victory passes immediately and keeps automatic hunti
   world.setControlMode('auto'); world.setAutoCapture(true);
   const save = packSave(game, graph, { ...defaultView(), learning: false, openWorld: world.snapshot(), openWorldPaused: false });
 
-  await page.goto('/'); await page.locator('[data-starter="1"]').click();
+  await page.goto('/'); await page.locator('[data-starter="152"]').click();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 60000 });
   await page.locator('#import-file').setInputFiles({ name: 'zero-ball-victory.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(save)) });
   await expect(page.locator('#world-ball-stock')).toContainText('볼 0개');

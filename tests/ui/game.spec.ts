@@ -10,7 +10,7 @@ const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as
 const controller = new ConnectomeController(graph);
 async function start(page: Page) {
   await page.goto('/');
-  await page.locator('[data-starter="1"]').click();
+  await page.locator('[data-starter="152"]').click();
   await expect(page.locator('#ow-host canvas')).toBeVisible(); await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 20000 });
   await expect(page.locator('#ow-host')).toHaveAttribute('data-runtime', 'gaesup-world');
   await expect(page.locator('vite-error-overlay')).toHaveCount(0);
@@ -36,13 +36,13 @@ test('guest save UI restores locally and shows server connectome status', async 
   await page.goto('/');
   await expect(page.locator('.device-storage')).toHaveText('이 기기에 저장');
   await expect(page.locator('[data-open-auth]')).toHaveCount(1);
-  await page.locator('[data-starter="1"]').click(); await expect(page.locator('#world-learning')).toBeChecked(); await page.locator('[data-tab="lab"]').click();
+  await page.locator('[data-starter="152"]').click(); await expect(page.locator('#world-learning')).toBeChecked(); await page.locator('[data-tab="lab"]').click();
   await expect(page.locator('.graph-numbers')).toContainText('브라우저 뉴런');
   await expect(page.locator('.server-circuit')).toContainText('139,255'); await expect(page.locator('.server-circuit')).toContainText('52,496,440');
   await page.screenshot({ path: 'artifacts/ui-lab-server.png', fullPage: true });
   await page.locator('#save-now').click(); await expect(page.locator('#save-state')).toContainText('이 기기에 저장됨');
   await page.reload(); await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 20_000 });
-  await page.locator('[data-tab="team"]').click(); await expect(page.locator('.detail-title h2')).toHaveText('이상해씨');
+  await page.locator('[data-tab="team"]').click(); await expect(page.locator('.detail-title h2')).toHaveText('치코리타');
   expect(apiWrites.filter(path => path.startsWith('/api/auth/') || path.startsWith('/api/saves/'))).toEqual([]);
 });
 

@@ -19,10 +19,10 @@ test('device save survives reload while anonymous full-connectome battle runs', 
   });
 
   await page.goto('/');
-  await expect(page.locator('[data-starter="1"]')).toBeVisible();
+  await expect(page.locator('[data-starter="152"]')).toBeVisible();
   await expect(page.locator('#account-dialog,[data-open-auth],#logout-button')).toHaveCount(0);
   await expect(page.locator('.device-storage')).toHaveText('이 기기에만 저장');
-  await page.locator('[data-starter="1"]').click();
+  await page.locator('[data-starter="152"]').click();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
   await page.locator('#world-learning').check();
   // Auto hunt starts on its own. Clicking Engage here races a turn that may
@@ -65,7 +65,7 @@ test('device save survives reload while anonymous full-connectome battle runs', 
   await page.screenshot({ path: `artifacts/${evidenceStem}-mobile.png`, fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.locator('[data-tab="team"]').click();
-  await expect(page.locator('.detail-title h2')).toHaveText('이상해씨');
+  await expect(page.locator('.detail-title h2')).toHaveText('치코리타');
   await page.locator('[data-tab="lab"]').click();
   await expect(page.locator('.server-circuit')).toHaveAttribute('data-available', 'true');
   await page.screenshot({ path: `artifacts/${evidenceStem}-graph.png`, fullPage: true });

@@ -20,6 +20,7 @@ import {
   sampleKantoWorld,
   townBuildingOffsets,
 } from '../src/openworld/kanto';
+import { terrainSurfaceHeight } from '../src/openworld/grounding';
 
 describe('compressed Kanto open world', () => {
   it('places the original journey in the intended relative directions', () => {
@@ -71,6 +72,17 @@ describe('compressed Kanto open world', () => {
       for (let step = 0; step <= 10; step += 1) {
         const t = step / 10;
         expect(sampleKantoWorld(from.x + (to.x - from.x) * t, from.z + (to.z - from.z) * t).blocked, `${fromId} -> ${toId} at ${t}`).toBe(false);
+      }
+    }
+  });
+
+  it('keeps every paving tile attached to a flat rendered town surface', () => {
+    for (const town of KANTO_LOCATIONS.filter(item => item.kind === 'town')) {
+      const centerHeight = terrainSurfaceHeight(sampleKantoWorld, town.x, town.z);
+      for (let tileX = -7; tileX <= 7; tileX += 1) for (let tileZ = -7; tileZ <= 7; tileZ += 1) {
+        if (Math.hypot(tileX, tileZ) > 7.1) continue;
+        const height = terrainSurfaceHeight(sampleKantoWorld, town.x + tileX * 1.12, town.z + tileZ * 1.12);
+        expect(Math.abs(height - centerHeight), `${town.id}:${tileX},${tileZ}`).toBeLessThan(1e-6);
       }
     }
   });

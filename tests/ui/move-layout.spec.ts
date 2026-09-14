@@ -37,8 +37,8 @@ function fixture() {
 async function bootstrap(page: Page) {
   await page.route(/\.(?:glb|gltf)(?:\?.*)?$/, route => route.abort());
   await page.goto('/');
-  await expect(page.locator('#starter-dialog [data-starter="1"]')).toBeVisible({ timeout: 30_000 });
-  await page.locator('#starter-dialog [data-starter="1"]').click();
+  await expect(page.locator('#starter-dialog [data-starter="152"]')).toBeVisible({ timeout: 30_000 });
+  await page.locator('#starter-dialog [data-starter="152"]').click();
 }
 
 async function importSave(page: Page, save: unknown) {

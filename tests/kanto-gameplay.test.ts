@@ -121,7 +121,7 @@ describe('Kanto player flows', () => {
     game.inventory['ultra-ball'] = 2; const balls = game.inventory['poke-ball'];
     world.setAutoCapture(true); prepareWin(world); world.step({ deltaSeconds: 1 });
     expect(game.captureOffer).toBeUndefined(); expect(game.player.box).toHaveLength(1);
-    expect(game.inventory['poke-ball']).toBe(balls - 1); expect(game.inventory['ultra-ball']).toBe(2);
+    expect(game.inventory['poke-ball']).toBe(balls + 2 - 1); expect(game.inventory['ultra-ball']).toBe(0);
     expect(game.player.box[0].brain?.graph.id).toBe(graph.id);
   });
 
@@ -152,7 +152,7 @@ describe('Kanto player flows', () => {
     restored.simulation.requestAction({ type: 'move', index: 0 });
     const money = restored.game.player.money, result = restored.simulation.step({ deltaSeconds: 1 });
     const victory = result.events.find(event => event.type === 'battle-turn');
-    expect(victory?.type === 'battle-turn' && victory.result.gymVictory).toEqual({ badge: 1, money: 1500 });
+    expect(victory?.type === 'battle-turn' && victory.result.gymVictory).toEqual({ badge: 1, money: 1500, region: 'kanto' });
     expect(restored.game.player.money - money).toBe(1500);
     expect(restored.simulation.step({ deltaSeconds: .25 }).events.some(event => event.type === 'battle-turn' && event.result.gymVictory)).toBe(false);
     expect(restored.game.player.badges).toBe(1); expect(restored.game.captureOffer).toBeUndefined();

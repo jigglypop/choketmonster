@@ -61,7 +61,7 @@ describe('compressed world atlas', () => {
         return false;
       })(), `${world.id}:${town.id} building collision`).toBe(true);
       for (const location of world.locations) {
-        const arrival = world.safeArrival(location.id); expect(arrival, `${world.id}:${location.id}`).toBeDefined();
+        const arrival = world.safeArrival(location.id, location.requiredBadges); expect(arrival, `${world.id}:${location.id}`).toBeDefined();
         expect(world.sample(arrival!.x, arrival!.z).blocked).toBe(false);
         if (world.id !== 'johto') expect(world.encounters(location.id, 0).length).toBeGreaterThan(0);
       }

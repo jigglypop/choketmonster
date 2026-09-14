@@ -95,7 +95,7 @@ pub fn router(state: AppState) -> Router {
     let local = Router::new()
         .route("/api/local-brains/step-batch", post(local_neural_batch))
         .layer(DefaultBodyLimit::max(2_200_000));
-    Router::new()
+    let api = Router::new()
         .merge(local)
         .nest("/api/auth", auth)
         .route("/api/health", get(health))
@@ -108,7 +108,8 @@ pub fn router(state: AppState) -> Router {
         .layer(middleware::from_fn_with_state(state.clone(), protect))
         .layer(tower_http::compression::CompressionLayer::new())
         .layer(tower_http::trace::TraceLayer::new_for_http())
-        .with_state(state)
+        .with_state(state);
+    api.merge(crate::realtime::router())
 }
 
 async fn local_neural_batch(

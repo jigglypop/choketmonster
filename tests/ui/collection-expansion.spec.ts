@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { mkdirSync, readFileSync } from 'node:fs';
-import { createGame, createMonster } from '../../src/game/engine';
+import { createGame, createMonster, duplicateMergeValue } from '../../src/game/engine';
 import { defaultView, packSave } from '../../src/game/storage';
 import type { Graph } from '../../src/core/brain';
 
@@ -16,12 +16,13 @@ test('duplicate XP and release use cancellable app modals, with readable team ac
   page.on('dialog', async dialog => { browserDialogs.push(dialog.type()); await dialog.dismiss(); });
   await page.route(/\.(?:glb|gltf)(?:\?.*)?$/, route => route.abort());
   const game = createGame(1, 'collection-ui');
-  game.player.box.push(createMonster(game, 1, 20), createMonster(game, 25, 8));
+  const donor = createMonster(game, 1, 20);
+  game.player.box.push(donor, createMonster(game, 25, 8));
   game.dex.seen.push(25); game.dex.caught.push(25);
   const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
   await page.goto('/');
-  await expect(page.locator('[data-starter="1"]')).toBeVisible({ timeout: 30_000 });
-  await page.locator('[data-starter="1"]').click();
+  await expect(page.locator('[data-starter="152"]')).toBeVisible({ timeout: 30_000 });
+  await page.locator('[data-starter="152"]').click();
   await page.locator('#import-file').setInputFiles({ name: 'collection.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(packSave(game, graph, { ...defaultView(), openWorldPaused: true }))) });
   await expect(page.locator('#toast')).toContainText('불러왔습니다');
   await page.locator('[data-tab="team"]').click();
@@ -53,6 +54,7 @@ test('duplicate XP and release use cancellable app modals, with readable team ac
   await expect(modal.locator('.confirmation-cancel')).toBeFocused();
   await expect(modal).toContainText('mon-2');
   await expect(modal).toContainText('mon-1');
+  await expect(modal).toContainText(`조정 경험치 ${duplicateMergeValue(donor).xp.toLocaleString()}`);
   const fits = await modal.evaluate(dialog => { const r = dialog.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && dialog.scrollWidth <= dialog.clientWidth + 1; });
   expect(fits).toBe(true);
   await modal.screenshot({ path: `${output}/merge-modal-mobile-150.png` });
@@ -95,9 +97,9 @@ test('touch navigation and collection fit narrow screens and share metadata is i
   expect(html).toContain('/chocketmon.png?v='); expect(html).not.toContain('__PUBLIC_SITE_URL__');
   expect((await request.get('/chocketmon.png')).headers()['content-type']).toContain('image/png');
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/'); await page.locator('[data-starter="1"]').click();
+  await page.goto('/'); await page.locator('[data-starter="152"]').click();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30000 });
-  await page.locator('#world-pause').click();
+  await page.locator('#world-pause').evaluate((button: HTMLButtonElement) => button.click());
   await page.screenshot({ path: 'artifacts/ui-expanded-mobile-map.png', fullPage: true });
   for (const width of [390, 320]) {
     await page.setViewportSize({ width, height: 844 });
@@ -128,7 +130,7 @@ test('a committed login with an IndexedDB error cannot overwrite the account wit
     await route.fulfill({ json: { user: { id: 'new-account-id', username: 'newtrainer' } } });
   });
   await page.route('**/api/saves/current', route => route.fulfill({ status: 404, json: {} }));
-  await page.goto('/'); await page.locator('[data-starter="1"]').click();
+  await page.goto('/'); await page.locator('[data-starter="152"]').click();
   await page.locator('[data-open-auth]').click();
   await page.locator('.account-dialog input[name="username"]').fill('newtrainer');
   await page.locator('.account-dialog input[name="password"]').fill('test-password-123');

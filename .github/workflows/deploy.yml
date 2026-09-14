@@ -127,7 +127,7 @@ jobs:
           name: production-receipts-${{ github.sha }}
           path: |
             artifacts/ci-deploy-*/receipt.json
-            artifacts/ci-deploy-*/server-command.json
-            artifacts/ci-deploy-*/pending-ssm.json
+            artifacts/ci-deploy-*/*-command.json
+            artifacts/ci-deploy-*/pending-*-ssm.json
           if-no-files-found: ignore
           retention-days: 30

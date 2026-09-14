@@ -1,0 +1,188 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Choketmon WebSocket gateway isolated from neural computation; one small EC2, no database or load balancer.
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+  CloudFrontServiceGroup:
+    Type: AWS::EC2::SecurityGroup::Id
+  RuntimeBucket:
+    Type: String
+    AllowedPattern: '^[a-z0-9.-]+$'
+  ImageId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+  InstanceType:
+    Type: String
+    Default: t3.micro
+    AllowedValues: [t3.micro, t3.small]
+Resources:
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: WebSocket gateway reachable only through the existing CloudFront VPC service group
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          SourceSecurityGroupId: !Ref CloudFrontServiceGroup
+      Tags: [{Key: application, Value: choketmonster}]
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: ec2.amazonaws.com}
+            Action: sts:AssumeRole
+      ManagedPolicyArns: [arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore]
+      Policies:
+        - PolicyName: ReadVerifiedRuntimeOnly
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub 'arn:aws:s3:::${RuntimeBucket}/ci/*'
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref InstanceRole]
+  Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref ImageId
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref InstanceProfile
+      CreditSpecification: {CPUCredits: standard}
+      MetadataOptions: {HttpTokens: required, HttpPutResponseHopLimit: 1}
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs: {VolumeSize: 8, VolumeType: gp3, Encrypted: true, DeleteOnTermination: true}
+      NetworkInterfaces:
+        - DeviceIndex: '0'
+          AssociatePublicIpAddress: true
+          SubnetId: !Ref SubnetId
+          GroupSet: [!GetAtt SecurityGroup.GroupId]
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          set -eu
+          useradd --system --home-dir /opt/choketmon-realtime --shell /sbin/nologin choketmon-realtime
+          install -d -m 750 -o choketmon-realtime -g choketmon-realtime /opt/choketmon-realtime
+          cat > /etc/systemd/system/choketmon-realtime.service <<'SERVICE'
+          [Unit]
+          Description=Choketmon WebSocket gateway
+          After=network-online.target
+          Wants=network-online.target
+          [Service]
+          User=choketmon-realtime
+          Group=choketmon-realtime
+          ExecStart=/opt/choketmon-realtime/choketmon-server
+          Environment=REALTIME_ONLY=true
+          Environment=LISTEN_ADDR=0.0.0.0:8080
+          Environment=APP_ORIGIN=https://chocketmon.com,https://d3b0jo8g1tseoa.cloudfront.net
+          Environment=REALTIME_ROOM_CAPACITY=64
+          Environment=REALTIME_SERVER_CAPACITY=128
+          Environment=RUST_LOG=info
+          Restart=on-failure
+          RestartSec=3
+          NoNewPrivileges=true
+          ProtectSystem=strict
+          ProtectHome=true
+          PrivateTmp=true
+          MemoryMax=256M
+          TasksMax=32
+          LimitNOFILE=1024
+          [Install]
+          WantedBy=multi-user.target
+          SERVICE
+          systemctl daemon-reload
+          systemctl enable --now amazon-ssm-agent
+      Tags: [{Key: application, Value: choketmonster}, {Key: Name, Value: choketmon-realtime}]
+  VpcOrigin:
+    Type: AWS::CloudFront::VpcOrigin
+    Properties:
+      VpcOriginEndpointConfig:
+        Name: choketmon-realtime
+        Arn: !Sub 'arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${Instance}'
+        HTTPPort: 8080
+        HTTPSPort: 443
+        OriginProtocolPolicy: http-only
+        OriginSSLProtocols: [TLSv1.2]
+  DeployDocument:
+    Type: AWS::SSM::Document
+    Properties:
+      Name: ChoketmonDeployRealtime
+      DocumentType: Command
+      UpdateMethod: NewVersion
+      Content:
+        schemaVersion: '2.2'
+        description: Replace the realtime executable after checksum verification, with rollback on a failed health check.
+        parameters:
+          Release:
+            type: String
+            allowedPattern: '^[0-9a-f]{40}$'
+          Sha256:
+            type: String
+            allowedPattern: '^[0-9a-f]{64}$'
+        mainSteps:
+          - action: aws:runShellScript
+            name: deploy
+            inputs:
+              timeoutSeconds: '240'
+              runCommand:
+                - !Sub |
+                  set -eu
+                  exec 9>/run/choketmon-realtime-deploy.lock
+                  flock -w 120 9
+                  release='{{Release}}'
+                  expected='{{Sha256}}'
+                  root=/opt/choketmon-realtime
+                  install -d -m 750 "$root/staging"
+                  aws s3 cp "s3://${RuntimeBucket}/ci/$release/choketmon-server" "$root/staging/choketmon-server" --region ${AWS::Region} --no-progress --only-show-errors
+                  printf '%s  %s\n' "$expected" "$root/staging/choketmon-server" | sha256sum -c -
+                  if [ -f "$root/release.json" ] && [ -f "$root/choketmon-server" ]; then cp -p "$root/choketmon-server" "$root/choketmon-server.previous"; else rm -f "$root/choketmon-server.previous"; fi
+                  install -m 755 "$root/staging/choketmon-server" "$root/choketmon-server.next"
+                  mv -f "$root/choketmon-server.next" "$root/choketmon-server"
+                  healthy=false
+                  systemctl enable choketmon-realtime
+                  if systemctl restart choketmon-realtime; then
+                    for attempt in $(seq 1 30); do
+                      if curl --max-time 3 -fsS http://127.0.0.1:8080/api/realtime/health > "$root/staging/health.json" && python3 -c 'import json,sys; h=json.load(open(sys.argv[1])); sys.exit(h.get("status")!="ok")' "$root/staging/health.json"; then healthy=true; break; fi
+                      sleep 2
+                    done
+                  fi
+                  if [ "$healthy" != true ]; then
+                    if [ -f "$root/choketmon-server.previous" ]; then mv -f "$root/choketmon-server.previous" "$root/choketmon-server"; systemctl restart choketmon-realtime; else systemctl stop choketmon-realtime; rm -f "$root/choketmon-server"; fi
+                    echo 'Realtime executable failed health check.' >&2
+                    exit 1
+                  fi
+                  printf '{"gitCommit":"%s","binarySha256":"%s"}\n' "$release" "$expected" > "$root/release.json"
+                  cat "$root/staging/health.json"
+                  systemctl is-active choketmon-realtime
+  CiDeployPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: DeployChoketmonRealtimeOnly
+      Roles: [choketmon-github-deploy]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: ssm:SendCommand
+            Resource:
+              - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:document/${DeployDocument}'
+              - !Sub 'arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/${Instance}'
+          - Effect: Allow
+            Action: cloudformation:DescribeStacks
+            Resource: !Ref AWS::StackId
+Outputs:
+  InstanceId: {Value: !Ref Instance}
+  VpcOriginId: {Value: !GetAtt VpcOrigin.Id}
+  PrivateDns: {Value: !GetAtt Instance.PrivateDnsName}
+  DeployDocument: {Value: !Ref DeployDocument}
+  InstanceType: {Value: !Ref InstanceType}

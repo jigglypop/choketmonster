@@ -444,6 +444,17 @@ const WORLD_MAPS: [(&str, &str); 10] = [
     ("paldea", "paldea-atlas-v1"),
 ];
 
+const KANTO_GYM_REGIONS: [&str; 8] = [
+    "safari-meadow",
+    "verdant-forest",
+    "azure-shore",
+    "silph-city",
+    "moon-cavern",
+    "rough-badlands",
+    "crown-mountain",
+    "seafoam-depths",
+];
+
 fn validate_town_ids(value: &Value) -> Result<(), &'static str> {
     let ids = value
         .as_array()
@@ -525,6 +536,230 @@ fn validate_open_world(view: Option<&Value>) -> Result<(), &'static str> {
     Ok(())
 }
 
+struct CampaignProgress<'a> {
+    start_region: &'a str,
+    johto_badges: &'a Vec<Value>,
+    kanto_league: i64,
+    johto_league: i64,
+}
+
+fn validate_campaign(
+    game: &Value,
+    kanto_badges: i64,
+    champion_defeated: bool,
+) -> Result<Option<CampaignProgress<'_>>, &'static str> {
+    let Some(campaign) = game.get("campaign") else {
+        return Ok(None);
+    };
+    let campaign = campaign
+        .as_object()
+        .ok_or("캠페인 진행 형식이 올바르지 않습니다.")?;
+    let fields = [
+        "startRegion",
+        "johtoBadges",
+        "kantoLeague",
+        "johtoLeague",
+        "redDefeated",
+    ];
+    if campaign.len() != fields.len() || fields.iter().any(|field| !campaign.contains_key(*field)) {
+        return Err("캠페인 진행 형식이 올바르지 않습니다.");
+    }
+    let start_region = campaign
+        .get("startRegion")
+        .and_then(Value::as_str)
+        .filter(|region| matches!(*region, "johto" | "kanto"))
+        .ok_or("캠페인 시작 지역이 올바르지 않습니다.")?;
+    let johto_badges = campaign
+        .get("johtoBadges")
+        .and_then(Value::as_array)
+        .ok_or("성도 배지 진행이 올바르지 않습니다.")?;
+    if johto_badges.len() > 8
+        || johto_badges
+            .iter()
+            .enumerate()
+            .any(|(index, badge)| badge.as_i64() != Some(index as i64 + 1))
+    {
+        return Err("성도 배지 진행이 올바르지 않습니다.");
+    }
+    let kanto_league = integer(campaign.get("kantoLeague"), 0, 5)?;
+    let johto_league = integer(campaign.get("johtoLeague"), 0, 5)?;
+    let red_defeated = campaign
+        .get("redDefeated")
+        .and_then(Value::as_bool)
+        .ok_or("레드 진행이 올바르지 않습니다.")?;
+    if (kanto_league > 0 && kanto_badges != 8) || (johto_league > 0 && johto_badges.len() != 8) {
+        return Err("리그 진행과 배지 진행이 일치하지 않습니다.");
+    }
+    if start_region == "johto" && (kanto_badges > 0 || kanto_league > 0) && johto_league < 5 {
+        return Err("성도 리그 완료 전에 관동을 진행할 수 없습니다.");
+    }
+    if (kanto_league == 5) != champion_defeated {
+        return Err("관동 리그와 챔피언 진행이 일치하지 않습니다.");
+    }
+    if red_defeated
+        && (kanto_badges != 8 || johto_badges.len() != 8 || kanto_league != 5 || johto_league != 5)
+    {
+        return Err("레드 진행 조건이 올바르지 않습니다.");
+    }
+    Ok(Some(CampaignProgress {
+        start_region,
+        johto_badges,
+        kanto_league,
+        johto_league,
+    }))
+}
+
+fn validate_battle_progress(
+    game: &Value,
+    battle: &Value,
+    kanto_badges: i64,
+    campaign: Option<&CampaignProgress<'_>>,
+) -> Result<(), &'static str> {
+    let kind = battle
+        .get("kind")
+        .and_then(Value::as_str)
+        .filter(|kind| matches!(*kind, "wild" | "gym" | "elite" | "champion" | "red"))
+        .ok_or("전투 종류가 올바르지 않습니다.")?;
+    let region_id = battle
+        .get("regionId")
+        .and_then(Value::as_str)
+        .ok_or("전투 지역이 올바르지 않습니다.")?;
+    integer(battle.get("turn"), 1, MAX_SAFE_INTEGER)?;
+    let can_run = battle
+        .get("canRun")
+        .and_then(Value::as_bool)
+        .ok_or("전투 도주 규칙이 올바르지 않습니다.")?;
+    if (kind == "wild") != can_run {
+        return Err("전투 도주 규칙이 올바르지 않습니다.");
+    }
+
+    let campaign_region = battle.get("campaignRegion");
+    let trainer_id = battle.get("trainerId");
+    if kind == "wild" {
+        if campaign_region.is_some()
+            || trainer_id.is_some()
+            || battle.get("gymBadge").is_some()
+            || game.get("regionId").and_then(Value::as_str) != Some(region_id)
+        {
+            return Err("야생 전투 진행이 올바르지 않습니다.");
+        }
+        return Ok(());
+    }
+
+    let Some(campaign_region) = campaign_region else {
+        if trainer_id.is_some() || matches!(kind, "elite" | "red") {
+            return Err("캠페인 전투 진행이 올바르지 않습니다.");
+        }
+        return match kind {
+            "gym" => {
+                if region_id != game.get("regionId").and_then(Value::as_str).unwrap_or("")
+                    || integer(battle.get("gymBadge"), 1, 8)? != kanto_badges + 1
+                {
+                    Err("체육관 전투 진행이 올바르지 않습니다.")
+                } else {
+                    Ok(())
+                }
+            }
+            "champion" => {
+                if region_id != "pokemon-league"
+                    || kanto_badges != 8
+                    || battle.get("gymBadge").is_some()
+                {
+                    Err("챔피언 전투 진행이 올바르지 않습니다.")
+                } else {
+                    Ok(())
+                }
+            }
+            _ => Err("캠페인 전투 진행이 올바르지 않습니다."),
+        };
+    };
+    let campaign_region = campaign_region
+        .as_str()
+        .filter(|region| matches!(*region, "johto" | "kanto"))
+        .ok_or("캠페인 전투 지역이 올바르지 않습니다.")?;
+    let campaign = campaign.ok_or("캠페인 전투 진행이 올바르지 않습니다.")?;
+    if campaign_region == "kanto" && campaign.start_region == "johto" && campaign.johto_league < 5 {
+        return Err("성도 리그 완료 전에 관동 전투를 저장할 수 없습니다.");
+    }
+
+    match kind {
+        "gym" => {
+            let completed = if campaign_region == "johto" {
+                campaign.johto_badges.len() as i64
+            } else {
+                kanto_badges
+            };
+            let expected_region = if campaign_region == "johto" {
+                "safari-meadow"
+            } else {
+                KANTO_GYM_REGIONS
+                    .get(completed as usize)
+                    .copied()
+                    .ok_or("완료한 관동 체육관 전투를 저장할 수 없습니다.")?
+            };
+            if trainer_id.is_some()
+                || region_id != expected_region
+                || game.get("regionId").and_then(Value::as_str) != Some(expected_region)
+                || integer(battle.get("gymBadge"), 1, 8)? != completed + 1
+            {
+                return Err("캠페인 체육관 전투 진행이 올바르지 않습니다.");
+            }
+        }
+        "elite" | "champion" => {
+            if battle.get("gymBadge").is_some() || region_id != "pokemon-league" {
+                return Err("캠페인 리그 전투 진행이 올바르지 않습니다.");
+            }
+            let (league, trainers) = if campaign_region == "johto" {
+                (
+                    campaign.johto_league,
+                    [
+                        "johto-will",
+                        "johto-koga",
+                        "johto-bruno",
+                        "johto-karen",
+                        "johto-lance",
+                    ],
+                )
+            } else {
+                (
+                    campaign.kanto_league,
+                    [
+                        "kanto-lorelei",
+                        "kanto-bruno",
+                        "kanto-agatha",
+                        "kanto-lance",
+                        "kanto-blue",
+                    ],
+                )
+            };
+            let trainer = trainers
+                .get(league as usize)
+                .ok_or("완료한 리그 전투를 저장할 수 없습니다.")?;
+            if trainer_id.and_then(Value::as_str) != Some(*trainer)
+                || (league < 4 && kind != "elite")
+                || (league == 4 && kind != "champion")
+            {
+                return Err("캠페인 리그 상대가 진행 순서와 일치하지 않습니다.");
+            }
+        }
+        "red" => {
+            if campaign_region != "johto"
+                || region_id != "mt-silver"
+                || battle.get("gymBadge").is_some()
+                || trainer_id.and_then(Value::as_str) != Some("red")
+                || campaign.kanto_league != 5
+                || campaign.johto_league != 5
+                || kanto_badges != 8
+                || campaign.johto_badges.len() != 8
+            {
+                return Err("레드 전투 진행이 올바르지 않습니다.");
+            }
+        }
+        _ => return Err("캠페인 전투 종류가 올바르지 않습니다."),
+    }
+    Ok(())
+}
+
 pub fn validate_save(value: &Value) -> Result<(), &'static str> {
     if value.get("format") != Some(&Value::String("choketmon".into()))
         || value.get("version") != Some(&Value::from(2))
@@ -582,11 +817,14 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
     {
         return Err("배지 진행이 올바르지 않습니다.");
     }
-    if !game.get("championDefeated").is_some_and(Value::is_boolean)
-        || game["championDefeated"] == true && badges != 8
-    {
+    let champion_defeated = game
+        .get("championDefeated")
+        .and_then(Value::as_bool)
+        .ok_or("챔피언 진행이 올바르지 않습니다.")?;
+    if champion_defeated && badges != 8 {
         return Err("챔피언 진행이 올바르지 않습니다.");
     }
+    let campaign = validate_campaign(game, badges, champion_defeated)?;
 
     let mut ids = HashSet::new();
     let mut owned_species = HashSet::new();
@@ -600,6 +838,7 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
         }
     }
     if let Some(battle) = game.get("battle") {
+        validate_battle_progress(game, battle, badges, campaign.as_ref())?;
         let enemy = battle
             .get("enemy")
             .ok_or("전투 상대가 올바르지 않습니다.")?;
@@ -726,9 +965,210 @@ mod tests {
         })
     }
 
+    fn set_kanto_badges(save: &mut Value, count: i64) {
+        save["game"]["player"]["badges"] = Value::from(count);
+        save["game"]["defeatedGyms"] = Value::Array((1..=count).map(Value::from).collect());
+    }
+
+    fn set_campaign(
+        save: &mut Value,
+        johto_badges: i64,
+        kanto_league: i64,
+        johto_league: i64,
+        red_defeated: bool,
+    ) {
+        save["game"]["campaign"] = serde_json::json!({
+            "startRegion":"johto",
+            "johtoBadges":(1..=johto_badges).collect::<Vec<_>>(),
+            "kantoLeague":kanto_league,
+            "johtoLeague":johto_league,
+            "redDefeated":red_defeated
+        });
+        save["game"]["championDefeated"] = Value::Bool(kanto_league == 5);
+    }
+
+    fn set_battle(
+        save: &mut Value,
+        kind: &str,
+        region_id: &str,
+        campaign_region: Option<&str>,
+        trainer_id: Option<&str>,
+        gym_badge: Option<i64>,
+    ) {
+        let mut enemy = valid_monster();
+        enemy["instanceId"] = Value::String("enemy-1".into());
+        let mut battle = serde_json::json!({
+            "kind":kind,
+            "regionId":region_id,
+            "player":{"team":save["game"]["player"]["team"].clone(),"activeIndex":0},
+            "enemy":{"team":[enemy],"activeIndex":0},
+            "turn":1,
+            "canRun":kind == "wild"
+        });
+        if let Some(region) = campaign_region {
+            battle["campaignRegion"] = Value::String(region.into());
+        }
+        if let Some(trainer) = trainer_id {
+            battle["trainerId"] = Value::String(trainer.into());
+        }
+        if let Some(badge) = gym_badge {
+            battle["gymBadge"] = Value::from(badge);
+        }
+        save["game"]["battle"] = battle;
+    }
+
     #[test]
     fn accepts_consistent_save() {
         validate_save(&valid_save()).unwrap();
+    }
+
+    #[test]
+    fn validates_campaign_progress_and_preserves_legacy_saves() {
+        validate_save(&valid_save()).unwrap();
+
+        let mut completed = valid_save();
+        set_kanto_badges(&mut completed, 8);
+        set_campaign(&mut completed, 8, 5, 5, true);
+        validate_save(&completed).unwrap();
+
+        for invalid in [
+            serde_json::json!(null),
+            serde_json::json!({"startRegion":"johto","johtoBadges":[],"kantoLeague":0,"johtoLeague":0}),
+            serde_json::json!({"startRegion":"hoenn","johtoBadges":[],"kantoLeague":0,"johtoLeague":0,"redDefeated":false}),
+            serde_json::json!({"startRegion":"johto","johtoBadges":[1,3],"kantoLeague":0,"johtoLeague":0,"redDefeated":false}),
+            serde_json::json!({"startRegion":"johto","johtoBadges":[],"kantoLeague":1,"johtoLeague":0,"redDefeated":false}),
+            serde_json::json!({"startRegion":"johto","johtoBadges":[],"kantoLeague":0,"johtoLeague":1,"redDefeated":false}),
+            serde_json::json!({"startRegion":"johto","johtoBadges":[],"kantoLeague":0,"johtoLeague":0,"redDefeated":true}),
+        ] {
+            let mut save = valid_save();
+            save["game"]["campaign"] = invalid;
+            assert!(validate_save(&save).is_err());
+        }
+
+        let mut champion_mismatch = valid_save();
+        set_kanto_badges(&mut champion_mismatch, 8);
+        set_campaign(&mut champion_mismatch, 8, 5, 5, false);
+        champion_mismatch["game"]["championDefeated"] = Value::Bool(false);
+        assert!(validate_save(&champion_mismatch).is_err());
+
+        let mut premature_kanto = valid_save();
+        set_kanto_badges(&mut premature_kanto, 1);
+        set_campaign(&mut premature_kanto, 8, 0, 0, false);
+        assert!(validate_save(&premature_kanto).is_err());
+
+        premature_kanto["game"]["campaign"]["startRegion"] = Value::String("kanto".into());
+        validate_save(&premature_kanto).unwrap();
+    }
+
+    #[test]
+    fn validates_legacy_and_campaign_battle_progress() {
+        let mut legacy_gym = valid_save();
+        set_battle(&mut legacy_gym, "gym", "safari-meadow", None, None, Some(1));
+        validate_save(&legacy_gym).unwrap();
+
+        let mut johto_gym = valid_save();
+        set_campaign(&mut johto_gym, 2, 0, 0, false);
+        set_battle(
+            &mut johto_gym,
+            "gym",
+            "safari-meadow",
+            Some("johto"),
+            None,
+            Some(3),
+        );
+        validate_save(&johto_gym).unwrap();
+
+        let mut kanto_gym = valid_save();
+        set_kanto_badges(&mut kanto_gym, 1);
+        set_campaign(&mut kanto_gym, 0, 0, 0, false);
+        kanto_gym["game"]["campaign"]["startRegion"] = Value::String("kanto".into());
+        kanto_gym["game"]["regionId"] = Value::String("verdant-forest".into());
+        set_battle(
+            &mut kanto_gym,
+            "gym",
+            "verdant-forest",
+            Some("kanto"),
+            None,
+            Some(2),
+        );
+        validate_save(&kanto_gym).unwrap();
+
+        let mut johto_elite = valid_save();
+        set_campaign(&mut johto_elite, 8, 0, 2, false);
+        set_battle(
+            &mut johto_elite,
+            "elite",
+            "pokemon-league",
+            Some("johto"),
+            Some("johto-bruno"),
+            None,
+        );
+        validate_save(&johto_elite).unwrap();
+
+        let mut kanto_champion = valid_save();
+        set_kanto_badges(&mut kanto_champion, 8);
+        set_campaign(&mut kanto_champion, 8, 4, 5, false);
+        set_battle(
+            &mut kanto_champion,
+            "champion",
+            "pokemon-league",
+            Some("kanto"),
+            Some("kanto-blue"),
+            None,
+        );
+        validate_save(&kanto_champion).unwrap();
+
+        let mut red = valid_save();
+        set_kanto_badges(&mut red, 8);
+        set_campaign(&mut red, 8, 5, 5, false);
+        set_battle(
+            &mut red,
+            "red",
+            "mt-silver",
+            Some("johto"),
+            Some("red"),
+            None,
+        );
+        validate_save(&red).unwrap();
+
+        let mut wrong_trainer = johto_elite;
+        wrong_trainer["game"]["battle"]["trainerId"] = Value::String("johto-karen".into());
+        assert!(validate_save(&wrong_trainer).is_err());
+
+        let mut wrong_badge = johto_gym;
+        wrong_badge["game"]["battle"]["gymBadge"] = Value::from(4);
+        assert!(validate_save(&wrong_badge).is_err());
+
+        let mut wrong_kanto_region = kanto_gym;
+        wrong_kanto_region["game"]["battle"]["regionId"] = Value::String("safari-meadow".into());
+        assert!(validate_save(&wrong_kanto_region).is_err());
+
+        let mut gated_kanto_gym = valid_save();
+        set_campaign(&mut gated_kanto_gym, 8, 0, 0, false);
+        set_battle(
+            &mut gated_kanto_gym,
+            "gym",
+            "safari-meadow",
+            Some("kanto"),
+            None,
+            Some(1),
+        );
+        assert!(validate_save(&gated_kanto_gym).is_err());
+
+        gated_kanto_gym["game"]["campaign"]["startRegion"] = Value::String("kanto".into());
+        validate_save(&gated_kanto_gym).unwrap();
+
+        let mut premature_red = valid_save();
+        set_campaign(&mut premature_red, 8, 0, 5, false);
+        set_battle(
+            &mut premature_red,
+            "red",
+            "mt-silver",
+            Some("johto"),
+            Some("red"),
+            None,
+        );
+        assert!(validate_save(&premature_red).is_err());
     }
 
     #[test]

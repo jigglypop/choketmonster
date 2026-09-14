@@ -689,9 +689,12 @@ function CreatureBillboard({ creature, hp, distance, emphasized }: { creature: W
     context.fillStyle = '#fff5d6';
     context.textAlign = 'center';
     context.font = '700 30px system-ui, sans-serif';
-    context.fillText(`${creature.name} · Lv.${creature.level}`, 256, 45);
+    context.fillText(creature.remotePlayer ? creature.remotePlayer.name : `${creature.name} · Lv.${creature.level}`, 256, 45);
     context.font = '700 22px system-ui, sans-serif';
-    context.fillText(`${Math.max(0, Math.ceil(creature.hp))} / ${creature.maxHp} HP`, 256, 76);
+    context.fillText(creature.remotePlayer ? `같은 지역 플레이어 · ${creature.remotePlayer.activity === 'battle' ? '배틀 중' : creature.remotePlayer.activity === 'moving' ? '이동 중' : '대기'}` : `${Math.max(0, Math.ceil(creature.hp))} / ${creature.maxHp} HP`, 256, 76);
+    if (creature.remotePlayer) {
+      const result = new CanvasTexture(canvas); result.colorSpace = SRGBColorSpace; return result;
+    }
     context.fillStyle = '#102b25';
     context.beginPath();
     context.roundRect(44, 91, 424, 17, 8);
@@ -703,7 +706,7 @@ function CreatureBillboard({ creature, hp, distance, emphasized }: { creature: W
     const result = new CanvasTexture(canvas);
     result.colorSpace = SRGBColorSpace;
     return result;
-  }, [creature.hp, creature.level, creature.maxHp, creature.name, hp]);
+  }, [creature.hp, creature.level, creature.maxHp, creature.name, creature.remotePlayer?.activity, hp]);
   useEffect(() => () => texture.dispose(), [texture]);
   if (distance > 34 && !emphasized) return null;
   const width = emphasized ? 2.4 : 2.0;
@@ -753,15 +756,15 @@ function Creature({ creature, selected, distance, options, showLabels, model }: 
     <group
       ref={root}
       name={`creature:${creature.id}`}
-      onClick={event => { event.stopPropagation(); options.onSelect(creature.id); }}
-      onDoubleClick={event => { event.stopPropagation(); options.onInteract?.(creature.id); }}
+      onClick={event => { event.stopPropagation(); if (!creature.remotePlayer) options.onSelect(creature.id); }}
+      onDoubleClick={event => { event.stopPropagation(); if (!creature.remotePlayer) options.onInteract?.(creature.id); }}
     >
       {model && hasPokemonModel(creature.speciesId)
         ? <PokemonModel creature={creature} url={(options.modelUrl ?? (id => `/models/pokemon/${id}.glb`))(creature.speciesId)} />
         : <ModelStatus name="3D 미지원 · 저장 기록 유지" />}
       {(selected || creature.inBattle) && <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, .04, 0]}><ringGeometry args={[1.1, 1.34, 40]} /><meshBasicMaterial color={creature.inBattle ? '#f09155' : '#f6dd67'} transparent opacity={.86} /></mesh>}
       <AttackEffect active={creature.action === 'attack'} moveType={creature.moveType} />
-      {showLabels && (distance <= 28 || selected || creature.inBattle) && <CreatureBillboard creature={creature} hp={hp} distance={distance} emphasized={selected || !!creature.inBattle} />}
+      {(showLabels || creature.remotePlayer) && (distance <= 28 || selected || creature.inBattle) && <CreatureBillboard creature={creature} hp={hp} distance={distance} emphasized={selected || !!creature.inBattle || !!creature.remotePlayer} />}
     </group>
   );
 }
@@ -987,9 +990,9 @@ function Scene({ snapshot, options, cameraCommand, showLabels, destination, onNa
       <SkyLighting />
       <Sunlight player={snapshot.player} />
       <Physics gravity={[0, -18, 0]} timeStep="vary">
-        <group key={atlas.id}>{chunks.map(chunk => <Terrain key={`${chunk.key}:${chunk.segments}`} sampleWorld={sample} atlas={atlas} chunk={chunk} onNavigate={onNavigate} />)}</group>
-        <Nature key={atlas.id} sampleWorld={sample} player={snapshot.player} atlas={atlas} isVisible={windowState.visible} />
-        <TrailAndWater key={atlas.id} sampleWorld={sample} player={snapshot.player} atlas={atlas} visible={windowState.visible} badges={(snapshot as OpenWorldRenderSnapshot & { badges?: number }).badges ?? 0} />
+        <group key={`terrain:${atlas.id}`}>{chunks.map(chunk => <Terrain key={`${chunk.key}:${chunk.segments}`} sampleWorld={sample} atlas={atlas} chunk={chunk} onNavigate={onNavigate} />)}</group>
+        <Nature key={`nature:${atlas.id}`} sampleWorld={sample} player={snapshot.player} atlas={atlas} isVisible={windowState.visible} />
+        <TrailAndWater key={`water:${atlas.id}`} sampleWorld={sample} player={snapshot.player} atlas={atlas} visible={windowState.visible} badges={(snapshot as OpenWorldRenderSnapshot & { badges?: number }).badges ?? 0} />
         {options.terrainUrl && <StaticModel item={{
           id: 'openworld-terrain',
           url: options.terrainUrl,

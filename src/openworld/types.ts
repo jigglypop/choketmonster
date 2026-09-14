@@ -24,6 +24,8 @@ export type WorldCreature = WorldPoint & {
   /** A battle opponent to face without changing the simulation heading. */
   lookAt?: { x: number; z: number };
   inBattle?: boolean;
+  /** Ephemeral same-region presence. Never participates in simulation selection or saves. */
+  remotePlayer?: { name: string; activity: 'idle' | 'moving' | 'battle' };
 };
 
 export type WorldFood = WorldPoint & { id: string; kind?: string };

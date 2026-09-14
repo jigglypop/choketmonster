@@ -1,5 +1,6 @@
 import type { WorldSample } from './types';
 import { POKEMON } from '../data/pokemon';
+import { terrainPlateauHeight } from './terrain-elevation';
 
 export type KantoLocationKind = 'town' | 'route' | 'forest' | 'cave' | 'sea' | 'special';
 
@@ -147,6 +148,7 @@ const gateSegments = KANTO_GATES.filter(gate => gate.visible !== false).map(gate
 });
 const gateWidthCache = new Map<string, number>();
 const towns = KANTO_LOCATIONS.filter(item => item.kind === 'town');
+const townPlateaus = towns.map(item => ({ x: item.x, z: item.z, height: 0 }));
 
 const TOWN_BUILDING_CANDIDATES = [[-5, -4], [5, -4], [-5, 4], [5, 4], [-6, 0], [6, 0], [0, -6], [0, 6]] as const;
 const townBuildingOffsetCache = new Map<string, ReadonlyArray<readonly [number, number]>>();
@@ -189,31 +191,32 @@ export function locationAt(x: number, z: number): KantoLocation {
 export function sampleKantoWorld(x: number, z: number): WorldSample {
   const finite = Number.isFinite(x) && Number.isFinite(z);
   const height = .22 * Math.sin(x * .09) + .18 * Math.cos(z * .08);
+  const joinedHeight = (value: number) => terrainPlateauHeight(value, x, z, townPlateaus);
   if (!finite || Math.abs(x) > 120 || Math.abs(z) > 120) return { height, biome: 'rock', blocked: true };
   const nearest = locationAt(x, z);
   const distance = Math.hypot(x - nearest.x, z - nearest.z);
   const pathDistance = distanceToKantoPath(x, z);
   const town = towns.find(item => Math.hypot(x - item.x, z - item.z) < 8.5);
-  if (town) return { height: 0, biome: 'meadow', blocked: townBuildingAt(x, z, town) };
+  if (town) return { height: joinedHeight(height), biome: 'meadow', blocked: townBuildingAt(x, z, town) };
   const southernSea = z > 82 && x > -78 && x < 12;
   const powerWater = Math.hypot(x - 61, z + 25) < 13;
   const locationRadius = nearest.kind === 'town' ? 8.5 : nearest.kind === 'forest' ? 7.5 : nearest.kind === 'sea' ? 6.5 : nearest.kind === 'route' ? 4.8 : 5.5;
   const playable = pathDistance < 3.2 || distance < locationRadius;
-  if ((southernSea || powerWater) && !playable) return { height: -.72, biome: 'lake', blocked: true };
-  if (nearest.kind === 'sea' && playable) return { height: -.68, biome: 'lake', blocked: false };
+  if ((southernSea || powerWater) && !playable) return { height: joinedHeight(-.72), biome: 'lake', blocked: true };
+  if (nearest.kind === 'sea' && playable) return { height: joinedHeight(-.68), biome: 'lake', blocked: false };
   if (playable) {
     const rocky = (nearest.kind === 'cave' || nearest.id === 'route-23') && distance > 3;
-    return { height: rocky ? height + .7 : height, biome: rocky ? 'rock' : nearest.kind === 'forest' ? 'forest' : 'meadow', blocked: false };
+    return { height: joinedHeight(rocky ? height + .7 : height), biome: rocky ? 'rock' : nearest.kind === 'forest' ? 'forest' : 'meadow', blocked: false };
   }
   const northernRock = z < -5 || x < -88;
   if (northernRock) {
-    return { height: height + .65 + Math.max(0, -z - 5) * .018, biome: 'rock', blocked: true };
+    return { height: joinedHeight(height + .65 + Math.max(0, -z - 5) * .018), biome: 'rock', blocked: true };
   }
   const forestBelt = x < -48 || (x > 20 && z < 22) || (z > 50 && x > 15);
   if (forestBelt) {
-    return { height, biome: 'forest', blocked: true };
+    return { height: joinedHeight(height), biome: 'forest', blocked: true };
   }
-  return { height: height + .2, biome: 'forest', blocked: true };
+  return { height: joinedHeight(height + .2), biome: 'forest', blocked: true };
 }
 
 export function isKantoPlayable(x: number, z: number): boolean {

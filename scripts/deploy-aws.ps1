@@ -33,7 +33,7 @@ try {
   $existingParameters = & aws cloudformation describe-stacks --region $Region --stack-name $StackName --query 'Stacks[0].Parameters' --output json 2>$null
   if ($LASTEXITCODE -eq 0) {
     foreach ($parameter in ($existingParameters | ConvertFrom-Json)) {
-      if ($parameter.ParameterKey -in @('WebAclArn', 'ApiVpcOriginId', 'ApiPrivateDns', 'CustomDomainName', 'CustomCertificateArn')) {
+      if ($parameter.ParameterKey -in @('WebAclArn', 'ApiVpcOriginId', 'ApiPrivateDns', 'RealtimeVpcOriginId', 'RealtimePrivateDns', 'CustomDomainName', 'CustomCertificateArn')) {
         $overrides += "$($parameter.ParameterKey)=$($parameter.ParameterValue)"
       }
     }

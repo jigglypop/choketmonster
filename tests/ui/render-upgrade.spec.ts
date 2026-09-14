@@ -8,7 +8,7 @@ test('nameplates are opt-in and selection stays at bottom left on desktop and mo
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   page.on('response', response => { if (response.status() >= 400) failed.push(response.url()); });
   await page.goto(process.env.KANTO_URL ? `${process.env.KANTO_URL}?renderProbe` : '/?renderProbe');
-  await page.locator('[data-starter="1"]').click();
+  await page.locator('[data-starter="152"]').click();
   await page.locator('#world-mode-manual').click();
   await page.locator('#world-auto-hunt').uncheck();
   await page.locator('#world-pause').click();

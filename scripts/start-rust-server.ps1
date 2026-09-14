@@ -1,5 +1,9 @@
 [CmdletBinding()]
-param([int]$DatabasePort = 55432, [int]$ApiPort = 8080)
+param(
+  [int]$DatabasePort = 55432,
+  [int]$ApiPort = 8080,
+  [string]$AppOrigin = 'http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:5174'
+)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $pg = 'C:\Program Files\PostgreSQL\18\bin'
@@ -20,7 +24,7 @@ if ($exists -ne '1') { & (Join-Path $pg 'createdb.exe') -h 127.0.0.1 -p $Databas
 $env:DATABASE_URL = "postgres://choketmon@127.0.0.1:$DatabasePort/choketmon?sslmode=disable"
 $env:CONNECTOME_DIR = Join-Path $projectRoot 'data/local/malecns-neurons166k'
 $env:LISTEN_ADDR = "127.0.0.1:$ApiPort"
-$env:APP_ORIGIN = 'http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:5174'
+$env:APP_ORIGIN = $AppOrigin
 $env:COOKIE_SECURE = 'false'
 $env:RUST_LOG = 'info'
 $env:RAYON_NUM_THREADS = '4'

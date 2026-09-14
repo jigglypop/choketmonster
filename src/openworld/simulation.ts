@@ -3,7 +3,9 @@ import { Random, clamp } from '../core/random';
 import { POKEMON, getMove, getSpecies } from '../data/pokemon';
 import { getVersionSpeciesIds } from '../data/pokemon-versions';
 import { hasPokemonModel } from '../data/pokemon-models';
-import { replenishBalls } from '../game/engine';
+import { replenishBalls, challengeCampaignGym, challengeCampaignTrainer } from '../game/engine';
+import { getRegionalBadges, getCampaignGyms, getNextCampaignTrainer, campaignTravelReason, regionalWildLevels } from '../game/campaign';
+import { johtoGoldEncounterPools } from '../data/johto-gold-encounters';
 import { gameplayHabitat } from '../game/habitat';
 import { ConnectomeController, type NeuralMonster } from '../game/connectome';
 import { chooseServerBrains, usesServerBrain, type ServerDecision } from '../game/server-brain';
@@ -11,7 +13,6 @@ import { actBattle, availableEvolutions, captureDefeatedWild, createMonster, evo
 import { KANTO_START, KANTO_MAP_VERSION } from './kanto';
 import { getWorldAtlas, getLegacyJohtoAtlas, type WorldAtlas, type WorldRegionId } from './atlas';
 import { getPlayableSpeciesIds, isPlayableAdventureVersion, isPlayableSpecies, isPlayableWorldRegion, playableWorldRegionForVersion } from './availability';
-import { REGIONS } from '../game/regions';
 import type { FieldPolicy } from '../game/field';
 import { appendReward, emptyRewardLedger, rewardEncounter, rewardBattleTurn, validateRewardLedger, type EngineeredReward, type RewardLedger, type RewardDecisionSource } from '../game/rewards';
 
@@ -177,6 +178,7 @@ export class OpenWorldSimulation {
   private serverFinalizations: ServerFinalization[] = [];
   private restoringAtlas?: WorldAtlas;
 
+  get regionalBadges(): number { return getRegionalBadges(this.game, this.regionId); }
   get atlas(): WorldAtlas { return this.restoringAtlas ?? getWorldAtlas(this.regionId); }
   sampleWorld(x: number, z: number): WorldSample { return this.atlas.sample(x, z); }
   locationAt(x: number, z: number) { return this.atlas.locationAt(x, z); }
@@ -232,7 +234,10 @@ export class OpenWorldSimulation {
     this.graph = structuredClone(graph); this.game = game; this.seed = seed >>> 0; this.rng = new Random(this.seed);
     // Saves created before regional atlases always used Kanto, even when their
     // collection version was Gold, Scarlet, or another expanded data set.
-    this.regionId = checkpoint ? checkpoint.regionId ?? 'kanto' : playableWorldRegionForVersion(game.adventureVersion ?? 'red');
+    this.regionId = checkpoint ? checkpoint.regionId ?? 'kanto'
+      : game.campaign?.startRegion === 'johto' ? 'johto' : playableWorldRegionForVersion(game.adventureVersion ?? 'red');
+    const travelReason = campaignTravelReason(game, this.regionId);
+    if (travelReason) throw new Error(travelReason);
     // Resolve eagerly so unknown checkpoint regions fail before any entity state is accepted.
     getWorldAtlas(this.regionId);
     const legacyJohto = this.regionId === 'johto' && checkpoint?.mapVersion === 'johto-atlas-v1';
@@ -278,7 +283,7 @@ export class OpenWorldSimulation {
     if (this.game.battle || this.game.captureOffer || ![position.x, position.z, position.heading].every(finite) || !Number.isInteger(position.heading) || position.heading < 0 || position.heading > 4) return false;
     const companion = this.entities.find(entity => entity.kind === 'companion'); if (!companion) return false;
     this.lastMovementBlock = undefined;
-    const traversal = this.atlas.evaluateTraversal(companion, position, this.game.player.badges);
+    const traversal = this.atlas.evaluateTraversal(companion, position, this.regionalBadges);
     if (!traversal.allowed) { this.lastMovementBlock = traversal.reason; return false; }
     const maximum = movementSpeed(companion.speciesId, companion.level) * .35;
     // Manual movement can pass wild creatures; terrain and route gates still block it.
@@ -303,7 +308,7 @@ export class OpenWorldSimulation {
 
   teleportToTown(townId: string): boolean {
     if (this.game.battle || this.game.captureOffer || !this.visitedTownIds.includes(townId)) return false;
-    const arrival = this.atlas.travelPoint(townId, this.game.player.badges);
+    const arrival = this.atlas.travelPoint(townId, this.regionalBadges);
     if (!arrival) return false;
     this.relocatePartner(arrival); this.game.logs.push(`${this.locationAt(arrival.x, arrival.z).name}으로 순간이동했습니다.`); this.game.logs = this.game.logs.slice(-200); return true;
   }
@@ -354,22 +359,40 @@ export class OpenWorldSimulation {
   captureVictory(ball?: BallItem): boolean { return captureDefeatedWild(this.game, ball ?? this.cheapestBall() ?? 'poke-ball'); }
   releaseVictory(): void { if (this.game.captureOffer) { this.game.logs.push(`${this.game.captureOffer.nickname}을(를) 놓아주었습니다.`); this.game.logs = this.game.logs.slice(-200); this.game.captureOffer = undefined; } }
 
+  reconcileTeamChange(): void {
+    this.pendingAction = undefined; this.syncCompanion(); this.syncPlayerToCompanion();
+  }
+
   challengeLocalGym(): boolean {
-    const location = this.locationAt(this.player.x, this.player.z), gym = this.atlas.gyms.find(item => item.locationId === location.id);
-    if (!gym || this.game.battle || this.game.captureOffer || gym.badge !== this.game.player.badges + 1) return false;
-    const healthy = this.game.player.team.findIndex(monster => monster.hp > 0); if (healthy < 0) return false;
-    this.game.regionId = REGIONS[gym.badge - 1].id;
-    this.game.battle = { kind: 'gym', regionId: this.game.regionId, gymBadge: gym.badge, canRun: false, turn: 1, player: { team: this.game.player.team, activeIndex: healthy }, enemy: { team: [createMonster(this.game, gym.speciesId, gym.level)], activeIndex: 0 } };
-    this.battleWildId = `gym:${gym.badge}`; this.battleElapsed = 0; this.lastPlayerReward = null; this.lastEnemyReward = null;
+    if (this.regionId !== 'kanto' && this.regionId !== 'johto') return false;
+    const location = this.locationAt(this.player.x, this.player.z), gym = getCampaignGyms(this.game, this.regionId).find(item => item.locationId === location.id);
+    if (!gym || this.game.battle || this.game.captureOffer || gym.badge !== this.regionalBadges + 1 || !this.game.player.team.some(monster => monster.hp > 0)) return false;
+    challengeCampaignGym(this.game, this.regionId, location.id);
+    this.battleWildId = `gym:${this.regionId}:${gym.badge}`; this.resetTrainerTurn();
     return true;
   }
 
+  challengeLocalTrainer(): boolean {
+    if (this.regionId !== 'kanto' && this.regionId !== 'johto') return false;
+    const trainer = getNextCampaignTrainer(this.game, this.regionId);
+    if (!trainer || this.locationAt(this.player.x, this.player.z).id !== trainer.locationId
+      || this.game.battle || this.game.captureOffer || this.regionalBadges < 8 || !this.game.player.team.some(monster => monster.hp > 0)) return false;
+    challengeCampaignTrainer(this.game, this.regionId);
+    this.battleWildId = `trainer:${trainer.id}`; this.resetTrainerTurn();
+    return true;
+  }
+
+  private resetTrainerTurn(): void {
+    this.battleElapsed = 0; this.lastPlayerReward = null; this.lastEnemyReward = null;
+    this.serverTurn = undefined; this.pendingAction = undefined; this.pendingCapture = false; this.pendingBall = undefined;
+  }
+
   traverseTunnel(): boolean {
-    if (this.regionId !== 'kanto' || this.game.battle || this.game.captureOffer || this.game.player.badges < 2) return false;
+    if (this.regionId !== 'kanto' || this.game.battle || this.game.captureOffer || this.regionalBadges < 2) return false;
     const entrances = this.atlas.locations.filter(item => item.id === 'diglett-cave-east' || item.id === 'diglett-cave-west');
     const from = entrances.find(item => distance(item, this.player) <= 5); if (!from) return false;
     const to = entrances.find(item => item !== from)!;
-    const arrival = this.atlas.safeArrival(to.id, this.game.player.badges); if (!arrival) return false;
+    const arrival = this.atlas.safeArrival(to.id, this.regionalBadges); if (!arrival) return false;
     this.relocatePartner(arrival);
     this.game.logs.push(`디그다의 굴을 지나 ${to.name}으로 이동했습니다.`); this.game.logs = this.game.logs.slice(-200); return true;
   }
@@ -680,13 +703,21 @@ export class OpenWorldSimulation {
     const location = this.locationAt(position.x, position.z);
     const pool = this.spawnPool(location.id);
     if (!pool.length) throw new Error(`No unlocked encounters at ${location.id}`);
-    return { speciesId: pool[this.rng.int(pool.length)], level: location.minLevel + this.rng.int(location.maxLevel - location.minLevel + 1) };
+    let speciesId: number;
+    if (this.regionId === 'johto') {
+      const area = location.id === 'dark-cave-east' ? 'blackthorn-city-entrance' : location.id === 'dark-cave-west' ? 'violet-city-entrance' : undefined;
+      const slots = johtoGoldEncounterPools(location.id, location.kind === 'sea' ? 'surf' : 'walk', 'day', area).flatMap(pool => pool.slots).filter(slot => pool.includes(slot.speciesId));
+      let pick = this.rng.next() * slots.reduce((sum, slot) => sum + slot.weight, 0);
+      speciesId = slots.find(slot => (pick -= slot.weight) < 0)?.speciesId ?? pool[0];
+    } else speciesId = pool[this.rng.int(pool.length)];
+    const levels = regionalWildLevels(this.game, this.regionId, location);
+    return { speciesId, level: levels.minLevel + this.rng.int(levels.maxLevel - levels.minLevel + 1) };
   }
 
   private spawnPool(locationId: string): number[] {
     const version = this.game.adventureVersion ?? 'red';
     const caught = this.game.versionCaught?.[version] ?? this.game.dex.caught;
-    return regionalEncounters(locationId, this.game.player.badges, this.regionId).filter(speciesId => hasPokemonModel(speciesId)
+    return regionalEncounters(locationId, this.regionalBadges, this.regionId).filter(speciesId => hasPokemonModel(speciesId)
       && (!UNIQUE_SPECIES.has(speciesId) || (!caught.includes(speciesId) && !this.entities.some(entity => entity.kind === 'wild' && entity.speciesId === speciesId) && !this.respawnQueue.some(pending => pending.speciesId === speciesId))));
   }
 
@@ -702,6 +733,7 @@ export class OpenWorldSimulation {
 
   changeRegion(regionId: WorldRegionId): void {
     if (!isPlayableWorldRegion(regionId)) throw new Error('실제 3D 지역 지도가 확보되지 않은 지역입니다.');
+    const reason = campaignTravelReason(this.game, regionId); if (reason) throw new Error(reason);
     this.changeRegionInternal(regionId, this.game.adventureVersion ?? getWorldAtlas(regionId).defaultVersion);
   }
 
@@ -810,7 +842,7 @@ export class OpenWorldSimulation {
   }
 
   private pathBlocked(from: { x: number; z: number }, x: number, z: number, occupied: Array<{ x: number; z: number }>): boolean {
-    if (!this.atlas.evaluateTraversal(from, { x, z }, this.game.player.badges).allowed) return true;
+    if (!this.atlas.evaluateTraversal(from, { x, z }, this.regionalBadges).allowed) return true;
     const length = Math.hypot(x - from.x, z - from.z), samples = Math.max(1, Math.ceil(length / PATH_SAMPLE_DISTANCE));
     for (let sample = 1; sample <= samples; sample++) {
       const ratio = sample / samples, px = from.x + (x - from.x) * ratio, pz = from.z + (z - from.z) * ratio;
@@ -879,8 +911,8 @@ export class OpenWorldSimulation {
   private brain(id: string): Brain { const brain = this.brains.get(id); if (!brain) throw new Error(`Missing open-world brain ${id}`); return brain; }
   private wildEntities(): OpenWorldEntity[] { return this.entities.filter(entity => entity.kind === 'wild'); }
   private nearestWildToCompanion(): OpenWorldEntity | undefined { const companion = this.entities.find(entity => entity.kind === 'companion'); return companion ? [...this.wildEntities()].sort((a, b) => distance(a, companion) - distance(b, companion) || a.id.localeCompare(b.id))[0] : undefined; }
-  private cheapestBall(): BallItem | undefined { return (['poke-ball', 'great-ball', 'ultra-ball'] as BallItem[]).find(ball => this.game.inventory[ball] > 0); }
-  private bestBall(): BallItem | undefined { return (['ultra-ball', 'great-ball', 'poke-ball'] as BallItem[]).find(ball => this.game.inventory[ball] > 0); }
+  private cheapestBall(): BallItem | undefined { return (['poke-ball'] as BallItem[]).find(ball => this.game.inventory[ball] > 0); }
+  private bestBall(): BallItem | undefined { return (['poke-ball'] as BallItem[]).find(ball => this.game.inventory[ball] > 0); }
   private validRequestedAction(action: BattleAction): boolean {
     if (!action || typeof action !== 'object') return false;
     if (action.type === 'move') return Number.isInteger(action.index) && action.index >= 0 && action.index < 4;
@@ -901,7 +933,7 @@ export class OpenWorldSimulation {
     this.visitedTownsByRegion.kanto = [...this.visitedTownIds];
     this.player = { ...kanto.start, heading: 0 };
 
-    const nearest = (point: { x: number; z: number }) => kanto.nearestWalkable(point.x, point.z, this.game.player.badges) ?? kanto.start;
+    const nearest = (point: { x: number; z: number }) => kanto.nearestWalkable(point.x, point.z, this.regionalBadges) ?? kanto.start;
     for (const entity of this.entities) {
       const arrival = entity.kind === 'companion' ? kanto.start : nearest(entity);
       entity.x = arrival.x; entity.z = arrival.z; entity.target = undefined;
@@ -934,23 +966,23 @@ export class OpenWorldSimulation {
     let changed = false;
     const replacement = (x: number, z: number, level: number, identity: string) => {
       let location = this.locationAt(x, z);
-      let pool = regionalEncounters(location.id, this.game.player.badges, this.regionId).filter(id => hasPokemonModel(id));
+      let pool = regionalEncounters(location.id, this.regionalBadges, this.regionId).filter(id => hasPokemonModel(id));
       if (!pool.length) {
         const nearest = [...this.atlas.locations].sort((a, b) => distance(a, { x, z }) - distance(b, { x, z }))
-          .find(item => regionalEncounters(item.id, this.game.player.badges, this.regionId).some(hasPokemonModel) && !this.sampleWorld(item.x, item.z).blocked);
+          .find(item => regionalEncounters(item.id, this.regionalBadges, this.regionId).some(hasPokemonModel) && !this.sampleWorld(item.x, item.z).blocked);
         if (!nearest) throw new Error('No unlocked Red replacement encounters');
         location = nearest; x = nearest.x; z = nearest.z;
-        pool = regionalEncounters(location.id, this.game.player.badges, this.regionId).filter(id => hasPokemonModel(id));
+        pool = regionalEncounters(location.id, this.regionalBadges, this.regionId).filter(id => hasPokemonModel(id));
       }
       return { x, z, speciesId: pool[hash(`playable:${identity}`) % pool.length], level: Math.max(location.minLevel, Math.min(location.maxLevel, level)) };
     };
     for (const entity of this.wildEntities()) {
       if (entity.id === this.battleWildId) continue;
-      if (regionalSpecies.has(entity.speciesId) && (!resetLayout || regionalEncounters(this.locationAt(entity.x, entity.z).id, this.game.player.badges, this.regionId).includes(entity.speciesId))) continue;
+      if (regionalSpecies.has(entity.speciesId) && (!resetLayout || regionalEncounters(this.locationAt(entity.x, entity.z).id, this.regionalBadges, this.regionId).includes(entity.speciesId))) continue;
       Object.assign(entity, replacement(entity.x, entity.z, entity.level, entity.id)); changed = true;
     }
     for (const pending of this.respawnQueue) {
-      if (regionalSpecies.has(pending.speciesId) && (!resetLayout || regionalEncounters(this.locationAt(pending.originX, pending.originZ).id, this.game.player.badges, this.regionId).includes(pending.speciesId))) continue;
+      if (regionalSpecies.has(pending.speciesId) && (!resetLayout || regionalEncounters(this.locationAt(pending.originX, pending.originZ).id, this.regionalBadges, this.regionId).includes(pending.speciesId))) continue;
       const next = replacement(pending.originX, pending.originZ, pending.level, pending.id);
       pending.originX = next.x; pending.originZ = next.z;
       pending.speciesId = next.speciesId; pending.level = next.level; pending.biome = biomeForSpecies(next.speciesId); changed = true;
@@ -981,7 +1013,7 @@ export class OpenWorldSimulation {
 
   private migrateKantoBoundaries(): void {
     const relocate = (point: { x: number; z: number }) => {
-      const arrival = this.atlas.nearestWalkable(point.x, point.z, this.game.player.badges) ?? this.atlas.start;
+      const arrival = this.atlas.nearestWalkable(point.x, point.z, this.regionalBadges) ?? this.atlas.start;
       point.x = arrival.x; point.z = arrival.z;
     };
     relocate(this.player);
@@ -994,7 +1026,7 @@ export class OpenWorldSimulation {
     for (const food of this.foods) { relocate(food); if (!kept.some(other => distance(other, food) < 1.5)) kept.push(food); }
     this.foods = kept; while (this.foods.length < 24) this.spawnFood();
     this.recordTownVisit();
-    for (const gym of this.atlas.gyms.filter(gym => gym.badge <= this.game.player.badges)) if (!this.visitedTownIds.includes(gym.locationId)) this.visitedTownIds.push(gym.locationId);
+    for (const gym of getCampaignGyms(this.game, this.regionId).filter(gym => gym.badge <= this.regionalBadges)) if (!this.visitedTownIds.includes(gym.locationId)) this.visitedTownIds.push(gym.locationId);
     this.spawnAnchor = { ...this.player };
     this.game.logs.push('도로와 벽에 맞춰 위치를 정리했습니다. 개체별 기억과 진행 상황은 그대로입니다.'); this.game.logs = this.game.logs.slice(-200);
   }
@@ -1090,8 +1122,9 @@ export class OpenWorldSimulation {
       this.serverFinalizations = structuredClone(checkpoint.serverFinalizations);
     }
     this.selectedWildId = checkpoint.selectedWildId; this.autoCapture = checkpoint.autoCapture; this.autoHunt = checkpoint.autoHunt ?? true; this.battleWildId = checkpoint.battleWildId; this.battleElapsed = checkpoint.battleElapsed;
-    this.pendingCapture = checkpoint.pendingCapture; this.pendingBall = checkpoint.pendingBall; this.lastPlayerReward = checkpoint.lastPlayerReward; this.lastEnemyReward = checkpoint.lastEnemyReward;
+    this.pendingCapture = checkpoint.pendingCapture; this.pendingBall = checkpoint.pendingBall === undefined ? undefined : 'poke-ball'; this.lastPlayerReward = checkpoint.lastPlayerReward; this.lastEnemyReward = checkpoint.lastEnemyReward;
     this.pendingAction = structuredClone(checkpoint.pendingAction);
+    if (this.pendingAction?.type === 'catch') this.pendingAction.ball = 'poke-ball';
     this.spawnSerial = checkpoint.spawnSerial; this.nextFoodId = checkpoint.nextFoodId; this.respawnQueue = structuredClone(respawns); this.manualControlRemaining = checkpoint.manualControlRemaining ?? 0; this.spawnAnchor = { ...(checkpoint.spawnAnchor ?? checkpoint.player) };
   }
 }

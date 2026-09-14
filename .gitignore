@@ -21,3 +21,4 @@ src/data/.cache/
 __pycache__/
 *.pyc
 rust-server/target/
+.cargo-target-*/
