@@ -1,5 +1,10 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: Main-branch GitHub OIDC deployment for the existing Choketmon site and Rust API.
+Parameters:
+  RealtimeTicketSecretArn:
+    Type: String
+    Description: Secrets Manager ARN shared by the main API and realtime relay.
+    AllowedPattern: '^arn:aws:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+$'
 Resources:
   DeployDocument:
     Type: AWS::SSM::Document
@@ -23,7 +28,7 @@ Resources:
             inputs:
               timeoutSeconds: '240'
               runCommand:
-                - |
+                - !Sub |
                   set -eu
                   exec 9>/run/choketmon-deploy.lock
                   flock -w 120 9
@@ -35,6 +40,13 @@ Resources:
                   printf '%s  %s\n' "$expected" "$root/ci-staging/choketmon-server" | sha256sum -c -
                   test -f "$root/connectome/manifest.json"
                   test -f /etc/choketmon/server.env
+                  ticket_secret="$(aws secretsmanager get-secret-value --secret-id '${RealtimeTicketSecretArn}' --region '${AWS::Region}' --query SecretString --output text)"
+                  test "$(printf '%s' "$ticket_secret" | wc -c)" -ge 32
+                  awk '!/^REALTIME_TICKET_SECRET=/' /etc/choketmon/server.env > /etc/choketmon/server.env.next
+                  printf 'REALTIME_TICKET_SECRET=%s\n' "$ticket_secret" >> /etc/choketmon/server.env.next
+                  chmod 600 /etc/choketmon/server.env.next
+                  mv -f /etc/choketmon/server.env.next /etc/choketmon/server.env
+                  unset ticket_secret
                   cp -p "$root/choketmon-server" "$root/choketmon-server.previous"
                   install -m 755 "$root/ci-staging/choketmon-server" "$root/choketmon-server.next"
                   mv -f "$root/choketmon-server.next" "$root/choketmon-server"

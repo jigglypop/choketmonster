@@ -14,7 +14,7 @@ const policy = JSON.parse(readFileSync('public/data/openworld-policy.json', 'utf
 function setup(seed = 38211) {
   const game = createGame(1, `kanto-gameplay-${seed}`);
   const world = new OpenWorldSimulation(graph, game, seed, undefined, policy);
-  world.setControlMode('manual'); return { game, world };
+  world.setControlMode('manual'); world.setAutoCapture(false); return { game, world };
 }
 function prepareWin(world: OpenWorldSimulation) {
   world.startEncounter(world.entities.find(entity => entity.kind === 'wild')!.id);
@@ -127,7 +127,12 @@ describe('Kanto player flows', () => {
 
   it('migrates legacy terrain without losing owned memories or an active wild battle', () => {
     const { game, world } = setup(38214); prepareWin(world);
-    const checkpoint = world.snapshot(); delete checkpoint.mapVersion;
+    const checkpoint = world.snapshot(); delete checkpoint.mapVersion; delete checkpoint.sceneId;
+    const shrink = (point: { x: number; z: number }) => { point.x /= 2; point.z /= 2; };
+    shrink(checkpoint.player); checkpoint.entities.forEach(entity => { shrink(entity); if (entity.target) shrink(entity.target); });
+    checkpoint.companionMemories?.forEach(entity => { shrink(entity); if (entity.target) shrink(entity.target); });
+    checkpoint.foods.forEach(shrink); if (checkpoint.spawnAnchor) shrink(checkpoint.spawnAnchor);
+    checkpoint.respawnQueue?.forEach(item => { item.originX /= 2; item.originZ /= 2; });
     checkpoint.player = { x: 0, z: 0, heading: 0 };
     const companion = checkpoint.entities.find(entity => entity.kind === 'companion')!, memory = structuredClone(companion.brain);
     const before = structuredClone(checkpoint), battleId = world.battleWildId;

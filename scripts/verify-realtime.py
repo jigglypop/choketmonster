@@ -5,11 +5,17 @@ uv run --with websockets==17.0.1 scripts/verify-realtime.py --clients 32 --secon
 """
 import argparse
 import asyncio
+import base64
+import hashlib
+import hmac
 import json
 import math
+import os
 from pathlib import Path
+import secrets
 import time
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
+import uuid
 
 from websockets.asyncio.client import connect
 
@@ -21,6 +27,16 @@ async def verify(args):
     local = urlparse(args.url).hostname in {'localhost', '127.0.0.1', '::1'}
     if not local and (args.clients > 2 or args.seconds > 5 or args.chat):
         raise ValueError('Public verification is limited to two clients, five seconds, and no chat.')
+    secret = os.environ.get(args.ticket_secret_env, '').encode()
+    if len(secret) < 32:
+        raise ValueError(f'{args.ticket_secret_env} must contain the same 32+ byte secret as the realtime server.')
+
+    def ticket(index):
+        claims = json.dumps({'sub': str(uuid.uuid4()), 'username': f'net-check-{index}',
+            'exp': int(time.time()) + 60, 'nonce': secrets.token_hex(16)}, separators=(',', ':')).encode()
+        body = base64.urlsafe_b64encode(claims).decode().rstrip('=')
+        signature = base64.urlsafe_b64encode(hmac.new(secret, body.encode(), hashlib.sha256).digest()).decode().rstrip('=')
+        return f'{body}.{signature}'
 
     async def read_peer(peer):
         async for raw in peer['ws']:
@@ -47,11 +63,12 @@ async def verify(args):
 
     try:
         for index in range(args.clients):
-            ws = await connect(args.url, origin=args.origin, compression=None, proxy=None, open_timeout=15, close_timeout=3)
+            separator = '&' if '?' in args.url else '?'
+            ws = await connect(f'{args.url}{separator}{urlencode({"ticket": ticket(index)})}', origin=args.origin, compression=None, proxy=None, open_timeout=15, close_timeout=3)
             peer = {'ws': ws, 'ready': asyncio.Event(), 'chat': asyncio.Event()}
             peers.append(peer)
             readers.append(asyncio.create_task(read_peer(peer)))
-            await ws.send(json.dumps({'type': 'join', 'region': 'johto', 'name': f'net-check-{index}',
+            await ws.send(json.dumps({'type': 'join', 'region': 'johto', 'sceneId': 'surface:johto',
                 'speciesId': 152, 'x': -92 + index * .05, 'z': 90, 'heading': 0, 'activity': 'idle'}))
             await asyncio.wait_for(peer['ready'].wait(), 10)
         # Drain join updates before measuring movement deltas.
@@ -104,6 +121,7 @@ if __name__ == '__main__':
     parser.add_argument('--seconds', type=float, default=5)
     parser.add_argument('--chat', action='store_true')
     parser.add_argument('--out', default='artifacts/realtime-sockets.json')
+    parser.add_argument('--ticket-secret-env', default='REALTIME_TICKET_SECRET')
     parsed = parser.parse_args()
     if not 1 <= parsed.moving <= parsed.clients or not 1 <= parsed.seconds <= 30:
         parser.error('Use 1..clients moving peers and a 1..30 second run.')

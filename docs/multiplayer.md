@@ -1,42 +1,90 @@
-# 지역별 실시간 플레이어와 채팅
+# 회원 전용 실시간 플레이어와 지역 채팅
 
-같은 지역에 접속한 플레이어의 이름, 선두 포켓몬, 위치·방향과 탐험/전투 상태를 WebSocket으로 공유한다. 야생 개체·전투 결과·팀·박스·개체별 회로와 저장 데이터는 개인 모험에 남는다. 공유 위치는 다른 사람을 보여주기 위한 정보이며 경쟁 전투의 판정에 사용하지 않는다.
+실시간 기능은 같은 장면에 있는 플레이어의 포켓몬, 위치, 방향, 탐험·전투 상태와 채팅을 WebSocket으로 공유한다. 포획 개체, 전투 결과, 게임 머니, 저장 파일은 이 채널로 보내지 않는다.
 
-표시 이름은 기기에 저장하는 최대 16자의 닉네임이다. 계정 인증 표시나 계정 ID를 공개하지 않는다. 서버가 연결마다 별도 ID를 부여하며 재접속하면 현재 지역의 플레이어 목록을 다시 받는다. 지역 채팅은 최대 200자, 서버 메모리에 최근 50개만 보관한다. 서버 재시작 시 채팅은 사라지며 게임 저장과 별개다.
+채팅과 플레이어 목록에는 앱 회원가입 아이디를 이름으로 표시한다. 별도 닉네임 입력은 없으며 클라이언트가 표시 이름을 지정하거나 바꿀 수 없다. 로그인하지 않은 사용자는 실시간 방에 접속하거나 채팅을 읽고 보낼 수 없다. 화면에는 `로그인 필요` 상태, 비활성 메시지 입력란, `가입 / 로그인` 버튼을 표시한다.
 
-## 통신과 렌더링
+## 인증과 연결 유지
 
-- 브라우저는 위치가 바뀌었을 때만 초당 최대 10회 전송한다. 서버는 같은 틱의 반복 갱신을 마지막 값으로 합치고 좌표를 0.01 단위로 정리한다.
-- 최초 `welcome`은 현재 지역 전체 목록, 이후 `patch`는 변경된 플레이어와 떠난 ID만 보낸다. 채팅에도 지역을 붙여 지역 이동 직전 대기 중이던 메시지가 새 지역에 섞이지 않게 한다.
-- 화면은 원격 이동을 보간하고 기존 포켓몬 모델·캐시·거리별 표시 예산을 사용한다. 원격 플레이어는 로컬 시뮬레이션 개체 목록, 난수와 저장에 들어가지 않는다.
-- 연결 오류는 지연 시간을 늘리며 재접속한다. 송신 버퍼가 밀리면 오래된 위치를 쌓지 않고 최신 위치를 다음 기회에 보낸다. 숨겨진 탭과 닫힌 화면의 연결·타이머를 정리한다.
-- 서버는 지역별 최대 64명, 운영 환경 전체 최대 128명으로 제한한다. 입력 프레임은 4KB, 상태 갱신은 초당 15개, 채팅은 10초에 5개까지 허용한다. 제어 프레임까지 포함한 연결 전체 예산은 초당 40개이며 반복 입장으로 초기화되지 않는다. 느린 연결은 제한된 송신 큐와 5초 송신 타임아웃으로 정리하고 15초 heartbeat와 45초 응답 타임아웃을 사용한다.
+브라우저는 HttpOnly 세션 쿠키로 메인 API의 `POST /api/auth/realtime-ticket`을 호출한다. API는 현재 회원의 UUID와 아이디, 60초 만료 시각, 암호학적 난수를 담은 HMAC-SHA256 서명 티켓을 발급한다. 요청에는 허용된 `Origin`과 JSON Content-Type이 필요하다. 티켓 발급은 계정당 10분에 30회로 제한한다.
 
-## 서버 구성
+브라우저는 `wss://<현재 호스트>/api/realtime?ticket=<ticket>`으로 접속한다. 전용 실시간 서버는 메인 API와 같은 `REALTIME_TICKET_SECRET`으로 서명을 검증하며, 만료되었거나 변조되었거나 이미 사용한 티켓을 거부한다. 연결 ID와 화면 이름은 티켓의 회원 UUID와 아이디에서만 만든다. 계정 하나는 동시에 한 연결만 유지한다.
 
-`/api/realtime`은 Rust Axum WebSocket 엔드포인트이며 `/api/realtime/health`에서 상태와 인원 수를 확인한다. `REALTIME_ONLY=true`이면 PostgreSQL과 커넥톰을 읽지 않는다. 일반 API 모드에도 같은 경로를 제공하므로 로컬 개발은 기존 API 한 개로 실행할 수 있다.
+클라이언트는 연결을 끊지 않고 40초마다 새 티켓을 받아 다음 프레임을 보낸다.
 
-운영 구성은 `infra/aws-realtime.yaml`의 별도 `t3.micro` 한 대다. 기존 `t3.small` 신경 계산 API와 RDS를 유지하며, 추가 NAT Gateway나 로드 밸런서를 만들지 않는다. 전용 서비스는 256MB 메모리 제한을 두고 비특권 사용자로 실행한다. 인바운드는 기존 CloudFront VPC 보안 그룹만 허용한다. 관리·배포를 위한 아웃바운드 연결에는 EC2 공인 IPv4를 사용하므로 인스턴스·8GB EBS·IPv4·실제 전송량 비용이 발생한다.
-
-CloudFront에서 `api/realtime*`을 기존 `api/*`보다 먼저 전용 VPC origin에 연결하고 캐시를 끈다. 브라우저는 사이트와 같은 호스트의 `wss://.../api/realtime`에 연결한다. 설정 근거: [CloudFront WebSocket 전달 헤더](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/distribution-working-with.websockets.html), [VPC origins 지원과 접근 제한](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-vpc-origins.html), [Axum WebSocket API](https://docs.rs/axum/latest/axum/extract/ws/index.html).
-
-배포 파이프라인은 같은 검증된 Linux 실행 파일을 기존 API와 실시간 서버에 설치한 뒤 정적 사이트를 게시한다. SSM 명령은 SHA-256을 확인하고 새 프로세스의 health가 실패하면 해당 서비스의 검증된 이전 실행 파일로 복구한다. 두 서비스 전체가 하나의 트랜잭션으로 되돌아가는 것은 아니므로 둘째 서비스 실패 시 정적 게시를 중단하고 각 서버 영수증을 확인해 복구한다. 각 서버 명령과 최종 사이트 버전의 영수증은 `artifacts/ci-deploy-<commit>/`에 남긴다.
-
-## 실행과 검증
-
-기본 개발 서버는 [모험 변경 문서](campaign-balance.md)의 명령을 사용한다. 전용 모드만 따로 실행할 때는 환경 변수 `REALTIME_ONLY=true`, `LISTEN_ADDR=127.0.0.1:8081`, `APP_ORIGIN=http://127.0.0.1:5186`을 설정하고 Rust 실행 파일을 시작한다. Vite의 `REALTIME_PROXY_TARGET`으로 별도 주소를 지정할 수 있다.
-
-```powershell
-uv run --with websockets==17.0.1 python scripts/verify-realtime.py --url ws://127.0.0.1:8081/api/realtime --clients 64 --seconds 5 --chat --out artifacts/realtime-dedicated-64.json
+```json
+{"type":"reauth","ticket":"<new one-time ticket>"}
 ```
 
-소켓 검사는 실제 연결·채팅 전달·갱신 수·수신 바이트·ping 왕복 지연을 기록한다. 공개 엔드포인트 검사는 최대 두 연결·5초로 제한하고 채팅을 보내지 않는다. 이 수치는 소켓 서버의 제한된 부하 검사이며 브라우저 FPS나 전체 게임의 동시 접속 보장 수치가 아니다. `tests/ui/multiplayer.spec.ts`는 게임 UI 한 개와 별도 브라우저 컨텍스트의 WebSocket 상대를 연결해 실제 양방향 채팅·위치 갱신·지역 이동과 재접속을 검사한다. Windows 소프트웨어 렌더링 환경에서 두 3D 화면을 동시에 돌리는 검사는 시간 제한에 걸려 완료하지 못했다. 클라이언트 복구와 큐 처리는 `tests/realtime-client.test.ts`, 서버 프로토콜 검사는 `rust-server/src/realtime.rs`에 있다.
+서버는 새 티켓의 UUID와 아이디가 현재 연결과 모두 같을 때만 인증 만료를 연장한다. 일시적인 네트워크 실패는 5초 뒤 다시 시도한다. 로그아웃이나 계정 전환은 현재 소켓을 즉시 닫고, 새 계정 로그인이 끝나면 새 티켓으로 접속한다. 로그인 세션이 없어 티켓 발급이 401을 반환하면 화면 상태는 `auth-required`가 된다. 인증을 기한 안에 갱신하지 못한 연결은 서버 heartbeat에서 종료한다.
 
-2026-09-14 로컬 전용 프로세스의 5초 측정:
+## 장면별 방
 
-| 접속 / 이동 중 | ping 표본 | RTT p50 / p95 | 전체 클라이언트 합계 수신량 |
-| --- | --- | --- | --- |
-| 64 / 1 | 320 | 4.12 / 28.74ms | 약 144KB/s |
-| 64 / 64 | 320 | 5.37 / 6.86ms | 약 7.00MB/s |
+`region`은 `kanto` 또는 `johto`이고 `sceneId`는 다음 고정 형식이다.
 
-서로 다른 시점의 짧은 측정이므로 둘 사이의 지연 차이를 인과 효과로 해석하지 않는다. 첫 검사에서 변경된 개체는 patch당 정확히 1개였으며, 64개 연결 모두 지역 채팅을 받았다. 모든 플레이어가 동시에 움직이면 지역 전체 전달량이 크게 늘어난다. 운영 전송 비용과 실제 이용 패턴은 이 최대 부하 수치와 따로 확인해야 한다. 원본 결과는 `artifacts/realtime-dedicated-64.json`, `artifacts/realtime-dedicated-64-moving.json`이다.
+- 지상: `surface:<region>`
+- 동굴: `cave:<region>:<cave-id>`
+
+`sceneId` 안의 지역은 `region`과 같아야 한다. 지상과 동굴, 서로 다른 동굴은 각각 별도 방이다. 플레이어 목록, 위치 패치, 최근 채팅은 같은 `region + sceneId` 참가자에게만 전달된다. 동굴 출입이나 지역 이동 시 클라이언트는 같은 연결에서 새 `join`을 보내며 이전 방의 목록과 채팅을 비운다.
+
+`join`은 이름을 받지 않는다.
+
+```json
+{
+  "type": "join",
+  "region": "johto",
+  "sceneId": "surface:johto",
+  "speciesId": 152,
+  "x": 12,
+  "z": 8,
+  "heading": 1,
+  "activity": "moving"
+}
+```
+
+최초 `welcome`은 현재 방의 플레이어와 최근 채팅을 보내고, 이후에는 변경된 플레이어와 퇴장 ID만 `patch`로 보낸다. 위치는 0.01 단위로 양자화한다. 채팅은 200자까지이며 메모리에 방별 최근 50개를 보관하므로 실시간 서버가 재시작되면 사라진다.
+
+## 화면 동작
+
+탐험 화면 하단 채팅 도크에는 현재 지역 채널, 연결 상태, 참가자 수, 회원 아이디, 메시지 기록을 표시한다. 참가자 목록에서 다른 회원을 선택하면 지도에서 위치를 추적할 수 있다. Enter는 채팅 입력과 전송에 사용하고 Esc는 이동 조작으로 돌아간다. 한글 조합 중 Enter는 전송하지 않는다. 사용자가 이전 기록을 읽는 동안 새 메시지가 도착하면 현재 스크롤을 유지하고 `새 메시지` 버튼을 표시한다.
+
+원격 플레이어 렌더링은 기존 포켓몬 모델, 거리 제한, 최대 표시 수를 그대로 사용한다. 실시간 서버의 위치는 다른 사용자를 보여주기 위한 표시 정보이며 전투 판정이나 보상 계산에 사용하지 않는다. 개체와 게임 머니 이동은 별도의 [계정 간 거래](trading.md) API가 처리한다.
+
+## 서버 한도와 운영 구성
+
+- 입력 프레임: 최대 4KB
+- 연결당 전체 입력: 초당 40개
+- 상태 갱신: 초당 15개
+- 채팅: 10초에 5개
+- 방 정원: 기본 64명
+- 서버 정원: 운영 기본 128명
+- heartbeat: 15초, 응답 대기 45초
+- 송신 timeout: 5초
+
+`REALTIME_ONLY=true`로 실행한 Rust 프로세스는 PostgreSQL에 연결하지 않고 `/api/realtime`과 `/api/realtime/health`만 제공한다. 운영에서는 `infra/aws-realtime.yaml`의 기존 소형 EC2를 CloudFront VPC origin으로 사용한다. 메인 API가 회원 세션을 검증하고 티켓을 발급하며, 전용 서버는 공유 서명키만으로 티켓을 검증한다.
+
+공유 키는 `infra/aws-server.yaml`의 Secrets Manager 리소스가 생성한다. 메인 API 설치 스크립트와 실시간 서버의 SSM 배포 문서는 이 값을 각각 root 전용 EnvironmentFile에 기록한다. 로그와 배포 산출물에는 키 값을 출력하지 않는다.
+
+## 검증
+
+서버 단위 테스트는 Origin, 티켓 변조·재사용, 다른 계정 reauth, 입력 제한, 장면 격리, 채팅 격리, 실제 WebSocket upgrade와 종료 정리를 확인한다. `tests/realtime-client.test.ts`는 최신 상태 전송, backpressure, 방 전환, 재접속, 로그인 전환과 40초 reauth를 확인한다.
+
+실제 계정·DB·WebSocket 경로는 다음 명령으로 검사한다.
+
+```powershell
+uv run --with websockets==17.0.1 python scripts/verify-authenticated-realtime.py `
+  --api http://127.0.0.1:8080 `
+  --ws ws://127.0.0.1:8080/api/realtime `
+  --origin http://127.0.0.1:5186 `
+  --verify-reauth
+```
+
+실제 브라우저 UI 검사는 두 개의 독립 브라우저 컨텍스트에서 회원가입, 회원 아이디 표시, 양방향 채팅, 참가자 목록과 72초 동안 소켓을 교체하지 않은 reauth를 확인한다.
+
+```powershell
+$env:CHOKETMON_TEST_PORT='5186'
+$env:CHOKETMON_LIVE_AUTH='1'
+pnpm exec playwright test tests/ui/multiplayer.spec.ts --workers=1
+```
+
+`scripts/verify-realtime.py`의 부하 검사는 로컬 `REALTIME_TICKET_SECRET` 환경 변수가 전용 서버와 같을 때만 실행한다. 공개 서버에서는 최대 2개 연결·5초·채팅 없음으로 제한한다. 이 검사는 프로토콜과 제한된 서버 부하를 확인하며 브라우저 FPS나 동시 사용자 SLA를 의미하지 않는다.

@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { openExplorePanel } from './helpers/explore-panel';
 
 test.skip(process.env.CHOKETMON_LIVE_RUST !== '1', 'Set CHOKETMON_LIVE_RUST=1 to use the live Rust API.');
 test.setTimeout(150_000);
@@ -24,6 +25,7 @@ test('device save survives reload while anonymous full-connectome battle runs', 
   await expect(page.locator('.device-storage')).toHaveText('이 기기에만 저장');
   await page.locator('[data-starter="152"]').click();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
+  await openExplorePanel(page);
   await page.locator('#world-learning').check();
   // Auto hunt starts on its own. Clicking Engage here races a turn that may
   // already have begun and can leave the test waiting on a disabled button.
@@ -58,6 +60,7 @@ test('device save survives reload while anonymous full-connectome battle runs', 
   await page.screenshot({ path: `artifacts/${evidenceStem}-desktop.png`, fullPage: true });
   await page.reload();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
+  await openExplorePanel(page);
   await expect(page.locator('#world-pause')).toContainText('계속 탐험');
   const afterReload = await neuralSnapshot();
   expect(afterReload).toEqual(beforeReload);

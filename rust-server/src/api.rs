@@ -26,21 +26,23 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
-use tokio::sync::Semaphore;
+use tokio::sync::{Semaphore, broadcast};
 use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct AppState {
-    db: PgPool,
+    pub(crate) db: PgPool,
     graph: Option<Arc<Connectome>>,
     compute: Arc<Semaphore>,
     local_brains: Arc<LocalBrains>,
     attempts: Arc<Mutex<HashMap<String, (Instant, u32)>>>,
-    origin: String,
+    pub(crate) origin: String,
     secure: bool,
+    pub(crate) trade_events: broadcast::Sender<Uuid>,
 }
 impl AppState {
     pub fn new(db: PgPool, graph: Option<Arc<Connectome>>) -> Self {
+        let (trade_events, _) = broadcast::channel(128);
         Self {
             db,
             graph,
@@ -51,11 +53,12 @@ impl AppState {
             secure: env::var("COOKIE_SECURE")
                 .map(|s| s != "false")
                 .unwrap_or(true),
+            trade_events,
         }
     }
 }
-type ApiResult<T> = Result<T, ApiError>;
-pub struct ApiError(StatusCode, &'static str);
+pub(crate) type ApiResult<T> = Result<T, ApiError>;
+pub(crate) struct ApiError(pub(crate) StatusCode, pub(crate) &'static str);
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let body = if self.0 == StatusCode::PRECONDITION_REQUIRED {
@@ -91,9 +94,14 @@ pub fn router(state: AppState) -> Router {
         .route("/login", post(login))
         .route("/logout", post(logout))
         .route("/me", get(me))
+        .route("/realtime-ticket", post(realtime_ticket))
         .layer(DefaultBodyLimit::max(4096));
     let local = Router::new()
         .route("/api/local-brains/step-batch", post(local_neural_batch))
+        .route(
+            "/api/local-brains/checkpoint",
+            post(local_neural_checkpoint),
+        )
         .layer(DefaultBodyLimit::max(2_200_000));
     let api = Router::new()
         .merge(local)
@@ -102,6 +110,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/connectome", get(graph_info))
         .route("/api/saves", get(list_saves))
         .route("/api/saves/{slot}", get(load_save).put(save))
+        .merge(crate::trades::router())
         .route("/api/brains/{creature}/step", post(retired_neural_step))
         .route("/api/brains/step-batch", post(retired_neural_batch))
         .layer(DefaultBodyLimit::max(20_000_000))
@@ -110,6 +119,39 @@ pub fn router(state: AppState) -> Router {
         .layer(tower_http::trace::TraceLayer::new_for_http())
         .with_state(state);
     api.merge(crate::realtime::router())
+}
+
+async fn local_neural_checkpoint(
+    State(state): State<AppState>,
+    Json(request): Json<crate::local::LocalCheckpointRequest>,
+) -> ApiResult<Json<crate::local::LocalCheckpointResponse>> {
+    let graph = state.graph.clone().ok_or(ApiError(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "The full connectome is not loaded.",
+    ))?;
+    state
+        .local_brains
+        .try_begin(&request.client_id)
+        .map_err(local_error)?;
+    let busy = LocalBusyGuard {
+        brains: state.local_brains.clone(),
+        client_id: request.client_id.clone(),
+    };
+    let permit = state.compute.clone().try_acquire_owned().map_err(|_| {
+        ApiError(
+            StatusCode::TOO_MANY_REQUESTS,
+            "Neural computation is busy. Please retry shortly.",
+        )
+    })?;
+    let response = tokio::task::spawn_blocking(move || {
+        let _busy = busy;
+        let _permit = permit;
+        crate::local::materialize_checkpoint(&graph, request)
+    })
+    .await
+    .map_err(internal)?
+    .map_err(local_error)?;
+    Ok(Json(response))
 }
 
 async fn local_neural_batch(
@@ -246,11 +288,11 @@ async fn protect(State(state): State<AppState>, request: Request, next: Next) ->
     response
 }
 #[derive(Serialize)]
-struct User {
-    id: Uuid,
-    username: String,
+pub(crate) struct User {
+    pub(crate) id: Uuid,
+    pub(crate) username: String,
 }
-fn token_hash(headers: &HeaderMap) -> Option<String> {
+pub(crate) fn token_hash(headers: &HeaderMap) -> Option<String> {
     let cookie = headers.get(header::COOKIE)?.to_str().ok()?;
     let token = cookie
         .split(';')
@@ -260,7 +302,7 @@ fn token_hash(headers: &HeaderMap) -> Option<String> {
     }
     Some(hex::encode(Sha256::digest(token.as_bytes())))
 }
-async fn user(state: &AppState, headers: &HeaderMap) -> ApiResult<User> {
+pub(crate) async fn user(state: &AppState, headers: &HeaderMap) -> ApiResult<User> {
     let token =
         token_hash(headers).ok_or(ApiError(StatusCode::UNAUTHORIZED, "로그인이 필요합니다."))?;
     let row = sqlx::query("SELECT u.id,u.username FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now()")
@@ -270,7 +312,7 @@ async fn user(state: &AppState, headers: &HeaderMap) -> ApiResult<User> {
         username: row.get("username"),
     })
 }
-async fn profile_user(state: &AppState, headers: &HeaderMap) -> ApiResult<User> {
+pub(crate) async fn profile_user(state: &AppState, headers: &HeaderMap) -> ApiResult<User> {
     let account = user(state, headers).await?;
     let profile = headers
         .get("x-choketmon-profile")
@@ -460,6 +502,24 @@ async fn me(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Json
         Err(e) => Err(e),
     }
 }
+async fn realtime_ticket(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> ApiResult<Json<Value>> {
+    let account = user(&state, &headers).await?;
+    rate_limit(&state, format!("realtime-ticket:{}", account.id), 30)?;
+    let (ticket, expires_at) = crate::realtime::issue_ticket(account.id, &account.username)
+        .map_err(|message| {
+            tracing::error!(message, "Realtime ticket unavailable");
+            ApiError(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "실시간 채팅 인증을 준비할 수 없습니다.",
+            )
+        })?;
+    Ok(Json(
+        json!({"ticket":ticket,"expiresAt":expires_at,"user":account}),
+    ))
+}
 async fn health(State(state): State<AppState>) -> ApiResult<Json<Value>> {
     sqlx::query("SELECT 1").execute(&state.db).await?;
     Ok(Json(
@@ -490,12 +550,12 @@ fn identifier(value: &str) -> ApiResult<()> {
     }
     Ok(())
 }
-fn compress(bytes: &[u8]) -> ApiResult<Vec<u8>> {
+pub(crate) fn compress(bytes: &[u8]) -> ApiResult<Vec<u8>> {
     let mut e = GzEncoder::new(Vec::new(), Compression::fast());
     e.write_all(bytes).map_err(internal)?;
     e.finish().map_err(internal)
 }
-fn decompress(bytes: &[u8]) -> ApiResult<Vec<u8>> {
+pub(crate) fn decompress(bytes: &[u8]) -> ApiResult<Vec<u8>> {
     let mut out = Vec::new();
     GzDecoder::new(bytes)
         .take(64_000_001)
@@ -520,14 +580,16 @@ async fn load_save(
 ) -> ApiResult<Json<Value>> {
     identifier(&slot)?;
     let user = profile_user(&state, &headers).await?;
-    let row = sqlx::query("SELECT revision,payload FROM saves WHERE user_id=$1 AND slot=$2")
-        .bind(user.id)
-        .bind(slot)
-        .fetch_optional(&state.db)
-        .await?
-        .ok_or(ApiError(StatusCode::NOT_FOUND, "저장된 모험이 없습니다."))?;
+    let row =
+        sqlx::query("SELECT revision,payload,trade_epoch FROM saves WHERE user_id=$1 AND slot=$2")
+            .bind(user.id)
+            .bind(slot)
+            .fetch_optional(&state.db)
+            .await?
+            .ok_or(ApiError(StatusCode::NOT_FOUND, "저장된 모험이 없습니다."))?;
     let bytes: Vec<u8> = row.get("payload");
-    let payload: Value = serde_json::from_slice(&decompress(&bytes)?).map_err(internal)?;
+    let mut payload: Value = serde_json::from_slice(&decompress(&bytes)?).map_err(internal)?;
+    payload["tradeEpoch"] = json!(row.get::<i64, _>("trade_epoch"));
     Ok(Json(
         json!({"save":payload,"revision":row.get::<i64,_>("revision")}),
     ))
@@ -559,6 +621,13 @@ async fn save(
         .bind(format!("save:{}", user.id))
         .execute(&mut *tx)
         .await?;
+    let authoritative_epoch =
+        sqlx::query("SELECT trade_epoch FROM saves WHERE user_id=$1 AND slot='current'")
+            .bind(user.id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .map(|row| row.get::<i64, _>("trade_epoch"))
+            .unwrap_or(0);
     let prior = sqlx::query(
         "SELECT revision,request_id,payload_hash FROM saves WHERE user_id=$1 AND slot=$2",
     )
@@ -570,6 +639,19 @@ async fn save(
         .as_ref()
         .map(|r| r.get::<i64, _>("revision"))
         .unwrap_or(0);
+    if value
+        .get("tradeEpoch")
+        .is_some_and(|epoch| epoch.as_i64().is_none_or(|value| value < 0))
+    {
+        return Err(bad("거래 저장 세대가 올바르지 않습니다."));
+    }
+    let incoming_epoch = value.get("tradeEpoch").and_then(Value::as_i64).unwrap_or(0);
+    if incoming_epoch != authoritative_epoch {
+        return Err(ApiError(
+            StatusCode::CONFLICT,
+            "거래 전 저장은 현재 계정 저장을 덮어쓸 수 없습니다.",
+        ));
+    }
     let raw = serde_json::to_vec(value).map_err(internal)?;
     let payload_hash = hex::encode(Sha256::digest(&raw));
     if let Some(receipt) = sqlx::query("SELECT revision,payload_hash FROM save_requests WHERE user_id=$1 AND slot=$2 AND request_id=$3")
@@ -588,7 +670,10 @@ async fn save(
             "다른 기기의 저장이 있습니다. 현재 진행은 이 기기에 보존됐습니다. 새로고침 전에 내보내기로 백업해 주세요.",
         ));
     }
-    let bytes = compress(&raw)?;
+    let mut stored = value.clone();
+    stored["tradeEpoch"] = json!(authoritative_epoch);
+    let stored_raw = serde_json::to_vec(&stored).map_err(internal)?;
+    let bytes = compress(&stored_raw)?;
     let quota=sqlx::query("SELECT count(*)::bigint AS slots,COALESCE(sum(octet_length(payload)),0)::bigint AS bytes FROM saves WHERE user_id=$1 AND slot<>$2").bind(user.id).bind(&slot).fetch_one(&mut *tx).await?;
     if quota.get::<i64, _>("slots") >= 128
         || quota.get::<i64, _>("bytes") + bytes.len() as i64 > 64_000_000
@@ -598,8 +683,8 @@ async fn save(
             "계정 저장 한도(128개, 압축 64MB)에 도달했습니다.",
         ));
     }
-    sqlx::query("INSERT INTO saves(user_id,slot,revision,request_id,payload,payload_hash) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(user_id,slot) DO UPDATE SET revision=excluded.revision,request_id=excluded.request_id,payload=excluded.payload,payload_hash=excluded.payload_hash,updated_at=now()")
-        .bind(user.id).bind(&slot).bind(revision+1).bind(&body.request_id).bind(bytes).bind(&payload_hash).execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO saves(user_id,slot,revision,request_id,payload,payload_hash,trade_epoch) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(user_id,slot) DO UPDATE SET revision=excluded.revision,request_id=excluded.request_id,payload=excluded.payload,payload_hash=excluded.payload_hash,trade_epoch=excluded.trade_epoch,updated_at=now()")
+        .bind(user.id).bind(&slot).bind(revision+1).bind(&body.request_id).bind(bytes).bind(&payload_hash).bind(authoritative_epoch).execute(&mut *tx).await?;
     sqlx::query("INSERT INTO save_requests(user_id,slot,request_id,payload_hash,revision) VALUES($1,$2,$3,$4,$5)")
         .bind(user.id).bind(&slot).bind(&body.request_id).bind(&payload_hash).bind(revision+1).execute(&mut *tx).await?;
     sqlx::query("DELETE FROM save_requests WHERE user_id=$1 AND created_at<now()-interval '1 day'")

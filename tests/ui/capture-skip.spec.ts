@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { createGame } from '../../src/game/engine';
 import { defaultView, packSave } from '../../src/game/storage';
 import { OpenWorldSimulation } from '../../src/openworld/simulation';
+import { openExplorePanel } from './helpers/explore-panel';
 
 test('an imported zero-ball victory passes immediately and keeps automatic hunting enabled', async ({ page }) => {
   test.setTimeout(120000);
@@ -26,6 +27,7 @@ test('an imported zero-ball victory passes immediately and keeps automatic hunti
   await page.goto('/'); await page.locator('[data-starter="152"]').click();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 60000 });
   await page.locator('#import-file').setInputFiles({ name: 'zero-ball-victory.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(save)) });
+  await openExplorePanel(page);
   await expect(page.locator('#world-ball-stock')).toContainText('볼 0개');
   await expect(page.locator('#world-feed')).toContainText('놓아주었습니다', { timeout: 20000 });
   await expect(page.locator('#world-capture-offer')).toBeHidden();

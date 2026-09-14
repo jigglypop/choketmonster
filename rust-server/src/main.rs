@@ -3,6 +3,7 @@ mod connectome;
 mod local;
 mod realtime;
 mod save_validation;
+mod trades;
 
 use anyhow::Context;
 use sqlx::postgres::PgPoolOptions;

@@ -17,6 +17,12 @@ function battleGame(): GameState {
 }
 
 describe('full game checkpoint integration', () => {
+  it('writes a bounded trade epoch and rejects malformed trade versions', () => {
+    const save = packSave(createGame(1, 'trade-epoch'), graph, defaultView());
+    expect(save.tradeEpoch).toBe(0);
+    save.tradeEpoch = -1;
+    expect(() => unpackSave(save, graph)).toThrow(/거래 버전/);
+  });
   it('preserves the original collection version for backup before migrating a decoded world', () => {
     const game = createGame(1, 'backup-before-map-migration');
     const world = new OpenWorldSimulation(graph, game, 412);

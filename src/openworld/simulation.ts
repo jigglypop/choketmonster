@@ -2,23 +2,24 @@ import { Brain, validateGraph, type BrainState, type Graph } from '../core/brain
 import { Random, clamp } from '../core/random';
 import { POKEMON, getMove, getSpecies } from '../data/pokemon';
 import { getVersionSpeciesIds } from '../data/pokemon-versions';
-import { hasPokemonModel } from '../data/pokemon-models';
-import { replenishBalls, challengeCampaignGym, challengeCampaignTrainer } from '../game/engine';
+import { replenishBalls, challengeCampaignGym, challengeCampaignTrainer, challengeFieldTrainer } from '../game/engine';
 import { getRegionalBadges, getCampaignGyms, getNextCampaignTrainer, campaignTravelReason, regionalWildLevels } from '../game/campaign';
-import { johtoGoldEncounterPools } from '../data/johto-gold-encounters';
+import { FIELD_TRAINERS, availableFieldTrainer, getFieldTrainer, type FieldTrainer } from '../data/field-trainers';
+import { chooseRegionalEncounter, encounterPeriodAt, regionalSourcePools, supplementalEncounterRules, type EncounterPeriod } from '../data/regional-encounters';
 import { gameplayHabitat } from '../game/habitat';
 import { ConnectomeController, type NeuralMonster } from '../game/connectome';
 import { chooseServerBrains, usesServerBrain, type ServerDecision } from '../game/server-brain';
 import { actBattle, availableEvolutions, captureDefeatedWild, createMonster, evolve, validateGame, type BallItem, type BattleAction, type BattleTurnResult, type GameState, type Monster } from '../game/engine';
 import { KANTO_START, KANTO_MAP_VERSION } from './kanto';
+import { WORLD_MIN, WORLD_MAX, migrateSurfaceSnapshotCoordinates, surfaceSceneId } from './world-space';
+import { CAVE_SCENES, caveLocation, cavePortalAtInterior, cavePortalAtSurface, getCaveScene, nearestCaveWalkable } from './caves';
 import { getWorldAtlas, getLegacyJohtoAtlas, type WorldAtlas, type WorldRegionId } from './atlas';
 import { getPlayableSpeciesIds, isPlayableAdventureVersion, isPlayableSpecies, isPlayableWorldRegion, playableWorldRegionForVersion } from './availability';
 import type { FieldPolicy } from '../game/field';
 import { appendReward, emptyRewardLedger, rewardEncounter, rewardBattleTurn, validateRewardLedger, type EngineeredReward, type RewardLedger, type RewardDecisionSource } from '../game/rewards';
 
 export const OPEN_WORLD_MODEL = 'pokemon-open-world-recurrent-v1' as const;
-export const WORLD_MIN = -120;
-export const WORLD_MAX = 120;
+export { WORLD_MIN, WORLD_MAX };
 export const DEFAULT_WILD_COUNT = 15;
 export type WorldBiome = 'meadow' | 'forest' | 'lake' | 'rock';
 export type WorldSample = { height: number; biome: WorldBiome; blocked: boolean };
@@ -38,6 +39,7 @@ export type OpenWorldSnapshot = {
   schema: 1; model: typeof OPEN_WORLD_MODEL; graphId: string; seed: number; rng: number; tick: number;
   serverFinalizations?: ServerFinalization[];
   player: WorldPosition; selectedWildId?: string; autoCapture: boolean; autoHunt?: boolean; battleWildId?: string;
+  worldClockSeconds?: number;
   battleElapsed: number; pendingCapture: boolean; pendingBall?: BallItem; lastPlayerReward: number | null; lastEnemyReward: number | null;
   pendingAction?: BattleAction;
   manualControlRemaining?: number;
@@ -48,6 +50,8 @@ export type OpenWorldSnapshot = {
   visitedTownsByRegion?: Record<string, string[]>;
   rewardLedgers?: Record<string, RewardLedger>;
   regionId?: WorldRegionId;
+  sceneId?: string;
+  surfaceReturn?: { sceneId: string; x: number; z: number };
   mapVersion?: string;
   /** Legacy timer is accepted on import but no longer drives encounters. */
   densityRemaining?: number;
@@ -143,6 +147,8 @@ export class OpenWorldSimulation {
   readonly seed: number;
   readonly game: GameState;
   regionId: WorldRegionId;
+  sceneId: string;
+  surfaceReturn?: { sceneId: string; x: number; z: number };
   rng: Random;
   tick = 0;
   player: WorldPosition = { ...KANTO_START, heading: 0 };
@@ -155,9 +161,10 @@ export class OpenWorldSimulation {
   visitedTownsByRegion: Record<string, string[]> = { kanto: ['pallet'] };
   lastMovementBlock?: string;
   rewardLedgers: Record<string, RewardLedger> = {};
-  autoCapture = false;
+  autoCapture = true;
   autoHunt = true;
   controlMode: 'auto' | 'manual' = 'auto';
+  worldClockSeconds = 0;
   battleWildId?: string;
   battleElapsed = 0;
   spawnSerial = 1;
@@ -180,8 +187,54 @@ export class OpenWorldSimulation {
 
   get regionalBadges(): number { return getRegionalBadges(this.game, this.regionId); }
   get atlas(): WorldAtlas { return this.restoringAtlas ?? getWorldAtlas(this.regionId); }
-  sampleWorld(x: number, z: number): WorldSample { return this.atlas.sample(x, z); }
-  locationAt(x: number, z: number) { return this.atlas.locationAt(x, z); }
+  sampleWorld(x: number, z: number): WorldSample { return getCaveScene(this.sceneId)?.sample(x, z) ?? this.atlas.sample(x, z); }
+  locationAt(x: number, z: number) { return caveLocation(this.sceneId) ?? this.atlas.locationAt(x, z); }
+  get dayPeriod(): EncounterPeriod { return encounterPeriodAt(this.worldClockSeconds); }
+  get timeOfDay(): EncounterPeriod { return this.dayPeriod; }
+  get worldHour(): number { return this.worldClockSeconds / (20 * 60) * 24; }
+  get daylightIntensity(): number {
+    const hour = this.worldHour;
+    if (hour >= 10 && hour < 20) return 1;
+    if (hour >= 4 && hour < 10) return .3 + (hour - 4) / 6 * .7;
+    return .25;
+  }
+  synchronizeWorldClock(epochMilliseconds: number): void {
+    if (!Number.isFinite(epochMilliseconds) || epochMilliseconds < 0) throw new Error('World clock timestamp must be non-negative');
+    this.worldClockSeconds = epochMilliseconds / 1000 % (20 * 60);
+  }
+  get localFieldTrainer(): FieldTrainer | undefined {
+    const location = this.locationAt(this.player.x, this.player.z);
+    return availableFieldTrainer(this.regionId, location.id, this.game.defeatedFieldTrainers);
+  }
+  trainerRenderData(radius = 40): Array<FieldTrainer & { x: number; z: number }> {
+    if (!finite(radius) || radius <= 0 || radius > 120) throw new Error('Trainer render radius must be 0..120');
+    const defeated = new Set(this.game.defeatedFieldTrainers ?? []), cave = getCaveScene(this.sceneId);
+    const matchLocation = (trainerId: string, locationId: string) => trainerId === locationId
+      || (trainerId === 'route-42' && locationId.startsWith('route-42-'))
+      || (trainerId === 'dark-cave' && locationId.startsWith('dark-cave-'));
+    const candidates = FIELD_TRAINERS.filter(trainer => trainer.region === this.regionId && !defeated.has(trainer.id));
+    const used: Array<{x:number;z:number}> = [];
+    return candidates.flatMap(trainer => {
+      const location = cave ? caveLocation(this.sceneId)! : this.atlas.locations.find(item => matchLocation(trainer.locationId, item.id));
+      if (!location || cave && trainer.locationId !== cave.encounterLocationId || !cave && distance(location, this.player) > radius) return [];
+      const seed = hash(`${trainer.id}:${trainer.sourceX ?? 0}:${trainer.sourceZ ?? 0}`);
+      for (let attempt=0; attempt<48; attempt++) {
+        const angle=((seed%360)+attempt*137.5)*Math.PI/180, range=3+(seed%7)+Math.floor(attempt/12)*2;
+        const raw={x:(cave?0:location.x)+Math.cos(angle)*range,z:(cave?0:location.z)+Math.sin(angle)*range};
+        const point=cave ? nearestCaveWalkable(this.sceneId,raw.x,raw.z) : !this.sampleWorld(raw.x,raw.z).blocked ? raw : undefined;
+        if(point && used.every(other=>distance(other,point)>1.5)){used.push(point);return [{...trainer,...point}];}
+      }
+      return [];
+    });
+  }
+  portalRenderData(radius = 60): Array<{ id: string; label: string; targetSceneId: string; x: number; z: number }> {
+    const cave = getCaveScene(this.sceneId);
+    if (cave) return cave.portals.filter(portal => distance(portal.interior, this.player) <= radius)
+      .map(portal => ({ id: portal.id, label: `Exit to ${portal.surfaceLocationId}`, targetSceneId: portal.surfaceSceneId, ...portal.interior }));
+    return CAVE_SCENES.filter(scene => scene.regionId === this.regionId).flatMap(scene => scene.portals
+      .filter(portal => distance(portal.surface, this.player) <= radius)
+      .map(portal => ({ id: portal.id, label: scene.label, targetSceneId: scene.sceneId, ...portal.surface })));
+  }
 
   /** Resolve one matching battle frame before advancing it. Network timing never consumes simulation RNG. */
   async prepareServerBattle(learning: boolean): Promise<void> {
@@ -236,6 +289,7 @@ export class OpenWorldSimulation {
     // collection version was Gold, Scarlet, or another expanded data set.
     this.regionId = checkpoint ? checkpoint.regionId ?? 'kanto'
       : game.campaign?.startRegion === 'johto' ? 'johto' : playableWorldRegionForVersion(game.adventureVersion ?? 'red');
+    this.sceneId = checkpoint?.sceneId ?? surfaceSceneId(this.regionId);
     const travelReason = campaignTravelReason(game, this.regionId);
     if (travelReason) throw new Error(travelReason);
     // Resolve eagerly so unknown checkpoint regions fail before any entity state is accepted.
@@ -283,8 +337,10 @@ export class OpenWorldSimulation {
     if (this.game.battle || this.game.captureOffer || ![position.x, position.z, position.heading].every(finite) || !Number.isInteger(position.heading) || position.heading < 0 || position.heading > 4) return false;
     const companion = this.entities.find(entity => entity.kind === 'companion'); if (!companion) return false;
     this.lastMovementBlock = undefined;
-    const traversal = this.atlas.evaluateTraversal(companion, position, this.regionalBadges);
-    if (!traversal.allowed) { this.lastMovementBlock = traversal.reason; return false; }
+    if (!getCaveScene(this.sceneId)) {
+      const traversal = this.atlas.evaluateTraversal(companion, position, this.regionalBadges);
+      if (!traversal.allowed) { this.lastMovementBlock = traversal.reason; return false; }
+    }
     const maximum = movementSpeed(companion.speciesId, companion.level) * .35;
     // Manual movement can pass wild creatures; terrain and route gates still block it.
     if (distance(companion, position) > maximum || this.pathBlocked(companion, position.x, position.z, [])) return false;
@@ -372,19 +428,45 @@ export class OpenWorldSimulation {
     return true;
   }
 
-  challengeLocalTrainer(): boolean {
-    if (this.regionId !== 'kanto' && this.regionId !== 'johto') return false;
+  challengeFieldTrainerById(id: string): boolean {
+    if (this.game.battle || this.game.captureOffer || !this.game.player.team.some(monster => monster.hp > 0)) return false;
+    const trainer = getFieldTrainer(id), rendered = this.trainerRenderData(40).find(item => item.id === id);
+    if (!trainer || !rendered || distance(rendered, this.player) > 5 || (this.game.defeatedFieldTrainers ?? []).includes(id)) return false;
+    challengeFieldTrainer(this.game, trainer); this.battleWildId = `trainer:${trainer.id}`; this.resetTrainerTurn(); return true;
+  }
+
+  challengeLocalTrainer(id?: string): boolean {
+    if (this.regionId !== 'kanto' && this.regionId !== 'johto' || this.game.battle || this.game.captureOffer || !this.game.player.team.some(monster => monster.hp > 0)) return false;
+    if (id) return this.challengeFieldTrainerById(id);
+    const nearby = this.trainerRenderData(40).filter(item => distance(item, this.player) <= 5).sort((a,b)=>distance(a,this.player)-distance(b,this.player))[0];
+    if (nearby) return this.challengeFieldTrainerById(nearby.id);
     const trainer = getNextCampaignTrainer(this.game, this.regionId);
-    if (!trainer || this.locationAt(this.player.x, this.player.z).id !== trainer.locationId
-      || this.game.battle || this.game.captureOffer || this.regionalBadges < 8 || !this.game.player.team.some(monster => monster.hp > 0)) return false;
+    if (!trainer || this.locationAt(this.player.x, this.player.z).id !== trainer.locationId || this.regionalBadges < 8) return false;
     challengeCampaignTrainer(this.game, this.regionId);
-    this.battleWildId = `trainer:${trainer.id}`; this.resetTrainerTurn();
-    return true;
+    this.battleWildId = `trainer:${trainer.id}`; this.resetTrainerTurn(); return true;
   }
 
   private resetTrainerTurn(): void {
     this.battleElapsed = 0; this.lastPlayerReward = null; this.lastEnemyReward = null;
     this.serverTurn = undefined; this.pendingAction = undefined; this.pendingCapture = false; this.pendingBall = undefined;
+  }
+
+  traverseCavePortal(): boolean {
+    if (this.game.battle || this.game.captureOffer) return false;
+    const interiorPortal = getCaveScene(this.sceneId) && cavePortalAtInterior(this.sceneId, this.player.x, this.player.z);
+    if (interiorPortal) {
+      this.sceneId = interiorPortal.surfaceSceneId; this.surfaceReturn = undefined;
+      this.resetScenePopulation(interiorPortal.surfaceArrival); return true;
+    }
+    const entrance = cavePortalAtSurface(this.regionId, this.player.x, this.player.z);
+    if (!entrance) return false;
+    this.surfaceReturn = { sceneId: entrance.portal.surfaceSceneId, ...entrance.portal.surfaceArrival };
+    this.sceneId = entrance.scene.sceneId;
+    this.resetScenePopulation(entrance.portal.interiorArrival); return true;
+  }
+
+  private resetScenePopulation(arrival: { x: number; z: number }): void {
+    this.relocatePartner(arrival);
   }
 
   traverseTunnel(): boolean {
@@ -433,6 +515,7 @@ export class OpenWorldSimulation {
   step(options: { deltaSeconds?: number; learning?: boolean; epsilon?: number } = {}): OpenWorldStep {
     const deltaSeconds = options.deltaSeconds ?? .25, learning = options.learning ?? false, epsilon = options.epsilon ?? (learning ? .12 : 0);
     if (!finite(deltaSeconds) || deltaSeconds < 0 || deltaSeconds > 5 || typeof learning !== 'boolean' || !finite(epsilon) || epsilon < 0 || epsilon > 1) throw new Error('Invalid open-world step options');
+    this.worldClockSeconds = (this.worldClockSeconds + deltaSeconds) % (20 * 60);
     replenishBalls(this.game, deltaSeconds);
     const events: OpenWorldEvent[] = [];
     const manualControlActive = this.manualControlRemaining > 0; this.manualControlRemaining = Math.max(0, this.manualControlRemaining - deltaSeconds);
@@ -494,10 +577,10 @@ export class OpenWorldSimulation {
     const pack = (entity: OpenWorldEntity): OpenWorldEntitySnapshot => { const { brain: _brain, ...rest } = entity; return { ...structuredClone(rest), brain: stripGraph(this.brain(entity.id).state) }; };
     return { schema: 1, model: OPEN_WORLD_MODEL, graphId: this.graph.id, seed: this.seed, rng: this.rng.state, tick: this.tick,
       serverFinalizations: this.serverFinalizations.length ? structuredClone(this.serverFinalizations) : undefined,
-      player: structuredClone(this.player), selectedWildId: this.selectedWildId, autoCapture: this.autoCapture, autoHunt: this.autoHunt, battleWildId: this.battleWildId,
+      player: structuredClone(this.player), selectedWildId: this.selectedWildId, autoCapture: this.autoCapture, autoHunt: this.autoHunt, battleWildId: this.battleWildId, worldClockSeconds: this.worldClockSeconds,
       battleElapsed: this.battleElapsed, pendingCapture: this.pendingCapture, pendingBall: this.pendingBall, lastPlayerReward: this.lastPlayerReward, lastEnemyReward: this.lastEnemyReward,
       pendingAction: structuredClone(this.pendingAction), manualControlRemaining: this.manualControlRemaining,
-      encounterLayout: this.regionId === 'johto' ? GOLD_ENCOUNTER_LAYOUT : RED_ENCOUNTER_LAYOUT, spawnAnchor: { ...this.spawnAnchor }, controlMode: this.controlMode, regionId: this.regionId, mapVersion: this.atlas.mapVersion,
+      encounterLayout: this.regionId === 'johto' ? GOLD_ENCOUNTER_LAYOUT : RED_ENCOUNTER_LAYOUT, spawnAnchor: { ...this.spawnAnchor }, controlMode: this.controlMode, regionId: this.regionId, sceneId: this.sceneId, surfaceReturn: this.surfaceReturn ? { ...this.surfaceReturn } : undefined, mapVersion: this.atlas.mapVersion,
       selectionPinned: this.selectionPinned, trackingSelected: this.trackingSelected, visitedTownIds: [...this.visitedTownIds], visitedTownsByRegion: structuredClone(this.visitedTownsByRegion),
       rewardLedgers: structuredClone(Object.fromEntries(Object.entries(this.rewardLedgers).filter(([id]) => this.rewardOwnerIds().has(id)))),
       spawnSerial: this.spawnSerial, nextFoodId: this.nextFoodId, foods: structuredClone(this.foods), respawnQueue: structuredClone(this.respawnQueue), entities: this.entities.map(pack), companionMemories: [...this.companionMemories.values()].map(pack) };
@@ -701,24 +784,22 @@ export class OpenWorldSimulation {
 
   private encounterAt(position: { x: number; z: number }): { speciesId: number; level: number } {
     const location = this.locationAt(position.x, position.z);
-    const pool = this.spawnPool(location.id);
-    if (!pool.length) throw new Error(`No unlocked encounters at ${location.id}`);
-    let speciesId: number;
-    if (this.regionId === 'johto') {
-      const area = location.id === 'dark-cave-east' ? 'blackthorn-city-entrance' : location.id === 'dark-cave-west' ? 'violet-city-entrance' : undefined;
-      const slots = johtoGoldEncounterPools(location.id, location.kind === 'sea' ? 'surf' : 'walk', 'day', area).flatMap(pool => pool.slots).filter(slot => pool.includes(slot.speciesId));
-      let pick = this.rng.next() * slots.reduce((sum, slot) => sum + slot.weight, 0);
-      speciesId = slots.find(slot => (pick -= slot.weight) < 0)?.speciesId ?? pool[0];
-    } else speciesId = pool[this.rng.int(pool.length)];
     const levels = regionalWildLevels(this.game, this.regionId, location);
-    return { speciesId, level: levels.minLevel + this.rng.int(levels.maxLevel - levels.minLevel + 1) };
+    const encounterRegion = this.regionId === 'johto' ? 'johto' : 'kanto';
+    const encounter = chooseRegionalEncounter(encounterRegion, location.id, this.dayPeriod, this.sampleWorld(position.x, position.z).biome, this.regionalBadges, this.spawnSerial, () => this.rng.next(), { min: levels.minLevel, max: levels.maxLevel });
+    const min = Math.max(1, encounter.origin==='source'?levels.minLevel:encounter.minLevel), max = Math.max(min, encounter.origin==='source'?levels.maxLevel:encounter.maxLevel);
+    return { speciesId: encounter.speciesId, level: min + this.rng.int(max - min + 1) };
   }
 
-  private spawnPool(locationId: string): number[] {
+  private spawnPool(locationId: string, biome?: string): number[] {
     const version = this.game.adventureVersion ?? 'red';
     const caught = this.game.versionCaught?.[version] ?? this.game.dex.caught;
-    return regionalEncounters(locationId, this.regionalBadges, this.regionId).filter(speciesId => hasPokemonModel(speciesId)
-      && (!UNIQUE_SPECIES.has(speciesId) || (!caught.includes(speciesId) && !this.entities.some(entity => entity.kind === 'wild' && entity.speciesId === speciesId) && !this.respawnQueue.some(pending => pending.speciesId === speciesId))));
+    const encounterRegion = this.regionId === 'johto' ? 'johto' : 'kanto';
+    const candidates = biome === undefined ? regionalEncounters(locationId, this.regionalBadges, this.regionId)
+      : [...regionalSourcePools(encounterRegion, locationId, this.dayPeriod, biome).flatMap(pool => pool.slots.map(slot => slot.speciesId)),
+        ...(this.spawnSerial % 20 === 0 ? supplementalEncounterRules(encounterRegion).filter(rule => rule.locationId === locationId && rule.period === this.dayPeriod && rule.biome === biome && rule.requiredBadges <= this.regionalBadges).map(rule => rule.speciesId) : [])];
+    return [...new Set(candidates)].filter(speciesId => !UNIQUE_SPECIES.has(speciesId)
+      || (!caught.includes(speciesId) && !this.entities.some(entity => entity.kind === 'wild' && entity.speciesId === speciesId) && !this.respawnQueue.some(pending => pending.speciesId === speciesId)));
   }
 
   changeVersion(version: string): void {
@@ -747,6 +828,7 @@ export class OpenWorldSimulation {
     const count = this.rosterStatus().total;
     this.visitedTownsByRegion[this.regionId] = [...this.visitedTownIds];
     this.regionId = regionId;
+    this.sceneId = surfaceSceneId(regionId); this.surfaceReturn = undefined;
     this.game.adventureVersion = version;
     this.game.versionCaught ??= {};
     this.game.versionCaught[version] ??= [];
@@ -777,16 +859,28 @@ export class OpenWorldSimulation {
       const radius = 6 + this.rng.next() * (attempt < 1000 ? 18 : 35), angle = this.rng.next() * Math.PI * 2;
       const x = this.player.x + Math.cos(angle) * radius, z = this.player.z + Math.sin(angle) * radius;
       const location = this.locationAt(x, z);
-      if (!this.sampleWorld(x, z).blocked && location.minLevel <= current.maxLevel + 4 && this.spawnPool(location.id).length && !this.entities.some(entity => distance(entity, { x, z }) < 2)) return { x, z };
+      const sample = this.sampleWorld(x, z);
+      if (!sample.blocked && location.minLevel <= current.maxLevel + 4 && this.spawnPool(location.id, sample.biome).length && !this.entities.some(entity => distance(entity, { x, z }) < 2)) return { x, z };
     }
     for (const location of [...this.atlas.locations].sort((a, b) => distance(a, this.player) - distance(b, this.player))) {
-      if (this.spawnPool(location.id).length && !this.sampleWorld(location.x, location.z).blocked) return { x: location.x, z: location.z };
+      if (!this.spawnPool(location.id).length) continue;
+      for (let radius = 0; radius <= 18; radius += 2) for (let step = 0; step < 16; step++) {
+        const angle = step / 16 * Math.PI * 2, point = { x: location.x + Math.cos(angle) * radius, z: location.z + Math.sin(angle) * radius };
+        const sample = this.sampleWorld(point.x, point.z);
+        if (this.locationAt(point.x, point.z).id === location.id && !sample.blocked && this.spawnPool(location.id, sample.biome).length
+          && !this.entities.some(entity => distance(entity, point) < 2)) return point;
+      }
     }
     throw new Error(`No unlocked ${this.regionId} spawn position`);
   }
 
   private spawnWild(): OpenWorldEntity {
-    const position = this.localSpawnPosition(), { speciesId, level } = this.encounterAt(position);
+    return this.spawnWildAt(this.localSpawnPosition());
+  }
+
+  private spawnWildAt(position: { x: number; z: number }): OpenWorldEntity {
+    if (this.sampleWorld(position.x,position.z).blocked) throw new Error('Wild spawn position is blocked');
+    const { speciesId, level } = this.encounterAt(position);
     const entity = this.makeEntity(`wild-${this.spawnSerial++}`, 'wild', speciesId, level, position); this.entities.push(entity); return entity;
   }
 
@@ -842,7 +936,7 @@ export class OpenWorldSimulation {
   }
 
   private pathBlocked(from: { x: number; z: number }, x: number, z: number, occupied: Array<{ x: number; z: number }>): boolean {
-    if (!this.atlas.evaluateTraversal(from, { x, z }, this.regionalBadges).allowed) return true;
+    if (!getCaveScene(this.sceneId) && !this.atlas.evaluateTraversal(from, { x, z }, this.regionalBadges).allowed) return true;
     const length = Math.hypot(x - from.x, z - from.z), samples = Math.max(1, Math.ceil(length / PATH_SAMPLE_DISTANCE));
     for (let sample = 1; sample <= samples; sample++) {
       const ratio = sample / samples, px = from.x + (x - from.x) * ratio, pz = from.z + (z - from.z) * ratio;
@@ -852,8 +946,11 @@ export class OpenWorldSimulation {
   }
 
   private openPosition(biome: WorldBiome, awayFromPlayer: number): { x: number; z: number } {
+    const cave = getCaveScene(this.sceneId);
+    const minX = cave ? -cave.width / 2 : WORLD_MIN, maxX = cave ? cave.width / 2 : WORLD_MAX;
+    const minZ = cave ? -cave.depth / 2 : WORLD_MIN, maxZ = cave ? cave.depth / 2 : WORLD_MAX;
     for (let attempt = 0; attempt < 3000; attempt++) {
-      const x = WORLD_MIN + 3 + this.rng.next() * (WORLD_MAX - WORLD_MIN - 6), z = WORLD_MIN + 3 + this.rng.next() * (WORLD_MAX - WORLD_MIN - 6);
+      const x = minX + 1 + this.rng.next() * (maxX - minX - 2), z = minZ + 1 + this.rng.next() * (maxZ - minZ - 2);
       const sample = this.sampleWorld(x, z);
       if (!sample.blocked && sample.biome === biome && Math.hypot(x - this.player.x, z - this.player.z) >= awayFromPlayer && !this.entities.some(entity => Math.hypot(entity.x - x, entity.z - z) < 3) && !this.foods.some(food => Math.hypot(food.x - x, food.z - z) < 2)) return { x, z };
     }
@@ -927,6 +1024,8 @@ export class OpenWorldSimulation {
     const previousRegion = this.regionId, kanto = getWorldAtlas('kanto');
     this.visitedTownsByRegion[previousRegion] = [...this.visitedTownIds];
     this.regionId = 'kanto';
+    this.sceneId = surfaceSceneId('kanto');
+    this.surfaceReturn = undefined;
     this.game.adventureVersion = 'national';
     this.game.versionCaught ??= {}; this.game.versionCaught.national ??= [];
     this.visitedTownIds = [...(this.visitedTownsByRegion.kanto ?? this.initialVisitedTowns(kanto))];
@@ -966,13 +1065,13 @@ export class OpenWorldSimulation {
     let changed = false;
     const replacement = (x: number, z: number, level: number, identity: string) => {
       let location = this.locationAt(x, z);
-      let pool = regionalEncounters(location.id, this.regionalBadges, this.regionId).filter(id => hasPokemonModel(id));
+      let pool = regionalEncounters(location.id, this.regionalBadges, this.regionId);
       if (!pool.length) {
         const nearest = [...this.atlas.locations].sort((a, b) => distance(a, { x, z }) - distance(b, { x, z }))
-          .find(item => regionalEncounters(item.id, this.regionalBadges, this.regionId).some(hasPokemonModel) && !this.sampleWorld(item.x, item.z).blocked);
+          .find(item => regionalEncounters(item.id, this.regionalBadges, this.regionId).length > 0 && !this.sampleWorld(item.x, item.z).blocked);
         if (!nearest) throw new Error('No unlocked Red replacement encounters');
         location = nearest; x = nearest.x; z = nearest.z;
-        pool = regionalEncounters(location.id, this.regionalBadges, this.regionId).filter(id => hasPokemonModel(id));
+        pool = regionalEncounters(location.id, this.regionalBadges, this.regionId);
       }
       return { x, z, speciesId: pool[hash(`playable:${identity}`) % pool.length], level: Math.max(location.minLevel, Math.min(location.maxLevel, level)) };
     };
@@ -1050,16 +1149,31 @@ export class OpenWorldSimulation {
   }
 
   private restore(checkpoint: OpenWorldSnapshot): void {
+    checkpoint = structuredClone(checkpoint);
     const legacyKantoMap = this.regionId === 'kanto' && (checkpoint.mapVersion === undefined || checkpoint.mapVersion === 'kanto-v1');
+    const legacySurface = !checkpoint.sceneId || checkpoint.sceneId.startsWith('surface:');
+    const legacyVersions: Set<string | undefined> = this.regionId === 'kanto' ? new Set([undefined, 'kanto-v1', 'kanto-v2', 'kanto-atlas-v1'])
+      : new Set([undefined, 'johto-v1', 'johto-v2', 'johto-atlas-v1']);
+    if (legacySurface && checkpoint.mapVersion !== this.atlas.mapVersion && legacyVersions.has(checkpoint.mapVersion)) {
+      migrateSurfaceSnapshotCoordinates(checkpoint);
+      checkpoint.mapVersion = this.atlas.mapVersion; checkpoint.sceneId = surfaceSceneId(this.regionId);
+    }
+    this.sceneId = checkpoint.sceneId ?? surfaceSceneId(this.regionId);
+    this.surfaceReturn = checkpoint.surfaceReturn ? { ...checkpoint.surfaceReturn } : undefined;
+    const cave = getCaveScene(this.sceneId);
+    if (!cave && this.sceneId !== surfaceSceneId(this.regionId)) throw new Error('Unknown open-world scene');
+    if (cave && cave.regionId !== this.regionId) throw new Error('Scene region mismatch');
     if (this.regionId === 'kanto') {
       if (checkpoint.mapVersion !== undefined && !['kanto-v1', KANTO_MAP_VERSION].includes(checkpoint.mapVersion)) throw new Error('Unknown Kanto map version');
     } else if (checkpoint.mapVersion !== this.atlas.mapVersion) throw new Error(`Unknown ${this.regionId} map version`);
     // v1 saves predate collision geometry. Current snapshots are checked against the
     // atlas selected above so coordinates cannot be relabeled as another region.
     const invalidTerrain = (x: number, z: number) => legacyKantoMap
-      ? Math.abs(x) > 120 || Math.abs(z) > 120
+      ? Math.abs(x) > WORLD_MAX || Math.abs(z) > WORLD_MAX
       : this.sampleWorld(x, z).blocked;
     if (!checkpoint || checkpoint.schema !== 1 || checkpoint.model !== OPEN_WORLD_MODEL || checkpoint.graphId !== this.graph.id || checkpoint.seed !== this.seed || !Number.isInteger(checkpoint.rng) || checkpoint.rng < 0 || checkpoint.rng > 0xffffffff || !Number.isSafeInteger(checkpoint.tick) || checkpoint.tick < 0 || !finite(checkpoint.battleElapsed) || checkpoint.battleElapsed < 0 || checkpoint.battleElapsed >= BATTLE_INTERVAL || typeof checkpoint.autoCapture !== 'boolean' || typeof checkpoint.pendingCapture !== 'boolean' || (checkpoint.pendingBall !== undefined && !['poke-ball', 'great-ball', 'ultra-ball'].includes(checkpoint.pendingBall)) || (checkpoint.pendingAction !== undefined && !this.validRequestedAction(checkpoint.pendingAction)) || ![checkpoint.lastPlayerReward, checkpoint.lastEnemyReward].every(value => value === null || (finite(value) && Math.abs(value) <= 2)) || !Number.isSafeInteger(checkpoint.spawnSerial) || checkpoint.spawnSerial < 1 || !Number.isSafeInteger(checkpoint.nextFoodId) || checkpoint.nextFoodId < 1 || !Array.isArray(checkpoint.foods) || !Array.isArray(checkpoint.entities) || (checkpoint.companionMemories !== undefined && !Array.isArray(checkpoint.companionMemories))) throw new Error('Invalid open-world checkpoint');
+    if ((checkpoint.worldClockSeconds !== undefined && (!finite(checkpoint.worldClockSeconds) || checkpoint.worldClockSeconds < 0 || checkpoint.worldClockSeconds >= 20 * 60))) throw new Error('Invalid world clock checkpoint');
+    if (checkpoint.surfaceReturn !== undefined && (!checkpoint.surfaceReturn || typeof checkpoint.surfaceReturn.sceneId !== 'string' || ![checkpoint.surfaceReturn.x, checkpoint.surfaceReturn.z].every(finite))) throw new Error('Invalid cave return checkpoint');
     if ((checkpoint.autoHunt !== undefined && typeof checkpoint.autoHunt !== 'boolean') || (checkpoint.respawnQueue !== undefined && !Array.isArray(checkpoint.respawnQueue))) throw new Error('Invalid open-world automation checkpoint');
     if (checkpoint.encounterLayout !== undefined && ![RED_ENCOUNTER_LAYOUT, GOLD_ENCOUNTER_LAYOUT].includes(checkpoint.encounterLayout)) throw new Error('Unknown encounter layout');
     if (checkpoint.manualControlRemaining !== undefined && (!finite(checkpoint.manualControlRemaining) || checkpoint.manualControlRemaining < 0 || checkpoint.manualControlRemaining > MANUAL_CONTROL_HOLD)) throw new Error('Invalid manual-control hold');
@@ -1076,7 +1190,7 @@ export class OpenWorldSimulation {
     if (new Set(checkpoint.foods.map(food => food.id)).size !== checkpoint.foods.length || new Set(checkpoint.foods.map(food => key(food.x, food.z))).size !== checkpoint.foods.length) throw new Error('Duplicate open-world food');
     for (const saved of savedEntities) {
       const inactiveMemory = memories.includes(saved);
-      const invalidPosition = !finite(saved?.x) || !finite(saved?.z) || Math.abs(saved.x) > 120 || Math.abs(saved.z) > 120
+      const invalidPosition = !finite(saved?.x) || !finite(saved?.z) || Math.abs(saved.x) > WORLD_MAX || Math.abs(saved.z) > WORLD_MAX
         || (!inactiveMemory && invalidTerrain(saved.x, saved.z));
       if (!saved || typeof saved.id !== 'string' || !saved.id || !['wild', 'companion'].includes(saved.kind) || !Number.isInteger(saved.speciesId) || saved.speciesId < 1 || !POKEMON.some(species => species.id === saved.speciesId) || !Number.isInteger(saved.level) || saved.level < 1 || saved.level > 100 || invalidPosition || !Number.isInteger(saved.heading) || saved.heading < 0 || saved.heading > 4 || !Number.isInteger(saved.action) || saved.action < 0 || saved.action > 4 || !finite(saved.energy) || saved.energy < 0 || saved.energy > 100 || !finite(saved.reward) || Math.abs(saved.reward) > 10 || !Number.isSafeInteger(saved.foods) || saved.foods < 0 || !Number.isSafeInteger(saved.collisions) || saved.collisions < 0 || !Array.isArray(saved.observation) || saved.observation.length !== 12 || !saved.observation.every(finite) || saved.brain?.graphId !== this.graph.id || saved.brain.sensoryBypass !== false) throw new Error('Invalid open-world entity');
       const { graphId: _graphId, ...state } = structuredClone(saved.brain), brain = Brain.restore({ ...state, graph: this.graph }); brain.state.graph = this.graph; this.brains.set(saved.id, brain);
@@ -1121,7 +1235,7 @@ export class OpenWorldSimulation {
         !task || !task.self?.instanceId || !task.other?.instanceId || !Number.isSafeInteger(task.turn) || typeof task.learning !== 'boolean' || !Number.isFinite(task.reward) || Math.abs(task.reward) > 4 || typeof task.episode !== 'string')) throw new Error('서버 보상 대기 기록이 손상되었습니다.');
       this.serverFinalizations = structuredClone(checkpoint.serverFinalizations);
     }
-    this.selectedWildId = checkpoint.selectedWildId; this.autoCapture = checkpoint.autoCapture; this.autoHunt = checkpoint.autoHunt ?? true; this.battleWildId = checkpoint.battleWildId; this.battleElapsed = checkpoint.battleElapsed;
+    this.selectedWildId = checkpoint.selectedWildId; this.autoCapture = checkpoint.autoCapture; this.worldClockSeconds = checkpoint.worldClockSeconds ?? 0; this.autoHunt = checkpoint.autoHunt ?? true; this.battleWildId = checkpoint.battleWildId; this.battleElapsed = checkpoint.battleElapsed;
     this.pendingCapture = checkpoint.pendingCapture; this.pendingBall = checkpoint.pendingBall === undefined ? undefined : 'poke-ball'; this.lastPlayerReward = checkpoint.lastPlayerReward; this.lastEnemyReward = checkpoint.lastEnemyReward;
     this.pendingAction = structuredClone(checkpoint.pendingAction);
     if (this.pendingAction?.type === 'catch') this.pendingAction.ball = 'poke-ball';
@@ -1154,8 +1268,14 @@ export function redEncounters(locationId: string, badges: number, regionId: Worl
 }
 
 /** Region geography determines encounters; collection version never reshuffles them. */
-export function regionalEncounters(locationId: string, badges: number, regionId: WorldRegionId = 'kanto'): number[] {
-  return isPlayableWorldRegion(regionId) ? getWorldAtlas(regionId).encounters(locationId, badges) : [];
+export function regionalEncounters(locationId: string, _badges: number, regionId: WorldRegionId = 'kanto', period?: EncounterPeriod, biome?: string): number[] {
+  if (regionId !== 'kanto' && regionId !== 'johto') return [];
+  const periods = period ? [period] : (['morning', 'day', 'night'] as const);
+  const source = periods.flatMap(value => biome === undefined
+    ? [...regionalSourcePools(regionId, locationId, value, 'meadow'),...regionalSourcePools(regionId, locationId, value, 'lake')].flatMap(pool => pool.slots.map(slot => slot.speciesId))
+    : regionalSourcePools(regionId, locationId, value, biome).flatMap(pool => pool.slots.map(slot => slot.speciesId)));
+  const supplemental=supplementalEncounterRules(regionId).filter(rule=>rule.locationId===locationId&&rule.requiredBadges<=_badges&&(!period||rule.period===period)&&(!biome||rule.biome===biome)).map(rule=>rule.speciesId);
+  return [...new Set([...source, ...supplemental])].sort((a, b) => a - b);
 }
 
 /** Compatibility entry point: selecting a collection version never broadens the layout. */

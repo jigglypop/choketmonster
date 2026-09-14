@@ -8,6 +8,7 @@ import { defaultView, packSave, unpackSave } from '../../src/game/storage';
 import { OpenWorldSimulation } from '../../src/openworld/simulation';
 import type { Graph } from '../../src/core/brain';
 import type { FieldPolicy } from '../../src/game/field';
+import { openExplorePanel } from './helpers/explore-panel';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
 const policy = JSON.parse(readFileSync('public/data/openworld-policy.json', 'utf8')) as FieldPolicy;
@@ -39,6 +40,7 @@ async function bootstrap(page: Page) {
   await page.goto('/');
   await expect(page.locator('#starter-dialog [data-starter="152"]')).toBeVisible({ timeout: 30_000 });
   await page.locator('#starter-dialog [data-starter="152"]').click();
+  await openExplorePanel(page);
 }
 
 async function importSave(page: Page, save: unknown) {
@@ -49,6 +51,7 @@ async function importSave(page: Page, save: unknown) {
   });
   await expect(status).toBeVisible();
   await expect(status).toContainText('불러왔습니다');
+  await openExplorePanel(page);
 }
 
 async function exportSave(page: Page) {

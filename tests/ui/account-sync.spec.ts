@@ -315,6 +315,52 @@ test('account panel serializes login and logout lifecycle callbacks', async ({ p
   expect(await page.evaluate(() => (window as typeof window & { accountEvents?: string[] }).accountEvents)).toEqual(['after-initialize', 'before-login', 'after-login', 'before-logout', 'after-logout']);
 });
 
+test('same-account re-login authenticates before checkpoint and preserves the device outbox', async ({ page }) => {
+  const profile = { id: 'expired-session-user', username: 'trainer' }, order: string[] = [];
+  let authenticated = false;
+  await page.route('**/api/auth/me', route => route.fulfill({ json: { user: profile } }));
+  await page.route('**/api/auth/login', route => {
+    order.push('login'); authenticated = true;
+    return route.fulfill({ json: { user: profile } });
+  });
+  await page.route('**/api/saves/current', route => {
+    if (route.request().method() === 'GET') return route.fulfill({ status: 404, json: {} });
+    order.push('checkpoint');
+    return authenticated
+      ? route.fulfill({ json: { revision: 1 } })
+      : route.fulfill({ status: 401, json: { message: 'session expired' } });
+  });
+  await page.goto('/data/connectome.json');
+  await page.evaluate(async payload => {
+    document.body.innerHTML = '<main id="account-host"></main>';
+    const panelPath = '/src/game/account-panel.ts', storagePath = '/src/game/storage.ts';
+    const panelModule = await import(/* @vite-ignore */ panelPath), storage = await import(/* @vite-ignore */ storagePath);
+    const panel = panelModule.mountAccountPanel({
+      container: document.querySelector<HTMLElement>('#account-host')!, checkpointIntervalMs: 600_000,
+      beforeSwitch: async (change: { reason: string }) => { if (change.reason === 'login') await storage.writeSave(payload as never); },
+    });
+    (window as typeof window & { accountPanel?: typeof panel }).accountPanel = panel;
+    await panel.ready;
+    panel.open();
+  }, save('preserved-after-expiry'));
+  await page.locator('.account-dialog input[name="username"]').fill('TRAINER');
+  await page.locator('.account-dialog input[name="password"]').fill('correct-password');
+  await page.locator('.account-dialog button[value="login"]').click();
+  await expect(page.locator('.account-dialog')).toBeHidden();
+  await expect(page.locator('.account-name')).toContainText('trainer');
+  const preserved = await page.evaluate(async () => {
+    const storagePath = '/src/game/storage.ts', storage = await import(/* @vite-ignore */ storagePath);
+    const current = await storage.readSave() as { game: { marker: string } };
+    const db = await new Promise<IDBDatabase>((resolve, reject) => { const request = indexedDB.open('choketmon-151', 2); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
+    const sync = await new Promise<{ dirty: boolean }>((resolve, reject) => { const tx = db.transaction('server-sync', 'readonly'), request = tx.objectStore('server-sync').get('account:expired-session-user:current'); tx.oncomplete = () => resolve(request.result); tx.onerror = () => reject(tx.error); });
+    db.close();
+    return { marker: current.game.marker, dirty: sync.dirty };
+  });
+  expect(order[0]).toBe('login');
+  expect(preserved.marker).toBe('preserved-after-expiry');
+  expect(typeof preserved.dirty).toBe('boolean');
+});
+
 test('an account-status outage does not silently open the guest save namespace', async ({ page }) => {
   await page.route('**/api/auth/me', route => route.fulfill({ status: 503, json: { message: 'maintenance' } }));
   await page.goto('/data/connectome.json');

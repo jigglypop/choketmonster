@@ -1,9 +1,15 @@
-import { useFrame, useThree } from '@react-three/fiber';
+import { useThree } from '@react-three/fiber';
 import { useEffect, useMemo } from 'react';
 import { DataTexture, EquirectangularReflectionMapping, FloatType, LinearSRGBColorSpace, MeshStandardMaterial, PMREMGenerator, RepeatWrapping, RGBAFormat, SRGBColorSpace, Texture, TextureLoader } from 'three';
+import { MeshStandardNodeMaterial } from 'three/webgpu';
+import {
+  abs, color, cos, dot, float, instanceIndex, length, materialColor, materialRoughness, max, min, mix, normalView, normalize,
+  positionLocal, positionViewDirection, positionWorld, pow, sin, smoothstep, texture, timerLocal, vec2, vec3,
+} from 'three/tsl';
 
 type Surface = 'ground' | 'rock' | 'path';
 export type SurfaceTextures = { diffuse: Texture; normal: Texture; arm: Texture };
+export type WaterMaterialOptions = { lake?: boolean; center?: readonly [number, number]; extent?: readonly [number, number]; radius?: number };
 
 /** Palette meshes gain canopy depth and a restrained back-lit leaf response. */
 export function detailCanopy(material: MeshStandardMaterial) {
@@ -40,7 +46,8 @@ export function useSurfaceTextures(surface: Surface) {
       const folder = channel === 'arm' || surface === 'path' ? 'nature-detail' : 'terrain';
       const texture = new TextureLoader().load(`/textures/${folder}/${asset}_${channel}.webp?v=20260911`);
       texture.wrapS = texture.wrapT = RepeatWrapping;
-      texture.anisotropy = Math.min(4, gl.capabilities.getMaxAnisotropy());
+      const renderer = gl as unknown as { getMaxAnisotropy?: () => number; capabilities?: { getMaxAnisotropy(): number } };
+      texture.anisotropy = Math.min(4, renderer.getMaxAnisotropy?.() ?? renderer.capabilities?.getMaxAnisotropy() ?? 1);
       if (channel === 'diff') texture.colorSpace = SRGBColorSpace;
       return texture;
     };
@@ -108,47 +115,114 @@ export function detailSurface(material: MeshStandardMaterial, textures: SurfaceT
   material.needsUpdate = true;
 }
 
+function applySurfaceNodes(material: MeshStandardNodeMaterial, textures: SurfaceTextures, surface: Surface) {
+  const detailUv = positionWorld.xz.mul(surface === 'ground' ? .115 : surface === 'path' ? .28 : .45);
+  const albedo = texture(textures.diffuse, detailUv);
+  const arm = texture(textures.arm, detailUv);
+  const luma = dot(albedo.rgb, vec3(.2126, .7152, .0722));
+  const macro = sin(positionWorld.x.mul(.19).add(sin(positionWorld.z.mul(.11))))
+    .mul(cos(positionWorld.z.mul(.17)));
+  const contrast = luma.mul(1.35).add(.72).clamp(.68, 1.32).mul(macro.mul(.065).add(1));
+  const tint = surface === 'ground' ? mix(vec3(1), albedo.rgb.mul(.72), .22)
+    : surface === 'path' ? mix(vec3(1), albedo.rgb.mul(vec3(1.05, .94, .78)), .5)
+      : vec3(1);
+  material.colorNode = materialColor.rgb.mul(contrast).mul(tint);
+  material.roughnessNode = arm.g.mul(materialRoughness).clamp(.42, 1);
+  material.userData.openWorldNodeEffect = `surface:${surface}`;
+}
+
+function copyStandardAppearance(source: MeshStandardMaterial): MeshStandardNodeMaterial {
+  const material = new MeshStandardNodeMaterial({
+    name: source.name, color: source.color, map: source.map, lightMap: source.lightMap, lightMapIntensity: source.lightMapIntensity,
+    aoMap: source.aoMap, aoMapIntensity: source.aoMapIntensity, emissive: source.emissive, emissiveIntensity: source.emissiveIntensity,
+    emissiveMap: source.emissiveMap, bumpMap: source.bumpMap, bumpScale: source.bumpScale, normalMap: source.normalMap,
+    normalMapType: source.normalMapType, displacementMap: source.displacementMap, displacementScale: source.displacementScale,
+    displacementBias: source.displacementBias, roughness: source.roughness, roughnessMap: source.roughnessMap,
+    metalness: source.metalness, metalnessMap: source.metalnessMap, alphaMap: source.alphaMap, envMap: source.envMap,
+    envMapRotation: source.envMapRotation, envMapIntensity: source.envMapIntensity, wireframe: source.wireframe,
+    flatShading: source.flatShading, vertexColors: source.vertexColors, fog: source.fog, transparent: source.transparent,
+    opacity: source.opacity, alphaTest: source.alphaTest, side: source.side, shadowSide: source.shadowSide, depthTest: source.depthTest,
+    depthWrite: source.depthWrite, colorWrite: source.colorWrite, blending: source.blending, blendSrc: source.blendSrc,
+    blendDst: source.blendDst, blendEquation: source.blendEquation, polygonOffset: source.polygonOffset,
+    polygonOffsetFactor: source.polygonOffsetFactor, polygonOffsetUnits: source.polygonOffsetUnits, visible: source.visible,
+  });
+  material.normalScale.copy(source.normalScale);
+  material.userData = structuredClone(source.userData);
+  return material;
+}
+
+export type NormalizeMaterialOptions = { wind?: boolean; canopy?: boolean; surface?: Surface; textures?: SurfaceTextures };
+
+/** Convert imported MeshStandard materials without losing their authored PBR maps. */
+export function normalizeStandardMaterial(source: MeshStandardMaterial, options: NormalizeMaterialOptions = {}): MeshStandardNodeMaterial {
+  const material = copyStandardAppearance(source);
+  material.metalness = 0;
+  if (!material.roughnessMap) material.roughness = .95;
+  if (options.surface && options.textures) applySurfaceNodes(material, options.textures, options.surface);
+  else if (options.canopy) {
+    const crown = smoothstep(1, 5.5, positionLocal.y);
+    material.colorNode = materialColor.rgb.mul(crown.mul(.3).add(.77));
+    material.userData.openWorldNodeEffect = 'canopy';
+  }
+  if (options.wind) {
+    const tip = smoothstep(.04, .7, positionLocal.y);
+    const phase = positionLocal.x.mul(2.1).add(positionLocal.z.mul(1.7)).add(instanceIndex.mul(.618));
+    const clock = timerLocal();
+    const swayX = sin(clock.mul(1.35).add(phase)).mul(.035).mul(tip);
+    const swayZ = cos(clock.mul(1.05).add(phase)).mul(.022).mul(tip);
+    material.positionNode = positionLocal.add(vec3(swayX, 0, swayZ));
+    material.userData.openWorldNodeEffect = `${material.userData.openWorldNodeEffect ?? 'standard'}+wind`;
+  }
+  material.needsUpdate = true;
+  return material;
+}
+
+export function createWaterNodeMaterial({
+  lake = false,
+  center = lake ? [122, -50] : [-68, 202],
+  extent = [91, 33],
+  radius = 24,
+}: WaterMaterialOptions = {}): MeshStandardNodeMaterial {
+  const material = new MeshStandardNodeMaterial({
+    color: '#247e85', roughness: .19, metalness: 0, transparent: true, opacity: .88, depthWrite: false, envMapIntensity: 1.3,
+  });
+  const clock = timerLocal();
+  const waveA = sin(positionWorld.x.mul(1.9).add(positionWorld.z.mul(1.3)).add(clock.mul(1.15)));
+  const waveB = cos(positionWorld.x.mul(.85).sub(positionWorld.z.mul(1.7)).sub(clock.mul(.8)));
+  const ripple = sin(positionWorld.x.mul(5.1).add(positionWorld.z.mul(3.2)).sub(clock.mul(1.7)));
+  const waveNormal = normalize(normalView.add(vec3(waveA.mul(.12).add(ripple.mul(.025)), 0, waveB.mul(.095))));
+  const delta = positionWorld.xz.sub(vec2(center[0], center[1]));
+  const shore = lake
+    ? float(radius).sub(length(delta))
+    : min(float(extent[0]).sub(abs(delta.x)), float(extent[1]).sub(abs(delta.y)));
+  const shallow = float(1).sub(smoothstep(0, 3.5, shore));
+  const fresnel = pow(float(1).sub(max(dot(waveNormal, positionViewDirection), 0)), 3);
+  const foam = float(1).sub(smoothstep(.08, .65, shore)).mul(smoothstep(-.3, .7, waveA.add(waveB.mul(.35))));
+  let waterColor = mix(color('#247e85'), color('#1c6b59'), shallow.mul(.6));
+  waterColor = mix(waterColor, color('#6da8b8'), fresnel.mul(.5));
+  waterColor = mix(waterColor, color('#b8d6c2'), foam.mul(.72));
+  material.colorNode = waterColor.add(vec3(.1, .16, .13).mul(pow(max(waveA.mul(waveB), 0), 14)));
+  material.normalNode = waveNormal;
+  material.userData.openWorldNodeEffect = lake ? 'water:radial' : 'water:rectangular';
+  material.userData.openWorldWaterBounds = { center: [...center], extent: [...extent], radius };
+  return material;
+}
+
 export function SurfaceMaterial({ surface, color, vertexColors = false, visible = true }: { surface: Surface; color?: string; vertexColors?: boolean; visible?: boolean }) {
   const textures = useSurfaceTextures(surface);
   const material = useMemo(() => {
-    const result = new MeshStandardMaterial({ color, vertexColors, roughness: .94, metalness: 0,
+    const result = new MeshStandardNodeMaterial({ color, vertexColors, roughness: .94, metalness: 0,
       polygonOffset: surface === 'path', polygonOffsetFactor: -1, visible });
-    detailSurface(result, textures, surface);
+    applySurfaceNodes(result, textures, surface);
     return result;
   }, [color, vertexColors, textures, surface, visible]);
   useEffect(() => () => material.dispose(), [material]);
   return <primitive object={material} attach="material" />;
 }
 
-/** Analytic wave normals, sky reflections and shoreline foam in one material. */
-export function WaterMaterial({ lake = false }: { lake?: boolean }) {
-  const material = useMemo(() => {
-    const result = new MeshStandardMaterial({ color: '#247e85', roughness: .19, metalness: 0, transparent: true, opacity: .88, depthWrite: false, envMapIntensity: 1.3 });
-    const time = { value: 0 }; result.userData.time = time;
-    result.onBeforeCompile = shader => {
-      shader.uniforms.owWaterTime = time;
-      shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 owWaterWorld;')
-        .replace('#include <project_vertex>', '#include <project_vertex>\nowWaterWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;');
-      shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 owWaterWorld;\nuniform float owWaterTime;')
-        .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
-          float owWaveA = sin(owWaterWorld.x * 1.9 + owWaterWorld.z * 1.3 + owWaterTime * 1.15);
-          float owWaveB = cos(owWaterWorld.x * 0.85 - owWaterWorld.z * 1.7 - owWaterTime * 0.8);
-          float owRipple = sin(owWaterWorld.x * 5.1 + owWaterWorld.z * 3.2 - owWaterTime * 1.7);
-          normal = normalize(normal + mat3(viewMatrix) * vec3(owWaveA * 0.12 + owRipple * 0.025, 0.0, owWaveB * 0.095));
-          float owFresnel = pow(1.0 - max(dot(normal, normalize(vViewPosition)), 0.0), 3.0);
-          float owShore = ${lake ? '12.0 - length(owWaterWorld.xz - vec2(61.0, -25.0))' : 'min(45.5 - abs(owWaterWorld.x + 34.0), 16.5 - abs(owWaterWorld.z - 101.0))'};
-          float owShallow = 1.0 - smoothstep(0.0, 3.5, owShore);
-          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.11, 0.42, 0.35), owShallow * 0.6);
-          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.43, 0.66, 0.72), owFresnel * 0.5);
-          float owFoam = (1.0 - smoothstep(0.08, 0.65, owShore)) * smoothstep(-0.3, 0.7, owWaveA + owWaveB * 0.35);
-          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.72, 0.84, 0.76), owFoam * 0.72);
-          diffuseColor.rgb += vec3(0.1, 0.16, 0.13) * pow(max(0.0, owWaveA * owWaveB), 14.0);
-        `);
-    };
-    result.customProgramCacheKey = () => `ow-water-v2-${lake}`;
-    return result;
-  }, [lake]);
-  useFrame(({ clock }) => { material.userData.time.value = clock.elapsedTime; });
+/** Analytic TSL waves and geometry-derived shoreline foam; no render target or noise texture. */
+export function WaterMaterial({ lake = false, center, extent, radius }: WaterMaterialOptions) {
+  const material = useMemo(() => createWaterNodeMaterial({ lake, center, extent, radius }), [center?.[0], center?.[1], extent?.[0], extent?.[1], lake, radius]);
   useEffect(() => () => material.dispose(), [material]);
   return <primitive object={material} attach="material" />;
 }
@@ -173,9 +247,17 @@ export function SkyLighting() {
     const source = new DataTexture(pixels, width, height, RGBAFormat, FloatType);
     source.mapping = EquirectangularReflectionMapping;
     source.colorSpace = LinearSRGBColorSpace; source.needsUpdate = true;
-    const generator = new PMREMGenerator(gl), environment = generator.fromEquirectangular(source);
     const previous = scene.environment, intensity = scene.environmentIntensity;
-    scene.environment = environment.texture; scene.environmentIntensity = .32;
+    scene.environmentIntensity = .32;
+    if ((gl as unknown as { isWebGPURenderer?: boolean }).isWebGPURenderer) {
+      // Node materials route raw equirectangular environments through the
+      // common renderer PMREM cache. The legacy WebGL PMREMGenerator cannot
+      // consume WebGPURenderer.
+      scene.environment = source;
+      return () => { scene.environment = previous; scene.environmentIntensity = intensity; source.dispose(); };
+    }
+    const generator = new PMREMGenerator(gl), environment = generator.fromEquirectangular(source);
+    scene.environment = environment.texture;
     source.dispose(); generator.dispose();
     return () => { scene.environment = previous; scene.environmentIntensity = intensity; environment.dispose(); };
   }, [gl, scene]);

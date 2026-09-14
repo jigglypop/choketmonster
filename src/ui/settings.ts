@@ -1,4 +1,5 @@
 import { applyInterfacePreferences, DEFAULT_INTERFACE, readInterfacePreferences, writeInterfacePreferences, type InterfacePreferences } from './preferences';
+import { getGameAudioSettings, setGameAudioSettings, resumeGameAudio } from '../audio';
 
 export function mountInterfaceSettings(button: HTMLButtonElement): void {
   let preferences = { ...DEFAULT_INTERFACE }, revision = 0;
@@ -15,11 +16,18 @@ export function mountInterfaceSettings(button: HTMLButtonElement): void {
       <label class="settings-field"><span><strong>전투 패널 위치</strong><small>넓은 화면의 파트너·기술 패널</small></span><select id="interface-battle-position"><option value="right">오른쪽</option><option value="left">왼쪽</option><option value="bottom">아래 가운데</option></select></label>
       <label class="settings-field"><span><strong>팀 상세 배치</strong><small>좁은 화면에서는 한 열로 표시</small></span><select id="interface-team-layout"><option value="split">박스 옆에</option><option value="stack">넓게 한 열로</option></select></label>
       <label class="settings-field"><span><strong>패널 대비</strong><small>배경과 글씨를 더 뚜렷하게</small></span><select id="interface-contrast"><option value="normal">기본</option><option value="high">높게</option></select></label>
+      <label class="settings-field"><span><strong>모험 음악</strong><small>레드전 원곡 · YouTube 재생 음량</small></span><input aria-label="음악 음량" id="audio-music" type="range" min="0" max="100" step="1"></label>
+      <label class="settings-field"><span><strong>포켓몬 효과음</strong><small>만남 · 공격 · 포획</small></span><input aria-label="효과음 음량" id="audio-effects" type="range" min="0" max="100" step="1"></label>
+      <label class="settings-field"><span><strong>모든 소리 끄기</strong></span><input id="audio-muted" type="checkbox" aria-label="모든 소리 끄기"></label>
     </div><footer class="settings-footer"><button id="interface-reset">기본값으로</button><span id="interface-save-status" aria-live="polite"></span><button class="primary settings-done">완료</button></footer>`;
   document.body.append(dialog);
   const font = dialog.querySelector<HTMLInputElement>('#interface-font-size')!;
   const status = dialog.querySelector<HTMLElement>('#interface-save-status')!;
   const syncControls = () => {
+    const audio = getGameAudioSettings();
+    dialog.querySelector<HTMLInputElement>('#audio-music')!.value = String(Math.round(audio.musicVolume * 100));
+    dialog.querySelector<HTMLInputElement>('#audio-effects')!.value = String(Math.round(audio.effectsVolume * 100));
+    dialog.querySelector<HTMLInputElement>('#audio-muted')!.checked = audio.muted;
     font.value = String(Math.round(preferences.fontScale * 100));
     dialog.querySelector<HTMLOutputElement>('#interface-font-value')!.value = `${font.value}%`;
     for (const [id, property] of [['density', 'density'], ['battle-position', 'battlePosition'], ['team-layout', 'teamLayout'], ['contrast', 'contrast']] as const) {
@@ -35,6 +43,10 @@ export function mountInterfaceSettings(button: HTMLButtonElement): void {
     }).catch(() => { if (revision === changedRevision) status.textContent = '저장 실패 · 설정을 다시 선택해 주세요'; });
   };
   font.oninput = () => { preferences.fontScale = Number(font.value) / 100; save(); };
+  for (const [id, key] of [['music', 'musicVolume'], ['effects', 'effectsVolume']] as const) {
+    dialog.querySelector<HTMLInputElement>(`#audio-${id}`)!.oninput = event => { setGameAudioSettings({ [key]: Number((event.target as HTMLInputElement).value) / 100 }); void resumeGameAudio(); status.textContent = '음량을 저장했습니다.'; };
+  }
+  dialog.querySelector<HTMLInputElement>('#audio-muted')!.onchange = event => { setGameAudioSettings({ muted: (event.target as HTMLInputElement).checked }); status.textContent = '소리 설정을 저장했습니다.'; };
   for (const [id, property] of [['density', 'density'], ['battle-position', 'battlePosition'], ['team-layout', 'teamLayout'], ['contrast', 'contrast']] as const) {
     dialog.querySelector<HTMLSelectElement>(`#interface-${id}`)!.onchange = event => {
       preferences = { ...preferences, [property]: (event.target as HTMLSelectElement).value } as InterfacePreferences;

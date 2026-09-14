@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createGame } from '../../src/game/engine';
 import { ConnectomeController } from '../../src/game/connectome';
 import { defaultView, packSave } from '../../src/game/storage';
+import { openExplorePanel } from './helpers/explore-panel';
 
 async function slots(page: Page) {
   return page.evaluate(() => new Promise<Record<string, any>>((resolve, reject) => {
@@ -49,6 +50,7 @@ async function login(page: Page) {
   await page.locator('.account-dialog button[value="login"]').click();
   await expect(page.locator('.account-dialog')).toBeHidden();
   await expect(page.locator('.account-name')).toContainText('restore');
+  await openExplorePanel(page);
   await expect(page.locator('#world-pause')).toBeVisible();
 }
 
@@ -61,12 +63,13 @@ for (const existingGuest of [false, true]) {
     let guestSeed: unknown;
     if (existingGuest) {
       await page.locator('[data-starter="152"]').click();
+      await openExplorePanel(page);
       await expect(page.locator('#world-pause')).toBeVisible();
       await page.locator('#save-now').click();
       await expect.poll(async () => (await slots(page)).current?.game.seed, { timeout: 30000 }).toBeTruthy();
       guestSeed = (await slots(page)).current.game.seed;
       await login(page);
-    }
+    } else await openExplorePanel(page);
     await expect(page.locator('#world-pause')).toContainText('계속 탐험', { timeout: 30000 });
     await page.locator('.logout-button').click();
     await expect(page.locator('[data-open-auth]')).toBeEnabled({ timeout: 30000 });
@@ -81,6 +84,7 @@ for (const existingGuest of [false, true]) {
     if (existingGuest) expect(backups[0][1].game.seed).toEqual(guestSeed);
     const requestsAtLogout = { reads: state.reads, puts: state.puts.length };
     await page.reload();
+    await openExplorePanel(page);
     await expect(page.locator('#world-pause')).toContainText('계속 탐험', { timeout: 30000 });
     await expect(page.locator('#starter-dialog')).toBeHidden();
     await page.locator('[data-tab="team"]').click();
@@ -100,6 +104,7 @@ test('logout preserves a running adventure instead of saving the temporary trans
   test.setTimeout(90000);
   const { state } = await fixture(page, true, false);
   await page.goto('/');
+  await openExplorePanel(page);
   await expect(page.locator('#world-pause')).toContainText('일시 정지', { timeout: 30000 });
   await page.locator('.logout-button').click();
   await expect(page.locator('[data-open-auth]')).toBeEnabled({ timeout: 30000 });
@@ -112,6 +117,7 @@ test('a rejected logout keeps the current account and the previous device save',
   test.setTimeout(90000);
   const { state, user } = await fixture(page, false);
   await page.goto('/'); await page.locator('[data-starter="152"]').click();
+  await openExplorePanel(page);
   await expect(page.locator('#world-pause')).toBeVisible(); await login(page);
   const prior = (await slots(page)).current;
   state.rejectLogout = true;
@@ -136,6 +142,7 @@ test('pagehide during login cannot write the previous adventure into the new acc
     arrived = true; await gate; return route.fulfill({ json: { save, revision: 1 } });
   });
   await page.goto('/'); await page.locator('[data-starter="152"]').click();
+  await openExplorePanel(page);
   await expect(page.locator('#world-pause')).toBeVisible();
   await page.locator('[data-open-auth]').click();
   await page.locator('.account-dialog input[name="username"]').fill('restore');

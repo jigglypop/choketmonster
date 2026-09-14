@@ -1,0 +1,90 @@
+/* A single conversation column, with optional roster above it. */
+.adventure .social-dock { position:absolute; inset:auto auto 18px 18px; z-index:24; width:min(370px,calc(100% - 36px)); box-sizing:border-box; padding:10px; border:1px solid #a7d5c540; border-radius:12px; background:linear-gradient(180deg,#13352ee8,#142a2af5); box-shadow:0 5px 22px #071f2930; color:#f4fff9; font-size:calc(13px * var(--ui-font-scale,1)); }
+.social-toolbar { display:flex; align-items:center; gap:7px; height:27px; margin-bottom:6px; }
+.social-channel { display:flex; flex:1; align-items:center; gap:6px; min-width:0; white-space:nowrap; }
+.social-channel b { font-size:12px; font-weight:700; }
+.social-channel small { font-size:10px; color:#bedbd0; }
+#world-realtime-dot { width:6px; height:6px; flex:none; border-radius:50%; background:#a0ada8; }
+#world-realtime-dot[data-status=connected] { background:#63e6ae; box-shadow:0 0 6px #63e6ae44; }
+.social-dock button { cursor:pointer; color:#edfff5; font:inherit; }
+.social-toolbar > button,.social-players > summary { border:0; border-radius:6px; background:#a9d6c412; padding:5px 7px; font-size:11px; line-height:1.2; white-space:nowrap; }
+.social-players { margin:0; padding:0; border:0; }
+.social-players > summary { display:block; cursor:pointer; color:#c6eedc; list-style:none; }
+.social-players > summary::-webkit-details-marker { display:none; }
+.social-player-popover { position:absolute; inset:auto 0 calc(100% + 8px); max-height:min(340px,45dvh); box-sizing:border-box; overflow:auto; overscroll-behavior:contain; padding:14px; border:1px solid #88b8a877; border-radius:12px; background:#193c32fa; box-shadow:0 8px 28px #09261d66; }
+.social-identity { display:flex; justify-content:space-between; align-items:center; gap:10px; padding-bottom:10px; margin-bottom:10px; border-bottom:1px solid #b4dbca30; font-size:11px; }
+.social-identity span,.social-player-popover > small { color:#b2d2c4; font-size:11px; }
+.social-dock #world-player-list { display:grid; gap:5px; margin:0 0 10px; }
+.social-dock #world-player-list > button { display:flex; width:100%; align-items:center; gap:8px; padding:6px; background:#c0e6d710; border:1px solid transparent; border-radius:7px; text-align:left; }
+.social-dock #world-player-list > button:hover { border-color:#79d1ae; }
+.social-dock #world-player-list img { width:32px; height:32px; image-rendering:pixelated; }
+.social-dock #world-player-list span { display:block; flex:1; min-width:0; padding:0; background:none; }
+.social-dock #world-player-list b,.social-dock #world-player-list small { display:block; overflow-wrap:anywhere; }
+.social-dock #world-player-list small { font-size:11px; color:#bedbcd; opacity:1; }
+.social-dock #world-player-list i { font-style:normal; color:#7ce5d0; }
+.social-dock #world-chat-log { height:100px; max-height:18dvh; margin:0 0 8px; padding:0 2px; border:0; overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:#78aa9b66 transparent; background:none; }
+.social-dock #world-chat-log p { display:block; margin:0; padding:3px 0; border:0; line-height:1.5; overflow-wrap:anywhere; }
+.social-dock #world-chat-log b { display:inline; margin-right:7px; color:#8ce9c8; font-size:12px; font-weight:650; }
+.social-dock #world-chat-log span { display:inline; color:#fff; }
+.social-dock #world-chat-log time { display:none; }
+.social-dock #world-chat-log .chat-own b { color:#f6dea1; }
+.social-dock #world-chat-log .world-chat-empty { margin:25px 0 0; padding:0; font-size:12px; color:#abc9bb; }
+.social-dock.chat-collapsed #world-chat-log { display:none; }
+.social-dock #world-chat-form { display:flex; align-items:center; gap:6px; padding:4px 5px 4px 10px; border:1px solid #7fae9e99; border-radius:8px; background:linear-gradient(110deg,#31665399,#263c5588); }
+.social-dock #world-chat-form:focus-within { border-color:#87e6c1; box-shadow:0 0 0 2px #72d6a91c; }
+.social-dock #world-chat-input { flex:1; min-width:0; padding:8px 0; background:transparent; border:0; box-shadow:none; outline:none; color:#fff; font:inherit; }
+.social-dock #world-chat-input::placeholder { color:#c5dfd4; opacity:1; font-size:12px; }
+.social-dock #world-chat-input:disabled { opacity:.8; cursor:default; }
+.social-dock #world-chat-form button { flex:none; border:0; border-radius:6px; background:#83cfac; color:#102d23; min-width:32px; height:32px; padding:0 8px; font-size:16px; font-weight:700; }
+.social-dock #world-chat-form #world-chat-login { width:auto; font-size:11px; }
+.social-dock #world-chat-error { display:block; margin:5px 2px 0; font-size:11px; color:#f0c6a4; }
+.social-dock #world-chat-error:empty { display:none; }
+.social-dock #world-chat-latest { position:absolute; bottom:58px; left:50%; transform:translateX(-50%); padding:4px 10px; border:1px solid #a9e4c977; border-radius:14px; background:#285c4b; font-size:11px; white-space:nowrap; }
+.social-dock [hidden] { display:none!important; }
+#world-trainer-track { display:flex; align-items:center; gap:8px; padding:0 0 8px; margin:0 0 8px; border-bottom:1px solid #a9d2c133; }
+#world-trainer-track .trainer-destination { flex:1; border:0; background:none; padding:0; text-align:left; }
+#world-trainer-track b,#world-trainer-track small { display:block; }
+#world-trainer-track small { color:#b6decc; font-size:11px; }
+#world-trainer-track [data-stop-tracking] { background:none; border:0; padding:5px; }
+@media (min-width:721px) {
+ [data-battle-position=left] .adventure .world-lower-hud > .world-battle-hud { bottom:245px; max-height:calc(100dvh - 330px); }
+ [data-battle-position=left] .adventure .world-battle-deck { max-height:calc(100dvh - 405px); }
+ [data-battle-position=bottom] .adventure .world-lower-hud > .world-battle-hud { left:410px; right:18px; transform:none; width:auto; max-width:760px; }
+}
+@media (max-width:720px) {
+ .adventure .social-dock { inset:auto auto max(10px,env(safe-area-inset-bottom)) 10px; width:calc(100% - 20px); padding:8px; }
+ .social-channel small { display:none; }
+ .social-dock #world-chat-log { height:72px; max-height:12dvh; }
+ .social-dock #world-chat-log .world-chat-empty { margin-top:16px; }
+ .social-dock #world-chat-input { font-size:16px; padding:7px 0; }
+ .adventure .world-lower-hud > .world-battle-hud { bottom:192px; max-height:calc(100dvh - 310px); }
+ .adventure .world-battle-deck { max-height:calc(100dvh - 375px); }
+ .adventure:has(.chat-collapsed) .world-lower-hud > .world-battle-hud { bottom:112px; }
+ .adventure .world-lower-hud > .world-target { left:10px; bottom:192px; width:calc(100% - 20px); }
+ .adventure:has(.world-target:not([hidden])) .world-lower-hud > .world-battle-hud[open] { bottom:285px; }
+ .adventure .world-dpad { bottom:275px; }
+ .adventure .world-explore-scroll { max-height:min(42dvh,320px); }
+ .adventure .world-method { display:none; }
+}
+.adventure .world-explore-toggle { gap: 8px; }
+.adventure .world-explore-toggle strong, .adventure .world-explore-toggle small { display: block; }
+.adventure .world-explore-toggle strong { font-size: 15px; }
+.adventure .world-explore-toggle small { color: #a9c9bc; margin-top: 3px; font-size: 11px; font-weight: 400; }
+.adventure .world-explore-toggle i { font-style: normal; }
+.adventure .world-explore-scroll { max-height: calc(100dvh - 440px); }
+.adventure .world-feed, .adventure .world-respawn { display: none; }
+.adventure .world-method { bottom: 6px; right: 24px; opacity: .7; font-size: 10px; }
+.adventure .world-lower-hud > .world-target { bottom: 290px; left: 20px; }
+.map-trainer text { font-size: 5px; font-weight: 700; paint-order: stroke; stroke: #eff9e9; stroke-width: 1.5px; }
+#game-sound-toggle { white-space: nowrap; }
+.world-automation { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 8px; margin: 12px 0; padding: 12px; border: 1px solid var(--ui-border, #d7e4df); border-radius: 12px; }
+.world-automation legend { padding: 0 5px; font-size: 11px; font-weight: 700; color: #527367; }
+.world-automation label { display: flex; align-items: center; gap: 7px; font-size: 12px; cursor: pointer; }
+.world-automation input { margin: 0; accent-color: #23866e; width: 16px; height: 16px; }
+.world-portal-label { min-width:120px; max-width:210px; padding:7px 12px; color:#f3fff8; background:#183c36ed; border:1px solid #a6e2cb; border-radius:8px; box-shadow:0 3px 12px #0b241b66; cursor:pointer; text-align:center; white-space:nowrap; }
+.world-portal-label strong { display:block; font-size:13px; line-height:1.4; }
+.world-portal-label span { display:block; color:#baf1dc; font-size:11px; line-height:1.5; }
+.world-trainer-label { min-width:86px; padding:5px 9px; border:1px solid #e6d3a2; border-radius:7px; background:#3b3929e8; color:#fff8dd; cursor:pointer; white-space:nowrap; text-align:center; }
+.world-trainer-label strong,.world-trainer-label span { display:block; }
+.world-trainer-label strong { font-size:12px; }
+.world-trainer-label span { color:#e4d6af; font-size:10px; margin-top:2px; }

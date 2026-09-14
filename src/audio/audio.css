@@ -1,0 +1,31 @@
+.game-audio-controls {
+  display: grid;
+  grid-template-columns: auto minmax(5.5rem, 1fr);
+  align-items: center;
+  gap: .35rem .55rem;
+  font-size: .75rem;
+}
+#game-music-panel { position: fixed; z-index: 36; top: 78px; right: 188px; width: 320px; overflow: hidden; border: 1px solid #a2bdb2; border-radius: 12px; color: #ecfff6; background: #172b25; box-shadow: 0 8px 28px #12251d33; }
+#game-music-panel[hidden] { display: none; }
+#game-music-panel header { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; font-size: 12px; }
+#game-music-panel iframe { display: block; width: 320px; height: 200px; border: 0; }
+#game-music-panel button { padding: 5px 8px; border: 1px solid #607d70; background: #2e4b3f; border-radius: 6px; color: #fff; cursor: pointer; font-size: 11px; }
+#game-music-panel .music-actions { display: flex; align-items: center; gap: 8px; padding: 8px; }
+#game-music-panel .music-actions label { display: flex; align-items: center; gap: 4px; font-size: 11px; }
+#game-music-volume { width: 92px; accent-color: #67cda1; }
+#game-music-status, #game-music-panel > a { display: block; margin: 0 10px 8px; font-size: 10px; color: #b3cfc2; }
+@media (max-width: 720px) { #game-music-panel { top: 108px; right: max(10px, calc((100vw - 320px) / 2)); } }
+
+.game-audio-controls input[type="range"] {
+  min-width: 0;
+  accent-color: #f2d86f;
+}
+
+.game-audio-controls .game-audio-mute {
+  grid-column: 1 / -1;
+  min-height: 2rem;
+}
+
+@media (max-width: 720px) {
+  .game-audio-controls { grid-template-columns: 4rem minmax(7rem, 1fr); }
+}

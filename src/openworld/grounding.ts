@@ -1,18 +1,19 @@
 import { Box3, Object3D, SkinnedMesh, Vector3 } from 'three';
 import type { WorldSample } from './types';
+import { WORLD_MAX, WORLD_MIN } from './world-space';
 export { terrainPlateauHeight, type TerrainPlateau } from './terrain-elevation';
 
 export const TERRAIN_SEGMENTS = 72;
 
 /** Height on the rendered PlaneGeometry triangle, rather than the curved source function. */
 export function terrainSurfaceHeight(sample: (x: number, z: number) => WorldSample, x: number, z: number): number {
-  const size = 240 / TERRAIN_SEGMENTS;
-  const u = Math.max(0, Math.min(TERRAIN_SEGMENTS, (x + 120) / size));
-  const v = Math.max(0, Math.min(TERRAIN_SEGMENTS, (z + 120) / size));
+  const size = (WORLD_MAX - WORLD_MIN) / TERRAIN_SEGMENTS;
+  const u = Math.max(0, Math.min(TERRAIN_SEGMENTS, (x - WORLD_MIN) / size));
+  const v = Math.max(0, Math.min(TERRAIN_SEGMENTS, (z - WORLD_MIN) / size));
   const ix = Math.min(TERRAIN_SEGMENTS - 1, Math.floor(u)), iz = Math.min(TERRAIN_SEGMENTS - 1, Math.floor(v));
   const tx = u - ix, tz = v - iz;
-  const x0 = Math.fround(-120 + ix * size), z0 = Math.fround(-120 + iz * size);
-  const x1 = Math.fround(-120 + (ix + 1) * size), z1 = Math.fround(-120 + (iz + 1) * size);
+  const x0 = Math.fround(WORLD_MIN + ix * size), z0 = Math.fround(WORLD_MIN + iz * size);
+  const x1 = Math.fround(WORLD_MIN + (ix + 1) * size), z1 = Math.fround(WORLD_MIN + (iz + 1) * size);
   const a = Math.fround(sample(x0, z0).height), b = Math.fround(sample(x0, z1).height), d = Math.fround(sample(x1, z0).height);
   if (tx + tz <= 1) return a * (1 - tx - tz) + b * tz + d * tx;
   return b * (1 - tx) + Math.fround(sample(x1, z1).height) * (tx + tz - 1) + d * (1 - tz);

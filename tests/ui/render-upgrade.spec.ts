@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
+import { openExplorePanel } from './helpers/explore-panel';
 
 test('nameplates are opt-in and selection stays at bottom left on desktop and mobile', async ({ page }) => {
   test.setTimeout(90000);
@@ -9,6 +10,7 @@ test('nameplates are opt-in and selection stays at bottom left on desktop and mo
   page.on('response', response => { if (response.status() >= 400) failed.push(response.url()); });
   await page.goto(process.env.KANTO_URL ? `${process.env.KANTO_URL}?renderProbe` : '/?renderProbe');
   await page.locator('[data-starter="152"]').click();
+  await openExplorePanel(page);
   await page.locator('#world-mode-manual').click();
   await page.locator('#world-auto-hunt').uncheck();
   await page.locator('#world-pause').click();
@@ -44,7 +46,7 @@ test('nameplates are opt-in and selection stays at bottom left on desktop and mo
   expect(mobileTarget.y).toBeGreaterThan(844 * .75);
   expect((await page.locator('.topbar').boundingBox())!.height).toBeLessThanOrEqual(82);
   await page.screenshot({ path: 'artifacts/render-upgrade/mobile-selection.png' });
-  await page.locator('.world-battle-hud > summary').click();
+  await expect(page.locator('.world-battle-hud')).not.toHaveAttribute('open', '');
   expect(Math.abs((await target.boundingBox())!.y - mobileTarget.y)).toBeLessThan(1);
   expect((await partner.boundingBox())!.x).toBeGreaterThanOrEqual(mobileTarget.x + mobileTarget.width);
   await page.screenshot({ path: 'artifacts/render-upgrade/mobile.png' });

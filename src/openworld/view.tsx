@@ -1,5 +1,5 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
+import { Html, OrbitControls } from '@react-three/drei';
 import { Physics, RigidBody } from '@react-three/rapier';
 import { GaesupWorld, createCameraPlugin } from 'gaesup-world';
 import { createGaesupRuntime } from 'gaesup-world/runtime';
@@ -11,6 +11,7 @@ import {
   LoopOnce,
   LoopRepeat,
   BufferGeometry,
+  Box3,
   CanvasTexture,
   Color,
   DirectionalLight,
@@ -21,14 +22,12 @@ import {
   InstancedMesh,
   Material,
   Matrix4,
-  MOUSE,
   MathUtils,
   Mesh,
   MeshStandardMaterial,
   Object3D,
   Quaternion,
   SRGBColorSpace,
-  Spherical,
   Texture,
   Vector3,
 } from 'three';
@@ -55,15 +54,17 @@ import { initialYaw, movementYaw, turnTowards } from './motion';
 import { normalizePokemonModel } from './model-normalization';
 import './view.css';
 import { RenderProbe } from './render-probe';
-import { SkyLighting, SurfaceMaterial, WaterMaterial, detailCanopy, detailSurface, useSurfaceTextures, type SurfaceTextures } from './materials';
+import { SkyLighting, SurfaceMaterial, WaterMaterial, normalizeStandardMaterial, useSurfaceTextures, type SurfaceTextures } from './materials';
 import { AdaptiveResolution } from './adaptive-resolution';
-import { applyCameraAction, MAX_CAMERA_DISTANCE, MIN_CAMERA_DISTANCE, type CameraAction } from './camera-navigation';
+import { MAX_CAMERA_DISTANCE, MIN_CAMERA_DISTANCE } from './camera-navigation';
 import { findWorldPath, headingForStep } from './navigation';
-import { blockedBoundarySegments } from './blocked-boundaries';
 import { onRenderSuspension, renderingSuspended } from '../three/render-budget';
 
-const WORLD_MIN = -120;
-const WORLD_MAX = 120;
+import { WORLD_MIN, WORLD_MAX, WORLD_SCALE, surfaceSceneId } from './world-space';
+import { getCaveScene } from './caves';
+import { CaveInterior, ScenePortals } from './scene-landmarks';
+import { createOpenWorldRenderer } from './gpu-renderer';
+import type { WorldTrainer } from './types';
 const MODEL_CACHE_LIMIT = 16;
 const NATURE_DETAIL_RADIUS = 68;
 // Fog is fully opaque at 85 world units. The rounded 16-unit streaming cell can
@@ -76,7 +77,6 @@ const NATURE_SHADOW_CASTERS = new Set([
 ]);
 const loader = createGLTFLoader();
 const DEFAULT_CAMERA_OFFSET = new Vector3(5.6, 7.6, 8.8);
-type CameraCommand = { id: number; action: CameraAction };
 
 type CachedModel = {
   promise: Promise<GLTF>;
@@ -200,8 +200,7 @@ function fallbackSample(x: number, z: number): WorldSample {
 }
 
 function Terrain({ sampleWorld, chunk, atlas, onNavigate }: { sampleWorld: (x: number, z: number) => WorldSample; chunk: TerrainChunk; atlas: WorldAtlas; onNavigate?: (point: WorldPoint) => void }) {
-  const showBlockedBoundary = chunk.distance <= 44;
-  const { geometry, skirt, blockedBoundary } = useMemo(() => {
+  const { geometry, skirt } = useMemo(() => {
     const n = chunk.segments, stride = n + 1;
     const vertices: number[] = [], colors: number[] = [], indices: number[] = [];
     const palette: Record<WorldSample['biome'], Color> = {
@@ -234,32 +233,15 @@ function Terrain({ sampleWorld, chunk, atlas, onNavigate }: { sampleWorld: (x: n
     }
     const skirt = new BufferGeometry(); skirt.setAttribute('position', new Float32BufferAttribute(skirtVertices, 3));
     skirt.setAttribute('color', new Float32BufferAttribute(skirtColors, 3)); skirt.setIndex(skirtIndices); skirt.computeVertexNormals();
-    const blockedVertices: number[] = [], blockedIndices: number[] = [];
-    if (showBlockedBoundary) for (const segment of blockedBoundarySegments(sampleWorld, chunk.x, chunk.z)) {
-      const dx = segment.x2 - segment.x1, dz = segment.z2 - segment.z1, length = Math.hypot(dx, dz) || 1;
-      const sideX = -dz / length * .09, sideZ = dx / length * .09;
-      const start = blockedVertices.length / 3;
-      const y1 = terrainSurfaceHeight(sampleWorld, segment.x1, segment.z1) + .11;
-      const y2 = terrainSurfaceHeight(sampleWorld, segment.x2, segment.z2) + .11;
-      blockedVertices.push(segment.x1 + sideX, y1, segment.z1 + sideZ, segment.x1 - sideX, y1, segment.z1 - sideZ,
-        segment.x2 + sideX, y2, segment.z2 + sideZ, segment.x2 - sideX, y2, segment.z2 - sideZ);
-      blockedIndices.push(start, start + 2, start + 1, start + 1, start + 2, start + 3);
-    }
-    const blockedBoundary = new BufferGeometry();
-    blockedBoundary.setAttribute('position', new Float32BufferAttribute(blockedVertices, 3));
-    blockedBoundary.setIndex(blockedIndices);
-    return { geometry, skirt, blockedBoundary };
-  }, [chunk.x, chunk.z, chunk.segments, showBlockedBoundary, sampleWorld, atlas]);
-  useEffect(() => () => { geometry.dispose(); skirt.dispose(); blockedBoundary.dispose(); }, [geometry, skirt, blockedBoundary]);
+    return { geometry, skirt };
+  }, [chunk.x, chunk.z, chunk.segments, sampleWorld, atlas]);
+  useEffect(() => () => { geometry.dispose(); skirt.dispose(); }, [geometry, skirt]);
   const surface = <mesh geometry={geometry} receiveShadow name={`terrain-chunk:${chunk.key}:${chunk.segments}`} onClick={event => {
     event.stopPropagation(); if (event.button === 0 && event.delta <= 5) onNavigate?.({ x: event.point.x, z: event.point.z });
   }}><SurfaceMaterial surface="ground" vertexColors /></mesh>;
   return <group>
     {chunk.distance <= 20 ? <RigidBody type="fixed" colliders="trimesh" friction={1}>{surface}</RigidBody> : surface}
     <mesh geometry={skirt}><SurfaceMaterial surface="ground" vertexColors /></mesh>
-    {blockedBoundary.getAttribute('position').count > 0 && <mesh name={`blocked-boundary:${chunk.key}`} geometry={blockedBoundary} renderOrder={4}>
-      <meshBasicMaterial color="#f4c95d" transparent opacity={.82} depthWrite={false} />
-    </mesh>}
   </group>;
 }
 
@@ -303,49 +285,13 @@ function InstancedAsset({ url, placements, shadows, wind, rockTextures }: { url:
     gltf.scene.traverse(object => {
       if (!(object instanceof Mesh)) return;
       const source = Array.isArray(object.material) ? object.material : [object.material];
-      const normalized = source.map(material => {
-        const clone = material.clone();
-        if (clone instanceof MeshStandardMaterial) {
-          clone.metalness = 0;
-          // Imported assets retain their painted colors, UVs and normal maps.
-          if (!clone.roughnessMap) clone.roughness = .95;
-          if (url.includes('/props/tree-')) detailCanopy(clone);
-          if (rockTextures) detailSurface(clone, rockTextures, 'rock');
-          if (wind) {
-            clone.onBeforeCompile = shader => {
-              shader.uniforms.owWindTime = { value: 0 };
-              clone.userData.windTime = shader.uniforms.owWindTime;
-              shader.vertexShader = shader.vertexShader
-                .replace('#include <common>', '#include <common>\nuniform float owWindTime;')
-                .replace('#include <begin_vertex>', `#include <begin_vertex>
-                  float owTip = smoothstep(0.04, 0.7, position.y);
-                  float owPhase = position.x * 2.1 + position.z * 1.7;
-                  #ifdef USE_INSTANCING
-                    owPhase += instanceMatrix[3].x * 0.13 + instanceMatrix[3].z * 0.17;
-                  #endif
-                  transformed.x += sin(owWindTime * 1.35 + owPhase) * 0.035 * owTip;
-                  transformed.z += cos(owWindTime * 1.05 + owPhase) * 0.022 * owTip;`);
-            };
-            clone.customProgramCacheKey = () => 'openworld-soft-wind-v1';
-          }
-          clone.needsUpdate = true;
-        }
-        return clone;
-      });
+      const normalized = source.map(material => material instanceof MeshStandardMaterial
+        ? normalizeStandardMaterial(material, { wind, canopy: url.includes('/props/tree-'), surface: rockTextures ? 'rock' : undefined, textures: rockTextures })
+        : material.clone());
       meshes.push({ geometry: object.geometry, material: Array.isArray(object.material) ? normalized : normalized[0], matrix: object.matrixWorld.clone() });
     });
     return meshes;
   }, [gltf, wind, rockTextures, url]);
-  useFrame(({ clock }) => {
-    if (!wind) return;
-    for (const part of parts) {
-      const materials = Array.isArray(part.material) ? part.material : [part.material];
-      for (const material of materials) {
-        const uniform = material.userData.windTime as { value: number } | undefined;
-        if (uniform) uniform.value = clock.elapsedTime;
-      }
-    }
-  });
   useEffect(() => () => {
     for (const part of parts) {
       const materials = Array.isArray(part.material) ? part.material : [part.material];
@@ -410,14 +356,14 @@ function TownPaving({ color }: { color: string }) {
     if (!ref.current) return;
     const matrix = new Matrix4(), base = new Color(color), cream = new Color('#e7dfc9');
     tiles.forEach(([x, z], index) => {
-      ref.current!.setMatrixAt(index, matrix.makeTranslation(x * 1.12, -.015, z * 1.12));
+      ref.current!.setMatrixAt(index, matrix.makeTranslation(x * 1.12 * WORLD_SCALE, -.015, z * 1.12 * WORLD_SCALE));
       ref.current!.setColorAt(index, cream.clone().lerp(base, (x + z) % 2 === 0 ? .34 : .12));
     });
     ref.current.instanceMatrix.needsUpdate = true;
     if (ref.current.instanceColor) ref.current.instanceColor.needsUpdate = true;
   }, [color, tiles]);
   return <instancedMesh ref={ref} args={[undefined, undefined, tiles.length]} receiveShadow name="town-paving">
-    <boxGeometry args={[1.08, .045, 1.08]} /><meshStandardMaterial roughness={.94} />
+    <boxGeometry args={[1.125 * WORLD_SCALE, .045, 1.125 * WORLD_SCALE]} /><meshStandardMaterial roughness={.94} />
   </instancedMesh>;
 }
 
@@ -485,7 +431,7 @@ function TrailAndWater({ sampleWorld, player, badges, atlas, visible }: { sample
       const from = locations.get(fromId)!, to = locations.get(toId)!;
       const dx = to.x - from.x, dz = to.z - from.z, length = Math.hypot(dx, dz) || 1;
       const steps = Math.max(1, Math.ceil(length / 5));
-      const sideX = -dz / length * 2.05, sideZ = dx / length * 2.05;
+      const sideX = -dz / length * 2.05 * WORLD_SCALE, sideZ = dx / length * 2.05 * WORLD_SCALE;
       const offset = vertices.length / 3;
       for (let step = 0; step <= steps; step += 1) {
         const t = step / steps, x = from.x + dx * t, z = from.z + dz * t;
@@ -513,20 +459,20 @@ function TrailAndWater({ sampleWorld, player, badges, atlas, visible }: { sample
   return (
     <group name={`region-landmarks:${atlas.id}`} userData={{ gaesupWorldObject: 'region-landmarks' }}>
       <mesh geometry={trail} receiveShadow><SurfaceMaterial surface="path" color="#b89a68" /></mesh>
-      {atlas.id === 'kanto' && <><mesh position={[-34, -.66, 101]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}>
-        <planeGeometry args={[91, 33]} /><WaterMaterial />
+      {atlas.id === 'kanto' && <><mesh position={[-34 * WORLD_SCALE, -.66, 101 * WORLD_SCALE]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}>
+        <planeGeometry args={[91 * WORLD_SCALE, 33 * WORLD_SCALE]} /><WaterMaterial center={[-34 * WORLD_SCALE, 101 * WORLD_SCALE]} extent={[45.5 * WORLD_SCALE, 16.5 * WORLD_SCALE]} />
       </mesh>
-      <mesh position={[61, -.66, -25]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}>
-        <circleGeometry args={[12, 48]} /><WaterMaterial lake />
+      <mesh position={[61 * WORLD_SCALE, -.66, -25 * WORLD_SCALE]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}>
+        <circleGeometry args={[12 * WORLD_SCALE, 48]} /><WaterMaterial lake center={[61 * WORLD_SCALE, -25 * WORLD_SCALE]} radius={12 * WORLD_SCALE} />
       </mesh></>}
-      {atlas.id !== 'kanto' && atlas.locations.filter(item => item.kind === 'sea' && Math.hypot(item.x - player.x, item.z - player.z) < 90).map(item => <mesh key={item.id} position={[item.x, sampleWorld(item.x, item.z).height + .025, item.z]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}><circleGeometry args={[12, 32]} /><WaterMaterial lake /></mesh>)}
+      {atlas.id !== 'kanto' && atlas.locations.filter(item => item.kind === 'sea' && Math.hypot(item.x - player.x, item.z - player.z) < 90).map(item => <mesh key={item.id} position={[item.x, sampleWorld(item.x, item.z).height + .025, item.z]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}><circleGeometry args={[12 * WORLD_SCALE, 32]} /><WaterMaterial lake center={[item.x, item.z]} radius={12 * WORLD_SCALE} /></mesh>)}
       {atlas.id !== 'kanto' && atlas.locations.filter(item => item.kind === 'special' && Math.hypot(item.x - player.x, item.z - player.z) < 70 && visible(item.x, 5, item.z, 10)).map(item => <RegionalLandmark key={item.id} region={atlas.id} x={item.x} y={terrainSurfaceHeight(sampleWorld, item.x, item.z)} z={item.z} />)}
-      {atlas.locations.filter(item => item.kind === 'town' && Math.hypot(item.x - player.x, item.z - player.z) <= 85 && visible(item.x, 3, item.z, 14)).map(town => <group key={town.id} name={`town:${town.id}`} position={[town.x, terrainSurfaceHeight(sampleWorld, town.x, town.z) + .05, town.z]}>
+      {atlas.locations.filter(item => item.kind === 'town' && Math.hypot(item.x - player.x, item.z - player.z) <= 85 && visible(item.x, 3, item.z, 14 * WORLD_SCALE)).map(town => <group key={town.id} name={`town:${town.id}`} position={[town.x, terrainSurfaceHeight(sampleWorld, town.x, town.z) + .05, town.z]}>
         <TownPaving color={townColors[town.id] ?? atlas.palette.town} />
-        {atlas.buildingOffsets(town).map(([x, z], index) => <group key={index} position={[x, 0, z]}>
+        {atlas.buildingOffsets(town).map(([x, z], index) => <group key={index} position={[x, 0, z]} scale={WORLD_SCALE}>
           <TownBuilding townId={town.id} townColor={townColors[town.id] ?? atlas.palette.town} index={index} />
         </group>)}
-        <group position={[0, 0, -6]}>
+        <group position={[0, 0, -6 * WORLD_SCALE]}>
           <mesh position={[0, .9, 0]} castShadow><boxGeometry args={[2.4, 1.15, .24]} /><meshStandardMaterial color="#eadb9d" /></mesh>
           <mesh position={[-.82, .35, 0]}><boxGeometry args={[.16, 1.1, .16]} /><meshStandardMaterial color="#6b4b2c" /></mesh>
           <mesh position={[.82, .35, 0]}><boxGeometry args={[.16, 1.1, .16]} /><meshStandardMaterial color="#6b4b2c" /></mesh>
@@ -775,7 +721,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return target.isContentEditable || ['TEXTAREA', 'SELECT'].includes(target.tagName);
 }
 
-function PlayerCamera({ snapshot, options, command, destination, onDestination }: { snapshot: OpenWorldRenderSnapshot; options: OpenWorldViewOptions; command: CameraCommand; destination: WorldPoint | null; onDestination: (point: WorldPoint | null) => void }) {
+function PlayerCamera({ snapshot, options, destination, onDestination }: { snapshot: OpenWorldRenderSnapshot; options: OpenWorldViewOptions; destination: WorldPoint | null; onDestination: (point: WorldPoint | null) => void }) {
   const controls = useRef<OrbitControlsImpl>(null);
   const keys = useRef(new Set<string>());
   const position = useRef(new Vector3(snapshot.player.x, terrainSurfaceHeight(options.sampleWorld ?? fallbackSample, snapshot.player.x, snapshot.player.z), snapshot.player.z));
@@ -784,8 +730,6 @@ function PlayerCamera({ snapshot, options, command, destination, onDestination }
   const right = useRef(new Vector3());
   const movement = useRef(new Vector3());
   const cameraTarget = useRef(new Vector3());
-  const orbitOffset = useRef(new Vector3());
-  const spherical = useRef(new Spherical());
   const listenersReady = useRef(false);
   const path = useRef<WorldPoint[]>([]);
   const announcedReady = useRef(false);
@@ -819,23 +763,6 @@ function PlayerCamera({ snapshot, options, command, destination, onDestination }
     camera.position.copy(initialTarget).add(DEFAULT_CAMERA_OFFSET);
     controls.current?.update();
   }, [camera]);
-  useEffect(() => {
-    const control = controls.current;
-    if (!control || command.id === 0) return;
-    if (command.action === 'reset') {
-      control.target.set(position.current.x, position.current.y + 1.2, position.current.z);
-      camera.position.copy(control.target).add(DEFAULT_CAMERA_OFFSET);
-      control.update();
-      return;
-    }
-    orbitOffset.current.copy(camera.position).sub(control.target);
-    spherical.current.setFromVector3(orbitOffset.current);
-    const next = applyCameraAction(spherical.current, command.action);
-    spherical.current.set(next.radius, next.phi, next.theta);
-    orbitOffset.current.setFromSpherical(spherical.current);
-    camera.position.copy(control.target).add(orbitOffset.current);
-    control.update();
-  }, [camera, command]);
   useEffect(() => {
     const down = (event: KeyboardEvent) => {
       if (isTypingTarget(event.target)) return;
@@ -925,15 +852,15 @@ function PlayerCamera({ snapshot, options, command, destination, onDestination }
     }
   });
 
-  return <OrbitControls ref={controls} makeDefault enablePan={false} enableDamping dampingFactor={.08} mouseButtons={{ LEFT: undefined as unknown as MOUSE, MIDDLE: MOUSE.DOLLY, RIGHT: MOUSE.ROTATE }} minDistance={MIN_CAMERA_DISTANCE} maxDistance={MAX_CAMERA_DISTANCE} minPolarAngle={.38} maxPolarAngle={1.18} />;
+  return <OrbitControls ref={controls} makeDefault enablePan={false} enableDamping dampingFactor={.08} minDistance={MIN_CAMERA_DISTANCE} maxDistance={MAX_CAMERA_DISTANCE} minPolarAngle={.38} maxPolarAngle={1.18} />;
 }
 
-function Sunlight({ player }: { player: { x: number; z: number } }) {
+function Sunlight({ player, daylight = 1 }: { player: { x: number; z: number }; daylight?: number }) {
   const sun = useRef<DirectionalLight>(null);
   const target = useMemo(() => new Object3D(), []);
   const x = Math.round(player.x / 4) * 4, z = Math.round(player.z / 4) * 4;
   useLayoutEffect(() => { target.position.set(x, 0, z); target.updateMatrixWorld(); }, [x, z, target]);
-  return <><primitive object={target} /><directionalLight ref={sun} target={target} position={[x + 28, 52, z + 22]} intensity={2.6} color="#fff0d5" castShadow
+  return <><primitive object={target} /><directionalLight ref={sun} target={target} position={[x + 28, 52, z + 22]} intensity={.18 + daylight * 2.42} color={daylight < .35 ? '#abc3ee' : '#fff0d5'} castShadow
     shadow-mapSize={[1024, 1024]} shadow-camera-near={1} shadow-camera-far={150}
     shadow-camera-left={-44} shadow-camera-right={44} shadow-camera-top={44} shadow-camera-bottom={-44}
     shadow-normalBias={.10} shadow-bias={-.0004} /></>;
@@ -972,27 +899,48 @@ function useViewWindow() {
   return { ...windowState, visible };
 }
 
-function Scene({ snapshot, options, cameraCommand, showLabels, destination, onNavigate, onDestination }: { snapshot: OpenWorldRenderSnapshot; options: OpenWorldViewOptions; cameraCommand: CameraCommand; showLabels: boolean; destination: WorldPoint | null; onNavigate: (point: WorldPoint) => void; onDestination: (point: WorldPoint | null) => void }) {
+function TrainerActor({ trainer, sample, player, onNavigate, onChallenge }: { trainer: WorldTrainer; sample(x: number, z: number): WorldSample; player: WorldPoint; onNavigate(point: WorldPoint): void; onChallenge(id: string): void }) {
+  const source = useCachedModel('/models/trainer.glb');
+  const object = useMemo(() => {
+    if (!source) return null;
+    const clone = cloneSkinned(source.scene), box = new Box3().setFromObject(clone), scale = 1.65 / Math.max(.01, box.max.y - box.min.y);
+    clone.scale.multiplyScalar(scale); clone.position.y -= box.min.y * scale;
+    return clone;
+  }, [source]);
+  const interact = () => { if (Math.hypot(trainer.x - player.x, trainer.z - player.z) > 5) onNavigate(trainer); else onChallenge(trainer.id); };
+  return <group name={`field-trainer:${trainer.id}`} position={[trainer.x, terrainSurfaceHeight(sample, trainer.x, trainer.z), trainer.z]} onClick={event => { event.stopPropagation(); interact(); }}>
+    {object && <primitive object={object} />}
+    <Html center position={[0, 2.1, 0]} zIndexRange={[10, 9]}><button className="world-trainer-label" data-field-trainer={trainer.id} onClick={interact}><strong>{trainer.name}</strong><span>{trainer.trainerClass} · 배틀</span></button></Html>
+  </group>;
+}
+
+function Scene({ snapshot, options, showLabels, destination, onNavigate, onDestination }: { snapshot: OpenWorldRenderSnapshot; options: OpenWorldViewOptions; showLabels: boolean; destination: WorldPoint | null; onNavigate: (point: WorldPoint) => void; onDestination: (point: WorldPoint | null) => void }) {
   const atlas = getWorldAtlas(snapshot.regionId ?? 'kanto');
-  const sample = atlas.sample;
+  const sceneId = snapshot.sceneId ?? surfaceSceneId(atlas.id), cave = getCaveScene(sceneId);
+  const sample = cave?.sample ?? atlas.sample;
+  const daylight = snapshot.daylightIntensity ?? 1;
+  const skyColor = useMemo(() => cave ? new Color('#182326') : new Color('#14263d').lerp(new Color('#afcfc1'), daylight), [cave, daylight]);
   const worldOptions = useMemo(() => ({ ...options, sampleWorld: sample }), [options, sample]);
   const windowState = useViewWindow();
   const chunks = useMemo(() => terrainChunks(snapshot.player, windowState.visible), [snapshot.player.x, snapshot.player.z, windowState.visible]);
   const visible = useMemo(() => creatureLods(snapshot.entities, snapshot.player, windowState.visible, windowState.mobile, snapshot.selectedWildId), [snapshot, windowState]);
   const { scene } = useThree();
-  useFrame(() => { scene.userData.streaming = { region: atlas.id, player: { x: snapshot.player.x, z: snapshot.player.z }, terrainChunks: chunks.length, terrainTotal: 36, highDetailChunks: chunks.filter(c => c.segments === 12).length,
+  useFrame(() => { scene.userData.streaming = { region: atlas.id, sceneId, daylight, player: { x: snapshot.player.x, z: snapshot.player.z }, terrainChunks: cave ? 0 : chunks.length, terrainTotal: ((WORLD_MAX - WORLD_MIN) / TERRAIN_CHUNK_SIZE) ** 2, highDetailChunks: chunks.filter(c => c.segments === 12).length,
     visibleCreatures: visible.length, detailedCreatures: visible.filter(v => v.model && hasPokemonModel(v.creature.speciesId)).length, cachedModels: modelCache.size, activeLoads, queuedLoads: loadQueue.length, modelLimit: windowState.mobile ? 4 : 8 }; });
   return (
     <>
-      <color attach="background" args={['#afcfc1']} />
-      <fog attach="fog" args={['#afcfc1', 48, 85]} />
-      <hemisphereLight args={['#d9eeed', '#66703c', 1.1]} />
+      <color attach="background" args={[skyColor]} />
+      <fog attach="fog" args={[skyColor, cave ? 28 : 48, cave ? 65 : 85]} />
+      <hemisphereLight args={[cave ? '#b9cbd1' : '#d9eeed', '#434f3f', cave ? .85 : .4 + daylight * .7]} />
       <SkyLighting />
-      <Sunlight player={snapshot.player} />
+      {!cave && <Sunlight player={snapshot.player} daylight={daylight} />}
+      {cave && <pointLight position={[snapshot.player.x, 5, snapshot.player.z]} color="#ffdda6" intensity={35} distance={28} decay={1.4} />}
       <Physics gravity={[0, -18, 0]} timeStep="vary">
-        <group key={`terrain:${atlas.id}`}>{chunks.map(chunk => <Terrain key={`${chunk.key}:${chunk.segments}`} sampleWorld={sample} atlas={atlas} chunk={chunk} onNavigate={onNavigate} />)}</group>
-        <Nature key={`nature:${atlas.id}`} sampleWorld={sample} player={snapshot.player} atlas={atlas} isVisible={windowState.visible} />
-        <TrailAndWater key={`water:${atlas.id}`} sampleWorld={sample} player={snapshot.player} atlas={atlas} visible={windowState.visible} badges={(snapshot as OpenWorldRenderSnapshot & { badges?: number }).badges ?? 0} />
+        {cave ? <CaveInterior cave={cave} onNavigate={onNavigate} /> : <>
+          <group key={`terrain:${sceneId}`}>{chunks.map(chunk => <Terrain key={`${chunk.key}:${chunk.segments}`} sampleWorld={sample} atlas={atlas} chunk={chunk} onNavigate={onNavigate} />)}</group>
+          <Nature key={`nature:${sceneId}`} sampleWorld={sample} player={snapshot.player} atlas={atlas} isVisible={windowState.visible} />
+          <TrailAndWater key={`water:${sceneId}`} sampleWorld={sample} player={snapshot.player} atlas={atlas} visible={windowState.visible} badges={snapshot.badges ?? 0} />
+        </>}
         {options.terrainUrl && <StaticModel item={{
           id: 'openworld-terrain',
           url: options.terrainUrl,
@@ -1006,12 +954,14 @@ function Scene({ snapshot, options, cameraCommand, showLabels, destination, onNa
         {options.props?.filter(item => Math.hypot(item.x - snapshot.player.x, item.z - snapshot.player.z) < 85 && windowState.visible(item.x, item.y ?? 0, item.z, 8)).map(item => <StaticModel key={item.id} item={item} />)}
         <FoodInstances foods={snapshot.foods} sampleWorld={sample} />
       </Physics>
+      <ScenePortals sceneId={sceneId} regionId={atlas.id} player={snapshot.player} sample={sample} onNavigate={onNavigate} onPortal={() => options.onPortal?.('nearest')} />
+      {(snapshot.trainers ?? []).map(trainer => <TrainerActor key={trainer.id} trainer={trainer} sample={sample} player={snapshot.player} onNavigate={onNavigate} onChallenge={id => options.onTrainer?.(id)} />)}
       {visible.map(({ creature, distance, model }) => <Creature key={creature.id} creature={creature} selected={creature.id === snapshot.selectedWildId} showLabels={showLabels} distance={distance} model={model} options={worldOptions} />)}
       {destination && <group position={[destination.x, terrainSurfaceHeight(sample, destination.x, destination.z) + .08, destination.z]}>
         <mesh rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[.42, .62, 28]} /><meshBasicMaterial color="#ffe27a" transparent opacity={.9} /></mesh>
         <mesh position={[0, .08, 0]} rotation={[-Math.PI / 2, 0, 0]}><circleGeometry args={[.13, 20]} /><meshBasicMaterial color="#fff4b8" /></mesh>
       </group>}
-      <PlayerCamera key={atlas.id} snapshot={snapshot} options={worldOptions} command={cameraCommand} destination={destination} onDestination={onDestination} />
+      <PlayerCamera key={sceneId} snapshot={snapshot} options={worldOptions} destination={destination} onDestination={onDestination} />
     </>
   );
 }
@@ -1028,16 +978,14 @@ function OpenWorldApp({ store, options }: { store: SnapshotStore; options: OpenW
   const runtime = useMemo(() => createGaesupRuntime({ plugins: [createCameraPlugin()], pluginRuntime: 'client' }), []);
   const [ready, setReady] = useState(false);
   const [renderDpr, setRenderDpr] = useState(() => Math.min(window.devicePixelRatio || 1, 1.5));
-  const [showLabels, setShowLabels] = useState(() => { try { return localStorage.getItem('choketmon-nameplates') === 'true'; } catch { return false; } });
-  const toggleLabels = () => setShowLabels(previous => { try { localStorage.setItem('choketmon-nameplates', String(!previous)); } catch { /* Session-only preference when storage is unavailable. */ } return !previous; });
-  const [cameraCommand, setCameraCommand] = useState<CameraCommand>({ id: 0, action: 'reset' });
+  const [showLabels, setShowLabels] = useState(true);
+  const toggleLabels = () => setShowLabels(previous => !previous);
   const [destination, setDestination] = useState<WorldPoint | null>(null);
-  useEffect(() => { setDestination(null); }, [snapshot.regionId]);
+  useEffect(() => { setDestination(null); }, [snapshot.regionId, snapshot.sceneId]);
   const navigate = useCallback((point: WorldPoint) => {
     if (options.onNavigationStart?.() === false) return;
     setDestination(point);
   }, [options]);
-  const moveCamera = (action: CameraAction) => setCameraCommand(previous => ({ id: previous.id + 1, action }));
   useEffect(() => {
     let active = true;
     runtime.setup().then(() => { if (active) setReady(true); });
@@ -1049,31 +997,22 @@ function OpenWorldApp({ store, options }: { store: SnapshotStore; options: OpenW
       runtimeRevision={ready ? 1 : 0}
       mode={{ type: 'character', controller: 'keyboard', control: 'thirdPerson' }}
       cameraOption={{ type: 'thirdPerson', distance: 12, height: 5, fov: 48, enableZoom: true, minZoom: 4, maxZoom: 28, enableCollision: true, bounds: { minX: WORLD_MIN, maxX: WORLD_MAX, minZ: WORLD_MIN, maxZ: WORLD_MAX } }}
-      worldSize={{ width: 240, height: 48, depth: 240 }}
+      worldSize={{ width: WORLD_MAX - WORLD_MIN, height: 48, depth: WORLD_MAX - WORLD_MIN }}
       enablePhysics
       gravity={[0, -18, 0]}
     >
-      <Canvas frameloop={renderPaused ? 'never' : 'always'} shadows dpr={renderDpr} camera={{ position: [12, 18, 16], fov: 48, near: .1, far: 160 }} gl={{ antialias: true, powerPreference: 'high-performance' }} onPointerMissed={() => options.onSelect(null)}>
+      <Canvas frameloop={renderPaused ? 'never' : 'always'} shadows dpr={renderDpr} camera={{ position: [12, 18, 16], fov: 48, near: .1, far: 160 }} gl={defaults => createOpenWorldRenderer({ ...defaults, canvas: defaults.canvas as HTMLCanvasElement }, { forceWebGL: new URLSearchParams(location.search).get('renderer') === 'webgl' })} onPointerMissed={() => options.onSelect(null)}>
         <AdaptiveResolution setDpr={setRenderDpr} />
         <SaveRenderBudget />
         {new URLSearchParams(location.search).has('renderProbe') && <RenderProbe />}
         <group name="gaesup-world">
-          <Scene snapshot={snapshot} options={options} cameraCommand={cameraCommand} showLabels={showLabels} destination={destination} onNavigate={navigate} onDestination={setDestination} />
+          <Scene snapshot={snapshot} options={options} showLabels={showLabels} destination={destination} onNavigate={navigate} onDestination={setDestination} />
         </group>
       </Canvas>
       {!ready && <div className="ow-loading">Gaesup World 준비 중…</div>}
-      <div className="ow-camera-controls" aria-label="카메라 시점 조절">
-        <button type="button" onClick={() => moveCamera('left')} aria-label="카메라 왼쪽 회전">↶</button>
-        <button type="button" onClick={() => moveCamera('right')} aria-label="카메라 오른쪽 회전">↷</button>
-        <button type="button" onClick={() => moveCamera('up')} aria-label="카메라 위로 회전">↑</button>
-        <button type="button" onClick={() => moveCamera('down')} aria-label="카메라 아래로 회전">↓</button>
-        <button type="button" onClick={() => moveCamera('zoom-in')} aria-label="카메라 확대">＋</button>
-        <button type="button" onClick={() => moveCamera('zoom-out')} aria-label="카메라 축소">－</button>
-        <button type="button" className="ow-camera-reset" onClick={() => moveCamera('reset')}>시점 초기화</button>
+      <div className="ow-camera-controls" aria-label="이름과 체력 표시">
         <button type="button" id="world-nameplates" className="ow-camera-reset" aria-label="포켓몬 이름·HP 표시" aria-pressed={showLabels} onClick={toggleLabels}>이름·HP</button>
       </div>
-      <div className="ow-terrain-key"><i aria-hidden="true" />노란 선 · 통행 불가 지형 경계</div>
-      <div className="ow-help">WASD / 방향키 이동 · 드래그 시점 · 휠 확대 · 포켓몬 선택</div>
     </GaesupWorld>
   );
 }

@@ -5,6 +5,7 @@ import { createGame, createMonster, experienceAtLevel, type GameState } from '..
 import { defaultView, packSave, type SaveEnvelope } from '../../src/game/storage';
 import { OpenWorldSimulation } from '../../src/openworld/simulation';
 import { KANTO_LOCATIONS } from '../../src/openworld/kanto';
+import { openExplorePanel } from './helpers/explore-panel';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8'));
 const policy = JSON.parse(readFileSync('public/data/openworld-policy.json', 'utf8'));
@@ -23,6 +24,7 @@ async function load(page: Page, save: SaveEnvelope) {
   await page.locator('[data-starter="152"]').click();
   await page.locator('#import-file').setInputFiles({ name: 'flow.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(save)) });
   await expect(page.locator('#toast')).toContainText('불러왔습니다');
+  await openExplorePanel(page);
 }
 
 async function exported(page: Page) {

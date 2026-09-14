@@ -60,6 +60,90 @@ pub struct LocalBatchResponse {
     pub decisions: Vec<LocalDecision>,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalCheckpointRequest {
+    pub client_id: String,
+    pub creature_id: String,
+    pub last_request_id: String,
+    pub checkpoint: Option<String>,
+    pub checkpoint_id: Option<String>,
+    #[serde(default)]
+    pub history: Vec<LocalHistoryStep>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalCheckpointResponse {
+    pub checkpoint: String,
+    pub checkpoint_id: String,
+}
+
+/// Materialize an already recorded head. No new action, reward or random draw
+/// is added; replay uses the donor's original initialization seed.
+pub fn materialize_checkpoint(
+    graph: &Connectome,
+    request: LocalCheckpointRequest,
+) -> Result<LocalCheckpointResponse, LocalError> {
+    validate_client_id(&request.client_id)?;
+    validate_identifier(&request.creature_id)?;
+    validate_identifier(&request.last_request_id)?;
+    if request.history.len() > MAX_HISTORY
+        || request.checkpoint.is_some() != request.checkpoint_id.is_some()
+    {
+        return Err(LocalError::Invalid("Invalid checkpoint and history pair."));
+    }
+    if let Some(id) = &request.checkpoint_id {
+        validate_identifier(id)?;
+    }
+    let head = request
+        .history
+        .last()
+        .map(|step| step.request_id.as_str())
+        .or(request.checkpoint_id.as_deref());
+    if head != Some(request.last_request_id.as_str()) {
+        return Err(LocalError::Invalid(
+            "Checkpoint history does not end at the requested head.",
+        ));
+    }
+    let mut ids = HashSet::new();
+    for step in &request.history {
+        validate_identifier(&step.request_id)?;
+        validate_identifier(&step.episode_id)?;
+        validate_step_values(&step.inputs, &step.available, step.reward)?;
+        if !ids.insert(&step.request_id) || request.checkpoint_id.as_ref() == Some(&step.request_id)
+        {
+            return Err(LocalError::Invalid("Duplicate checkpoint history request."));
+        }
+    }
+    let (mut neural, mut episode) = if let Some(encoded) = request.checkpoint.as_deref() {
+        let decoded = decode_checkpoint(encoded)?;
+        (decoded.state, decoded.episode_id)
+    } else {
+        let first = request
+            .history
+            .first()
+            .ok_or(LocalError::Invalid("Checkpoint history is empty."))?;
+        (
+            NeuralState::new(
+                graph,
+                creature_seed(&request.client_id, &request.creature_id),
+            ),
+            first.episode_id.clone(),
+        )
+    };
+    for step in &request.history {
+        reset_for_episode(&mut neural, &mut episode, &step.episode_id);
+        graph
+            .step(&mut neural, &history_request(step))
+            .map_err(|_| LocalError::Invalid("Invalid neural checkpoint or replay history."))?;
+    }
+    Ok(LocalCheckpointResponse {
+        checkpoint: encode_checkpoint(&neural, &episode)?,
+        checkpoint_id: request.last_request_id,
+    })
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LocalDecision {
@@ -572,6 +656,54 @@ mod tests {
         assert_eq!(
             expected.decisions[0].checkpoint,
             actual.decisions[0].checkpoint
+        );
+    }
+
+    #[test]
+    fn materialized_history_preserves_exact_state_across_recipient_identity() {
+        let Some(graph) = graph() else { return };
+        let first_step = step("recorded-1", None);
+        let donor = LocalBrains::default();
+        let first = donor.process(&graph, batch(first_step.clone())).unwrap();
+        let packed = materialize_checkpoint(
+            &graph,
+            LocalCheckpointRequest {
+                client_id: "a".repeat(64),
+                creature_id: first_step.creature_id.clone(),
+                last_request_id: first_step.request_id.clone(),
+                checkpoint: None,
+                checkpoint_id: None,
+                history: vec![history(&first_step)],
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            Some(&packed.checkpoint),
+            first.decisions[0].checkpoint.as_ref()
+        );
+        let next = step(
+            "recorded-2",
+            Some((packed.checkpoint.clone(), packed.checkpoint_id.clone())),
+        );
+        let expected = donor.process(&graph, batch(next.clone())).unwrap();
+        let mut transferred = next;
+        transferred.creature_id = "mon-999".into();
+        let actual = LocalBrains::default()
+            .process(
+                &graph,
+                LocalBatchRequest {
+                    client_id: "b".repeat(64),
+                    steps: vec![transferred],
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            expected.decisions[0].checkpoint,
+            actual.decisions[0].checkpoint
+        );
+        assert_eq!(
+            expected.decisions[0].decision.updates,
+            actual.decisions[0].decision.updates
         );
     }
 }

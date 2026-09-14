@@ -87,10 +87,17 @@ export function mountAccountPanel(options: AccountPanelOptions) {
       setBusy(true); switchInFlight = true; error.hidden = true;
       const from = currentAccount(), change: AccountSwitch = { from, to: null, reason };
       try {
-        await options.beforeSwitch?.(change);
-        if (from) await checkpointSave('logout');
         const username = field(form, 'username').trim(), password = field(form, 'password');
+        // A realtime-ticket 401 leaves the local account active so its game and
+        // outbox stay recoverable. Re-entering that account's credentials must
+        // authenticate before any server checkpoint, because the old cookie is
+        // precisely what expired. Other account switches retain the normal
+        // checkpoint-before-authentication handoff.
+        const sameAccountRelogin = reason === 'login' && Boolean(from) && username.toLowerCase() === from!.username.toLowerCase();
+        await options.beforeSwitch?.(change);
+        if (from && !sameAccountRelogin) await checkpointSave('logout');
         const user = reason === 'register' ? await register(username, password) : await login(username, password);
+        if (sameAccountRelogin && user.id !== from!.id) throw new Error('로그인한 계정이 현재 계정과 일치하지 않습니다.');
         const save = await activateSaveProfile(user);
         if (disposed) return;
         await options.afterSwitch?.({ from, to: user, reason, save });

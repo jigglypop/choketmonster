@@ -1,26 +1,22 @@
-import { localRealtimeName, RealtimeClient, type Presence, type RealtimeView } from '../network/realtime';
+import { RealtimeClient, type Presence, type RealtimeView } from '../network/realtime';
+import { onAccountChange } from '../game/account';
 import { getSpecies } from '../data/pokemon';
 import { pokemonWorldDisplayHeight } from './visual-scale';
 import type { WorldCreature, WorldPoint } from './types';
 
 export class MultiplayerSession {
   readonly client: RealtimeClient;
-  name: string;
   view: RealtimeView = { status: 'offline', players: [], history: [] };
   private unsubscribe?: () => void;
+  private unsubscribeAccount?: () => void;
 
   constructor(private readonly changed: () => void, client = new RealtimeClient()) {
     this.client = client;
-    try { this.name = localRealtimeName(); } catch { this.name = `트레이너${String(Math.floor(Math.random() * 10_000)).padStart(4, '0')}`; }
     this.unsubscribe = client.subscribe(view => { this.view = view; changed(); });
+    this.unsubscribeAccount = onAccountChange(user => client.accountChanged(user !== null));
   }
-  join(presence: Omit<Presence, 'name'>): void { this.client.join({ ...presence, name: this.name }); }
-  update(presence: Omit<Presence, 'name'>): void { this.client.setPresence({ ...presence, name: this.name }); }
-  rename(value: string, presence: Omit<Presence, 'name'>): boolean {
-    const name = Array.from(value.trim()).slice(0, 16).join(''); if (!name) return false;
-    this.name = name; try { localStorage.setItem('choketmon-realtime-name', name); } catch { /* Session-only name. */ }
-    this.join(presence); this.changed(); return true;
-  }
+  join(presence: Presence): void { this.client.join(presence); }
+  update(presence: Presence): void { this.client.setPresence(presence); }
   sendChat(text: string): boolean { return this.client.sendChat(text); }
   creatures(origin: WorldPoint, movementSpeed: (speciesId: number) => number): WorldCreature[] {
     return this.view.players.map(player => ({ player, distance: Math.hypot(player.x - origin.x, player.z - origin.z) }))
@@ -31,5 +27,5 @@ export class MultiplayerSession {
         action: player.activity === 'moving' ? 'walk' : 'idle', movementSpeed: movementSpeed(player.speciesId),
         displayHeight: pokemonWorldDisplayHeight(getSpecies(player.speciesId).heightMeters), remotePlayer: { name: player.name, activity: player.activity } }));
   }
-  close(): void { this.unsubscribe?.(); this.unsubscribe = undefined; this.client.close(); }
+  close(): void { this.unsubscribe?.(); this.unsubscribe = undefined; this.unsubscribeAccount?.(); this.unsubscribeAccount = undefined; this.client.close(); }
 }

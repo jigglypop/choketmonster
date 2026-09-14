@@ -1,5 +1,7 @@
 import type { WorldSample } from './types';
 import { JOHTO_ATLAS } from './johto';
+import { CAVE_SCENES, getCaveScene, type CaveScene } from './caves';
+import { WORLD_SCALE, surfaceSceneId } from './world-space';
 import {
   KANTO_CONNECTIONS, KANTO_GATES, KANTO_GYMS, KANTO_LOCATIONS, KANTO_MAP_VERSION, KANTO_START, KANTO_SURFACE_CONNECTIONS,
   distanceToKantoPath, encountersForLocation, evaluateKantoTraversal, kantoGateHalfWidth, kantoTravelPoint, locationAt,
@@ -10,6 +12,7 @@ import {
 export type WorldRegionId = 'kanto' | 'johto' | 'hoenn' | 'sinnoh' | 'unova' | 'kalos' | 'alola' | 'galar' | 'hisui' | 'paldea';
 export type WorldAtlas = {
   id: WorldRegionId; name: string; englishName: string; defaultVersion: string; mapVersion: string; start: { x: number; z: number };
+  surfaceSceneId: string; caves: readonly CaveScene[];
   locations: readonly KantoLocation[]; connections: ReadonlyArray<readonly [string, string]>; surfaceConnections: ReadonlyArray<readonly [string, string]>;
   gates: readonly KantoGate[]; gyms: readonly KantoGym[]; palette: { ground: string; water: string; town: string };
   sample(x: number, z: number): WorldSample; locationAt(x: number, z: number): KantoLocation; distanceToPath(x: number, z: number): number;
@@ -28,14 +31,15 @@ type AtlasPlan = {
   palette: WorldAtlas['palette']; landmarks: readonly Landmark[]; species: readonly number[]; zones: readonly TerrainZone[];
 };
 
-const location = (entry: Landmark, index: number, species: readonly number[]): KantoLocation => {
+const location = (entry: Landmark, index: number, species: readonly number[], coordinateScale: number): KantoLocation => {
   const [id, name, x, z, kind = 'town'] = entry, offset = index * 3;
-  return { id, name, x, z, kind, minLevel: Math.min(55, 3 + index * 3), maxLevel: Math.min(65, 7 + index * 4),
+  return { id, name, x: x * coordinateScale, z: z * coordinateScale, kind, minLevel: Math.min(55, 3 + index * 3), maxLevel: Math.min(65, 7 + index * 4),
     encounters: [0, 1, 2, 3].map(step => species[(offset + step) % species.length]), requiredBadges: 0 };
 };
 
-function createAtlas(plan: AtlasPlan): WorldAtlas {
-  const landmarks = plan.landmarks.map((entry, index) => location(entry, index, plan.species));
+function createAtlas(plan: AtlasPlan, coordinateScale: number = WORLD_SCALE): WorldAtlas {
+  const distance = (value: number) => value * coordinateScale;
+  const landmarks = plan.landmarks.map((entry, index) => location(entry, index, plan.species, coordinateScale));
   const locations: KantoLocation[] = [], connections: Array<readonly [string, string]> = [];
   for (let index = 0; index < landmarks.length; index++) {
     const current = landmarks[index]; locations.push(current);
@@ -63,35 +67,36 @@ function createAtlas(plan: AtlasPlan): WorldAtlas {
   };
   const nearestLocation = (x: number, z: number) => locations.reduce((best, item) => Math.hypot(item.x - x, item.z - z) < Math.hypot(best.x - x, best.z - z) ? item : best, locations[0]);
   const buildings = (town: KantoLocation) => {
-    const candidates: ReadonlyArray<readonly [number, number]> = [...townBuildingOffsets(town), [-5,-4], [5,-4], [-5,4], [5,4], [-6,0], [6,0], [0,-6], [0,6]];
-    return candidates.filter(([dx, dz], index) => candidates.findIndex(([x, z]) => x === dx && z === dz) === index && distanceToPath(town.x + dx, town.z + dz) > 5).slice(0, 3);
+    const candidates: ReadonlyArray<readonly [number, number]> = [[-5,-4], [5,-4], [-5,4], [5,4], [-6,0], [6,0], [0,-6], [0,6]]
+      .map(([x, z]) => [distance(x), distance(z)] as const);
+    return candidates.filter(([dx, dz]) => distanceToPath(town.x + dx, town.z + dz) > distance(5)).slice(0, 3);
   };
   const sample = (x: number, z: number): WorldSample => {
-    const wave = .16 * Math.sin((x + plan.id.length * 7) * .075) + .14 * Math.cos(z * .065);
-    if (!Number.isFinite(x) || !Number.isFinite(z) || Math.abs(x) > 120 || Math.abs(z) > 120) return { height: wave, biome: 'rock', blocked: true };
+    const wave = .16 * Math.sin((x / coordinateScale + plan.id.length * 7) * .075) + .14 * Math.cos(z / coordinateScale * .065);
+    if (!Number.isFinite(x) || !Number.isFinite(z) || Math.abs(x) > 120 * coordinateScale || Math.abs(z) > 120 * coordinateScale) return { height: wave, biome: 'rock', blocked: true };
     const nearest = nearestLocation(x, z), distance = Math.hypot(x - nearest.x, z - nearest.z), path = distanceToPath(x, z);
-    const town = locations.find(item => item.kind === 'town' && Math.hypot(x - item.x, z - item.z) < 8);
+    const town = locations.find(item => item.kind === 'town' && Math.hypot(x - item.x, z - item.z) < 8 * coordinateScale);
     if (town) {
-      const blocked = buildings(town).some(([dx, dz]) => Math.abs(x - town.x - dx) < 1.8 && Math.abs(z - town.z - dz) < 1.6);
+      const blocked = buildings(town).some(([dx, dz]) => Math.abs(x - town.x - dx) < 1.8 * coordinateScale && Math.abs(z - town.z - dz) < 1.6 * coordinateScale);
       return { height: wave, biome: 'meadow', blocked };
     }
-    const playable = path < 3.25 || distance < (nearest.kind === 'forest' ? 7 : nearest.kind === 'sea' ? 6 : 5.5);
+    const playable = path < 3.25 * coordinateScale || distance < (nearest.kind === 'forest' ? 7 : nearest.kind === 'sea' ? 6 : 5.5) * coordinateScale;
     if (playable) {
       const biome = nearest.kind === 'sea' ? 'lake' : nearest.kind === 'forest' ? 'forest' : nearest.kind === 'cave' ? 'rock' : 'meadow';
       return { height: wave + (biome === 'rock' ? .45 : biome === 'lake' ? -.35 : 0), biome, blocked: false };
     }
-    const zone = plan.zones.find(item => Math.hypot(x - item.x, z - item.z) < item.radius);
+    const zone = plan.zones.find(item => Math.hypot(x - item.x * coordinateScale, z - item.z * coordinateScale) < item.radius * coordinateScale);
     return { height: wave + (zone?.lift ?? (zone?.biome === 'lake' ? -.45 : .25)), biome: zone?.biome ?? 'forest', blocked: true };
   };
   const safeArrival = (id: string, badges = 0) => {
     const target = byId.get(id); if (!target || !Number.isFinite(badges) || badges < target.requiredBadges) return undefined;
-    for (const [x, z] of [[target.x, target.z], [target.x + 2, target.z], [target.x, target.z + 2], [target.x - 2, target.z], [target.x, target.z - 2]]) if (!sample(x, z).blocked) return { x, z };
+    for (const [x, z] of [[target.x, target.z], [target.x + distance(2), target.z], [target.x, target.z + distance(2)], [target.x - distance(2), target.z], [target.x, target.z - distance(2)]]) if (!sample(x, z).blocked) return { x, z };
     return undefined;
   };
   const nearestWalkable = (x: number, z: number, badges = 0) => {
     if (![x, z, badges].every(Number.isFinite) || badges < 0) return undefined;
     if (!sample(x, z).blocked && nearestLocation(x, z).requiredBadges <= badges) return { x, z };
-    for (let radius = .5; radius <= 18; radius += .5) for (let step = 0; step < 32; step++) {
+    for (let radius = distance(.5); radius <= distance(18); radius += distance(.5)) for (let step = 0; step < 32; step++) {
       const angle = step / 32 * Math.PI * 2, candidate = { x: x + Math.cos(angle) * radius, z: z + Math.sin(angle) * radius };
       if (!sample(candidate.x, candidate.z).blocked && nearestLocation(candidate.x, candidate.z).requiredBadges <= badges) return candidate;
     }
@@ -99,7 +104,8 @@ function createAtlas(plan: AtlasPlan): WorldAtlas {
     return target ? safeArrival(target.id, badges) : undefined;
   };
   return {
-    buildingOffsets: buildings, id: plan.id, name: plan.name, englishName: plan.englishName, defaultVersion: plan.defaultVersion, mapVersion: `${plan.id}-atlas-v1`,
+    buildingOffsets: buildings, id: plan.id, name: plan.name, englishName: plan.englishName, defaultVersion: plan.defaultVersion, mapVersion: `${plan.id}-atlas-v${coordinateScale === WORLD_SCALE ? 2 : 1}`,
+    surfaceSceneId: surfaceSceneId(plan.id), caves: CAVE_SCENES.filter(scene => scene.regionId === plan.id),
     start: { x: landmarks[0].x, z: landmarks[0].z }, locations, connections, surfaceConnections: connections, gates: [], gyms: [], palette: plan.palette,
     sample, locationAt: nearestLocation, distanceToPath,
     evaluateTraversal: (_from, to, badges) => {
@@ -145,19 +151,34 @@ const plans: readonly AtlasPlan[] = [
 
 const kanto: WorldAtlas = {
   buildingOffsets: townBuildingOffsets, id: 'kanto', name: '관동', englishName: 'Kanto', defaultVersion: 'red', mapVersion: KANTO_MAP_VERSION, start: KANTO_START,
+  surfaceSceneId: surfaceSceneId('kanto'), caves: CAVE_SCENES.filter(scene => scene.regionId === 'kanto'),
   locations: KANTO_LOCATIONS, connections: KANTO_CONNECTIONS, surfaceConnections: KANTO_SURFACE_CONNECTIONS, gates: KANTO_GATES, gyms: KANTO_GYMS,
   palette: { ground: '#85a96c', water: '#559abd', town: '#d4aa71' }, sample: sampleKantoWorld, locationAt, distanceToPath: distanceToKantoPath,
   evaluateTraversal: evaluateKantoTraversal, safeArrival: safeKantoArrival, nearestWalkable: nearestKantoWalkable, travelPoint: kantoTravelPoint,
   encounters: encountersForLocation, gateHalfWidth: kantoGateHalfWidth,
 };
 
-const legacyJohto = createAtlas(plans.find(plan => plan.id === 'johto')!);
+const johto: WorldAtlas = {
+  ...JOHTO_ATLAS,
+  surfaceSceneId: surfaceSceneId('johto'),
+  caves: CAVE_SCENES.filter(scene => scene.regionId === 'johto'),
+};
+const legacyJohto = createAtlas(plans.find(plan => plan.id === 'johto')!, 1);
 /** Validate old coordinates before migrating them into the reconstructed map. */
 export const getLegacyJohtoAtlas = (): WorldAtlas => legacyJohto;
-export const WORLDS: readonly WorldAtlas[] = [kanto, JOHTO_ATLAS, ...plans.filter(plan => plan.id !== 'johto').map(createAtlas)];
+export const WORLDS: readonly WorldAtlas[] = [kanto, johto, ...plans.filter(plan => plan.id !== 'johto').map(plan => createAtlas(plan))];
 const worldsById = new Map(WORLDS.map(world => [world.id, world]));
 export function getWorldAtlas(id: string): WorldAtlas {
   const world = worldsById.get(id as WorldRegionId); if (!world) throw new RangeError(`Unknown world region: ${id}`); return world;
+}
+
+/** Resolve the isolated coordinate space used by movement, collision, peers, and encounters. */
+export function getWorldScene(regionId: string, sceneId: string): WorldAtlas | CaveScene {
+  const world = getWorldAtlas(regionId);
+  if (sceneId === world.surfaceSceneId) return world;
+  const cave = getCaveScene(sceneId);
+  if (!cave || cave.regionId !== world.id) throw new RangeError(`Unknown scene for ${regionId}: ${sceneId}`);
+  return cave;
 }
 
 const versionRegions: Record<string, WorldRegionId> = {

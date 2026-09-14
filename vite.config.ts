@@ -9,6 +9,7 @@ export default defineConfig(({ mode }) => {
   return {
   plugins: [{ name: 'share-metadata', transformIndexHtml: html => html.replaceAll('__PUBLIC_SITE_URL__', origin).replaceAll('__SHARE_IMAGE_HASH__', hash) }],
   server: { proxy: {
+    '/api/trades/live': { target: process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:8080', changeOrigin: false, ws: true },
     '/api/realtime': { target: process.env.REALTIME_PROXY_TARGET ?? process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:8080', changeOrigin: false, ws: true },
     '/api': { target: process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:8080', changeOrigin: false },
   } },

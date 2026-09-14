@@ -1,5 +1,6 @@
 import type { WorldCreature, WorldPoint } from './types';
 import { hasPokemonModel } from '../data/pokemon-models';
+import { WORLD_MIN, WORLD_MAX } from './world-space';
 
 export const TERRAIN_CHUNK_SIZE = 40;
 export type TerrainChunk = { key: string; x: number; z: number; segments: number; distance: number };
@@ -8,8 +9,9 @@ export type VisibilityTest = (x: number, y: number, z: number, radius: number) =
 /** Rendering budgets only. These functions never read or advance simulation state. */
 export function terrainChunks(player: WorldPoint, visible: VisibilityTest): TerrainChunk[] {
   const chunks: TerrainChunk[] = [];
-  for (let ix = 0; ix < 6; ix++) for (let iz = 0; iz < 6; iz++) {
-    const x = -100 + ix * 40, z = -100 + iz * 40;
+  const cells = (WORLD_MAX - WORLD_MIN) / TERRAIN_CHUNK_SIZE;
+  for (let ix = 0; ix < cells; ix++) for (let iz = 0; iz < cells; iz++) {
+    const x = WORLD_MIN + TERRAIN_CHUNK_SIZE / 2 + ix * TERRAIN_CHUNK_SIZE, z = WORLD_MIN + TERRAIN_CHUNK_SIZE / 2 + iz * TERRAIN_CHUNK_SIZE;
     const distance = Math.hypot(Math.max(0, Math.abs(x - player.x) - 20), Math.max(0, Math.abs(z - player.z) - 20));
     if (distance > 100 || (distance > 8 && !visible(x, 0, z, 31))) continue;
     // 12 segments align exactly with the existing 72-segment ground contract.

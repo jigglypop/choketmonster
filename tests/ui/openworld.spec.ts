@@ -7,6 +7,7 @@ import { OpenWorldSimulation } from '../../src/openworld/simulation';
 import type { Graph } from '../../src/core/brain';
 import type { FieldPolicy } from '../../src/game/field';
 import { getSpecies } from '../../src/data/pokemon';
+import { openExplorePanel } from './helpers/explore-panel';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
 const policy = JSON.parse(readFileSync('public/data/openworld-policy.json', 'utf8')) as FieldPolicy;
@@ -17,6 +18,7 @@ async function start(page: Page, url = '/') {
   await page.locator('[data-starter="152"]').click();
   // A visible canvas alone does not mean panel initialization and input binding succeeded.
   await expect(page.locator('#world-position')).toHaveText(/^-?\d+, -?\d+$/);
+  await openExplorePanel(page);
   await page.locator('#world-mode-manual').click();
   await expect(page.locator('#world-mode-manual')).toHaveAttribute('aria-pressed', 'true');
   await page.locator('#world-auto-hunt').uncheck();
@@ -77,6 +79,7 @@ test('open world moves, pauses, and restores all brains without duplicating topo
   expect(JSON.stringify(save).match(/"edges":/g)).toHaveLength(1);
   await page.locator('[data-tab="map"]').click();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true');
+  await openExplorePanel(page);
   await page.locator('#world-pause').click();
   await page.keyboard.down('ArrowDown');
   try { await expect(page.locator('#world-position')).not.toHaveText(moved); }

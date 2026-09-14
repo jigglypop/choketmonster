@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import type { Graph } from '../../src/core/brain';
 import { createGame, createMonster } from '../../src/game/engine';
 import { defaultView, packSave } from '../../src/game/storage';
+import { openExplorePanel } from './helpers/explore-panel';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
 
@@ -29,6 +30,7 @@ async function importSave(page: Page, save: unknown) {
 test('interface preferences apply immediately, persist in IndexedDB, reset, and fit a 390px viewport', async ({ page }) => {
   await bootstrap(page);
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
+  await openExplorePanel(page);
   if (await page.locator('#ow-host').getAttribute('data-paused') !== 'true') await page.locator('#world-pause').click();
   const originalFont = await page.locator('.brand').evaluate(element => Number.parseFloat(getComputedStyle(element).fontSize));
   const originalPanel = await page.locator('.world-battle-hud').boundingBox();
@@ -87,10 +89,8 @@ test('interface preferences apply immediately, persist in IndexedDB, reset, and 
   await page.locator('.settings-close').click();
   await page.locator('[data-tab="map"]').click();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
-  // Walking controls sit above the collapsed battle panel on mobile.
-  if (await page.locator('.world-battle-hud').evaluate((panel: HTMLDetailsElement) => panel.open)) {
-    await page.locator('.world-battle-hud > summary').click();
-  }
+  // Outside battle, the battle panel stays collapsed beneath the walking controls.
+  await expect(page.locator('.world-battle-hud')).not.toHaveAttribute('open', '');
   const dpad = await page.locator('.world-dpad').boundingBox();
   const hud = await page.locator('.world-battle-hud').boundingBox();
   expect(dpad!.y + dpad!.height).toBeLessThanOrEqual(hud!.y);

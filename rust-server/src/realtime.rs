@@ -1,7 +1,7 @@
 use axum::{
     Json, Router,
     extract::{
-        State, WebSocketUpgrade,
+        Query, State, WebSocketUpgrade,
         ws::{Message, WebSocket},
     },
     http::{HeaderMap, StatusCode, header},
@@ -9,8 +9,11 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
+use base64::Engine;
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     env,
@@ -23,7 +26,6 @@ use uuid::Uuid;
 const TICK_RATE: u64 = 10;
 const OUTBOUND_CAPACITY: usize = 16;
 const MAX_MESSAGE_BYTES: usize = 4096;
-const MAX_NAME_CHARS: usize = 16;
 const MAX_CHAT_CHARS: usize = 200;
 const CHAT_HISTORY: usize = 50;
 const MAX_CONNECTION_MESSAGES: usize = 40;
@@ -31,6 +33,84 @@ const CONNECTION_MESSAGE_PERIOD: Duration = Duration::from_secs(1);
 const SOCKET_SEND_TIMEOUT: Duration = Duration::from_secs(5);
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
 const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(45);
+const TICKET_TTL_SECONDS: u64 = 60;
+
+#[derive(Debug, Deserialize, Serialize)]
+struct TicketClaims {
+    sub: Uuid,
+    username: String,
+    exp: u64,
+    nonce: String,
+}
+
+fn hmac_sha256(secret: &[u8], message: &[u8]) -> [u8; 32] {
+    let mut key = [0u8; 64];
+    if secret.len() > 64 {
+        key[..32].copy_from_slice(&Sha256::digest(secret));
+    } else {
+        key[..secret.len()].copy_from_slice(secret);
+    }
+    let mut inner = [0x36u8; 64];
+    let mut outer = [0x5cu8; 64];
+    for i in 0..64 {
+        inner[i] ^= key[i];
+        outer[i] ^= key[i];
+    }
+    let inner_hash = Sha256::new()
+        .chain_update(inner)
+        .chain_update(message)
+        .finalize();
+    Sha256::new()
+        .chain_update(outer)
+        .chain_update(inner_hash)
+        .finalize()
+        .into()
+}
+
+fn ticket_secret() -> Result<Vec<u8>, &'static str> {
+    let value =
+        env::var("REALTIME_TICKET_SECRET").map_err(|_| "실시간 인증이 설정되지 않았습니다.")?;
+    if value.as_bytes().len() < 32 {
+        return Err("실시간 인증 키가 너무 짧습니다.");
+    }
+    Ok(value.into_bytes())
+}
+
+pub fn issue_ticket(user_id: Uuid, username: &str) -> Result<(String, u64), &'static str> {
+    issue_ticket_with_secret(user_id, username, &ticket_secret()?)
+}
+
+fn issue_ticket_with_secret(
+    user_id: Uuid,
+    username: &str,
+    secret: &[u8],
+) -> Result<(String, u64), &'static str> {
+    if username.is_empty() || username.len() > 32 {
+        return Err("계정 이름이 올바르지 않습니다.");
+    }
+    let exp = epoch_seconds() + TICKET_TTL_SECONDS;
+    let mut nonce = [0u8; 16];
+    rand::rngs::OsRng.fill_bytes(&mut nonce);
+    let claims = TicketClaims {
+        sub: user_id,
+        username: username.to_owned(),
+        exp,
+        nonce: hex::encode(nonce),
+    };
+    let payload =
+        serde_json::to_vec(&claims).map_err(|_| "실시간 인증 티켓을 만들 수 없습니다.")?;
+    let encoder = base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    let body = encoder.encode(payload);
+    let signature = encoder.encode(hmac_sha256(secret, body.as_bytes()));
+    Ok((format!("{body}.{signature}"), exp))
+}
+
+fn epoch_seconds() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -38,7 +118,11 @@ enum Region {
     Johto,
     Kanto,
 }
-
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct RoomKey {
+    region: Region,
+    scene_id: String,
+}
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 enum Activity {
@@ -53,6 +137,7 @@ struct RemotePlayer {
     id: String,
     name: String,
     region: Region,
+    scene_id: String,
     species_id: i64,
     x: f64,
     z: f64,
@@ -76,7 +161,8 @@ struct ChatMessage {
 enum ClientMessage {
     Join {
         region: Region,
-        name: String,
+        #[serde(rename = "sceneId")]
+        scene_id: String,
         #[serde(rename = "speciesId")]
         species_id: i64,
         x: f64,
@@ -96,6 +182,9 @@ enum ClientMessage {
     Chat {
         text: String,
     },
+    Reauth {
+        ticket: String,
+    },
     Ping {
         #[serde(rename = "sentAt")]
         sent_at: f64,
@@ -108,6 +197,8 @@ enum ServerMessage {
     Welcome {
         id: String,
         region: Region,
+        #[serde(rename = "sceneId")]
+        scene_id: String,
         #[serde(rename = "tickRate")]
         tick_rate: u64,
         players: Vec<RemotePlayer>,
@@ -115,11 +206,15 @@ enum ServerMessage {
     },
     Patch {
         region: Region,
+        #[serde(rename = "sceneId")]
+        scene_id: String,
         players: Vec<RemotePlayer>,
         left: Vec<String>,
     },
     Chat {
         region: Region,
+        #[serde(rename = "sceneId")]
+        scene_id: String,
         message: ChatMessage,
     },
     Pong {
@@ -142,21 +237,25 @@ struct RealtimeInner {
     allowed_origins: Vec<String>,
     room_capacity: usize,
     server_capacity: usize,
+    ticket_secret: Vec<u8>,
+    used_tickets: Mutex<HashMap<String, u64>>,
 }
 
 #[derive(Default)]
 struct Hub {
     clients: HashMap<String, Client>,
-    rooms: HashMap<Region, Room>,
+    rooms: HashMap<RoomKey, Room>,
 }
 
 struct Client {
     tx: mpsc::Sender<Message>,
-    region: Option<Region>,
+    room: Option<RoomKey>,
     last_seq: Option<u64>,
     message_rate: RateWindow,
     state_rate: RateWindow,
     chat_rate: RateWindow,
+    username: String,
+    auth_expires_at: u64,
 }
 
 #[derive(Default)]
@@ -196,20 +295,37 @@ impl RealtimeState {
             .filter(|value| !value.is_empty())
             .map(str::to_owned)
             .collect();
-        Self::new(
+        Self::new_with_secret(
             allowed_origins,
             env_capacity("REALTIME_ROOM_CAPACITY", 64),
             env_capacity("REALTIME_SERVER_CAPACITY", 256),
+            ticket_secret().unwrap_or_default(),
         )
     }
 
+    #[cfg(test)]
     fn new(allowed_origins: Vec<String>, room_capacity: usize, server_capacity: usize) -> Self {
+        Self::new_with_secret(
+            allowed_origins,
+            room_capacity,
+            server_capacity,
+            b"test-realtime-ticket-secret-32bytes".to_vec(),
+        )
+    }
+    fn new_with_secret(
+        allowed_origins: Vec<String>,
+        room_capacity: usize,
+        server_capacity: usize,
+        ticket_secret: Vec<u8>,
+    ) -> Self {
         Self {
             inner: Arc::new(RealtimeInner {
                 hub: Mutex::new(Hub::default()),
                 allowed_origins,
                 room_capacity: room_capacity.clamp(1, 256),
                 server_capacity: server_capacity.clamp(1, 4096),
+                ticket_secret,
+                used_tickets: Mutex::new(HashMap::new()),
             }),
         }
     }
@@ -279,9 +395,62 @@ async fn health(State(state): State<RealtimeState>) -> Json<serde_json::Value> {
     }))
 }
 
+#[derive(Deserialize)]
+struct TicketQuery {
+    ticket: String,
+}
+
+fn verify_ticket(state: &RealtimeState, ticket: &str) -> Result<TicketClaims, &'static str> {
+    if state.inner.ticket_secret.len() < 32 || ticket.len() > 2048 {
+        return Err("실시간 인증 티켓이 올바르지 않습니다.");
+    }
+    let (body, signature) = ticket
+        .split_once('.')
+        .ok_or("실시간 인증 티켓이 올바르지 않습니다.")?;
+    let encoder = base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    let supplied = encoder
+        .decode(signature)
+        .map_err(|_| "실시간 인증 티켓이 올바르지 않습니다.")?;
+    let expected = hmac_sha256(&state.inner.ticket_secret, body.as_bytes());
+    if supplied.len() != expected.len()
+        || !supplied
+            .iter()
+            .zip(expected)
+            .fold(0u8, |diff, (a, b)| diff | (a ^ b))
+            .eq(&0)
+    {
+        return Err("실시간 인증 티켓 서명이 올바르지 않습니다.");
+    }
+    let payload = encoder
+        .decode(body)
+        .map_err(|_| "실시간 인증 티켓이 올바르지 않습니다.")?;
+    let claims: TicketClaims =
+        serde_json::from_slice(&payload).map_err(|_| "실시간 인증 티켓이 올바르지 않습니다.")?;
+    let now = epoch_seconds();
+    if claims.exp < now
+        || claims.exp > now + TICKET_TTL_SECONDS + 5
+        || claims.username.is_empty()
+        || claims.username.len() > 32
+    {
+        return Err("실시간 인증 티켓이 만료되었습니다.");
+    }
+    let receipt = hex::encode(Sha256::digest(ticket.as_bytes()));
+    let mut used = state
+        .inner
+        .used_tickets
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    used.retain(|_, exp| *exp >= now);
+    if used.insert(receipt, claims.exp).is_some() {
+        return Err("이미 사용한 실시간 인증 티켓입니다.");
+    }
+    Ok(claims)
+}
+
 async fn upgrade(
     State(state): State<RealtimeState>,
     headers: HeaderMap,
+    Query(query): Query<TicketQuery>,
     ws: WebSocketUpgrade,
 ) -> Response {
     let origin = headers
@@ -302,8 +471,18 @@ async fn upgrade(
         )
             .into_response();
     }
+    let claims = match verify_ticket(&state, &query.ticket) {
+        Ok(value) => value,
+        Err(message) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"code":"AUTH_REQUIRED","message":message})),
+            )
+                .into_response();
+        }
+    };
     let (tx, rx) = mpsc::channel(OUTBOUND_CAPACITY);
-    let id = Uuid::new_v4().to_string();
+    let id = claims.sub.to_string();
     {
         let mut hub = state
             .inner
@@ -317,15 +496,24 @@ async fn upgrade(
             )
                 .into_response();
         }
+        if hub.clients.contains_key(&id) {
+            return (
+                StatusCode::CONFLICT,
+                Json(json!({"code":"ALREADY_CONNECTED","message":"이 계정은 이미 접속 중입니다."})),
+            )
+                .into_response();
+        }
         hub.clients.insert(
             id.clone(),
             Client {
                 tx,
-                region: None,
+                room: None,
                 last_seq: None,
                 message_rate: RateWindow::default(),
                 state_rate: RateWindow::default(),
                 chat_rate: RateWindow::default(),
+                username: claims.username,
+                auth_expires_at: claims.exp,
             },
         );
     }
@@ -378,6 +566,7 @@ async fn connection(
                 None => break,
             },
             _ = heartbeat.tick() => {
+                if !authentication_valid(&state, &id) { break; }
                 if last_seen.elapsed() >= HEARTBEAT_TIMEOUT { break; }
                 if !send_socket(&mut socket, Message::Ping(Vec::new().into())).await { break; }
             }
@@ -410,14 +599,16 @@ fn process(state: &RealtimeState, id: &str, message: ClientMessage, now: Instant
     match message {
         ClientMessage::Join {
             region,
-            name,
+            scene_id,
             species_id,
             x,
             z,
             heading,
             activity,
         } => {
-            join(state, id, region, name, species_id, x, z, heading, activity);
+            join(
+                state, id, region, scene_id, species_id, x, z, heading, activity,
+            );
         }
         ClientMessage::State {
             seq,
@@ -430,6 +621,7 @@ fn process(state: &RealtimeState, id: &str, message: ClientMessage, now: Instant
             update_player(state, id, seq, x, z, heading, species_id, activity, now);
         }
         ClientMessage::Chat { text } => chat(state, id, text, now),
+        ClientMessage::Reauth { ticket } => reauthenticate(state, id, &ticket),
         ClientMessage::Ping { sent_at } => {
             let joined = state
                 .inner
@@ -438,7 +630,7 @@ fn process(state: &RealtimeState, id: &str, message: ClientMessage, now: Instant
                 .unwrap_or_else(|error| error.into_inner())
                 .clients
                 .get(id)
-                .is_some_and(|client| client.region.is_some());
+                .is_some_and(|client| client.room.is_some());
             if !joined {
                 send_error(state, id, "JOIN_REQUIRED", "먼저 지역에 접속해 주세요.");
             } else if !sent_at.is_finite() {
@@ -455,19 +647,68 @@ fn process(state: &RealtimeState, id: &str, message: ClientMessage, now: Instant
     }
 }
 
+fn authentication_valid(state: &RealtimeState, id: &str) -> bool {
+    state
+        .inner
+        .hub
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .clients
+        .get(id)
+        .is_some_and(|client| client.auth_expires_at >= epoch_seconds())
+}
+
+fn reauthenticate(state: &RealtimeState, id: &str, ticket: &str) {
+    let Ok(claims) = verify_ticket(state, ticket) else {
+        send_error(
+            state,
+            id,
+            "AUTH_REQUIRED",
+            "실시간 인증을 갱신할 수 없습니다.",
+        );
+        return;
+    };
+    if claims.sub.to_string() != id {
+        send_error(
+            state,
+            id,
+            "AUTH_REQUIRED",
+            "다른 계정의 인증은 사용할 수 없습니다.",
+        );
+        return;
+    }
+    let mut hub = state
+        .inner
+        .hub
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let Some(client) = hub.clients.get_mut(id) else {
+        return;
+    };
+    if client.username != claims.username {
+        drop(hub);
+        send_error(state, id, "AUTH_REQUIRED", "계정 정보가 변경되었습니다.");
+        return;
+    }
+    client.auth_expires_at = claims.exp;
+}
+
 #[allow(clippy::too_many_arguments)]
 fn join(
     state: &RealtimeState,
     id: &str,
     region: Region,
-    name: String,
+    scene_id: String,
     species_id: i64,
     x: f64,
     z: f64,
     heading: f64,
     activity: Activity,
 ) {
-    if !valid_position(x, z, heading) || !(1..=1025).contains(&species_id) {
+    if !valid_position(x, z, heading)
+        || !(1..=1025).contains(&species_id)
+        || !valid_scene(region, &scene_id)
+    {
         send_error(
             state,
             id,
@@ -481,13 +722,14 @@ fn join(
         .hub
         .lock()
         .unwrap_or_else(|error| error.into_inner());
-    let Some(current_region) = hub.clients.get(id).and_then(|client| client.region) else {
+    let next_room = RoomKey { region, scene_id };
+    let Some(current_room) = hub.clients.get(id).and_then(|client| client.room.clone()) else {
         if !hub.clients.contains_key(id) {
             return;
         }
         if hub
             .rooms
-            .get(&region)
+            .get(&next_room)
             .is_some_and(|room| room.players.len() >= state.inner.room_capacity)
         {
             drop(hub);
@@ -500,13 +742,13 @@ fn join(
             return;
         }
         return finish_join(
-            state, hub, id, None, region, name, species_id, x, z, heading, activity,
+            state, hub, id, None, next_room, species_id, x, z, heading, activity,
         );
     };
-    if current_region != region
+    if current_room != next_room
         && hub
             .rooms
-            .get(&region)
+            .get(&next_room)
             .is_some_and(|room| room.players.len() >= state.inner.room_capacity)
     {
         drop(hub);
@@ -522,9 +764,8 @@ fn join(
         state,
         hub,
         id,
-        Some(current_region),
-        region,
-        name,
+        Some(current_room),
+        next_room,
         species_id,
         x,
         z,
@@ -538,27 +779,31 @@ fn finish_join(
     state: &RealtimeState,
     mut hub: std::sync::MutexGuard<'_, Hub>,
     id: &str,
-    old_region: Option<Region>,
-    region: Region,
-    name: String,
+    old_room: Option<RoomKey>,
+    room_key: RoomKey,
     species_id: i64,
     x: f64,
     z: f64,
     heading: f64,
     activity: Activity,
 ) {
-    if let Some(old) = old_region.filter(|old| *old != region) {
+    if let Some(old) = old_room.filter(|old| *old != room_key) {
         if let Some(room) = hub.rooms.get_mut(&old) {
             room.players.remove(id);
             room.dirty.remove(id);
             room.left.insert(id.to_owned());
         }
     }
-    let name = normalize_name(&name, id);
+    let name = hub
+        .clients
+        .get(id)
+        .map(|client| client.username.clone())
+        .unwrap_or_default();
     let player = RemotePlayer {
         id: id.to_owned(),
         name,
-        region,
+        region: room_key.region,
+        scene_id: room_key.scene_id.clone(),
         species_id,
         x,
         z,
@@ -566,7 +811,7 @@ fn finish_join(
         activity,
         updated_at: epoch_ms(),
     };
-    let room = hub.rooms.entry(region).or_default();
+    let room = hub.rooms.entry(room_key.clone()).or_default();
     room.left.remove(id);
     room.dirty.insert(id.to_owned());
     room.players.insert(id.to_owned(), player);
@@ -575,12 +820,13 @@ fn finish_join(
     let Some(client) = hub.clients.get_mut(id) else {
         return;
     };
-    client.region = Some(region);
+    client.room = Some(room_key.clone());
     client.last_seq = None;
     client.state_rate = RateWindow::default();
     let message = ServerMessage::Welcome {
         id: id.to_owned(),
-        region,
+        region: room_key.region,
+        scene_id: room_key.scene_id,
         tick_rate: TICK_RATE,
         players,
         history,
@@ -621,7 +867,7 @@ fn update_player(
     let Some(client) = hub.clients.get_mut(id) else {
         return;
     };
-    let Some(region) = client.region else {
+    let Some(room_key) = client.room.clone() else {
         drop(hub);
         send_error(state, id, "JOIN_REQUIRED", "먼저 지역에 접속해 주세요.");
         return;
@@ -644,7 +890,7 @@ fn update_player(
     client.last_seq = Some(seq);
     let room = hub
         .rooms
-        .get_mut(&region)
+        .get_mut(&room_key)
         .expect("joined client room must exist");
     let player = room
         .players
@@ -672,7 +918,7 @@ fn chat(state: &RealtimeState, id: &str, text: String, now: Instant) {
     let Some(client) = hub.clients.get_mut(id) else {
         return;
     };
-    let Some(region) = client.region else {
+    let Some(room_key) = client.room.clone() else {
         drop(hub);
         send_error(state, id, "JOIN_REQUIRED", "먼저 지역에 접속해 주세요.");
         return;
@@ -685,7 +931,7 @@ fn chat(state: &RealtimeState, id: &str, text: String, now: Instant) {
     let (message, recipient_ids) = {
         let room = hub
             .rooms
-            .get_mut(&region)
+            .get_mut(&room_key)
             .expect("joined client room must exist");
         let player = room
             .players
@@ -712,22 +958,12 @@ fn chat(state: &RealtimeState, id: &str, text: String, now: Instant) {
     broadcast(
         &state.inner,
         senders,
-        &ServerMessage::Chat { region, message },
+        &ServerMessage::Chat {
+            region: room_key.region,
+            scene_id: room_key.scene_id,
+            message,
+        },
     );
-}
-
-fn normalize_name(value: &str, id: &str) -> String {
-    let normalized = value.split_whitespace().collect::<Vec<_>>().join(" ");
-    let clean: String = normalized
-        .chars()
-        .filter(|ch| !ch.is_control())
-        .take(MAX_NAME_CHARS)
-        .collect();
-    if clean.is_empty() {
-        format!("트레이너-{}", &id[..4])
-    } else {
-        clean
-    }
 }
 
 fn normalize_chat(value: &str) -> Option<String> {
@@ -746,9 +982,32 @@ fn valid_position(x: f64, z: f64, heading: f64) -> bool {
     x.is_finite()
         && z.is_finite()
         && heading.is_finite()
-        && x.abs() <= 120.0
-        && z.abs() <= 120.0
+        && x.abs() <= 1000.0
+        && z.abs() <= 1000.0
         && heading.abs() <= 360.0
+}
+fn valid_scene(region: Region, value: &str) -> bool {
+    if value.len() > 64 {
+        return false;
+    }
+    let expected_region = match region {
+        Region::Kanto => "kanto",
+        Region::Johto => "johto",
+    };
+    let mut parts = value.split(':');
+    matches!(parts.next(), Some("surface") | Some("cave"))
+        && parts.next() == Some(expected_region)
+        && match parts.next() {
+            None => value.starts_with("surface:"),
+            Some(id) => {
+                value.starts_with("cave:")
+                    && !id.is_empty()
+                    && id
+                        .bytes()
+                        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+                    && parts.next().is_none()
+            }
+        }
 }
 
 fn epoch_ms() -> u64 {
@@ -800,8 +1059,8 @@ fn disconnect(inner: &Arc<RealtimeInner>, id: &str) {
     let Some(client) = hub.clients.remove(id) else {
         return;
     };
-    if let Some(region) = client.region {
-        if let Some(room) = hub.rooms.get_mut(&region) {
+    if let Some(room_key) = client.room {
+        if let Some(room) = hub.rooms.get_mut(&room_key) {
             room.players.remove(id);
             room.dirty.remove(id);
             room.left.insert(id.to_owned());
@@ -824,7 +1083,7 @@ async fn patch_loop(inner: Weak<RealtimeInner>) {
 fn flush_patches(inner: &Arc<RealtimeInner>) {
     let batches = {
         let mut hub = inner.hub.lock().unwrap_or_else(|error| error.into_inner());
-        let regions: Vec<_> = hub.rooms.keys().copied().collect();
+        let regions: Vec<_> = hub.rooms.keys().cloned().collect();
         let mut batches = Vec::new();
         for region in regions {
             let Some((players, left, recipient_ids)) =
@@ -861,7 +1120,8 @@ fn flush_patches(inner: &Arc<RealtimeInner>) {
             batches.push((
                 recipients,
                 ServerMessage::Patch {
-                    region,
+                    region: region.region,
+                    scene_id: region.scene_id,
                     players,
                     left,
                 },
@@ -897,22 +1157,28 @@ mod tests {
             id.into(),
             Client {
                 tx,
-                region: None,
+                room: None,
                 last_seq: None,
                 message_rate: RateWindow::default(),
                 state_rate: RateWindow::default(),
                 chat_rate: RateWindow::default(),
+                username: "tester".into(),
+                auth_expires_at: epoch_seconds() + TICKET_TTL_SECONDS,
             },
         );
         rx
     }
 
     fn join_test(state: &RealtimeState, id: &str, region: Region) {
+        let scene = match region {
+            Region::Kanto => "surface:kanto",
+            Region::Johto => "surface:johto",
+        };
         join(
             state,
             id,
             region,
-            "tester".into(),
+            scene.into(),
             25,
             1.0,
             2.0,
@@ -936,11 +1202,35 @@ mod tests {
         join_test(&state, "aaaa", Region::Kanto);
         flush_patches(&state.inner);
         let hub = state.inner.hub.lock().unwrap();
-        assert!(!hub.rooms[&Region::Johto].players.contains_key("aaaa"));
-        assert!(hub.rooms[&Region::Kanto].players.contains_key("aaaa"));
+        assert!(
+            !hub.rooms[&RoomKey {
+                region: Region::Johto,
+                scene_id: "surface:johto".into()
+            }]
+                .players
+                .contains_key("aaaa")
+        );
+        assert!(
+            hub.rooms[&RoomKey {
+                region: Region::Kanto,
+                scene_id: "surface:kanto".into()
+            }]
+                .players
+                .contains_key("aaaa")
+        );
         drop(hub);
         disconnect(&state.inner, "aaaa");
         assert!(!state.inner.hub.lock().unwrap().clients.contains_key("aaaa"));
+    }
+
+    #[test]
+    fn validates_region_scoped_surface_and_cave_scenes() {
+        assert!(valid_scene(Region::Kanto, "surface:kanto"));
+        assert!(valid_scene(Region::Johto, "cave:johto:dark-cave-1"));
+        assert!(!valid_scene(Region::Kanto, "surface"));
+        assert!(!valid_scene(Region::Kanto, "surface:johto"));
+        assert!(!valid_scene(Region::Johto, "cave:kanto:rock-tunnel"));
+        assert!(!valid_scene(Region::Kanto, "cave:kanto:bad_room"));
     }
 
     #[test]
@@ -1050,7 +1340,7 @@ mod tests {
             &state,
             "aaaa",
             3,
-            121.0,
+            1001.0,
             0.0,
             0.0,
             25,
@@ -1089,7 +1379,10 @@ mod tests {
                 .contains("ROOM_FULL")
         );
         assert_eq!(
-            state.inner.hub.lock().unwrap().clients["bbbb"].region,
+            state.inner.hub.lock().unwrap().clients["bbbb"]
+                .room
+                .as_ref()
+                .map(|room| room.region),
             Some(Region::Kanto)
         );
     }
@@ -1098,17 +1391,76 @@ mod tests {
     fn chat_envelope_keeps_the_origin_room_and_does_not_cross_rooms() {
         let state = test_state(64);
         let mut johto = connect(&state, "aaaa");
-        let mut kanto = connect(&state, "bbbb");
+        let mut cave = connect(&state, "bbbb");
         join_test(&state, "aaaa", Region::Johto);
-        join_test(&state, "bbbb", Region::Kanto);
+        join(
+            &state,
+            "bbbb",
+            Region::Johto,
+            "cave:johto:dark-cave".into(),
+            25,
+            1.0,
+            2.0,
+            0.0,
+            Activity::Idle,
+        );
         johto.try_recv().unwrap();
-        kanto.try_recv().unwrap();
+        cave.try_recv().unwrap();
 
         chat(&state, "aaaa", "hello".into(), Instant::now());
         let envelope = johto.try_recv().unwrap().into_text().unwrap();
         assert!(envelope.contains("\"type\":\"chat\""));
         assert!(envelope.contains("\"region\":\"johto\""));
-        assert!(kanto.try_recv().is_err());
+        assert!(cave.try_recv().is_err());
+    }
+
+    #[test]
+    fn rejects_tampered_and_replayed_account_tickets() {
+        let state = test_state(64);
+        let (ticket, _) = issue_ticket_with_secret(
+            Uuid::new_v4(),
+            "registered-user",
+            &state.inner.ticket_secret,
+        )
+        .unwrap();
+        let mut tampered = ticket.clone();
+        tampered.push('x');
+        assert!(verify_ticket(&state, &tampered).is_err());
+        let claims = verify_ticket(&state, &ticket).unwrap();
+        assert_eq!(claims.username, "registered-user");
+        assert!(verify_ticket(&state, &ticket).is_err());
+    }
+
+    #[test]
+    fn reauthentication_extends_only_the_same_account_connection() {
+        let state = test_state(64);
+        let account = Uuid::new_v4();
+        let id = account.to_string();
+        let mut outbound = connect(&state, &id);
+        state
+            .inner
+            .hub
+            .lock()
+            .unwrap()
+            .clients
+            .get_mut(&id)
+            .unwrap()
+            .username = "alice".into();
+        let (ticket, _) =
+            issue_ticket_with_secret(account, "alice", &state.inner.ticket_secret).unwrap();
+        reauthenticate(&state, &id, &ticket);
+        assert!(authentication_valid(&state, &id));
+        let (other, _) =
+            issue_ticket_with_secret(Uuid::new_v4(), "alice", &state.inner.ticket_secret).unwrap();
+        reauthenticate(&state, &id, &other);
+        assert!(
+            outbound
+                .try_recv()
+                .unwrap()
+                .into_text()
+                .unwrap()
+                .contains("AUTH_REQUIRED")
+        );
     }
 
     #[tokio::test]
@@ -1118,7 +1470,11 @@ mod tests {
         let address = listener.local_addr().unwrap();
         let app = router_with_state(state.clone());
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        let mut denied = format!("ws://{address}/api/realtime")
+        let user_id = Uuid::new_v4();
+        let denied_ticket = issue_ticket_with_secret(user_id, "alice", &state.inner.ticket_secret)
+            .unwrap()
+            .0;
+        let mut denied = format!("ws://{address}/api/realtime?ticket={denied_ticket}")
             .into_client_request()
             .unwrap();
         denied
@@ -1128,7 +1484,10 @@ mod tests {
         assert!(
             matches!(error, tokio_tungstenite::tungstenite::Error::Http(response) if response.status() == StatusCode::FORBIDDEN)
         );
-        let mut request = format!("ws://{address}/api/realtime")
+        let ticket = issue_ticket_with_secret(user_id, "alice", &state.inner.ticket_secret)
+            .unwrap()
+            .0;
+        let mut request = format!("ws://{address}/api/realtime?ticket={ticket}")
             .into_client_request()
             .unwrap();
         request
@@ -1138,7 +1497,7 @@ mod tests {
         socket
             .send(ClientFrame::Text(
                 json!({
-                    "type":"join", "region":"johto", "name":"", "speciesId":25,
+                    "type":"join", "region":"johto", "sceneId":"cave:johto:dark-cave", "speciesId":25,
                     "x":1, "z":2, "heading":0, "activity":"idle"
                 })
                 .to_string()
@@ -1159,7 +1518,8 @@ mod tests {
         .await
         .unwrap();
         assert!(welcome.contains("\"type\":\"welcome\""));
-        assert!(welcome.contains("트레이너-"));
+        assert!(welcome.contains("alice"));
+        assert!(welcome.contains("cave:johto:dark-cave"));
         socket.close(None).await.unwrap();
         tokio::time::timeout(Duration::from_secs(2), async {
             while !state.inner.hub.lock().unwrap().clients.is_empty() {

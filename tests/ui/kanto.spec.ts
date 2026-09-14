@@ -6,6 +6,7 @@ import { defaultView, packSave } from '../../src/game/storage';
 import { OpenWorldSimulation, sampleWorld } from '../../src/openworld/simulation';
 import type { Graph } from '../../src/core/brain';
 import type { FieldPolicy } from '../../src/game/field';
+import { openExplorePanel } from './helpers/explore-panel';
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
 const policy = JSON.parse(readFileSync('public/data/openworld-policy.json', 'utf8')) as FieldPolicy;
 const targetUrl = process.env.KANTO_URL ?? '/';
@@ -32,6 +33,7 @@ async function start(page: Page) {
   const save = packSave(game, graph, { ...defaultView(), openWorld: world.snapshot(), openWorldPaused: false });
   await page.locator('#import-file').setInputFiles({ name: 'kanto-start.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(save)) });
   await expect(page.getByRole('status')).toContainText('불러왔습니다');
+  await openExplorePanel(page);
   await page.locator('#world-mode-manual').click();
   await page.locator('#world-auto-hunt').uncheck();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 25000 });
@@ -86,7 +88,7 @@ test('Kanto controls, fixed early encounters, shop, region map and mobile layout
   await page.locator('#world-map-close').click();
   await page.screenshot({ path: 'artifacts/kanto-browser/desktop.png' });
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.locator('.world-battle-hud > summary').click();
+  await openExplorePanel(page);
   await expect(page.locator('#world-mode-auto')).toBeVisible();
   await page.locator('#world-mode-auto').click();
   await expect(page.locator('#world-mode-auto')).toHaveAttribute('aria-pressed', 'true');
@@ -98,6 +100,7 @@ test('Kanto controls, fixed early encounters, shop, region map and mobile layout
   await page.setViewportSize({ width: 1440, height: 1100 });
   await page.locator('#save-now').click(); await expect(page.getByRole('status')).toContainText('이 기기에 저장했습니다.'); await page.reload();
   await page.setViewportSize({ width: 390, height: 844 });
+  await openExplorePanel(page);
   await expect(page.locator('#world-mode-manual')).toHaveAttribute('aria-pressed', 'true', { timeout: 20000 });
   await expect(page.locator('.world-battle-hud')).not.toHaveAttribute('open', '');
   const save = await exported(page);
@@ -157,6 +160,7 @@ test('manual battle waits, victory choice survives reload, buying and catching p
   await page.locator('#save-now').click(); await expect(page.getByRole('status')).toContainText('이 기기에 저장했습니다.'); await page.reload();
   await expect(page.locator('#world-capture-offer')).toBeVisible({ timeout: 25000 });
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 25000 });
+  await openExplorePanel(page);
   await page.screenshot({ path: 'artifacts/kanto-browser/victory-choice.png' });
   await page.locator('.world-shop summary').click();
   await page.locator('[data-world-buy="poke-ball"][data-quantity="1"]').click();

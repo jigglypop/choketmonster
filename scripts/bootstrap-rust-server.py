@@ -10,11 +10,15 @@ from pathlib import Path
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--secret', required=True)
+parser.add_argument('--ticket-secret', required=True)
 parser.add_argument('--endpoint', required=True)
 parser.add_argument('--origin', required=True)
 parser.add_argument('--region', default='ap-northeast-2')
 args = parser.parse_args()
 secret = json.loads(json.loads(subprocess.check_output(['aws', 'secretsmanager', 'get-secret-value', '--secret-id', args.secret, '--region', args.region]))['SecretString'])
+ticket_secret = json.loads(subprocess.check_output(['aws', 'secretsmanager', 'get-secret-value', '--secret-id', args.ticket_secret, '--region', args.region]))['SecretString']
+if len(ticket_secret.encode()) < 32:
+    raise RuntimeError('Realtime ticket secret is too short')
 root = Path('/opt/choketmon')
 config = Path('/etc/choketmon')
 config.mkdir(mode=0o700, exist_ok=True)
@@ -44,7 +48,7 @@ if existing_config.exists():
         if line.startswith('APP_ORIGIN='):
             origins.extend(value.strip() for value in line.split('=', 1)[1].split(',') if value.strip())
 allowed_origins = ','.join(dict.fromkeys(origins))
-content = '\n'.join([f'DATABASE_URL={url}', 'LISTEN_ADDR=0.0.0.0:8080', f'APP_ORIGIN={allowed_origins}', 'COOKIE_SECURE=true', f'CONNECTOME_DIR={root}/connectome', 'RUST_LOG=info', 'RAYON_NUM_THREADS=2'])+'\n'
+content = '\n'.join([f'DATABASE_URL={url}', 'LISTEN_ADDR=0.0.0.0:8080', f'APP_ORIGIN={allowed_origins}', 'COOKIE_SECURE=true', f'CONNECTOME_DIR={root}/connectome', f'REALTIME_TICKET_SECRET={ticket_secret}', 'RUST_LOG=info', 'RAYON_NUM_THREADS=2'])+'\n'
 (config / 'server.env').write_text(content)
 (config / 'server.env').chmod(0o600)
 service = '''[Unit]

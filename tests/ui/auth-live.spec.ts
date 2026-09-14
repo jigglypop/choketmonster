@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { openExplorePanel } from './helpers/explore-panel';
 
 test.skip(!process.env.CHOKETMON_LIVE_AUTH, 'Requires the local Rust/PostgreSQL server.');
 
@@ -23,6 +24,7 @@ test('account save continues locally after logout and restores Johto from the se
   await page.evaluate(() => Object.defineProperty(document, 'hidden', { configurable: true, value: true }));
   await page.locator('#starter-dialog [data-starter="155"]').click();
   await expect(page.locator('#starter-dialog')).toBeHidden();
+  await openExplorePanel(page);
   await page.locator('#world-pause').click();
   await expect(page.locator('#world-pause')).toContainText('계속 탐험');
   await expect(page.locator('#save-state')).toHaveAttribute('data-state', 'local', { timeout: 30000 });

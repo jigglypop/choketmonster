@@ -8,12 +8,13 @@ import { getMoveLayout, reconcileMoveOrder } from './move-layout';
 import { getRegion, REGIONS } from './regions';
 import { CAMPAIGN_TRAINERS, campaignProgress, campaignTravelReason, canChallengeRed, getRegionalBadges, getNextCampaignTrainer, getCampaignGyms, type CampaignRegion, type CampaignProgress } from './campaign';
 import { duplicateMergeValue } from './growth';
+import { getFieldTrainer, type FieldTrainer } from '../data/field-trainers';
 export { duplicateMergeValue } from './growth';
 
 export const SAVE_SCHEMA_VERSION = 2 as const;
 export type BallItem = 'poke-ball' | 'great-ball' | 'ultra-ball';
 export type InventoryItem = BallItem | 'potion' | 'super-potion' | 'rare-candy' | 'fire-stone' | 'water-stone' | 'thunder-stone' | 'leaf-stone' | 'moon-stone' | 'link-cable';
-export type BattleKind = 'wild' | 'gym' | 'champion' | 'elite' | 'red';
+export type BattleKind = 'wild' | 'gym' | 'trainer' | 'champion' | 'elite' | 'red';
 
 export type MonsterStats = BaseStats;
 export type MonsterMove = { moveId: number; pp: number };
@@ -110,6 +111,7 @@ export type GameState = {
   dex: { seen: number[]; caught: number[] };
   regionId: string;
   defeatedGyms: number[];
+  defeatedFieldTrainers?: string[];
   championDefeated: boolean;
   campaign?: CampaignProgress;
   /** Undefined in legacy schema-v2 saves is migrated to enabled by validateGame. */
@@ -303,7 +305,7 @@ export function createGame(starterId: 1 | 4 | 7 | 152 | 155 | 158, seed: number 
       'leaf-stone': 0, 'moon-stone': 0, 'link-cable': 0,
     },
     dex: { seen: [starterId], caught: [starterId] }, regionId: REGIONS[0].id,
-    defeatedGyms: [], championDefeated: false, experienceShare: true, adventureVersion: 'red', versionCaught: { red: [starterId] }, ballRefillSeconds: 0, logs: [],
+    defeatedGyms: [], defeatedFieldTrainers: [], championDefeated: false, experienceShare: true, adventureVersion: 'red', versionCaught: { red: [starterId] }, ballRefillSeconds: 0, logs: [],
   };
   const startRegion = starterId >= 152 ? 'johto' : 'kanto';
   state.campaign = { startRegion, johtoBadges: [], johtoLeague: 0, kantoLeague: 0, redDefeated: false };
@@ -417,6 +419,21 @@ export function challengeCampaignTrainer(state: GameState, region: CampaignRegio
     regionId: trainer.kind === 'red' ? 'mt-silver' : 'pokemon-league',
     player: { team: state.player.team, activeIndex: healthy }, enemy: { team: enemy, activeIndex: 0 }, turn: 1, canRun: false };
   addLog(state, `${trainer.name}에게 도전했다.`);
+  return state.battle;
+}
+
+
+export function challengeFieldTrainer(state: GameState, trainer: FieldTrainer): BattleState {
+  assertPlayable(state);
+  if (state.battle || state.captureOffer) throw new Error('Finish the active battle or capture choice first.');
+  state.defeatedFieldTrainers ??= [];
+  if (state.defeatedFieldTrainers.includes(trainer.id)) throw new Error('This trainer was already defeated.');
+  const healthy = firstHealthy(state.player.team);
+  const enemy = trainer.team.map(([id, level]) => createMonster(state, id, level));
+  state.dex.seen = uniqueSorted([...state.dex.seen, ...enemy.map(monster => monster.speciesId)]);
+  state.battle = { kind: 'trainer', campaignRegion: trainer.region, trainerId: trainer.id, regionId: trainer.locationId,
+    player: { team: state.player.team, activeIndex: healthy }, enemy: { team: enemy, activeIndex: 0 }, turn: 1, canRun: false };
+  addLog(state, `${trainer.trainerClass} ${trainer.name} challenged you.`);
   return state.battle;
 }
 
@@ -669,6 +686,12 @@ function concludeIfNeeded(state: GameState, battle: BattleState, events: BattleL
         }
         state.player.money += 1500 * battle.gymBadge;
         events.push(event(battle, `배지 ${battle.gymBadge}을(를) 얻었다.`, 'reward'));
+      } else if (battle.kind === 'trainer' && battle.trainerId) {
+        const trainer = getFieldTrainer(battle.trainerId)!;
+        state.defeatedFieldTrainers ??= [];
+        state.defeatedFieldTrainers = [...new Set([...state.defeatedFieldTrainers, trainer.id])];
+        state.player.money += trainer.reward;
+        events.push(event(battle, `${trainer.trainerClass} ${trainer.name} was defeated.`, 'reward'));
       } else if (battle.trainerId) {
         const trainer = CAMPAIGN_TRAINERS.find(item => item.id === battle.trainerId)!;
         state.campaign ??= campaignProgress(state);
@@ -1054,6 +1077,8 @@ export function captureDefeatedWild(state: GameState, ball: BallItem): boolean {
 export function validateGame(value: unknown): GameState {
   if (!value || typeof value !== 'object') throw new Error('저장 데이터는 객체여야 합니다.');
   const state = value as GameState;
+  state.defeatedFieldTrainers ??= [];
+  if (!Array.isArray(state.defeatedFieldTrainers) || state.defeatedFieldTrainers.some((id, index, all) => typeof id !== 'string' || !getFieldTrainer(id) || all.indexOf(id) !== index)) throw new Error('Field trainer progress is damaged.');
   if (state.schemaVersion !== SAVE_SCHEMA_VERSION) throw new Error(`지원하지 않는 저장 스키마입니다: ${String(state.schemaVersion)}`);
   if (state.experienceShare !== undefined && typeof state.experienceShare !== 'boolean') throw new Error('경험치 공유 설정이 손상되었습니다.');
   state.experienceShare ??= true;
@@ -1125,18 +1150,23 @@ export function validateGame(value: unknown): GameState {
   if (state.nextInstanceId <= maximumGeneratedId) throw new Error('다음 개체 ID가 기존 ID보다 커야 합니다.');
   if (state.battle) {
     const battle = state.battle;
-    if (!['wild', 'gym', 'champion', 'elite', 'red'].includes(battle.kind) || !Number.isInteger(battle.turn) || battle.turn < 1 || typeof battle.canRun !== 'boolean' || !Array.isArray(battle.enemy?.team) || battle.enemy.team.length < 1 || !Number.isInteger(battle.enemy.activeIndex) || battle.enemy.activeIndex < 0 || battle.enemy.activeIndex >= battle.enemy.team.length || !Number.isInteger(battle.player?.activeIndex) || battle.player.activeIndex < 0 || battle.player.activeIndex >= state.player.team.length) throw new Error('전투 상태가 손상되었습니다.');
+    if (!['wild', 'gym', 'trainer', 'champion', 'elite', 'red'].includes(battle.kind) || !Number.isInteger(battle.turn) || battle.turn < 1 || typeof battle.canRun !== 'boolean' || !Array.isArray(battle.enemy?.team) || battle.enemy.team.length < 1 || !Number.isInteger(battle.enemy.activeIndex) || battle.enemy.activeIndex < 0 || battle.enemy.activeIndex >= battle.enemy.team.length || !Number.isInteger(battle.player?.activeIndex) || battle.player.activeIndex < 0 || battle.player.activeIndex >= state.player.team.length) throw new Error('전투 상태가 손상되었습니다.');
     if (battle.kind === 'wild' ? !battle.canRun || battle.enemy.team.length !== 1 : battle.canRun) throw new Error('전투 도주 규칙이 손상되었습니다.');
     if (battle.campaignRegion !== undefined && !['johto', 'kanto'].includes(battle.campaignRegion)) throw new Error('전투 지역이 손상되었습니다.');
     if (battle.kind !== 'wild' && campaignTravelReason(state, battle.campaignRegion ?? 'kanto')) throw new Error('리그 여행 조건이 손상되었습니다.');
     if (battle.kind === 'gym' && (!Number.isInteger(battle.gymBadge) || battle.gymBadge !== getRegionalBadges(state, battle.campaignRegion ?? 'kanto') + 1)) throw new Error('체육관 전투 진행이 손상되었습니다.');
-    if (battle.trainerId !== undefined) {
+    if (battle.kind === 'trainer') {
+      const expected = battle.trainerId && getFieldTrainer(battle.trainerId);
+      if (!expected || state.defeatedFieldTrainers.includes(expected.id) || expected.region !== battle.campaignRegion || expected.locationId !== battle.regionId) throw new Error('Field trainer battle progress is damaged.');
+    } else if (battle.trainerId !== undefined) {
       const expected = getNextCampaignTrainer(state, battle.campaignRegion ?? 'kanto');
       if (!expected || expected.id !== battle.trainerId || expected.kind !== battle.kind || expected.region !== battle.campaignRegion
         || getRegionalBadges(state, expected.region) < 8 || (expected.kind === 'red' && !canChallengeRed(state))) throw new Error('리그 전투 진행이 손상되었습니다.');
     } else if (battle.kind === 'elite' || battle.kind === 'red') throw new Error('트레이너 정보가 없습니다.');
     if (battle.kind === 'champion' && !battle.trainerId && state.player.badges !== 8) throw new Error('챔피언 전투 조건이 손상되었습니다.');
-    if (battle.kind === 'wild' || battle.kind === 'gym') {
+    if (battle.kind === 'trainer') {
+      // Field trainer location is validated against its immutable source record above.
+    } else if (battle.kind === 'wild' || battle.kind === 'gym') {
       const battleRegion = getRegion(battle.regionId);
       if (battle.regionId !== state.regionId || battleRegion.minBadges > state.player.badges) throw new Error('전투 지역이 손상되었습니다.');
     } else if (battle.regionId !== (battle.kind === 'red' ? 'mt-silver' : 'pokemon-league')) throw new Error('리그 전투 지역이 손상되었습니다.');

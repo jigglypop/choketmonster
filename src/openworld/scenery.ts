@@ -1,6 +1,7 @@
 import type { WorldSample } from './types';
 import { terrainSurfaceHeight } from './grounding';
 import { getWorldAtlas, type WorldAtlas } from './atlas';
+import { WORLD_MAX, WORLD_MIN, scaleWorldDistance } from './world-space';
 
 export type SceneryAssetId =
   | 'tree-round' | 'tree-oak' | 'tree-pine' | 'tree-fat' | 'tree-thin'
@@ -92,13 +93,13 @@ export function createSceneryPlacements(sampleWorld: (x: number, z: number) => W
 
   // Large silhouettes sit on the exact simulation obstacle samples so the
   // visible forest and highland barriers explain why a route is blocked.
-  for (let x = -114; x <= 114; x += 5.5) {
-    for (let z = -114; z <= 114; z += 5.5) {
-      const px = x + (noise(x, z, 1) - .5) * 2.4;
-      const pz = z + (noise(x, z, 2) - .5) * 2.4;
+  for (let x = WORLD_MIN + scaleWorldDistance(6); x <= WORLD_MAX - scaleWorldDistance(6); x += scaleWorldDistance(5.5)) {
+    for (let z = WORLD_MIN + scaleWorldDistance(6); z <= WORLD_MAX - scaleWorldDistance(6); z += scaleWorldDistance(5.5)) {
+      const px = x + (noise(x, z, 1) - .5) * scaleWorldDistance(2.4);
+      const pz = z + (noise(x, z, 2) - .5) * scaleWorldDistance(2.4);
       const sample = surfaceSample(sampleWorld, px, pz);
       const landmarkDistance = Math.min(...atlas.locations.map(item => Math.hypot(px - item.x, pz - item.z)));
-      if (atlas.distanceToPath(px, pz) < 4.7 || landmarkDistance < 9) continue;
+      if (atlas.distanceToPath(px, pz) < scaleWorldDistance(4.7) || landmarkDistance < scaleWorldDistance(9)) continue;
       if (sample.biome === 'forest' && sample.blocked) {
         const selector = noise(px, pz, 3);
         place(result, selector < .24 ? 'tree-round' : selector < .5 ? 'tree-oak' : selector < .7 ? 'tree-fat' : selector < .88 ? 'tree-thin' : 'tree-pine', px, pz, sample, .82, 1.16, 4);
@@ -113,14 +114,14 @@ export function createSceneryPlacements(sampleWorld: (x: number, z: number) => W
 
   // Small passable dressing uses a wider grid and conservative caps. It is
   // dense enough to read as ground cover while remaining a few draw calls.
-  for (let x = -112; x <= 112; x += 3.15) {
-    for (let z = -112; z <= 112; z += 3.15) {
-      const px = x + (noise(x, z, 10) - .5) * 2.2;
-      const pz = z + (noise(x, z, 11) - .5) * 2.2;
+  for (let x = WORLD_MIN + scaleWorldDistance(8); x <= WORLD_MAX - scaleWorldDistance(8); x += scaleWorldDistance(3.15)) {
+    for (let z = WORLD_MIN + scaleWorldDistance(8); z <= WORLD_MAX - scaleWorldDistance(8); z += scaleWorldDistance(3.15)) {
+      const px = x + (noise(x, z, 10) - .5) * scaleWorldDistance(2.2);
+      const pz = z + (noise(x, z, 11) - .5) * scaleWorldDistance(2.2);
       const sample = surfaceSample(sampleWorld, px, pz);
       if (sample.blocked || sample.biome === 'lake') continue;
       const landmarkDistance = Math.min(...atlas.locations.map(item => Math.hypot(px - item.x, pz - item.z)));
-      if (atlas.distanceToPath(px, pz) < 4.7 || landmarkDistance < 9) continue;
+      if (atlas.distanceToPath(px, pz) < scaleWorldDistance(4.7) || landmarkDistance < scaleWorldDistance(9)) continue;
       const selector = noise(px, pz, 12);
       if (sample.biome === 'meadow') {
         if (selector < .62) {
@@ -155,10 +156,10 @@ export function createSceneryPlacements(sampleWorld: (x: number, z: number) => W
     const from = locations.get(fromId)!, to = locations.get(toId)!;
     if (from.kind === 'sea' || to.kind === 'sea') continue;
     const dx = to.x - from.x, dz = to.z - from.z, length = Math.hypot(dx, dz);
-    if (length < 13) continue;
-    const sideX = -dz / length * 4.15, sideZ = dx / length * 4.15;
+    if (length < scaleWorldDistance(13)) continue;
+    const sideX = -dz / length * scaleWorldDistance(4.15), sideZ = dx / length * scaleWorldDistance(4.15);
     const rotationY = -Math.atan2(dz, dx);
-    for (let along = 6; along <= length - 6; along += 4.2) {
+    for (let along = scaleWorldDistance(6); along <= length - scaleWorldDistance(6); along += scaleWorldDistance(4.2)) {
       const t = along / length, centerX = from.x + dx * t, centerZ = from.z + dz * t;
       for (const side of [-1, 1]) {
         const x = centerX + sideX * side, z = centerZ + sideZ * side, sample = surfaceSample(sampleWorld, x, z);

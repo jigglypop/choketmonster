@@ -89,7 +89,7 @@ def main():
         f'install -m 755 choketmon-server /opt/choketmon/choketmon-server',
         f'ln -sfn /opt/choketmon/releases/{release}/connectome /opt/choketmon/connectome',
         'chown -R root:choketmon /opt/choketmon', 'chmod -R g+rX /opt/choketmon/releases',
-        'python3 bootstrap.py --secret '+shlex.quote(outputs['DatabaseSecretArn'])+' --endpoint '+shlex.quote(outputs['DatabaseEndpoint'])+' --origin '+shlex.quote(site_outputs['SiteUrl']),
+        'python3 bootstrap.py --secret '+shlex.quote(outputs['DatabaseSecretArn'])+' --ticket-secret '+shlex.quote(outputs['RealtimeTicketSecretArn'])+' --endpoint '+shlex.quote(outputs['DatabaseEndpoint'])+' --origin '+shlex.quote(site_outputs['SiteUrl']),
         'for attempt in $(seq 1 30); do if curl -fsS http://127.0.0.1:8080/api/health; then break; fi; sleep 2; done',
         'systemctl is-active choketmon', 'curl -fsS http://127.0.0.1:8080/api/connectome',
     ]

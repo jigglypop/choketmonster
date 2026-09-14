@@ -16,13 +16,18 @@ function setup(seed: number) {
 }
 
 describe('Kanto navigation state', () => {
-  it('migrates a v1 blocked position without mutating the checkpoint or replacing individual memories', () => {
+  it('migrates a v2 surface snapshot without mutating it or replacing individual memories', () => {
     const { game, world } = setup(41_001);
     const checkpoint = world.snapshot();
-    checkpoint.mapVersion = 'kanto-v1';
-    checkpoint.player = { x: 0, z: 0, heading: 3 };
-    const companion = checkpoint.entities.find(entity => entity.kind === 'companion')!;
-    companion.x = 0; companion.z = 0;
+    checkpoint.mapVersion = 'kanto-v2';
+    checkpoint.sceneId = 'surface:kanto';
+    const shrink = (point: { x: number; z: number; target?: { x: number; z: number } }) => {
+      point.x /= 2; point.z /= 2;
+      if (point.target) { point.target.x /= 2; point.target.z /= 2; }
+    };
+    shrink(checkpoint.player); checkpoint.entities.forEach(shrink); checkpoint.companionMemories?.forEach(shrink);
+    checkpoint.foods.forEach(shrink); if (checkpoint.spawnAnchor) shrink(checkpoint.spawnAnchor);
+    checkpoint.respawnQueue?.forEach(item => { item.originX /= 2; item.originZ /= 2; });
     const input = structuredClone(checkpoint);
     const identities = checkpoint.entities.map(entity => ({ id: entity.id, brain: structuredClone(entity.brain) }));
 
@@ -36,10 +41,10 @@ describe('Kanto navigation state', () => {
       const after = saved.entities.find(entity => entity.id === identity.id)!;
       expect(after.brain, identity.id).toEqual(identity.brain);
     }
-    expect(saved.mapVersion).toBe('kanto-v2');
+    expect(saved.mapVersion).toBe('kanto-v3');
   });
 
-  it('teleports only to visited towns and persists safe arrivals and the v2 map head', () => {
+  it('teleports only to visited towns and persists safe arrivals and the v3 map head', () => {
     const { game, world } = setup(41_002);
     expect(world.teleportToTown('viridian')).toBe(false);
     for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -52,7 +57,7 @@ describe('Kanto navigation state', () => {
     world.visitedTownIds.push('viridian');
     expect(world.teleportToTown('viridian')).toBe(true);
     const checkpoint = world.snapshot();
-    expect(checkpoint.mapVersion).toBe('kanto-v2');
+    expect(checkpoint.mapVersion).toBe('kanto-v3');
     expect(checkpoint.visitedTownIds).toEqual(['pallet', 'viridian']);
     const restored = new OpenWorldSimulation(graph, game, world.seed, checkpoint, policy);
     expect(restored.visitedTownIds).toEqual(['pallet', 'viridian']);
@@ -78,8 +83,8 @@ describe('Kanto navigation state', () => {
     const { world } = setup(41_005);
     const wilds = world.entities.filter(entity => entity.kind === 'wild');
     const chosen = wilds[0], nearer = wilds[1];
-    Object.assign(chosen, { x: -68, z: 70 });
-    Object.assign(nearer, { x: -68, z: 80 });
+    Object.assign(chosen, { x: -136, z: 140 });
+    Object.assign(nearer, { x: -136, z: 160 });
 
     world.selectWild(chosen.id, true);
     expect(world.controlMode).toBe('manual');
@@ -103,13 +108,13 @@ describe('Kanto navigation state', () => {
 
     const { game, world } = setup(41_006);
     const companion = world.entities.find(entity => entity.kind === 'companion')!;
-    for (const wild of world.entities.filter(entity => entity.kind === 'wild')) Object.assign(wild, { x: 8, z: -15 });
-    Object.assign(companion, { x: -68, z: 85.7, heading: 2 });
-    world.player = { x: -68, z: 85.7, heading: 2 };
-    const crossing = { x: -68, z: 86.3, heading: 2 as const };
+    for (const wild of world.entities.filter(entity => entity.kind === 'wild')) Object.assign(wild, { x: 16, z: -30 });
+    Object.assign(companion, { x: -136, z: 171.4, heading: 2 });
+    world.player = { x: -136, z: 171.4, heading: 2 };
+    const crossing = { x: -136, z: 172.6, heading: 2 as const };
     expect(world.movePartner(crossing)).toBe(false);
     expect(world.lastMovementBlock).toContain('핑크배지');
-    expect({ x: companion.x, z: companion.z }).toEqual({ x: -68, z: 85.7 });
+    expect({ x: companion.x, z: companion.z }).toEqual({ x: -136, z: 171.4 });
 
     game.player.badges = 5;
     expect(world.movePartner(crossing)).toBe(true);

@@ -54,8 +54,8 @@ describe('compressed Kanto open world', () => {
 
   it('keeps towns and every mapped path endpoint walkable inside the world', () => {
     for (const item of KANTO_LOCATIONS) {
-      expect(Math.abs(item.x)).toBeLessThanOrEqual(120);
-      expect(Math.abs(item.z)).toBeLessThanOrEqual(120);
+      expect(Math.abs(item.x)).toBeLessThanOrEqual(240);
+      expect(Math.abs(item.z)).toBeLessThanOrEqual(240);
       expect(sampleKantoWorld(item.x, item.z).blocked, item.id).toBe(false);
       expect(locationAt(item.x, item.z).id).toBe(item.id);
     }
@@ -81,7 +81,7 @@ describe('compressed Kanto open world', () => {
       const centerHeight = terrainSurfaceHeight(sampleKantoWorld, town.x, town.z);
       for (let tileX = -7; tileX <= 7; tileX += 1) for (let tileZ = -7; tileZ <= 7; tileZ += 1) {
         if (Math.hypot(tileX, tileZ) > 7.1) continue;
-        const height = terrainSurfaceHeight(sampleKantoWorld, town.x + tileX * 1.12, town.z + tileZ * 1.12);
+        const height = terrainSurfaceHeight(sampleKantoWorld, town.x + tileX * 2.24, town.z + tileZ * 2.24);
         expect(Math.abs(height - centerHeight), `${town.id}:${tileX},${tileZ}`).toBeLessThan(1e-6);
       }
     }
@@ -90,8 +90,8 @@ describe('compressed Kanto open world', () => {
   it('encloses play to towns and road corridors without blocking the opening journey', () => {
     expect(isKantoPlayable(KANTO_START.x, KANTO_START.z)).toBe(true);
     expect(isKantoPlayable(0, 0)).toBe(false);
-    expect(isKantoPlayable(80, 80)).toBe(false);
-    expect(sampleKantoWorld(-20, 110)).toMatchObject({ biome: 'lake', blocked: true });
+    expect(isKantoPlayable(160, 160)).toBe(false);
+    expect(sampleKantoWorld(-40, 220)).toMatchObject({ biome: 'lake', blocked: true });
     for (const id of ['pallet', 'route-1', 'viridian', 'route-2-south', 'viridian-forest', 'route-2-north', 'pewter']) {
       const place = KANTO_LOCATIONS.find(item => item.id === id)!;
       expect(evaluateKantoTraversal(place, place, 0).allowed, id).toBe(true);
@@ -99,7 +99,7 @@ describe('compressed Kanto open world', () => {
   });
 
   it('returns exact badge-gate failures and safe teleport arrivals', () => {
-    expect(KANTO_MAP_VERSION).toBe('kanto-v2');
+    expect(KANTO_MAP_VERSION).toBe('kanto-v3');
     const byId = new Map(KANTO_LOCATIONS.map(item => [item.id, item]));
     for (const gate of KANTO_GATES.filter(item => item.visible !== false)) {
       const from = byId.get(gate.from)!, to = byId.get(gate.to)!;
@@ -139,7 +139,7 @@ describe('compressed Kanto open world', () => {
       expect(sampleKantoWorld(arrival!.x, arrival!.z).blocked).toBe(false);
     }
     expect(safeKantoArrival('mew-sanctum', 7)).toBeUndefined();
-    expect(safeKantoArrival('mew-sanctum', 8)).toEqual({ x: -109, z: -18 });
+    expect(safeKantoArrival('mew-sanctum', 8)).toEqual({ x: -218, z: -36 });
     expect(safeKantoArrival('missing', 8)).toBeUndefined();
     expect(kantoTravelPoint('pallet')).toEqual(KANTO_START);
     expect(kantoTravelPoint('route-1')).toBeUndefined();

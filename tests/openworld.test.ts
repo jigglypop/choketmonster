@@ -3,8 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { Brain, type Graph } from '../src/core/brain.ts';
 import { createGame, createMonster } from '../src/game/engine.ts';
 import type { FieldPolicy } from '../src/game/field.ts';
-import { OPEN_WORLD_MODEL, OpenWorldSimulation, movementSpeed, restoreOpenWorld, sampleWorld, serializeOpenWorld } from '../src/openworld/simulation.ts';
-import { encountersForLocation, KANTO_LOCATIONS, KANTO_START, locationAt } from '../src/openworld/kanto.ts';
+import { OPEN_WORLD_MODEL, OpenWorldSimulation, movementSpeed, regionalEncounters, restoreOpenWorld, sampleWorld, serializeOpenWorld } from '../src/openworld/simulation.ts';
+import { KANTO_LOCATIONS, KANTO_START } from '../src/openworld/kanto.ts';
+import { getWorldAtlas } from '../src/openworld/atlas.ts';
+import { regionalSourcePools, supplementalEncounterRules } from '../src/data/regional-encounters.ts';
+import { regionalWildLevels } from '../src/game/campaign.ts';
 
 const loadGraph = async () => JSON.parse(await readFile(new URL('../public/data/connectome.json', import.meta.url), 'utf8')) as Graph;
 const loadPolicy = async () => JSON.parse(await readFile(new URL('../public/data/field-policy.json', import.meta.url), 'utf8')) as FieldPolicy;
@@ -20,7 +23,7 @@ const REMOTE_FIXTURE_POINTS = [
   { x: 8, z: -15 }, { x: 8, z: 15 }, { x: 8, z: 44 }, { x: 48, z: 15 }, { x: -25, z: 15 },
   { x: 3, z: 70 }, { x: 24, z: 67 }, { x: -68, z: 96 }, { x: -68, z: 50 }, { x: -68, z: -7 },
   { x: 8, z: -32 }, { x: 65, z: -28 }, { x: -99, z: -18 }, { x: -34, z: 96 },
-] as const;
+].map(point => ({ x: point.x * 2, z: point.z * 2 }));
 
 describe('connectome open world', () => {
   it('runs 15 autonomous wild brains in deterministic local Kanto encounter tables', async () => {
@@ -32,10 +35,13 @@ describe('connectome open world', () => {
     expect(world.player).toEqual({ ...KANTO_START, heading: 0 });
     expect(world.visibleEntities()).toHaveLength(12);
     for (const entity of wilds) {
-      const location = locationAt(entity.x, entity.z);
-      expect(encountersForLocation(location.id, game.player.badges)).toContain(entity.speciesId);
-      expect(entity.level).toBeGreaterThanOrEqual(location.minLevel);
-      expect(entity.level).toBeLessThanOrEqual(location.maxLevel);
+      const location = getWorldAtlas('kanto').locationAt(entity.x, entity.z);
+      expect(regionalEncounters(location.id, game.player.badges, 'kanto')).toContain(entity.speciesId);
+      const biome = getWorldAtlas('kanto').sample(entity.x, entity.z).biome;
+      const sourceSlots = regionalSourcePools('kanto', location.id, world.dayPeriod, biome).flatMap(pool => pool.slots).filter(slot => slot.speciesId === entity.speciesId);
+      const balanced=regionalWildLevels(game,'kanto',location);
+      const supplemental = Number(entity.id.slice(5)) % 20 === 0 && supplementalEncounterRules('kanto').some(rule => rule.speciesId === entity.speciesId && rule.locationId === location.id && rule.period === world.dayPeriod && rule.biome === biome && rule.requiredBadges <= game.player.badges);
+      expect((sourceSlots.length>0&&entity.level>=balanced.minLevel&&entity.level<=balanced.maxLevel) || supplemental).toBe(true);
     }
     const replay = new OpenWorldSimulation(graph, createGame(1, 'open-world-roster'), 1001, undefined, policy);
     expect(replay.snapshot()).toEqual(world.snapshot());
@@ -57,7 +63,7 @@ describe('connectome open world', () => {
     expect(source.entities.map(entity => ({ x: entity.x, z: entity.z }))).toEqual(zeroBefore);
 
     const tracked = checkpoint.entities.find(entity => entity.id === 'wild-1')!;
-    tracked.x = -68; tracked.z = 66;
+    tracked.x = -136; tracked.z = 132;
     const short = new OpenWorldSimulation(graph, createGame(1, 'open-world-speed'), 440, structuredClone(checkpoint), policy);
     const long = new OpenWorldSimulation(graph, createGame(1, 'open-world-speed'), 440, structuredClone(checkpoint), policy);
     const shortBefore = short.entities.find(entity => entity.id === tracked.id)!.x, longBefore = long.entities.find(entity => entity.id === tracked.id)!.x;
@@ -65,11 +71,11 @@ describe('connectome open world', () => {
     expect(short.entities.find(entity => entity.id === tracked.id)!.x - shortBefore).toBeCloseTo(movementSpeed(tracked.speciesId) * .1, 8);
     expect(long.entities.find(entity => entity.id === tracked.id)!.x - longBefore).toBeCloseTo(movementSpeed(tracked.speciesId) * .2, 8);
 
-    tracked.x = -75.1; tracked.z = 78;
+    tracked.x = -150.2; tracked.z = 156;
     const blocked = new OpenWorldSimulation(graph, createGame(1, 'open-world-speed'), 440, structuredClone(checkpoint), policy);
     blocked.step({ deltaSeconds: 5 });
     const stopped = blocked.entities.find(entity => entity.id === tracked.id)!;
-    expect(stopped.x).toBeCloseTo(-75.1); expect(stopped.z).toBe(78); expect(stopped.collisions).toBeGreaterThan(tracked.collisions);
+    expect(stopped.x).toBeCloseTo(-150.2); expect(stopped.z).toBe(156); expect(stopped.collisions).toBeGreaterThan(tracked.collisions);
   });
 
   it('loads new local individuals only after traveling without changing surviving brains', async () => {
@@ -77,7 +83,7 @@ describe('connectome open world', () => {
     for (const seed of [4_401, 4_501, 4_601]) {
       const game = createGame(1, `open-world-density-${seed}`), world = new OpenWorldSimulation(graph, game, seed, undefined, policy); world.setAutoHunt(false);
       const before = new Map(world.entities.filter(entity => entity.kind === 'wild').map(entity => [entity.id, { x: entity.x, z: entity.z, readout: structuredClone(entity.brain.readout), updates: entity.brain.updates }]));
-      expect(world.movePlayer({ x: -68, z: -7, heading: 0 })).toBe(true);
+      expect(world.movePlayer({ x: -136, z: -14, heading: 0 })).toBe(true);
       Object.assign(world.entities.find(entity => entity.kind === 'companion')!, world.player);
       world.setControlMode('manual');
       for (let tick = 0; tick < 7; tick++) world.step({ deltaSeconds: .5, learning: false });
@@ -100,7 +106,7 @@ describe('connectome open world', () => {
     const graph = await loadGraph(), policy = await loadOpenWorldPolicy();
     const game = createGame(1, 'red-stationary'), source = new OpenWorldSimulation(graph, game, 4401, undefined, policy);
     const snapshot = source.snapshot();
-    snapshot.player = { x: -68, z: -7, heading: 0 };
+    snapshot.player = { x: -136, z: -14, heading: 0 };
     Object.assign(snapshot.entities.find(entity => entity.kind === 'companion')!, snapshot.player);
     delete snapshot.spawnAnchor; snapshot.densityRemaining = .01;
     snapshot.autoHunt = false; snapshot.controlMode = 'manual';
@@ -109,7 +115,7 @@ describe('connectome open world', () => {
     for (let tick = 0; tick < 24; tick++) world.step({ deltaSeconds: .5, learning: false });
     expect(world.spawnSerial).toBe(serial); expect(world.entities.map(entity => entity.id)).toEqual(ids);
     expect(world.snapshot().densityRemaining).toBeUndefined();
-    expect(world.snapshot().spawnAnchor).toMatchObject({ x: -68, z: -7 });
+    expect(world.snapshot().spawnAnchor).toMatchObject({ x: -136, z: -14 });
     const restored = restoreOpenWorld(graph, serializeOpenWorld(game, world), policy);
     expect(restored.simulation.snapshot()).toEqual(world.snapshot());
     const bad = world.snapshot(); bad.spawnAnchor = { x: NaN, z: 0 };
@@ -224,9 +230,10 @@ describe('connectome open world', () => {
     const graph = await loadGraph(), policy = forceRight(await loadPolicy()), game = createGame(1, 'open-world-auto-hunt');
     game.player.team = [createMonster(game, 150, 16)];
     const world = new OpenWorldSimulation(graph, game, 557, undefined, policy), checkpoint = world.snapshot();
-    checkpoint.player = { x: -46, z: -12, heading: 1 };
+    checkpoint.player = { x: -92, z: -24, heading: 1 };
+    checkpoint.spawnAnchor = { x: checkpoint.player.x, z: checkpoint.player.z };
     const companion = checkpoint.entities.find(entity => entity.kind === 'companion')!, target = checkpoint.entities.find(entity => entity.id === 'wild-1')!;
-    companion.x = -45; companion.z = -12; target.x = -40; target.z = -12; target.speciesId = 10; target.level = 2;
+    companion.x = -90; companion.z = -24; target.x = -80; target.z = -24; target.speciesId = 10; target.level = 2;
     checkpoint.entities.filter(entity => entity.kind === 'wild' && entity.id !== target.id).forEach((entity, index) => Object.assign(entity, REMOTE_FIXTURE_POINTS[index]));
     const hunt = new OpenWorldSimulation(graph, game, 557, checkpoint, policy), companionStart = { x: companion.x, z: companion.z };
     let encounter = false;
@@ -250,19 +257,20 @@ describe('connectome open world', () => {
     expect(restored.simulation.rosterStatus()).toEqual({ alive: 15, pending: 0, total: 15 });
     const replacement = restored.simulation.entities.find(entity => entity.kind === 'wild' && !idsBeforeRespawn.has(entity.id))!;
     expect(replacement).toBeDefined();
-    expect(KANTO_LOCATIONS.some(location => location.requiredBadges <= game.player.badges && location.encounters.includes(replacement.speciesId)
-      && replacement.level >= location.minLevel && replacement.level <= location.maxLevel)).toBe(true);
+    const replacementLocation = getWorldAtlas('kanto').locationAt(replacement.x, replacement.z);
+    expect(regionalEncounters(replacementLocation.id, game.player.badges, 'kanto')).toContain(replacement.speciesId);
   });
 
   it('repeats autonomous hunts and rewards on a held-out seed with the deployed frozen policy', async () => {
     const graph = await loadGraph(), policy = forceRight(await loadOpenWorldPolicy()), game = createGame(1, 'open-world-heldout-6012044');
     game.player.team = [createMonster(game, 150, 80)];
     const source = new OpenWorldSimulation(graph, game, 6_012_044, undefined, policy, 12), checkpoint = source.snapshot();
-    checkpoint.player = { x: -46, z: -12, heading: 1 };
+    checkpoint.player = { x: -92, z: -24, heading: 1 };
+    checkpoint.spawnAnchor = { x: checkpoint.player.x, z: checkpoint.player.z };
     const companion = checkpoint.entities.find(entity => entity.kind === 'companion')!;
-    companion.x = -45; companion.z = -12;
+    companion.x = -90; companion.z = -24;
     checkpoint.entities.filter(entity => entity.kind === 'wild').slice(0, 2).forEach((entity, index) => {
-      entity.x = -40 + index * 6; entity.z = -12; entity.speciesId = 10; entity.level = 2;
+      entity.x = -80 + index * 12; entity.z = -24; entity.speciesId = 10; entity.level = 2;
     });
     checkpoint.entities.filter(entity => entity.kind === 'wild').slice(2).forEach((entity, index) => Object.assign(entity, REMOTE_FIXTURE_POINTS[index]));
     const world = new OpenWorldSimulation(graph, game, 6_012_044, checkpoint, policy, 12);

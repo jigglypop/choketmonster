@@ -29,7 +29,8 @@ describe('compressed world atlas', () => {
     for (const world of WORLDS) {
       expect(world.locations.length).toBeGreaterThanOrEqual(world.id === 'kanto' ? 50 : 13);
       expect(world.locations.filter(location => location.kind === 'town').length).toBeGreaterThanOrEqual(world.id === 'hisui' ? 6 : 8);
-      expect(world.locations.every(location => Math.abs(location.x) <= 120 && Math.abs(location.z) <= 120)).toBe(true);
+      expect(world.locations.every(location => Math.abs(location.x) <= 240 && Math.abs(location.z) <= 240)).toBe(true);
+      expect(world.locations.some(location => Math.abs(location.x) > 120 || Math.abs(location.z) > 120)).toBe(true);
       expect(new Set(world.locations.map(location => location.id)).size).toBe(world.locations.length);
       expect(world.locations.flatMap(location => location.encounters).every(species => Number.isInteger(species) && species >= 1 && species <= 1025)).toBe(true);
     }
@@ -57,7 +58,7 @@ describe('compressed world atlas', () => {
     for (const world of WORLDS.slice(1)) {
       const towns = world.locations.filter(location => location.kind === 'town');
       for (const town of towns) expect((() => {
-        for (let dx = -7; dx <= 7; dx += .5) for (let dz = -7; dz <= 7; dz += .5) if (world.sample(town.x + dx, town.z + dz).blocked) return true;
+        for (let dx = -14; dx <= 14; dx += 1) for (let dz = -14; dz <= 14; dz += 1) if (world.sample(town.x + dx, town.z + dz).blocked) return true;
         return false;
       })(), `${world.id}:${town.id} building collision`).toBe(true);
       for (const location of world.locations) {
@@ -67,9 +68,9 @@ describe('compressed world atlas', () => {
       }
       expect(world.travelPoint(towns[0].id)).toBeDefined();
       expect(world.travelPoint(world.locations.find(location => location.kind === 'route')!.id)).toBeUndefined();
-      const recovered = world.nearestWalkable(119, 119); expect(recovered).toBeDefined(); expect(world.sample(recovered!.x, recovered!.z).blocked).toBe(false);
+      const recovered = world.nearestWalkable(238, 238); expect(recovered).toBeDefined(); expect(world.sample(recovered!.x, recovered!.z).blocked).toBe(false);
       expect(world.evaluateTraversal(recovered!, world.start, 0).allowed).toBe(true);
-      expect(world.evaluateTraversal(world.start, { x: 121, z: 0 }, 0).allowed).toBe(false);
+      expect(world.evaluateTraversal(world.start, { x: 242, z: 0 }, 0).allowed).toBe(false);
     }
   });
 

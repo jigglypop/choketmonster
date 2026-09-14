@@ -1,6 +1,7 @@
 import type { WorldSample } from './types';
 import { POKEMON } from '../data/pokemon';
 import { terrainPlateauHeight } from './terrain-elevation';
+import { WORLD_MAX, WORLD_SCALE, scaleWorldDistance } from './world-space';
 
 export type KantoLocationKind = 'town' | 'route' | 'forest' | 'cave' | 'sea' | 'special';
 
@@ -20,11 +21,11 @@ export type KantoGym = { locationId: string; badge: number; badgeName: string; n
 export type KantoGate = { id: string; from: string; to: string; requiredBadges: number; reason: string; visible?: boolean };
 export type KantoTraversal = { allowed: boolean; location: KantoLocation; gate?: KantoGate; reason?: string };
 
-export const KANTO_MAP_VERSION = 'kanto-v2' as const;
-export const KANTO_START = { x: -68, z: 82 } as const;
+export const KANTO_MAP_VERSION = 'kanto-v3' as const;
+export const KANTO_START = { x: -68 * WORLD_SCALE, z: 82 * WORLD_SCALE } as const;
 
 const location = (id: string, name: string, x: number, z: number, kind: KantoLocationKind, minLevel: number, maxLevel: number, encounters: readonly number[], requiredBadges = 0): KantoLocation =>
-  ({ id, name, x, z, kind, minLevel, maxLevel, encounters, requiredBadges });
+  ({ id, name, x: x * WORLD_SCALE, z: z * WORLD_SCALE, kind, minLevel, maxLevel, encounters, requiredBadges });
 
 // Species are explicit per area. Levels are part of the location, never derived
 // from the partner. Fully evolved and legendary species are kept out of early areas.
@@ -150,14 +151,14 @@ const gateWidthCache = new Map<string, number>();
 const towns = KANTO_LOCATIONS.filter(item => item.kind === 'town');
 const townPlateaus = towns.map(item => ({ x: item.x, z: item.z, height: 0 }));
 
-const TOWN_BUILDING_CANDIDATES = [[-5, -4], [5, -4], [-5, 4], [5, 4], [-6, 0], [6, 0], [0, -6], [0, 6]] as const;
+const TOWN_BUILDING_CANDIDATES = [[-5, -4], [5, -4], [-5, 4], [5, 4], [-6, 0], [6, 0], [0, -6], [0, 6]].map(([x, z]) => [x * WORLD_SCALE, z * WORLD_SCALE] as const);
 const townBuildingOffsetCache = new Map<string, ReadonlyArray<readonly [number, number]>>();
 
 export function townBuildingOffsets(town: KantoLocation): ReadonlyArray<readonly [number, number]> {
   const cached = townBuildingOffsetCache.get(town.id);
   if (cached) return cached;
   const offsets = TOWN_BUILDING_CANDIDATES
-    .filter(([offsetX, offsetZ]) => distanceToKantoPath(town.x + offsetX, town.z + offsetZ) > 3.5)
+    .filter(([offsetX, offsetZ]) => distanceToKantoPath(town.x + offsetX, town.z + offsetZ) > scaleWorldDistance(3.5))
     .slice(0, 3);
   townBuildingOffsetCache.set(town.id, offsets);
   return offsets;
@@ -165,7 +166,7 @@ export function townBuildingOffsets(town: KantoLocation): ReadonlyArray<readonly
 
 function townBuildingAt(x: number, z: number, town: KantoLocation): boolean {
   return townBuildingOffsets(town).some(([offsetX, offsetZ]) =>
-    Math.abs(x - town.x - offsetX) < 1.9 && Math.abs(z - town.z - offsetZ) < 1.7,
+    Math.abs(x - town.x - offsetX) < scaleWorldDistance(1.9) && Math.abs(z - town.z - offsetZ) < scaleWorldDistance(1.7),
   );
 }
 
@@ -190,29 +191,29 @@ export function locationAt(x: number, z: number): KantoLocation {
 
 export function sampleKantoWorld(x: number, z: number): WorldSample {
   const finite = Number.isFinite(x) && Number.isFinite(z);
-  const height = .22 * Math.sin(x * .09) + .18 * Math.cos(z * .08);
+  const height = .22 * Math.sin(x / WORLD_SCALE * .09) + .18 * Math.cos(z / WORLD_SCALE * .08);
   const joinedHeight = (value: number) => terrainPlateauHeight(value, x, z, townPlateaus);
-  if (!finite || Math.abs(x) > 120 || Math.abs(z) > 120) return { height, biome: 'rock', blocked: true };
+  if (!finite || Math.abs(x) > WORLD_MAX || Math.abs(z) > WORLD_MAX) return { height, biome: 'rock', blocked: true };
   const nearest = locationAt(x, z);
   const distance = Math.hypot(x - nearest.x, z - nearest.z);
   const pathDistance = distanceToKantoPath(x, z);
-  const town = towns.find(item => Math.hypot(x - item.x, z - item.z) < 8.5);
+  const town = towns.find(item => Math.hypot(x - item.x, z - item.z) < scaleWorldDistance(8.5));
   if (town) return { height: joinedHeight(height), biome: 'meadow', blocked: townBuildingAt(x, z, town) };
-  const southernSea = z > 82 && x > -78 && x < 12;
-  const powerWater = Math.hypot(x - 61, z + 25) < 13;
-  const locationRadius = nearest.kind === 'town' ? 8.5 : nearest.kind === 'forest' ? 7.5 : nearest.kind === 'sea' ? 6.5 : nearest.kind === 'route' ? 4.8 : 5.5;
-  const playable = pathDistance < 3.2 || distance < locationRadius;
+  const southernSea = z > 82 * WORLD_SCALE && x > -78 * WORLD_SCALE && x < 12 * WORLD_SCALE;
+  const powerWater = Math.hypot(x - 61 * WORLD_SCALE, z + 25 * WORLD_SCALE) < 13 * WORLD_SCALE;
+  const locationRadius = scaleWorldDistance(nearest.kind === 'town' ? 8.5 : nearest.kind === 'forest' ? 7.5 : nearest.kind === 'sea' ? 6.5 : nearest.kind === 'route' ? 4.8 : 5.5);
+  const playable = pathDistance < scaleWorldDistance(3.2) || distance < locationRadius;
   if ((southernSea || powerWater) && !playable) return { height: joinedHeight(-.72), biome: 'lake', blocked: true };
   if (nearest.kind === 'sea' && playable) return { height: joinedHeight(-.68), biome: 'lake', blocked: false };
   if (playable) {
-    const rocky = (nearest.kind === 'cave' || nearest.id === 'route-23') && distance > 3;
+    const rocky = (nearest.kind === 'cave' || nearest.id === 'route-23') && distance > scaleWorldDistance(3);
     return { height: joinedHeight(rocky ? height + .7 : height), biome: rocky ? 'rock' : nearest.kind === 'forest' ? 'forest' : 'meadow', blocked: false };
   }
-  const northernRock = z < -5 || x < -88;
+  const northernRock = z < -5 * WORLD_SCALE || x < -88 * WORLD_SCALE;
   if (northernRock) {
-    return { height: joinedHeight(height + .65 + Math.max(0, -z - 5) * .018), biome: 'rock', blocked: true };
+    return { height: joinedHeight(height + .65 + Math.max(0, -z / WORLD_SCALE - 5) * .018), biome: 'rock', blocked: true };
   }
-  const forestBelt = x < -48 || (x > 20 && z < 22) || (z > 50 && x > 15);
+  const forestBelt = x < -48 * WORLD_SCALE || (x > 20 * WORLD_SCALE && z < 22 * WORLD_SCALE) || (z > 50 * WORLD_SCALE && x > 15 * WORLD_SCALE);
   if (forestBelt) {
     return { height: joinedHeight(height), biome: 'forest', blocked: true };
   }
@@ -232,14 +233,14 @@ export function kantoGateHalfWidth(gate: KantoGate): number {
   const dx = to.x - from.x, dz = to.z - from.z, length = Math.hypot(dx, dz) || 1;
   const centerX = (from.x + to.x) / 2, centerZ = (from.z + to.z) / 2;
   const sideX = -dz / length, sideZ = dx / length;
-  let furthest = 3.2;
+  let furthest = scaleWorldDistance(3.2);
   for (const side of [-1, 1]) {
-    for (let distance = .1; distance <= 18; distance += .1) {
+    for (let distance = scaleWorldDistance(.1); distance <= scaleWorldDistance(18); distance += scaleWorldDistance(.1)) {
       if (!isKantoPlayable(centerX + sideX * distance * side, centerZ + sideZ * distance * side)) break;
       furthest = Math.max(furthest, distance);
     }
   }
-  const width = furthest + .4;
+  const width = furthest + scaleWorldDistance(.4);
   gateWidthCache.set(gate.id, width);
   return width;
 }
@@ -269,7 +270,7 @@ export function evaluateKantoTraversal(from: { x: number; z: number }, to: { x: 
 export function safeKantoArrival(locationId: string, badges = 0): { x: number; z: number } | undefined {
   const target = byId.get(locationId);
   if (!target || !Number.isFinite(badges) || badges < target.requiredBadges) return undefined;
-  const candidates = [[target.x, target.z], [target.x, target.z + 2], [target.x + 2, target.z], [target.x - 2, target.z], [target.x, target.z - 2]] as const;
+  const offset = scaleWorldDistance(2), candidates = [[target.x, target.z], [target.x, target.z + offset], [target.x + offset, target.z], [target.x - offset, target.z], [target.x, target.z - offset]] as const;
   const arrival = candidates.find(([x, z]) => isKantoPlayable(x, z));
   return arrival ? { x: arrival[0], z: arrival[1] } : undefined;
 }
@@ -282,12 +283,12 @@ export function nearestKantoWalkable(x: number, z: number, badges = 0): { x: num
       if (badges >= segment.gate.requiredBadges) return false;
       const along = (candidateX - segment.x) * segment.alongX + (candidateZ - segment.z) * segment.alongZ;
       const lateral = Math.abs((candidateX - segment.x) * -segment.alongZ + (candidateZ - segment.z) * segment.alongX);
-      return Math.abs(along) < .35 && lateral <= kantoGateHalfWidth(segment.gate);
+      return Math.abs(along) < scaleWorldDistance(.35) && lateral <= kantoGateHalfWidth(segment.gate);
     });
     return !onLockedGate && location.requiredBadges <= badges && isKantoPlayable(candidateX, candidateZ);
   };
   if (allowed(x, z)) return { x, z };
-  for (let radius = .5; radius <= 18; radius += .5) {
+  for (let radius = scaleWorldDistance(.5); radius <= scaleWorldDistance(18); radius += scaleWorldDistance(.5)) {
     for (let index = 0; index < 32; index += 1) {
       const angle = index / 32 * Math.PI * 2;
       const candidateX = x + Math.cos(angle) * radius, candidateZ = z + Math.sin(angle) * radius;

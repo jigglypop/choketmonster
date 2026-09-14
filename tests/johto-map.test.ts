@@ -7,9 +7,9 @@ import {
 import { JOHTO_GOLD_ENCOUNTERS } from '../src/data/johto-gold-encounters';
 import { terrainSurfaceHeight } from '../src/openworld/grounding';
 
-describe('Johto v2 exploration map', () => {
+describe('Johto v3 exploration map', () => {
   it('places the ten cities in their Gold-era relative directions and covers Routes 29-46', () => {
-    expect(JOHTO_MAP_VERSION).toBe('johto-v2');
+    expect(JOHTO_MAP_VERSION).toBe('johto-v3');
     const at = (id: string) => JOHTO_LOCATIONS.find(item => item.id === id)!;
     expect(JOHTO_START).toEqual({ x: at('new-bark').x, z: at('new-bark').z });
     expect(at('cherrygrove').x).toBeLessThan(at('new-bark').x);
@@ -31,9 +31,9 @@ describe('Johto v2 exploration map', () => {
   it('adds a source-backed, badge-locked Mt. Silver spur without moving existing locations', () => {
     const silver = JOHTO_LOCATIONS.find(item => item.id === 'mt-silver')!;
     const falls = JOHTO_LOCATIONS.find(item => item.id === 'tohjo-falls')!;
-    expect(falls).toMatchObject({ x: 106, z: 60 });
+    expect(falls).toMatchObject({ x: 212, z: 120 });
     expect(silver).toMatchObject({ name: '은빛산', kind: 'cave', requiredBadges: 8 });
-    expect(Math.hypot(silver.x - falls.x, silver.z - falls.z)).toBeLessThan(16);
+    expect(Math.hypot(silver.x - falls.x, silver.z - falls.z)).toBeLessThan(32);
     expect(silver.encounters).toEqual([195, 55, 217, 42, 246, 114, 77, 78, 84, 85, 95, 75]);
     expect(safeJohtoArrival('mt-silver', 7)).toBeUndefined();
     expect(safeJohtoArrival('mt-silver', 8)).toEqual({ x: silver.x, z: silver.z });
@@ -72,9 +72,9 @@ describe('Johto v2 exploration map', () => {
       expect(johtoBuildingOffsets(town).some(([dx, dz]) => sampleJohtoWorld(town.x + dx, town.z + dz).blocked)).toBe(true);
     }
     expect(johtoTravelPoint('route-29')).toBeUndefined();
-    const recovered = nearestJohtoWalkable(118, 118);
+    const recovered = nearestJohtoWalkable(236, 236);
     expect(recovered).toBeDefined(); expect(sampleJohtoWorld(recovered!.x, recovered!.z).blocked).toBe(false);
-    expect(evaluateJohtoTraversal(JOHTO_START, { x: 118, z: 118 }, 0).allowed).toBe(false);
+    expect(evaluateJohtoTraversal(JOHTO_START, { x: 242, z: 0 }, 0).allowed).toBe(false);
     expect(johtoLocationAt(JOHTO_START.x, JOHTO_START.z).id).toBe('new-bark');
   });
 
@@ -83,7 +83,7 @@ describe('Johto v2 exploration map', () => {
       const centerHeight = terrainSurfaceHeight(sampleJohtoWorld, town.x, town.z);
       for (let tileX = -7; tileX <= 7; tileX += 1) for (let tileZ = -7; tileZ <= 7; tileZ += 1) {
         if (Math.hypot(tileX, tileZ) > 7.1) continue;
-        const height = terrainSurfaceHeight(sampleJohtoWorld, town.x + tileX * 1.12, town.z + tileZ * 1.12);
+        const height = terrainSurfaceHeight(sampleJohtoWorld, town.x + tileX * 2.24, town.z + tileZ * 2.24);
         expect(Math.abs(height - centerHeight), `${town.id}:${tileX},${tileZ}`).toBeLessThan(1e-6);
       }
     }

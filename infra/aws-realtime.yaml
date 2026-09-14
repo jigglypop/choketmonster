@@ -10,6 +10,9 @@ Parameters:
   RuntimeBucket:
     Type: String
     AllowedPattern: '^[a-z0-9.-]+$'
+  RealtimeTicketSecretArn:
+    Type: String
+    AllowedPattern: '^arn:[a-z0-9-]+:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+$'
   ImageId:
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
     Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
@@ -47,6 +50,9 @@ Resources:
               - Effect: Allow
                 Action: s3:GetObject
                 Resource: !Sub 'arn:aws:s3:::${RuntimeBucket}/ci/*'
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref RealtimeTicketSecretArn
   InstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
@@ -68,11 +74,16 @@ Resources:
           SubnetId: !Ref SubnetId
           GroupSet: [!GetAtt SecurityGroup.GroupId]
       UserData:
-        Fn::Base64: |
+        Fn::Base64: !Sub |
           #!/bin/bash
           set -eu
           useradd --system --home-dir /opt/choketmon-realtime --shell /sbin/nologin choketmon-realtime
           install -d -m 750 -o choketmon-realtime -g choketmon-realtime /opt/choketmon-realtime
+          install -d -m 700 /etc/choketmon-realtime
+          ticket_secret="$(aws secretsmanager get-secret-value --secret-id '${RealtimeTicketSecretArn}' --region '${AWS::Region}' --query SecretString --output text)"
+          test "$(printf '%s' "$ticket_secret" | wc -c)" -ge 32
+          printf 'REALTIME_TICKET_SECRET=%s\n' "$ticket_secret" > /etc/choketmon-realtime/server.env
+          chmod 600 /etc/choketmon-realtime/server.env
           cat > /etc/systemd/system/choketmon-realtime.service <<'SERVICE'
           [Unit]
           Description=Choketmon WebSocket gateway
@@ -83,6 +94,7 @@ Resources:
           Group=choketmon-realtime
           ExecStart=/opt/choketmon-realtime/choketmon-server
           Environment=REALTIME_ONLY=true
+          EnvironmentFile=/etc/choketmon-realtime/server.env
           Environment=LISTEN_ADDR=0.0.0.0:8080
           Environment=APP_ORIGIN=https://chocketmon.com,https://d3b0jo8g1tseoa.cloudfront.net
           Environment=REALTIME_ROOM_CAPACITY=64
@@ -139,6 +151,14 @@ Resources:
                   set -eu
                   exec 9>/run/choketmon-realtime-deploy.lock
                   flock -w 120 9
+                  install -d -m 700 /etc/choketmon-realtime
+                  ticket_secret="$(aws secretsmanager get-secret-value --secret-id '${RealtimeTicketSecretArn}' --region '${AWS::Region}' --query SecretString --output text)"
+                  test "$(printf '%s' "$ticket_secret" | wc -c)" -ge 32
+                  printf 'REALTIME_TICKET_SECRET=%s\n' "$ticket_secret" > /etc/choketmon-realtime/server.env
+                  chmod 600 /etc/choketmon-realtime/server.env
+                  install -d -m 755 /etc/systemd/system/choketmon-realtime.service.d
+                  printf '[Service]\nEnvironmentFile=/etc/choketmon-realtime/server.env\n' > /etc/systemd/system/choketmon-realtime.service.d/auth.conf
+                  systemctl daemon-reload
                   release='{{Release}}'
                   expected='{{Sha256}}'
                   root=/opt/choketmon-realtime

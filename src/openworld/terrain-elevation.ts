@@ -1,3 +1,5 @@
+import { scaleWorldDistance } from './world-space';
+
 export type TerrainPlateau = { x: number; z: number; height: number };
 
 /**
@@ -10,8 +12,8 @@ export function terrainPlateauHeight(
   x: number,
   z: number,
   plateaus: readonly TerrainPlateau[],
-  flatRadius = 13.2,
-  outerRadius = 18,
+  flatRadius = scaleWorldDistance(13.2),
+  outerRadius = scaleWorldDistance(18),
 ): number {
   let nearest: TerrainPlateau | undefined;
   let distance = Infinity;

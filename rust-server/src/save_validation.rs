@@ -113,6 +113,13 @@ fn catalog() -> &'static Catalog {
     })
 }
 
+pub(crate) fn species_available_in_version(version: &str, species_id: i64) -> bool {
+    catalog()
+        .versions
+        .get(version)
+        .is_some_and(|species| species.contains(&species_id))
+}
+
 fn expected_graph() -> &'static Value {
     GRAPH.get_or_init(|| {
         serde_json::from_str(include_str!(concat!(
@@ -432,8 +439,8 @@ fn validate_monster(
 }
 
 const WORLD_MAPS: [(&str, &str); 10] = [
-    ("kanto", "kanto-v2"),
-    ("johto", "johto-v2"),
+    ("kanto", "kanto-v3"),
+    ("johto", "johto-v3"),
     ("hoenn", "hoenn-atlas-v1"),
     ("sinnoh", "sinnoh-atlas-v1"),
     ("unova", "unova-atlas-v1"),
@@ -443,6 +450,57 @@ const WORLD_MAPS: [(&str, &str); 10] = [
     ("hisui", "hisui-atlas-v1"),
     ("paldea", "paldea-atlas-v1"),
 ];
+
+const KANTO_CAVES: [&str; 7] = [
+    "mt-moon",
+    "diglett-cave",
+    "rock-tunnel",
+    "seafoam-islands",
+    "victory-road",
+    "cerulean-cave",
+    "power-plant",
+];
+const JOHTO_CAVES: [&str; 9] = [
+    "tohjo-falls",
+    "union-cave",
+    "slowpoke-well",
+    "whirl-islands",
+    "mt-mortar",
+    "ice-path",
+    "dragons-den",
+    "dark-cave",
+    "mt-silver",
+];
+
+fn valid_world_scene(region: &str, scene: &str) -> bool {
+    if scene == format!("surface:{region}") {
+        return true;
+    }
+    let Some(id) = scene.strip_prefix(&format!("cave:{region}:")) else {
+        return false;
+    };
+    match region {
+        "kanto" => KANTO_CAVES.contains(&id),
+        "johto" => JOHTO_CAVES.contains(&id),
+        _ => false,
+    }
+}
+
+fn validate_world_point(value: &Value) -> Result<(), &'static str> {
+    let point = value
+        .as_object()
+        .ok_or("오픈월드 좌표가 올바르지 않습니다.")?;
+    if !point
+        .get("x")
+        .is_some_and(|value| finite_number(value, 240.0))
+        || !point
+            .get("z")
+            .is_some_and(|value| finite_number(value, 240.0))
+    {
+        return Err("오픈월드 좌표가 올바르지 않습니다.");
+    }
+    Ok(())
+}
 
 const KANTO_GYM_REGIONS: [&str; 8] = [
     "safari-meadow",
@@ -505,9 +563,10 @@ fn validate_open_world(view: Option<&Value>) -> Result<(), &'static str> {
                 .iter()
                 .find_map(|(id, map)| (*id == region).then_some(*map))
                 .ok_or("오픈월드 지역이 올바르지 않습니다.")?;
-            let legacy_kanto =
-                region == "kanto" && (map_version.is_none() || map_version == Some("kanto-v1"));
-            let legacy_johto = region == "johto" && map_version == Some("johto-atlas-v1");
+            let legacy_kanto = region == "kanto"
+                && matches!(map_version, None | Some("kanto-v1") | Some("kanto-v2"));
+            let legacy_johto = region == "johto"
+                && matches!(map_version, Some("johto-v2") | Some("johto-atlas-v1"));
             if !legacy_kanto && !legacy_johto && map_version != Some(expected) {
                 return Err("오픈월드 지도 버전이 지역과 일치하지 않습니다.");
             }
@@ -515,6 +574,61 @@ fn validate_open_world(view: Option<&Value>) -> Result<(), &'static str> {
         None => {
             if !matches!(map_version, None | Some("kanto-v1") | Some("kanto-v2")) {
                 return Err("기존 오픈월드 지도 버전이 올바르지 않습니다.");
+            }
+        }
+    }
+    if let Some(scene) = world.get("sceneId") {
+        let scene = scene.as_str().ok_or("오픈월드 장면이 올바르지 않습니다.")?;
+        let region = region.ok_or("오픈월드 장면에는 지역이 필요합니다.")?;
+        if !valid_world_scene(region, scene) {
+            return Err("오픈월드 장면이 지역과 일치하지 않습니다.");
+        }
+    }
+    if let Some(seconds) = world.get("worldClockSeconds")
+        && !seconds
+            .as_f64()
+            .is_some_and(|seconds| seconds.is_finite() && (0.0..1200.0).contains(&seconds))
+    {
+        return Err("오픈월드 시간이 올바르지 않습니다.");
+    }
+    for key in ["player", "spawnAnchor"] {
+        if let Some(point) = world.get(key) {
+            validate_world_point(point)?;
+        }
+    }
+    if let Some(surface_return) = world.get("surfaceReturn") {
+        validate_world_point(surface_return)?;
+        let expected = region.map(|region| format!("surface:{region}"));
+        if surface_return.get("sceneId").and_then(Value::as_str) != expected.as_deref() {
+            return Err("동굴 복귀 장면이 지역과 일치하지 않습니다.");
+        }
+    }
+    for key in ["entities", "companionMemories", "foods"] {
+        if let Some(items) = world.get(key) {
+            let items = items
+                .as_array()
+                .ok_or("오픈월드 좌표 목록이 올바르지 않습니다.")?;
+            for item in items {
+                validate_world_point(item)?;
+                if let Some(target) = item.get("target") {
+                    validate_world_point(target)?;
+                }
+            }
+        }
+    }
+    if let Some(items) = world.get("respawnQueue") {
+        let items = items
+            .as_array()
+            .ok_or("오픈월드 재등장 좌표가 올바르지 않습니다.")?;
+        for item in items {
+            if !item
+                .get("originX")
+                .is_some_and(|value| finite_number(value, 240.0))
+                || !item
+                    .get("originZ")
+                    .is_some_and(|value| finite_number(value, 240.0))
+            {
+                return Err("오픈월드 재등장 좌표가 올바르지 않습니다.");
             }
         }
     }
@@ -816,6 +930,28 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
             .any(|(index, badge)| badge.as_i64() != Some(index as i64 + 1))
     {
         return Err("배지 진행이 올바르지 않습니다.");
+    }
+    if let Some(field_trainers) = game.get("defeatedFieldTrainers") {
+        let field_trainers = field_trainers
+            .as_array()
+            .filter(|items| items.len() <= 1024)
+            .ok_or("필드 트레이너 진행이 올바르지 않습니다.")?;
+        let mut unique = HashSet::new();
+        for trainer in field_trainers {
+            let id = trainer
+                .as_str()
+                .filter(|id| {
+                    id.starts_with("crystal-")
+                        && id.len() <= 100
+                        && id
+                            .bytes()
+                            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+                })
+                .ok_or("필드 트레이너 진행이 올바르지 않습니다.")?;
+            if !unique.insert(id) {
+                return Err("필드 트레이너 진행이 중복되었습니다.");
+            }
+        }
     }
     let champion_defeated = game
         .get("championDefeated")
@@ -1300,7 +1436,7 @@ mod tests {
         wrong_map["view"]["openWorld"]["mapVersion"] = Value::String("kanto-v2".into());
         assert!(validate_save(&wrong_map).is_err());
 
-        for map in ["johto-v2", "johto-atlas-v1"] {
+        for map in ["johto-v3", "johto-v2", "johto-atlas-v1"] {
             let mut johto = save.clone();
             johto["view"]["openWorld"]["regionId"] = Value::String("johto".into());
             johto["view"]["openWorld"]["mapVersion"] = Value::String(map.into());
@@ -1315,5 +1451,35 @@ mod tests {
         duplicate_visit["view"]["openWorld"]["visitedTownsByRegion"]["paldea"] =
             serde_json::json!(["cabo-poco", "cabo-poco"]);
         assert!(validate_save(&duplicate_visit).is_err());
+    }
+
+    #[test]
+    fn validates_v3_scene_clock_coordinates_and_field_trainer_progress() {
+        let mut save = valid_save();
+        save["game"]["defeatedFieldTrainers"] = serde_json::json!(["crystal-hiker-daniel"]);
+        save["view"]["openWorld"] = serde_json::json!({
+            "regionId":"johto", "mapVersion":"johto-v3", "sceneId":"cave:johto:union-cave",
+            "worldClockSeconds":1199.5, "player":{"x":240,"z":-240,"heading":0},
+            "spawnAnchor":{"x":1,"z":2},
+            "surfaceReturn":{"sceneId":"surface:johto","x":-200,"z":200},
+            "entities":[{"x":4,"z":5,"target":{"x":6,"z":7}}],
+            "companionMemories":[{"x":8,"z":9}], "foods":[{"x":10,"z":11}],
+            "respawnQueue":[{"originX":12,"originZ":13}]
+        });
+        validate_save(&save).unwrap();
+
+        let mut wrong_scene = save.clone();
+        wrong_scene["view"]["openWorld"]["sceneId"] = Value::String("cave:kanto:mt-moon".into());
+        assert!(validate_save(&wrong_scene).is_err());
+        let mut outside = save.clone();
+        outside["view"]["openWorld"]["player"]["x"] = Value::from(240.01);
+        assert!(validate_save(&outside).is_err());
+        let mut bad_clock = save.clone();
+        bad_clock["view"]["openWorld"]["worldClockSeconds"] = Value::from(1200);
+        assert!(validate_save(&bad_clock).is_err());
+        let mut duplicate = save;
+        duplicate["game"]["defeatedFieldTrainers"] =
+            serde_json::json!(["crystal-hiker-daniel", "crystal-hiker-daniel"]);
+        assert!(validate_save(&duplicate).is_err());
     }
 }

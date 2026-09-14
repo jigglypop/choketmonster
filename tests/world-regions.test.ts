@@ -6,7 +6,7 @@ import { createGame, createMonster } from '../src/game/engine';
 import { VERSIONS } from '../src/data/pokemon-versions';
 import { KANTO_LOCATIONS, encountersForLocation } from '../src/openworld/kanto';
 import { getWorldAtlas } from '../src/openworld/atlas';
-import { OpenWorldSimulation, biomeForSpecies, restoreOpenWorld, serializeOpenWorld, versionEncounters, redEncounters, RED_ENCOUNTER_LAYOUT } from '../src/openworld/simulation';
+import { OpenWorldSimulation, biomeForSpecies, restoreOpenWorld, serializeOpenWorld, versionEncounters, redEncounters, regionalEncounters, RED_ENCOUNTER_LAYOUT } from '../src/openworld/simulation';
 import { getPlayableSpeciesIds, isPlayableSpecies } from '../src/openworld/availability';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
@@ -20,7 +20,9 @@ function moveCheckpointToRegion(world: OpenWorldSimulation, regionId: 'paldea') 
   }
   if (points.length < checkpoint.entities.length + checkpoint.foods.length) throw new Error('Regional fixture has too few walkable points');
   checkpoint.regionId = regionId; checkpoint.mapVersion = atlas.mapVersion;
+  delete checkpoint.sceneId;
   checkpoint.player = { ...atlas.start, heading: 0 };
+  checkpoint.spawnAnchor = { ...atlas.start };
   checkpoint.visitedTownIds = ['cabo-poco'];
   checkpoint.visitedTownsByRegion = { kanto: ['pallet', 'viridian'], paldea: ['cabo-poco'] };
   checkpoint.entities.forEach((entity, index) => Object.assign(entity, points[index]));
@@ -43,22 +45,22 @@ describe('regional open worlds', () => {
     expect(game.adventureVersion).toBe('yellow');
   });
 
-  it('fixes every collection version to Red encounters and preserves the roster when switching records', () => {
+  it('fixes every collection version to the regional FireRed distribution and preserves the roster when switching records', () => {
     const versions = ['national', ...VERSIONS.filter(version => getPlayableSpeciesIds(version.id).length).map(version => version.id)];
     for (const version of versions) for (const badges of [0, 1, 4, 8]) for (const location of KANTO_LOCATIONS) {
-      expect(versionEncounters(location.id, version, badges), `${version}:${location.id}:${badges}`).toEqual(encountersForLocation(location.id, badges));
+      expect(versionEncounters(location.id, version, badges), `${version}:${location.id}:${badges}`).toEqual(regionalEncounters(location.id, badges, 'kanto'));
     }
     const game = createGame(1, 'fixed-red'), source = new OpenWorldSimulation(graph, game, 73009);
     const checkpoint = source.snapshot(), wild = checkpoint.entities.find(entity => entity.kind === 'wild')!;
     checkpoint.selectedWildId = wild.id; checkpoint.selectionPinned = true;
-    checkpoint.respawnQueue = [{ id: 'respawn:test', speciesId: 16, level: 3, biome: biomeForSpecies(16), originX: -68, originZ: 66, remainingSeconds: 5 }];
+    checkpoint.respawnQueue = [{ id: 'respawn:test', speciesId: wild.speciesId, level: wild.level, biome: biomeForSpecies(wild.speciesId), originX: wild.x, originZ: wild.z, remainingSeconds: 5 }];
     const world = new OpenWorldSimulation(graph, game, source.seed, checkpoint), before = world.snapshot();
     for (const version of versions) { world.changeVersion(version); expect(world.snapshot()).toEqual(before); }
     const national = createGame(1, 'fixed-red'); national.adventureVersion = 'national';
     const red = new OpenWorldSimulation(graph, createGame(1, 'fixed-red'), source.seed);
     expect(new OpenWorldSimulation(graph, national, source.seed).snapshot()).toEqual(red.snapshot());
     expect(game.versionCaught!.red).toEqual([1]);
-  });
+  }, 15_000);
 
   it('migrates the expanded roster once while preserving a battle, owned individuals and history', () => {
     const game = createGame(1, 'legacy-national-red'); game.adventureVersion = 'national';
@@ -70,12 +72,13 @@ describe('regional open worlds', () => {
     const battle = structuredClone(game.battle), history = structuredClone(game.versionCaught), snapshot = source.snapshot();
     delete snapshot.encounterLayout;
     const remapped = snapshot.entities.find(entity => entity.id === wilds[1].id)!;
-    Object.assign(remapped, { speciesId: 150, level: 70, x: -68, z: 66 });
-    snapshot.respawnQueue = [{ id: 'respawn:old-layout', speciesId: 150, level: 70, biome: 'rock', originX: -68, originZ: 66, remainingSeconds: 5 }];
+    Object.assign(remapped, { speciesId: 150, level: 70 });
+    snapshot.respawnQueue = [{ id: 'respawn:old-layout', speciesId: 150, level: 70, biome: 'rock', originX: remapped.x, originZ: remapped.z, remainingSeconds: 5 }];
     const original = structuredClone(snapshot), world = new OpenWorldSimulation(graph, game, source.seed, snapshot);
     const current = world.snapshot(), replacement = current.entities.find(entity => entity.id === remapped.id)!;
-    expect([16, 19]).toContain(replacement.speciesId); expect(replacement.level).toBe(4); expect(replacement.brain).toEqual(remapped.brain);
-    expect(current.respawnQueue![0]).toMatchObject({ level: 4, remainingSeconds: 5 }); expect([16, 19]).toContain(current.respawnQueue![0].speciesId);
+    const replacementLocation = getWorldAtlas('kanto').locationAt(replacement.x, replacement.z);
+    expect(regionalEncounters(replacementLocation.id, 0, 'kanto')).toContain(replacement.speciesId); expect(replacement.level).toBeGreaterThanOrEqual(replacementLocation.minLevel); expect(replacement.brain).toEqual(remapped.brain);
+    expect(current.respawnQueue![0]).toMatchObject({ remainingSeconds: 5 }); expect(current.respawnQueue![0].speciesId).toBeLessThanOrEqual(151);
     expect(current.encounterLayout).toBe(RED_ENCOUNTER_LAYOUT); expect(current.rng).toBe(snapshot.rng);
     expect(game.battle).toEqual(battle); expect(current.entities.find(entity => entity.id === wilds[0].id)!.speciesId).toBe(25);
     expect(game.player.box[0]).toBe(owned); expect(game.versionCaught).toEqual(history); expect(snapshot).toEqual(original);

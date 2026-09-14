@@ -6,8 +6,9 @@ import { startPosition, tileAt, type MapPosition } from './map';
 import { FieldSimulation, type FieldSnapshot } from './field';
 import { OpenWorldSimulation, type OpenWorldSnapshot } from '../openworld/simulation';
 
-export type ViewState = { position: MapPosition; learning: boolean; learningDefaultsVersion?: 1; rewards?: Record<string, number>; field?: FieldSnapshot; fieldPreferences?: { paused: boolean; learning: boolean; selectedId: string }; openWorld?: OpenWorldSnapshot; openWorldPaused?: boolean };
-export type SaveEnvelope = { format: 'choketmon'; version: 2; model: string; savedAt: string; graph: Graph; game: unknown; view: ViewState };
+export type ViewState = { position: MapPosition; learning: boolean; learningDefaultsVersion?: 1; rewards?: Record<string, number>; field?: FieldSnapshot; fieldPreferences?: { paused: boolean; learning: boolean; selectedId: string }; openWorld?: OpenWorldSnapshot; openWorldPaused?: boolean; tradeTransferProvenance?: Record<string, { sourceInstanceId: string; tradeId?: string }> };
+export type SaveEnvelope = { format: 'choketmon'; version: 2; model: string; savedAt: string; graph: Graph; game: unknown; view: ViewState; tradeEpoch?: number };
+const decodedTradeEpoch = new WeakMap<object, number>();
 const monsters = (game: GameState) => [...game.player.team, ...game.player.box, ...(game.battle?.enemy.team ?? []), ...(game.battle?.player.team ?? []), ...(game.captureOffer ? [game.captureOffer] : [])];
 // PostgreSQL/Rust JSON serializers may reorder object keys without changing a graph.
 const canonicalJson = (value: unknown): string => JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item)
@@ -19,9 +20,9 @@ const computationalGraph = (graph: Graph) => canonicalJson({ kind: graph.kind, i
 export function packSave(game: GameState, graph: Graph, view: ViewState): SaveEnvelope {
   // Store the immutable topology once, even when hundreds of monsters have memories.
   const packed = JSON.parse(JSON.stringify(game, (key, value) => key === 'graph' ? undefined : value));
-  return { format: 'choketmon', version: 2, model: BRAIN_MODEL, savedAt: new Date().toISOString(), graph: structuredClone(graph), game: packed, view: structuredClone(view) };
+  return { format: 'choketmon', version: 2, model: BRAIN_MODEL, savedAt: new Date().toISOString(), graph: structuredClone(graph), game: packed, view: structuredClone(view), tradeEpoch: decodedTradeEpoch.get(game) ?? activeTradeEpoch };
 }
-export function unpackSave(input: unknown, expectedGraph?: Graph): { game: GameState; graph: Graph; view: ViewState } {
+export function unpackSave(input: unknown, expectedGraph?: Graph, internal?: { allowTradeEpochAdvance?: boolean }): { game: GameState; graph: Graph; view: ViewState } {
   const value = (typeof input === 'string' ? parseJson(input) : structuredClone(input)) as SaveEnvelope;
   if (!value || value.format !== 'choketmon' || value.version !== 2 || value.model !== BRAIN_MODEL) throw new Error('초켓몬스터 151종 저장 파일이 아닙니다.');
   validateGraph(value.graph);
@@ -48,9 +49,15 @@ export function unpackSave(input: unknown, expectedGraph?: Graph): { game: GameS
   const preferences = view.fieldPreferences;
   if (preferences !== undefined && (!preferences || typeof preferences.paused !== 'boolean' || typeof preferences.learning !== 'boolean' || typeof preferences.selectedId !== 'string')) throw new Error('들판 설정이 올바르지 않습니다.');
   if (view.openWorldPaused !== undefined && typeof view.openWorldPaused !== 'boolean') throw new Error('월드 정지 설정이 올바르지 않습니다.');
+  if (view.tradeTransferProvenance !== undefined && (!view.tradeTransferProvenance || typeof view.tradeTransferProvenance !== 'object' || Array.isArray(view.tradeTransferProvenance)
+    || Object.entries(view.tradeTransferProvenance).length > 10_000 || Object.entries(view.tradeTransferProvenance).some(([id, record]) => !/^mon-[1-9]\d*$/.test(id)
+      || !record || typeof record.sourceInstanceId !== 'string' || !/^mon-[1-9]\d*$/.test(record.sourceInstanceId) || (record.tradeId !== undefined && (typeof record.tradeId !== 'string' || !record.tradeId || record.tradeId.length > 100))))) throw new Error('거래 개체 출처 기록이 올바르지 않습니다.');
   // Validation may run a map migration. Keep the decoded save untouched so the
   // caller can back up its original version and progress before applying it.
   if (view.openWorld !== undefined) new OpenWorldSimulation(graph, structuredClone(game), view.openWorld.seed, view.openWorld);
+  const tradeEpoch = normalizeTradeEpoch(value.tradeEpoch);
+  if (tradeEpochReady && tradeEpoch !== activeTradeEpoch && !internal?.allowTradeEpochAdvance) throw new StaleTradeEpochError();
+  decodedTradeEpoch.set(game, tradeEpoch);
   return { game, graph, view: view.learningDefaultsVersion === undefined ? { ...view, learning: true, learningDefaultsVersion: 1 } : view };
 }
 
@@ -64,7 +71,9 @@ export type SaveStorageStatus = { state: 'local' | 'synced' | 'error' | 'conflic
 type SyncOutbox = { save?: SaveEnvelope; revision: number; requestId: string; localVersion: number };
 type SyncConflict = { remote: SaveEnvelope; remoteRevision: number };
 type SyncRecord = { profileId: string; serverRevision: number; localVersion: number; dirty: boolean; outbox?: SyncOutbox; conflict?: SyncConflict };
+type TradeReceipt = { profileId: string; tradeId: string; revision: number; tradeEpoch: number };
 let storageStatus: SaveStorageStatus | undefined;
+let activeTradeEpoch = 0, tradeEpochReady = false;
 const storageListeners = new Set<(status: SaveStorageStatus) => void>();
 export function getSaveStorageStatus() { return storageStatus; }
 export function onSaveStorageStatus(listener: (status: SaveStorageStatus) => void) { storageListeners.add(listener); if (storageStatus) listener(storageStatus); return () => { storageListeners.delete(listener); }; }
@@ -111,6 +120,7 @@ async function updateSync(key: string, update: (value: SyncRecord | undefined) =
 }
 export async function readSave(key = 'current'): Promise<unknown | undefined> {
   const slot = profileSlot(key), local = await readLocal(slot);
+  if (key === 'current') { activeTradeEpoch = validRemote(local) ? normalizeTradeEpoch(local.tradeEpoch) : 0; tradeEpochReady = true; }
   if (activeProfile && key === 'current') {
     const sync = await readSync(syncKey(activeProfile.id));
     if (sync?.conflict) announceConflict(activeProfile.id, local, sync.conflict);
@@ -122,13 +132,28 @@ export async function readSave(key = 'current'): Promise<unknown | undefined> {
   return undefined;
 }
 let localWriteQueue: Promise<void> = Promise.resolve();
+export class StaleTradeEpochError extends Error {
+  constructor() { super('거래로 갱신된 저장보다 오래된 진행은 저장할 수 없습니다. 최신 거래 결과를 다시 불러와 주세요.'); this.name = 'StaleTradeEpochError'; }
+}
+const normalizeTradeEpoch = (value: unknown) => value === undefined ? 0
+  : Number.isSafeInteger(value) && Number(value) >= 0 ? Number(value)
+    : (() => { throw new Error('저장의 거래 버전이 올바르지 않습니다.'); })();
 export function writeSave(save: SaveEnvelope, key = 'current'): Promise<void> {
-  const snapshot = structuredClone(save), profile = activeProfile, baseSlot = key === 'current' || /-\d{13}$/.test(key) ? key : `${key}-${Date.now()}`, slot = profileSlot(baseSlot, profile);
+  const snapshot = structuredClone(save), profile = activeProfile, generation = profileGeneration,
+    baseSlot = key === 'current' || /-\d{13}$/.test(key) ? key : `${key}-${Date.now()}`, slot = profileSlot(baseSlot, profile);
+  snapshot.tradeEpoch = normalizeTradeEpoch(snapshot.tradeEpoch);
   const operation = localWriteQueue.catch(() => {}).then(async () => {
+    if (generation !== profileGeneration || profile?.id !== activeProfile?.id) throw new Error('계정이 바뀌어 이전 저장 작업을 중단했습니다.');
     const db = await database(); let retainedConflict: SyncConflict | undefined;
     await new Promise<void>((resolve, reject) => {
       const stores = profile ? [STORE, SYNC_STORE] : [STORE], tx = db.transaction(stores, 'readwrite');
-      tx.objectStore(STORE).put(snapshot, slot);
+      const saves = tx.objectStore(STORE), currentRequest = baseSlot === 'current' ? saves.get(slot) : undefined;
+      const apply = () => {
+        const storedEpoch = validRemote(currentRequest?.result) ? normalizeTradeEpoch(currentRequest!.result.tradeEpoch) : 0;
+        if (baseSlot === 'current' && normalizeTradeEpoch(snapshot.tradeEpoch) < storedEpoch) { tx.abort(); return; }
+        saves.put(snapshot, slot);
+      };
+      if (currentRequest) currentRequest.onsuccess = apply; else apply();
       if (profile && baseSlot === 'current') {
         const syncStore = tx.objectStore(SYNC_STORE), request = syncStore.get(syncKey(profile.id));
         request.onsuccess = () => {
@@ -137,8 +162,12 @@ export function writeSave(save: SaveEnvelope, key = 'current'): Promise<void> {
           syncStore.put({ profileId: profile.id, serverRevision: prior?.serverRevision ?? 0, localVersion: (prior?.localVersion ?? 0) + 1, dirty: true, conflict: prior?.conflict } satisfies SyncRecord, syncKey(profile.id));
         };
       }
-      tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
+      tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); tx.onabort = () => {
+        const storedEpoch = validRemote(currentRequest?.result) ? normalizeTradeEpoch(currentRequest!.result.tradeEpoch) : 0;
+        reject(normalizeTradeEpoch(snapshot.tradeEpoch) < storedEpoch ? new StaleTradeEpochError() : tx.error);
+      };
     });
+    if (baseSlot === 'current') { activeTradeEpoch = normalizeTradeEpoch(snapshot.tradeEpoch); tradeEpochReady = true; }
     if (profile && retainedConflict) announceConflict(profile.id, snapshot, retainedConflict);
     else announceStorage({ state: 'local', profileId: profile?.id ?? 'device', message: profile ? '이 기기에 저장됨 · 서버 체크포인트 대기' : undefined });
   });
@@ -151,8 +180,10 @@ const syncKey = (profileId: string) => `account:${profileId}:current`;
 const requestId = () => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `save_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 const validRemote = (value: unknown): value is SaveEnvelope => Boolean(value && typeof value === 'object' && (value as SaveEnvelope).format === 'choketmon' && (value as SaveEnvelope).version === 2);
 const equivalentSave = (left: unknown, right: unknown) => validRemote(left) && validRemote(right)
-  && canonicalJson({ ...left, savedAt: undefined }) === canonicalJson({ ...right, savedAt: undefined });
+  && canonicalJson({ ...left, savedAt: undefined, tradeEpoch: normalizeTradeEpoch(left.tradeEpoch) })
+    === canonicalJson({ ...right, savedAt: undefined, tradeEpoch: normalizeTradeEpoch(right.tradeEpoch) });
 export function currentSaveProfile() { return activeProfile ? { ...activeProfile } : null; }
+export function currentTradeEpoch() { return activeTradeEpoch; }
 
 type RemoteSave = { save: SaveEnvelope; revision: number };
 const profileHeaders = (profileId: string) => ({ 'x-choketmon-profile': profileId });
@@ -179,6 +210,7 @@ async function loadRemote(profileId: string): Promise<RemoteSave | undefined> {
   const body = await response.json().catch(() => ({})) as Partial<RemoteSave> & { message?: string };
   if (!response.ok) throw new Error(body.message ?? '서버 저장을 불러오지 못했습니다.');
   if (!validRemote(body.save) || !Number.isSafeInteger(body.revision) || Number(body.revision) < 0) throw new Error('서버 저장 응답이 올바르지 않습니다.');
+  normalizeTradeEpoch(body.save.tradeEpoch);
   return { save: body.save, revision: Number(body.revision) };
 }
 
@@ -212,6 +244,7 @@ async function reconcileRemote(profile: NonNullable<SaveProfile>, remote: Remote
         result = { save: local, upload: true }; return;
       }
       if (remote) {
+        if (validRemote(local) && normalizeTradeEpoch(remote.save.tradeEpoch) > normalizeTradeEpoch(local.tradeEpoch)) saves.put(structuredClone(local), profileSlot(`backup-before-trade-recovery-${Date.now()}-${requestId()}`, profile));
         saves.put(structuredClone(remote.save), localKey);
         syncs.put({ profileId: profile.id, serverRevision: remoteRevision, localVersion: (prior?.localVersion ?? 0) + 1, dirty: false } satisfies SyncRecord, key);
         result = { save: remote.save, upload: false }; return;
@@ -252,12 +285,12 @@ export async function activateSaveProfile(profile: SaveProfile, options: { conti
   if (!profile && options.continueLocally && activeProfile) {
     const save = await copyAccountToDevice(activeProfile);
     if (generation !== profileGeneration) return undefined;
-    activeProfile = null;
+    activeProfile = null; activeTradeEpoch = validRemote(save) ? normalizeTradeEpoch(save.tradeEpoch) : 0; tradeEpochReady = true;
     announceStorage({ state: 'local', profileId: 'device' });
     return save;
   }
-  activeProfile = profile ? { ...profile } : null;
-  if (!profile) { announceStorage({ state: 'local', profileId: 'device' }); return readLocal('current'); }
+  activeProfile = profile ? { ...profile } : null; activeTradeEpoch = 0; tradeEpochReady = false;
+  if (!profile) { announceStorage({ state: 'local', profileId: 'device' }); const local = await readLocal('current'); activeTradeEpoch = validRemote(local) ? normalizeTradeEpoch(local.tradeEpoch) : 0; tradeEpochReady = true; return local; }
   let remote: RemoteSave | undefined;
   try { remote = await loadRemote(profile.id); }
   catch (error) {
@@ -265,6 +298,7 @@ export async function activateSaveProfile(profile: SaveProfile, options: { conti
     if (generation === profileGeneration && activeProfile?.id === profile.id) announceStorage({ state: 'error', profileId: profile.id, message: error instanceof Error ? error.message : String(error) });
     const local = await readLocal(profileSlot('current', profile));
     if (local === undefined) throw error;
+    activeTradeEpoch = validRemote(local) ? normalizeTradeEpoch(local.tradeEpoch) : 0; tradeEpochReady = true;
     return local;
   }
   if (generation !== profileGeneration || activeProfile?.id !== profile.id) return undefined;
@@ -280,6 +314,7 @@ export async function activateSaveProfile(profile: SaveProfile, options: { conti
       // IndexedDB copy and leave its outbox dirty for the next checkpoint.
     }
   } else announceStorage({ state: 'synced', profileId: profile.id, message: remote ? '계정 저장을 불러왔습니다.' : '새 계정 저장 공간이 준비됐습니다.' });
+  activeTradeEpoch = validRemote(reconciled.save) ? normalizeTradeEpoch(reconciled.save.tradeEpoch) : 0; tradeEpochReady = true;
   return reconciled.save;
 }
 
@@ -393,12 +428,77 @@ export async function resolveSaveConflict(choice: 'device' | 'server'): Promise<
   if (generation !== profileGeneration || activeProfile?.id !== profile.id) throw new Error('계정이 바뀌어 저장 충돌 처리를 중단했습니다.');
   if (choice === 'device') await checkpointSave('manual');
   else announceStorage({ state: 'synced', profileId: profile.id, message: '서버 진행을 이 기기에 불러왔습니다.' });
+  activeTradeEpoch = normalizeTradeEpoch(selected.tradeEpoch); tradeEpochReady = true;
   return selected;
 }
 export function checkpointSave(reason: CheckpointReason = 'manual'): Promise<CheckpointResult> {
   const expectedProfile = activeProfile ? { ...activeProfile } : null, expectedGeneration = profileGeneration;
   const operation = checkpointQueue.catch(() => ({ uploaded: false, reason })).then(() => performCheckpoint(reason, expectedProfile, expectedGeneration));
   checkpointQueue = operation; return operation;
+}
+
+export type TradeCheckpoint = { profileId: string; generation: number; revision: number; localVersion: number; tradeEpoch: number; savedAt: string; graphIdentity: string };
+export type TradeSaveResult = { save: SaveEnvelope; revision: number; tradeEpoch: number };
+export type TradeAdoption = { save: SaveEnvelope; newlyApplied: boolean };
+
+/** Freezes the exact clean account save a trade offer is based on. */
+export async function checkpointTradeSave(): Promise<TradeCheckpoint> {
+  await localWriteQueue.catch(() => {}); await checkpointQueue.catch(() => ({ uploaded: false, reason: 'manual' as const }));
+  const profile = activeProfile, generation = profileGeneration;
+  if (!profile) throw new Error('포켓몬 거래는 계정에 로그인한 뒤 이용할 수 있습니다.');
+  await checkpointSave('manual');
+  if (generation !== profileGeneration || activeProfile?.id !== profile.id) throw new Error('계정이 바뀌어 거래 준비를 중단했습니다.');
+  const [save, sync] = await Promise.all([readLocal(profileSlot('current', profile)), readSync(syncKey(profile.id))]);
+  if (!validRemote(save) || !sync || sync.dirty || sync.outbox || sync.conflict) throw new Error('거래 전에 계정 저장을 서버와 동기화해 주세요.');
+  const tradeEpoch = normalizeTradeEpoch(save.tradeEpoch);
+  activeTradeEpoch = tradeEpoch;
+  return { profileId: profile.id, generation, revision: sync.serverRevision, localVersion: sync.localVersion, tradeEpoch, savedAt: save.savedAt, graphIdentity: computationalGraph(save.graph) };
+}
+
+/** Adopts one authoritative completed-trade result exactly once, preserving the prior save. */
+export async function adoptTradeResult(result: TradeSaveResult, checkpoint: TradeCheckpoint, tradeId?: string): Promise<TradeAdoption> {
+  await localWriteQueue.catch(() => {}); await checkpointQueue.catch(() => ({ uploaded: false, reason: 'manual' as const }));
+  const profile = activeProfile;
+  if (!profile || profile.id !== checkpoint.profileId || profileGeneration !== checkpoint.generation) throw new Error('거래를 시작한 계정이 더 이상 활성 상태가 아닙니다.');
+  if (!validRemote(result.save) || !Number.isSafeInteger(result.revision) || result.revision < 0) throw new Error('거래 결과 저장이 올바르지 않습니다.');
+  const resultEpoch = normalizeTradeEpoch(result.tradeEpoch), envelopeEpoch = normalizeTradeEpoch(result.save.tradeEpoch);
+  if (resultEpoch !== envelopeEpoch || ![checkpoint.tradeEpoch, checkpoint.tradeEpoch + 1].includes(resultEpoch) || computationalGraph(result.save.graph) !== checkpoint.graphIdentity) throw new Error('거래 결과의 저장 버전 또는 커넥톰이 올바르지 않습니다.');
+  const adopted = structuredClone(result.save); unpackSave(adopted, adopted.graph, { allowTradeEpochAdvance: true });
+  if (tradeId !== undefined && (!tradeId || tradeId.length > 100)) throw new Error('거래 결과 ID가 올바르지 않습니다.');
+  const db = await database(), localKey = profileSlot('current', profile), key = syncKey(profile.id), receiptKey = tradeId ? `account:${profile.id}:trade:${tradeId}` : undefined;
+  const adoption = await new Promise<TradeAdoption>((resolve, reject) => {
+    const tx = db.transaction([STORE, SYNC_STORE], 'readwrite'), saves = tx.objectStore(STORE), syncs = tx.objectStore(SYNC_STORE);
+    const localRequest = saves.get(localKey), syncRequest = syncs.get(key), receiptRequest = receiptKey ? syncs.get(receiptKey) : undefined;
+    let chosen: TradeAdoption | undefined;
+    const apply = () => {
+      if (localRequest.readyState !== 'done' || syncRequest.readyState !== 'done' || (receiptRequest && receiptRequest.readyState !== 'done')) return;
+      const local = localRequest.result, sync = syncRequest.result as SyncRecord | undefined;
+      const receipt = receiptRequest?.result as TradeReceipt | undefined;
+      const localEpoch = validRemote(local) ? normalizeTradeEpoch(local.tradeEpoch) : 0;
+      if (receipt) {
+        if (!validRemote(local) || localEpoch < resultEpoch || receipt.profileId !== profile.id || receipt.tradeId !== tradeId || receipt.revision !== result.revision || receipt.tradeEpoch !== resultEpoch) { tx.abort(); return; }
+        chosen = { save: structuredClone(local), newlyApplied: false }; return;
+      }
+      if (validRemote(local) && localEpoch === resultEpoch && equivalentSave(local, adopted) && sync?.serverRevision === result.revision && !sync.dirty) {
+        chosen = { save: structuredClone(local), newlyApplied: false }; if (receiptKey) syncs.put({ profileId: profile.id, tradeId: tradeId!, revision: result.revision, tradeEpoch: resultEpoch } satisfies TradeReceipt, receiptKey); return;
+      }
+      if (resultEpoch !== checkpoint.tradeEpoch + 1) { tx.abort(); return; }
+      if (!validRemote(local) || !sync || sync.localVersion !== checkpoint.localVersion || sync.serverRevision !== checkpoint.revision
+        || sync.dirty || sync.outbox || sync.conflict || localEpoch !== checkpoint.tradeEpoch || local.savedAt !== checkpoint.savedAt) { tx.abort(); return; }
+      saves.put(structuredClone(local), profileSlot(`backup-before-trade-${Date.now()}-${requestId()}`, profile));
+      saves.put(adopted, localKey);
+      syncs.put({ profileId: profile.id, serverRevision: result.revision, localVersion: sync.localVersion + 1, dirty: false } satisfies SyncRecord, key);
+      if (receiptKey) syncs.put({ profileId: profile.id, tradeId: tradeId!, revision: result.revision, tradeEpoch: resultEpoch } satisfies TradeReceipt, receiptKey);
+      chosen = { save: adopted, newlyApplied: true };
+    };
+    localRequest.onsuccess = apply; syncRequest.onsuccess = apply; if (receiptRequest) receiptRequest.onsuccess = apply;
+    tx.oncomplete = () => chosen ? resolve(chosen) : reject(new Error('거래 결과 저장을 선택하지 못했습니다.'));
+    tx.onerror = () => reject(tx.error); tx.onabort = () => reject(new Error('거래 준비 뒤 저장이 변경되어 결과를 자동 적용하지 않았습니다. 새로고침하면 서버의 거래 결과를 복구할 수 있습니다.'));
+  });
+  if (profileGeneration !== checkpoint.generation || activeProfile?.id !== profile.id) throw new Error('계정이 바뀌어 거래 결과 적용을 중단했습니다.');
+  activeTradeEpoch = normalizeTradeEpoch(adoption.save.tradeEpoch); tradeEpochReady = true;
+  announceStorage({ state: 'synced', profileId: profile.id, message: '거래 결과를 서버 저장과 이 기기에 적용했습니다.' });
+  return adoption;
 }
 export function startCheckpointAutosave(intervalMs = 60_000) {
   const timer = window.setInterval(() => { void checkpointSave('auto').catch(() => {}); }, Math.max(10_000, intervalMs));

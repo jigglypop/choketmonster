@@ -1,6 +1,7 @@
 import type { WorldSample } from './types';
 import type { KantoGate, KantoGym, KantoLocation, KantoLocationKind, KantoTraversal } from './kanto';
 import { terrainPlateauHeight } from './terrain-elevation';
+import { WORLD_MAX, WORLD_SCALE, scaleWorldDistance } from './world-space';
 import {
   JOHTO_WORLD_LOCATION_TO_POKEAPI, johtoGoldEncounterPools, type JohtoGoldEncounterPool,
 } from '../data/johto-gold-encounters';
@@ -10,8 +11,8 @@ export type JohtoGate = KantoGate;
 export type JohtoGym = KantoGym;
 export type JohtoTraversal = KantoTraversal;
 
-export const JOHTO_MAP_VERSION = 'johto-v2' as const;
-export const JOHTO_START = { x: 65, z: 70 } as const;
+export const JOHTO_MAP_VERSION = 'johto-v3' as const;
+export const JOHTO_START = { x: 65 * WORLD_SCALE, z: 70 * WORLD_SCALE } as const;
 
 export const johtoGoldSourceLocationId = (id: string): string => {
   return JOHTO_WORLD_LOCATION_TO_POKEAPI[id as keyof typeof JOHTO_WORLD_LOCATION_TO_POKEAPI] ?? id;
@@ -36,7 +37,7 @@ const location = (
   const pools = sourcePools(id, kind);
   const slots = pools.flatMap(pool => pool.slots);
   return {
-    id, name, x, z, kind,
+    id, name, x: x * WORLD_SCALE, z: z * WORLD_SCALE, kind,
     minLevel: slots.length ? Math.min(...slots.map(slot => slot.minLevel)) : minLevel,
     maxLevel: slots.length ? Math.max(...slots.map(slot => slot.maxLevel)) : maxLevel,
     encounters: [...new Set(slots.map(slot => slot.speciesId))],
@@ -125,10 +126,10 @@ const surfaceSegments = JOHTO_SURFACE_CONNECTIONS.map(([from, to]) => {
   return { from: a, to: b, x: a.x, z: a.z, dx, dz, lengthSquared: dx * dx + dz * dz || 1 };
 });
 const towns = JOHTO_LOCATIONS.filter(item => item.kind === 'town');
-const baseHeight = (x: number, z: number) => .2 * Math.sin((x + 11) * .085) + .16 * Math.cos((z - 7) * .075);
+const baseHeight = (x: number, z: number) => .2 * Math.sin((x / WORLD_SCALE + 11) * .085) + .16 * Math.cos((z / WORLD_SCALE - 7) * .075);
 const townPlateaus = towns.map(item => ({ x: item.x, z: item.z, height: baseHeight(item.x, item.z) }));
 const buildingOffsetCache = new Map<string, ReadonlyArray<readonly [number, number]>>();
-const BUILDING_CANDIDATES = [[-5, -4], [5, -4], [-5, 4], [5, 4], [-6, 0], [6, 0], [0, -6], [0, 6]] as const;
+const BUILDING_CANDIDATES = [[-5, -4], [5, -4], [-5, 4], [5, 4], [-6, 0], [6, 0], [0, -6], [0, 6]].map(([x, z]) => [x * WORLD_SCALE, z * WORLD_SCALE] as const);
 
 export function distanceToJohtoPath(x: number, z: number): number {
   let nearestSquared = Infinity;
@@ -152,28 +153,28 @@ export function johtoLocationAt(x: number, z: number): JohtoLocation {
 export function johtoBuildingOffsets(town: JohtoLocation): ReadonlyArray<readonly [number, number]> {
   const cached = buildingOffsetCache.get(town.id);
   if (cached) return cached;
-  const offsets = BUILDING_CANDIDATES.filter(([dx, dz]) => distanceToJohtoPath(town.x + dx, town.z + dz) > 3.5).slice(0, 3);
+  const offsets = BUILDING_CANDIDATES.filter(([dx, dz]) => distanceToJohtoPath(town.x + dx, town.z + dz) > scaleWorldDistance(3.5)).slice(0, 3);
   buildingOffsetCache.set(town.id, offsets);
   return offsets;
 }
 
 function townBuildingAt(x: number, z: number, town: JohtoLocation): boolean {
-  return johtoBuildingOffsets(town).some(([dx, dz]) => Math.abs(x - town.x - dx) < 1.9 && Math.abs(z - town.z - dz) < 1.7);
+  return johtoBuildingOffsets(town).some(([dx, dz]) => Math.abs(x - town.x - dx) < scaleWorldDistance(1.9) && Math.abs(z - town.z - dz) < scaleWorldDistance(1.7));
 }
 
 export function sampleJohtoWorld(x: number, z: number): WorldSample {
   const height = baseHeight(x, z);
   const joinedHeight = (value: number) => terrainPlateauHeight(value, x, z, townPlateaus);
-  if (![x, z].every(Number.isFinite) || Math.abs(x) > 120 || Math.abs(z) > 120) return { height, biome: 'rock', blocked: true };
+  if (![x, z].every(Number.isFinite) || Math.abs(x) > WORLD_MAX || Math.abs(z) > WORLD_MAX) return { height, biome: 'rock', blocked: true };
   const nearest = johtoLocationAt(x, z), distance = Math.hypot(x - nearest.x, z - nearest.z), pathDistance = distanceToJohtoPath(x, z);
-  const town = towns.find(item => Math.hypot(x - item.x, z - item.z) < 8.5);
+  const town = towns.find(item => Math.hypot(x - item.x, z - item.z) < scaleWorldDistance(8.5));
   if (town) return { height: joinedHeight(height), biome: 'meadow', blocked: townBuildingAt(x, z, town) };
-  const radius = nearest.kind === 'forest' ? 7.5 : nearest.kind === 'sea' ? 6.5 : nearest.kind === 'town' ? 8.5 : nearest.kind === 'route' ? 4.8 : 5.5;
-  const playable = pathDistance < 3.2 || distance < radius;
-  const westernSea = x < -48 && z > -12 && z < 22;
-  const rageLake = Math.hypot(x - 35, z + 62) < 11;
+  const radius = scaleWorldDistance(nearest.kind === 'forest' ? 7.5 : nearest.kind === 'sea' ? 6.5 : nearest.kind === 'town' ? 8.5 : nearest.kind === 'route' ? 4.8 : 5.5);
+  const playable = pathDistance < scaleWorldDistance(3.2) || distance < radius;
+  const westernSea = x < -48 * WORLD_SCALE && z > -12 * WORLD_SCALE && z < 22 * WORLD_SCALE;
+  const rageLake = Math.hypot(x - 35 * WORLD_SCALE, z + 62 * WORLD_SCALE) < 11 * WORLD_SCALE;
   if ((westernSea || rageLake) && !playable) return { height: joinedHeight(-.7), biome: 'lake', blocked: true };
-  if (pathDistance < 3.2) {
+  if (pathDistance < scaleWorldDistance(3.2)) {
     let closest = surfaceSegments[0], closestT = 0, closestSquared = Infinity;
     for (const segment of surfaceSegments) {
       const t = Math.max(0, Math.min(1, ((x - segment.x) * segment.dx + (z - segment.z) * segment.dz) / segment.lengthSquared));
@@ -190,7 +191,7 @@ export function sampleJohtoWorld(x: number, z: number): WorldSample {
     const rocky = nearest.kind === 'cave' || nearest.id === 'route-44' || nearest.id === 'route-45';
     return { height: joinedHeight(rocky ? height + .58 : height), biome: rocky ? 'rock' : nearest.kind === 'forest' ? 'forest' : 'meadow', blocked: false };
   }
-  const mountain = x > 42 || z < -32;
+  const mountain = x > 42 * WORLD_SCALE || z < -32 * WORLD_SCALE;
   return { height: joinedHeight(height + (mountain ? .72 : .18)), biome: mountain ? 'rock' : 'forest', blocked: true };
 }
 
@@ -208,7 +209,7 @@ export function evaluateJohtoTraversal(_from: { x: number; z: number }, to: { x:
 export function safeJohtoArrival(locationId: string, badges = 0): { x: number; z: number } | undefined {
   const target = byId.get(locationId);
   if (!target || !Number.isFinite(badges) || badges < target.requiredBadges) return undefined;
-  const candidates = [[target.x, target.z], [target.x, target.z + 2], [target.x + 2, target.z], [target.x - 2, target.z], [target.x, target.z - 2]] as const;
+  const offset = scaleWorldDistance(2), candidates = [[target.x, target.z], [target.x, target.z + offset], [target.x + offset, target.z], [target.x - offset, target.z], [target.x, target.z - offset]] as const;
   const arrival = candidates.find(([x, z]) => isJohtoPlayable(x, z));
   return arrival ? { x: arrival[0], z: arrival[1] } : undefined;
 }
@@ -216,7 +217,7 @@ export function safeJohtoArrival(locationId: string, badges = 0): { x: number; z
 export function nearestJohtoWalkable(x: number, z: number, badges = 0): { x: number; z: number } | undefined {
   if (![x, z, badges].every(Number.isFinite) || badges < 0) return undefined;
   if (isJohtoPlayable(x, z) && johtoLocationAt(x, z).requiredBadges <= badges) return { x, z };
-  for (let radius = .5; radius <= 18; radius += .5) for (let step = 0; step < 32; step += 1) {
+  for (let radius = scaleWorldDistance(.5); radius <= scaleWorldDistance(18); radius += scaleWorldDistance(.5)) for (let step = 0; step < 32; step += 1) {
     const angle = step / 32 * Math.PI * 2, candidate = { x: x + Math.cos(angle) * radius, z: z + Math.sin(angle) * radius };
     if (isJohtoPlayable(candidate.x, candidate.z) && johtoLocationAt(candidate.x, candidate.z).requiredBadges <= badges) return candidate;
   }

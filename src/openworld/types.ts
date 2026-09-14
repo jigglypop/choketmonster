@@ -30,12 +30,21 @@ export type WorldCreature = WorldPoint & {
 
 export type WorldFood = WorldPoint & { id: string; kind?: string };
 
+export type WorldTrainer = WorldPoint & { id: string; name: string; trainerClass: string; locationId: string };
+export type WorldPortal = WorldPoint & { id: string; label: string; targetSceneId: string };
+
 export type OpenWorldRenderSnapshot = {
   regionId?: string;
+  sceneId?: string;
+  timeOfDay?: 'morning' | 'day' | 'night';
+  worldHour?: number;
+  daylightIntensity?: number;
   badges?: number;
   player: WorldPlayer;
   entities: readonly WorldCreature[];
   foods?: readonly WorldFood[];
+  trainers?: readonly WorldTrainer[];
+  portals?: readonly WorldPortal[];
   selectedWildId?: string | null;
   tick?: number;
 };
@@ -65,6 +74,8 @@ export type OpenWorldViewOptions = {
   onMovementInput?: () => boolean | void;
   onSelect: (instanceId: string | null) => void;
   onInteract?: (instanceId: string) => void;
+  onTrainer?: (trainerId: string) => void;
+  onPortal?: (portalId: string) => void;
   modelUrl?: (speciesId: number) => string;
   spriteUrl?: (speciesId: number) => string;
   sampleWorld?: (x: number, z: number) => WorldSample;
