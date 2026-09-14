@@ -148,6 +148,13 @@ export class OpenWorldPanel {
     this.input('#world-realtime-name').value = this.multiplayer.name;
     this.input('#world-realtime-name').oninput = event => { const input = event.target as HTMLInputElement; input.value = Array.from(input.value).slice(0, 16).join(''); };
     this.button('#world-realtime-rename').onclick = () => { if (!this.multiplayer?.rename(this.input('#world-realtime-name').value, this.presence())) this.options.notify('표시 이름을 입력해 주세요.', true); };
+    const multiplayerPanel = this.host.querySelector<HTMLDetailsElement>('.world-multiplayer')!;
+    let openedChat = false;
+    multiplayerPanel.addEventListener('toggle', () => {
+      if (!multiplayerPanel.open || openedChat) return;
+      openedChat = true;
+      requestAnimationFrame(() => { const log = this.host?.querySelector<HTMLElement>('#world-chat-log'); if (log) log.scrollTop = log.scrollHeight; });
+    });
     const chat = this.host.querySelector<HTMLFormElement>('#world-chat-form')!, chatInput = this.input('#world-chat-input');
     chatInput.oninput = () => { chatInput.value = Array.from(chatInput.value).slice(0, 200).join(''); };
     let composing = false;
@@ -388,7 +395,10 @@ export class OpenWorldPanel {
     this.html('#world-realtime-count', `${view.players.length + (view.status === 'connected' ? 1 : 0)}명 · ${view.ping === undefined ? '—' : Math.round(view.ping)}ms`);
     const dot = this.host.querySelector<HTMLElement>('#world-realtime-dot'); if (dot) dot.dataset.status = view.status;
     this.html('#world-player-list', view.players.map(player => `<span data-remote-player="${escape(player.id)}" data-x="${player.x}" data-z="${player.z}"><b>${escape(player.name)}</b><small>${player.activity === 'battle' ? '배틀 중' : player.activity === 'moving' ? '이동 중' : '대기'}</small></span>`).join(''));
+    const log = this.host.querySelector<HTMLElement>('#world-chat-log')!;
+    const followLatest = log.scrollHeight - log.clientHeight - log.scrollTop <= 8;
     this.html('#world-chat-log', view.history.map(message => `<p><b>${escape(message.name)}</b><span>${escape(message.text)}</span><time>${new Date(message.sentAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</time></p>`).join('') || '<p class="world-chat-empty">아직 같은 지역 메시지가 없습니다.</p>');
+    if (followLatest) requestAnimationFrame(() => { if (this.host?.contains(log)) log.scrollTop = log.scrollHeight; });
     this.html('#world-chat-error', view.error ? escape(view.error) : '');
   }
 

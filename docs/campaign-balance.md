@@ -36,7 +36,7 @@
 
 ## 검증 범위
 
-통합 변경 후 `pnpm exec vitest run --maxWorkers=2`는 36개 파일·204개 검사를, Linux musl 릴리스의 `cargo test`는 21개 검사를 통과했다. `pnpm run build`도 통과했다. 기존 대형 JavaScript 청크 경고는 남아 있다.
+통합 변경 후 `pnpm exec vitest run --maxWorkers=2`는 36개 파일·204개 검사를, Linux musl 릴리스의 `cargo test`는 22개 검사를 통과했다. `pnpm run build`도 통과했다. 기존 대형 JavaScript 청크 경고는 남아 있다.
 
 `tests/campaign-progression.test.ts`는 두 지역 체육관 16전, 사천왕·챔피언 10전, 레드전을 실제 엔진 턴으로 진행하고 리그 저장에서 재실행한 결과의 일치를 검사한다. 검증용 Lv.100 팀을 사용하므로 일반 플레이의 성장 시간이나 난이도가 최적이라는 증거는 아니다. 별도로 공유 비율, 희귀도·레벨 보상, 전투 중 박스 인덱스 보존, 구 저장 변환과 잘못된 진행 거부를 검사한다.
 

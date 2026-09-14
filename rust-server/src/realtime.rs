@@ -26,6 +26,9 @@ const MAX_MESSAGE_BYTES: usize = 4096;
 const MAX_NAME_CHARS: usize = 16;
 const MAX_CHAT_CHARS: usize = 200;
 const CHAT_HISTORY: usize = 50;
+const MAX_CONNECTION_MESSAGES: usize = 40;
+const CONNECTION_MESSAGE_PERIOD: Duration = Duration::from_secs(1);
+const SOCKET_SEND_TIMEOUT: Duration = Duration::from_secs(5);
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
 const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(45);
 
@@ -151,6 +154,7 @@ struct Client {
     tx: mpsc::Sender<Message>,
     region: Option<Region>,
     last_seq: Option<u64>,
+    message_rate: RateWindow,
     state_rate: RateWindow,
     chat_rate: RateWindow,
 }
@@ -319,6 +323,7 @@ async fn upgrade(
                 tx,
                 region: None,
                 last_seq: None,
+                message_rate: RateWindow::default(),
                 state_rate: RateWindow::default(),
                 chat_rate: RateWindow::default(),
             },
@@ -342,6 +347,7 @@ async fn connection(
         tokio::select! {
             incoming = socket.recv() => match incoming {
                 Some(Ok(Message::Text(text))) => {
+                    if !allow_connection_message(&state, &id, Instant::now()) { break; }
                     last_seen = Instant::now();
                     if text.len() > MAX_MESSAGE_BYTES {
                         send_error(&state, &id, "MESSAGE_TOO_LARGE", "메시지가 너무 큽니다.");
@@ -352,25 +358,52 @@ async fn connection(
                         Err(_) => send_error(&state, &id, "INVALID_MESSAGE", "메시지 형식이 올바르지 않습니다."),
                     }
                 }
-                Some(Ok(Message::Pong(_))) => last_seen = Instant::now(),
-                Some(Ok(Message::Ping(payload))) => {
+                Some(Ok(Message::Pong(_))) => {
+                    if !allow_connection_message(&state, &id, Instant::now()) { break; }
                     last_seen = Instant::now();
-                    if socket.send(Message::Pong(payload)).await.is_err() { break; }
+                }
+                Some(Ok(Message::Ping(payload))) => {
+                    if !allow_connection_message(&state, &id, Instant::now()) { break; }
+                    last_seen = Instant::now();
+                    if !send_socket(&mut socket, Message::Pong(payload)).await { break; }
                 }
                 Some(Ok(Message::Close(_))) | Some(Err(_)) | None => break,
-                Some(Ok(Message::Binary(_))) => send_error(&state, &id, "INVALID_MESSAGE", "JSON 텍스트 메시지가 필요합니다."),
+                Some(Ok(Message::Binary(_))) => {
+                    if !allow_connection_message(&state, &id, Instant::now()) { break; }
+                    send_error(&state, &id, "INVALID_MESSAGE", "JSON 텍스트 메시지가 필요합니다.");
+                }
             },
             outgoing = outbound.recv() => match outgoing {
-                Some(message) => if socket.send(message).await.is_err() { break; },
+                Some(message) => if !send_socket(&mut socket, message).await { break; },
                 None => break,
             },
             _ = heartbeat.tick() => {
                 if last_seen.elapsed() >= HEARTBEAT_TIMEOUT { break; }
-                if socket.send(Message::Ping(Vec::new().into())).await.is_err() { break; }
+                if !send_socket(&mut socket, Message::Ping(Vec::new().into())).await { break; }
             }
         }
     }
     disconnect(&state.inner, &id);
+}
+
+async fn send_socket(socket: &mut WebSocket, message: Message) -> bool {
+    matches!(
+        tokio::time::timeout(SOCKET_SEND_TIMEOUT, socket.send(message)).await,
+        Ok(Ok(()))
+    )
+}
+
+fn allow_connection_message(state: &RealtimeState, id: &str, now: Instant) -> bool {
+    let mut hub = state
+        .inner
+        .hub
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    hub.clients.get_mut(id).is_some_and(|client| {
+        client
+            .message_rate
+            .allow(now, MAX_CONNECTION_MESSAGES, CONNECTION_MESSAGE_PERIOD)
+    })
 }
 
 fn process(state: &RealtimeState, id: &str, message: ClientMessage, now: Instant) {
@@ -866,6 +899,7 @@ mod tests {
                 tx,
                 region: None,
                 last_seq: None,
+                message_rate: RateWindow::default(),
                 state_rate: RateWindow::default(),
                 chat_rate: RateWindow::default(),
             },
@@ -924,6 +958,31 @@ mod tests {
             assert!(chat.allow(now, 5, Duration::from_secs(10)));
         }
         assert!(!chat.allow(now, 5, Duration::from_secs(10)));
+    }
+
+    #[test]
+    fn connection_budget_survives_join_state_rate_resets() {
+        let state = test_state(64);
+        let _outbound = connect(&state, "aaaa");
+        let now = Instant::now();
+        for _ in 0..MAX_CONNECTION_MESSAGES {
+            assert!(allow_connection_message(&state, "aaaa", now));
+            state
+                .inner
+                .hub
+                .lock()
+                .unwrap()
+                .clients
+                .get_mut("aaaa")
+                .unwrap()
+                .state_rate = RateWindow::default();
+        }
+        assert!(!allow_connection_message(&state, "aaaa", now));
+        assert!(allow_connection_message(
+            &state,
+            "aaaa",
+            now + CONNECTION_MESSAGE_PERIOD
+        ));
     }
 
     #[test]

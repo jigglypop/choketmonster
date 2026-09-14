@@ -38,8 +38,24 @@ async function start(page: Page) {
 }
 async function exported(page: Page) {
   await page.locator('[data-tab="lab"]').click();
-  const download = page.waitForEvent('download'); await page.locator('#export-save').click();
-  return JSON.parse(await readFile((await (await download).path())!, 'utf8'));
+  const exportButton = page.locator('#export-save');
+  await expect(exportButton).toBeVisible({ timeout: 25000 });
+  const [download] = await Promise.all([page.waitForEvent('download'), exportButton.click()]);
+  return JSON.parse(await readFile((await download.path())!, 'utf8'));
+}
+async function storedDeviceSave(page: Page) {
+  return page.evaluate(() => new Promise<unknown>((resolve, reject) => {
+    const request = indexedDB.open('choketmon-151', 2);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result;
+      const transaction = db.transaction('saves', 'readonly');
+      const current = transaction.objectStore('saves').get('current');
+      transaction.oncomplete = () => { resolve(current.result); db.close(); };
+      transaction.onerror = () => { reject(transaction.error); db.close(); };
+      transaction.onabort = () => { reject(transaction.error); db.close(); };
+    };
+  }));
 }
 
 test('Kanto controls, fixed early encounters, shop, region map and mobile layout', async ({ page }) => {
@@ -124,7 +140,7 @@ test('manual battle waits, victory choice survives reload, buying and catching p
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await start(page);
   const game = createGame(1, 'kanto-ui-victory'), world = new OpenWorldSimulation(graph, game, 34415, undefined, policy);
-  world.setControlMode('manual');
+  world.setControlMode('manual'); world.setAutoHunt(false);
   // A victory with no balls is released immediately by the simulation, so keep
   // one ball available while verifying that the pending choice survives reload.
   game.inventory['poke-ball'] = 1; game.inventory['great-ball'] = 0; game.inventory['ultra-ball'] = 0;
@@ -147,8 +163,12 @@ test('manual battle waits, victory choice survives reload, buying and catching p
   await page.locator('.world-shop summary').click();
   await page.locator('#world-win-catch').click();
   await expect(page.locator('#world-capture-offer')).toBeHidden();
-  await page.locator('#save-now').click(); await expect(page.getByRole('status')).toContainText('이 기기에 저장했습니다.'); await page.reload();
-  const loaded = await exported(page);
+  // Catching queues an autosave. Wait for that write to settle before
+  // reloading; the prior manual-save toast has identical text and can be stale.
+  await page.waitForTimeout(500);
+  await expect(page.locator('#save-state')).toHaveAttribute('data-state', /^(?:local|saved|synced)$/, { timeout: 25000 });
+  await page.reload();
+  const loaded = await storedDeviceSave(page) as { game: { player: { team: Array<{ instanceId: string }> }; inventory: Record<string, number>; captureOffer?: unknown } };
   expect(loaded.game.player.team.map((mon: { instanceId: string }) => mon.instanceId)).toContain(enemyId);
   expect(loaded.game.inventory['poke-ball']).toBe(1);
   expect(loaded.game.captureOffer).toBeUndefined();

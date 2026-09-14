@@ -38,7 +38,9 @@ async function joinRawBrowser(page: Page) {
   }));
 }
 
-test('two local browsers share movement and Korean chat, then rejoin the room', async ({ browser }) => {
+test('two local browsers share movement and Korean chat, then rejoin the room', async ({ browser }, testInfo) => {
+  const suffix = `${testInfo.workerIndex}-${Date.now()}`;
+  const outgoing = `성도에서 만나요 ${suffix}`, incoming = `반가워요 ${suffix}`;
   const gameContext = await browser.newContext(), rawContext = await browser.newContext();
   try {
     const game = await prepareGame(gameContext, '이동트레이너');
@@ -74,14 +76,16 @@ test('two local browsers share movement and Korean chat, then rejoin the room', 
       node.dispatchEvent(new CompositionEvent('compositionstart', { data: String(text) }));
       (node as HTMLInputElement).value = String(text);
       node.dispatchEvent(new InputEvent('input', { data: String(text), inputType: 'insertCompositionText', bubbles: true, isComposing: true }));
-    }, '성도에서 만나요');
+    }, outgoing);
     await game.keyboard.press('Enter'); await peer.waitForTimeout(250);
-    expect(await peer.evaluate(() => JSON.stringify((window as typeof window & { testMessages: unknown[] }).testMessages))).not.toContain('성도에서 만나요');
+    expect(await peer.evaluate(() => JSON.stringify((window as typeof window & { testMessages: unknown[] }).testMessages))).not.toContain(outgoing);
     await input.evaluate(node => node.dispatchEvent(new CompositionEvent('compositionend', { data: (node as HTMLInputElement).value })));
     await game.keyboard.press('Enter');
-    await peer.waitForFunction(() => JSON.stringify((window as typeof window & { testMessages: unknown[] }).testMessages).includes('성도에서 만나요'));
-    await peer.evaluate(() => (window as typeof window & { testSocket: WebSocket }).testSocket.send(JSON.stringify({ type: 'chat', text: '반가워요' })));
-    await expect(game.locator('#world-chat-log')).toContainText('반가워요', { timeout: 15_000 });
+    await peer.waitForFunction(text => JSON.stringify((window as typeof window & { testMessages: unknown[] }).testMessages).includes(text), outgoing);
+    await peer.evaluate(text => (window as typeof window & { testSocket: WebSocket }).testSocket.send(JSON.stringify({ type: 'chat', text })), incoming);
+    const chatLog = game.locator('#world-chat-log');
+    await expect(chatLog.locator('p').last()).toContainText(incoming, { timeout: 15_000 });
+    await expect.poll(() => chatLog.evaluate(node => Math.abs(node.scrollHeight - node.clientHeight - node.scrollTop) <= 2)).toBe(true);
 
     await peer.evaluate(() => (window as typeof window & { testSocket: WebSocket }).testSocket.close());
     await expect(remote).toHaveCount(0, { timeout: 15_000 });
