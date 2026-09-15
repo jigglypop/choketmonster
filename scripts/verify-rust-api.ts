@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { isDeepStrictEqual } from 'node:util';
 import { availableMonsterMoveIds, createGame, createMonster, reorderMonsterMoves, replaceMonsterMove, type GameState } from '../src/game/engine.ts';
 import { defaultView, packSave } from '../src/game/storage.ts';
 import type { Graph } from '../src/core/brain.ts';
@@ -85,9 +86,9 @@ async function main() {
   const hasMovePpReserve = (envelope: Record<string, unknown>) => JSON.stringify(storedMonster(envelope)?.movePpReserve) === JSON.stringify(movePpReserve);
   const hasEvolution = (envelope: Record<string, unknown>) => {
     const stored = (envelope.save as { game?: GameState } | undefined)?.game;
-    return JSON.stringify(storedMonster(envelope)?.evolutionProgress) === JSON.stringify(expectedGrowth)
+    return isDeepStrictEqual(storedMonster(envelope)?.evolutionProgress, expectedGrowth)
       && stored?.inventory['metal-coat'] === 2 && stored?.inventory['evolution-catalyst'] === 3
-      && JSON.stringify(stored.evolutionContext) === JSON.stringify(game.evolutionContext);
+      && isDeepStrictEqual(stored.evolutionContext, game.evolutionContext);
   };
   const creatureId = customized.instanceId, slot = `api-check-${suffix}`;
   const first = new CookieJar(), second = new CookieJar();
