@@ -6,7 +6,7 @@ use std::{
 };
 
 const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
-const INVENTORY_ITEMS: [&str; 12] = [
+const REQUIRED_INVENTORY_ITEMS: [&str; 12] = [
     "poke-ball",
     "great-ball",
     "ultra-ball",
@@ -19,6 +19,53 @@ const INVENTORY_ITEMS: [&str; 12] = [
     "leaf-stone",
     "moon-stone",
     "link-cable",
+];
+
+// Added after schemaVersion 2 shipped. Their absence is interpreted as zero by the client,
+// while the original inventory shape remains mandatory for legacy-save integrity.
+const OPTIONAL_EVOLUTION_ITEMS: [&str; 42] = [
+    "sun-stone",
+    "shiny-stone",
+    "dusk-stone",
+    "dawn-stone",
+    "ice-stone",
+    "metal-coat",
+    "kings-rock",
+    "dragon-scale",
+    "up-grade",
+    "protector",
+    "electirizer",
+    "magmarizer",
+    "dubious-disc",
+    "reaper-cloth",
+    "deep-sea-tooth",
+    "deep-sea-scale",
+    "prism-scale",
+    "razor-claw",
+    "razor-fang",
+    "oval-stone",
+    "galarica-cuff",
+    "galarica-wreath",
+    "black-augurite",
+    "peat-block",
+    "sachet",
+    "whipped-dream",
+    "tart-apple",
+    "sweet-apple",
+    "syrupy-apple",
+    "cracked-pot",
+    "chipped-pot",
+    "metal-alloy",
+    "scroll-of-darkness",
+    "scroll-of-waters",
+    "auspicious-armor",
+    "malicious-armor",
+    "unremarkable-teacup",
+    "masterpiece-teacup",
+    "evolution-catalyst",
+    "friendship-treat",
+    "beauty-treat",
+    "affection-treat",
 ];
 
 #[derive(Deserialize)]
@@ -180,6 +227,101 @@ fn finite_number(value: &Value, absolute_maximum: f64) -> bool {
         .is_some_and(|number| number.is_finite() && number.abs() <= absolute_maximum)
 }
 
+fn validate_evolution_progress(monster: &Value) -> Result<(), &'static str> {
+    let Some(value) = monster.get("evolutionProgress") else {
+        return Ok(());
+    };
+    let progress = value
+        .as_object()
+        .ok_or("진화 진행 기록이 올바르지 않습니다.")?;
+    const FIELDS: [&str; 11] = [
+        "gender",
+        "friendship",
+        "beauty",
+        "affection",
+        "steps",
+        "damageTaken",
+        "recoilDamage",
+        "criticalHits",
+        "defeatedBisharp",
+        "coins",
+        "moveUses",
+    ];
+    if progress.len() != FIELDS.len() || FIELDS.iter().any(|field| !progress.contains_key(*field)) {
+        return Err("진화 진행 기록 구성이 올바르지 않습니다.");
+    }
+    if !matches!(
+        progress.get("gender").and_then(Value::as_str),
+        Some("female" | "male" | "genderless")
+    ) {
+        return Err("포켓몬 성별 기록이 올바르지 않습니다.");
+    }
+    for field in ["friendship", "beauty", "affection"] {
+        integer(progress.get(field), 0, 255)?;
+    }
+    for field in [
+        "steps",
+        "damageTaken",
+        "recoilDamage",
+        "criticalHits",
+        "defeatedBisharp",
+        "coins",
+    ] {
+        integer(progress.get(field), 0, 1_000_000_000)?;
+    }
+    let move_uses = progress
+        .get("moveUses")
+        .and_then(Value::as_object)
+        .filter(|uses| uses.len() <= 1000)
+        .ok_or("진화 기술 사용 기록이 올바르지 않습니다.")?;
+    for (move_id, count) in move_uses {
+        if move_id
+            .parse::<i64>()
+            .ok()
+            .is_none_or(|id| !(1..=1000).contains(&id) || id.to_string() != *move_id)
+        {
+            return Err("진화 기술 ID가 올바르지 않습니다.");
+        }
+        integer(Some(count), 0, 1_000_000_000)?;
+    }
+    Ok(())
+}
+
+fn validate_evolution_context(game: &Value) -> Result<(), &'static str> {
+    let Some(value) = game.get("evolutionContext") else {
+        return Ok(());
+    };
+    let context = value
+        .as_object()
+        .ok_or("진화 환경 기록이 올바르지 않습니다.")?;
+    const FIELDS: [&str; 5] = ["period", "regionId", "locationId", "raining", "multiplayer"];
+    if context.len() != FIELDS.len() || FIELDS.iter().any(|field| !context.contains_key(*field)) {
+        return Err("진화 환경 기록 구성이 올바르지 않습니다.");
+    }
+    if !matches!(
+        context.get("period").and_then(Value::as_str),
+        Some("day" | "night" | "dusk")
+    ) {
+        return Err("진화 시간대 기록이 올바르지 않습니다.");
+    }
+    for (field, maximum) in [("regionId", 40), ("locationId", 100)] {
+        if context
+            .get(field)
+            .and_then(Value::as_str)
+            .is_none_or(|value| value.chars().count() > maximum)
+        {
+            return Err("진화 위치 기록이 올바르지 않습니다.");
+        }
+    }
+    if ["raining", "multiplayer"]
+        .iter()
+        .any(|field| context.get(*field).is_none_or(|value| !value.is_boolean()))
+    {
+        return Err("진화 환경 상태가 올바르지 않습니다.");
+    }
+    Ok(())
+}
+
 fn validate_matrix(
     value: Option<&Value>,
     rows: usize,
@@ -250,6 +392,7 @@ fn validate_monster(
     owned: bool,
     owned_species: &mut HashSet<i64>,
 ) -> Result<(), &'static str> {
+    validate_evolution_progress(monster)?;
     let instance_id = monster
         .get("instanceId")
         .and_then(Value::as_str)
@@ -1073,16 +1216,20 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
         return Err("팀 또는 박스의 개체 수가 올바르지 않습니다.");
     }
     let inventory = object(game, "inventory")?;
-    if inventory.len() != INVENTORY_ITEMS.len()
-        || INVENTORY_ITEMS
-            .iter()
-            .any(|item| !inventory.contains_key(*item))
+    if REQUIRED_INVENTORY_ITEMS
+        .iter()
+        .any(|item| !inventory.contains_key(*item))
+        || inventory.keys().any(|item| {
+            !REQUIRED_INVENTORY_ITEMS.contains(&item.as_str())
+                && !OPTIONAL_EVOLUTION_ITEMS.contains(&item.as_str())
+        })
     {
         return Err("가방 품목 구성이 올바르지 않습니다.");
     }
-    for item in INVENTORY_ITEMS {
-        integer(inventory.get(item), 0, 1_000_000_000)?;
+    for amount in inventory.values() {
+        integer(Some(amount), 0, 1_000_000_000)?;
     }
+    validate_evolution_context(game)?;
     let defeated = array(game, "defeatedGyms")?;
     if defeated.len() != badges as usize
         || defeated
@@ -1327,6 +1474,168 @@ mod tests {
     #[test]
     fn accepts_consistent_save() {
         validate_save(&valid_save()).unwrap();
+    }
+
+    #[test]
+    fn accepts_legacy_partial_and_complete_evolution_item_inventories() {
+        validate_save(&valid_save()).unwrap();
+
+        let mut partial = valid_save();
+        partial["game"]["inventory"]["metal-coat"] = Value::from(2);
+        partial["game"]["inventory"]["up-grade"] = Value::from(1);
+        validate_save(&partial).unwrap();
+
+        let mut complete = valid_save();
+        for item in OPTIONAL_EVOLUTION_ITEMS {
+            complete["game"]["inventory"][item] = Value::from(0);
+        }
+        assert_eq!(complete["game"]["inventory"].as_object().unwrap().len(), 54);
+        validate_save(&complete).unwrap();
+    }
+
+    #[test]
+    fn rejects_invalid_evolution_item_inventory_shapes_and_amounts() {
+        let mut missing_required = valid_save();
+        missing_required["game"]["inventory"]
+            .as_object_mut()
+            .unwrap()
+            .remove("poke-ball");
+        assert!(validate_save(&missing_required).is_err());
+
+        let mut unknown = valid_save();
+        unknown["game"]["inventory"]["unknown-item"] = Value::from(1);
+        assert!(validate_save(&unknown).is_err());
+
+        for invalid in [
+            Value::from(-1),
+            Value::Null,
+            serde_json::json!(1.5),
+            Value::from(1_000_000_001_i64),
+        ] {
+            let mut save = valid_save();
+            save["game"]["inventory"]["metal-coat"] = invalid;
+            assert!(validate_save(&save).is_err());
+        }
+    }
+
+    #[test]
+    fn accepts_legacy_and_complete_evolution_tracking() {
+        validate_save(&valid_save()).unwrap();
+
+        let mut save = valid_save();
+        save["game"]["player"]["team"][0]["evolutionProgress"] = serde_json::json!({
+            "gender":"female",
+            "friendship":255,
+            "beauty":128,
+            "affection":0,
+            "steps":1_000_000_000_i64,
+            "damageTaken":12,
+            "recoilDamage":3,
+            "criticalHits":4,
+            "defeatedBisharp":3,
+            "coins":999,
+            "moveUses":{"1":0,"1000":1_000_000_000_i64}
+        });
+        save["game"]["evolutionContext"] = serde_json::json!({
+            "period":"dusk",
+            "regionId":"팔데아",
+            "locationId":"union-circle-cave",
+            "raining":true,
+            "multiplayer":false
+        });
+        validate_save(&save).unwrap();
+    }
+
+    #[test]
+    fn rejects_invalid_evolution_progress() {
+        let valid_progress = serde_json::json!({
+            "gender":"genderless","friendship":0,"beauty":0,"affection":0,"steps":0,
+            "damageTaken":0,"recoilDamage":0,"criticalHits":0,"defeatedBisharp":0,"coins":0,
+            "moveUses":{}
+        });
+        let mut invalid_values = Vec::new();
+        let mut missing = valid_progress.clone();
+        missing.as_object_mut().unwrap().remove("gender");
+        invalid_values.push(missing);
+        let mut extra = valid_progress.clone();
+        extra["extra"] = Value::Bool(true);
+        invalid_values.push(extra);
+        for (field, value) in [
+            ("gender", Value::String("unknown".into())),
+            ("friendship", Value::from(256)),
+            ("beauty", Value::from(-1)),
+            ("affection", serde_json::json!(1.5)),
+            ("steps", Value::from(1_000_000_001_i64)),
+            ("damageTaken", Value::Null),
+        ] {
+            let mut progress = valid_progress.clone();
+            progress[field] = value;
+            invalid_values.push(progress);
+        }
+        for (move_id, count) in [
+            ("0", Value::from(1)),
+            ("01", Value::from(1)),
+            ("1001", Value::from(1)),
+            ("move", Value::from(1)),
+            ("1", Value::from(-1)),
+            ("2", serde_json::json!(1.5)),
+            ("3", Value::from(1_000_000_001_i64)),
+        ] {
+            let mut progress = valid_progress.clone();
+            progress["moveUses"][move_id] = count;
+            invalid_values.push(progress);
+        }
+        let too_many = (1..=1001)
+            .map(|id| (id.to_string(), Value::from(0)))
+            .collect::<Map<String, Value>>();
+        let mut progress = valid_progress;
+        progress["moveUses"] = Value::Object(too_many);
+        invalid_values.push(progress);
+
+        for progress in invalid_values {
+            let mut save = valid_save();
+            save["game"]["player"]["team"][0]["evolutionProgress"] = progress;
+            assert!(validate_save(&save).is_err());
+        }
+
+        let mut null_progress = valid_save();
+        null_progress["game"]["player"]["team"][0]["evolutionProgress"] = Value::Null;
+        assert!(validate_save(&null_progress).is_err());
+    }
+
+    #[test]
+    fn rejects_invalid_evolution_context() {
+        let valid_context = serde_json::json!({
+            "period":"day","regionId":"kanto","locationId":"power-plant",
+            "raining":false,"multiplayer":false
+        });
+        let mut invalid_values = Vec::new();
+        let mut missing = valid_context.clone();
+        missing.as_object_mut().unwrap().remove("locationId");
+        invalid_values.push(missing);
+        let mut extra = valid_context.clone();
+        extra["weather"] = Value::String("clear".into());
+        invalid_values.push(extra);
+        for (field, value) in [
+            ("period", Value::String("morning".into())),
+            ("regionId", Value::String("r".repeat(41))),
+            ("locationId", Value::String("l".repeat(101))),
+            ("raining", Value::from(0)),
+            ("multiplayer", Value::Null),
+        ] {
+            let mut context = valid_context.clone();
+            context[field] = value;
+            invalid_values.push(context);
+        }
+        for context in invalid_values {
+            let mut save = valid_save();
+            save["game"]["evolutionContext"] = context;
+            assert!(validate_save(&save).is_err());
+        }
+
+        let mut null_context = valid_save();
+        null_context["game"]["evolutionContext"] = Value::Null;
+        assert!(validate_save(&null_context).is_err());
     }
 
     #[test]

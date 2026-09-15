@@ -1,4 +1,5 @@
 import { Brain, validateGraph, type BrainState, type Graph } from '../core/brain';
+import { addEvolutionSteps } from '../game/evolution-progress';
 import { Random, clamp } from '../core/random';
 import { POKEMON, getMove, getSpecies } from '../data/pokemon';
 import { getVersionSpeciesIds } from '../data/pokemon-versions';
@@ -10,7 +11,7 @@ import { chooseExpansionEncounter, expansionEncounterSpecies, isExpansionRegion 
 import { gameplayHabitat } from '../game/habitat';
 import { ConnectomeController, type NeuralMonster } from '../game/connectome';
 import { chooseServerBrains, usesServerBrain, type ServerDecision } from '../game/server-brain';
-import { actBattle, availableEvolutions, captureDefeatedWild, createMonster, evolve, validateGame, type BallItem, type BattleAction, type BattleTurnResult, type GameState, type Monster } from '../game/engine';
+import { actBattle, availableEvolutions, captureDefeatedWild, createMonster, evolve, evolutionRoute, validateGame, type BallItem, type BattleAction, type BattleTurnResult, type GameState, type Monster } from '../game/engine';
 import { KANTO_START, KANTO_MAP_VERSION } from './kanto';
 import { WORLD_MIN, WORLD_MAX, WORLD_SCALE, migrateSurfaceSnapshotCoordinates, surfaceSceneId } from './world-space';
 import { CAVE_SCENES, caveLocation, cavePortalAtInterior, cavePortalAtSurface, getCaveScene, nearestCaveWalkable } from './caves';
@@ -192,6 +193,7 @@ export class OpenWorldSimulation {
   private serverTurn?: { battle: NonNullable<GameState['battle']>; turn: number; decisions: Map<string, ServerDecision> };
   private serverFinalizations: ServerFinalization[] = [];
   private restoringAtlas?: WorldAtlas;
+  private evolutionStepRemainder = 0;
 
   get regionalBadges(): number { return getRegionalBadges(this.game, this.regionId); }
   get atlas(): WorldAtlas { return this.restoringAtlas ?? getWorldAtlas(this.regionId); }
@@ -205,6 +207,18 @@ export class OpenWorldSimulation {
   synchronizeWorldClock(epochMilliseconds: number): void {
     if (!Number.isFinite(epochMilliseconds) || epochMilliseconds < 0) throw new Error('World clock timestamp must be non-negative');
     this.worldClockSeconds = epochMilliseconds / 1000 % (20 * 60);
+    this.synchronizeEvolutionContext();
+  }
+  synchronizeEvolutionContext(multiplayer = false): void {
+    this.game.evolutionContext = { period: this.dayPeriod === 'night' ? 'night' : 'day',
+      regionId: this.regionId, locationId: this.locationAt(this.player.x, this.player.z).id,
+      raining: false, multiplayer };
+  }
+  private recordEvolutionWalk(meters: number): void {
+    const lead = this.game.player.team[0]; if (!lead || !Number.isFinite(meters) || meters <= 0) return;
+    this.evolutionStepRemainder += meters;
+    const steps = Math.floor(this.evolutionStepRemainder);
+    if (steps) { this.evolutionStepRemainder -= steps; addEvolutionSteps(lead, steps); }
   }
   // Keep source records and historical battles loadable, without spawning NPCs.
   get localFieldTrainer(): FieldTrainer | undefined { return undefined; }
@@ -338,6 +352,7 @@ export class OpenWorldSimulation {
     const maximum = movementSpeed(companion.speciesId, companion.level) * .35;
     // Manual movement can pass wild creatures; terrain and route gates still block it.
     if (distance(companion, position) > maximum || this.pathBlocked(companion, position.x, position.z, [])) return false;
+    this.recordEvolutionWalk(distance(companion, position));
     companion.x = position.x; companion.z = position.z; companion.heading = position.heading; companion.action = position.heading; companion.reward = 0;
     const brain = this.brain(companion.id); brain.state.previous = null;
     this.player = structuredClone(position); this.manualControlRemaining = MANUAL_CONTROL_HOLD; this.recordTownVisit(); return true;
@@ -596,7 +611,7 @@ export class OpenWorldSimulation {
         const x = entity.x + direction.x * stepDistance, z = entity.z + direction.z * stepDistance;
         entity.heading = action;
         if (this.pathBlocked(entity, x, z, occupied)) { reward -= .2; entity.collisions++; type = 'collision'; }
-        else { entity.x = x; entity.z = z; entity.energy = Math.max(0, entity.energy - .035 * stepDistance); type = 'move'; }
+        else { if (entity.kind === 'companion') this.recordEvolutionWalk(stepDistance); entity.x = x; entity.z = z; entity.energy = Math.max(0, entity.energy - .035 * stepDistance); type = 'move'; }
       } else entity.energy = Math.min(100, entity.energy + .025);
       if (target) {
         const maxProgress = movementSpeed(entity.speciesId, entity.level) * deltaSeconds;
@@ -741,7 +756,7 @@ export class OpenWorldSimulation {
   private autoEvolve(events: OpenWorldEvent[]): void {
     for (const monster of this.game.player.team) {
       for (;;) {
-        const candidate = availableEvolutions(this.game, monster.instanceId).find(option => option.method === 'level'); if (!candidate) break;
+        const candidate = availableEvolutions(this.game, monster.instanceId).find(option => option.method === 'level' && !evolutionRoute(this.game, monster, option)?.item); if (!candidate) break;
         const fromSpeciesId = monster.speciesId;
         evolve(this.game, monster.instanceId, { targetId: candidate.target });
         events.push({ type: 'evolved', entityId: monster.instanceId, fromSpeciesId, speciesId: monster.speciesId });

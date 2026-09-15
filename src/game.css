@@ -121,3 +121,17 @@ dialog button:focus-visible{outline:3px solid #c85f4f;outline-offset:3px}
   .trainer-summary #save-now{display:none}
   .starter-account{flex-wrap:wrap}
 }
+
+.evolution-item-uses{display:block;margin-top:6px;line-height:1.55;overflow-wrap:anywhere}.evolution-help{font-size:12px;line-height:1.6;color:var(--muted)}
+.evolution-panel{margin-top:16px;padding-top:4px;border-top:1px solid var(--line)}
+.evolution-growth{padding:12px;border-radius:10px;background:#e8eddf}
+.evolution-growth h3,.evolution-growth p{margin:0 0 8px}.evolution-growth p{font-size:calc(12px * var(--ui-font-scale, 1));line-height:1.55}
+.evolution-treats{display:grid;gap:7px}.evolution-treat{display:grid;grid-template-columns:minmax(0,1fr) 64px;gap:6px;align-items:center}
+.evolution-treat label,.evolution-treat small{font-size:calc(11px * var(--ui-font-scale, 1));color:var(--muted)}
+.evolution-treat input,.evolution-treat button{min-height:38px;min-width:0;border:1px solid var(--line);border-radius:7px;background:white;padding:6px 8px}.evolution-treat button,.evolution-treat small{grid-column:1/-1}
+.evolution-route{display:grid;gap:6px;padding:8px;border:1px solid var(--line);border-radius:10px;background:#f5f5eb}.evolution-route+.evolution-route{margin-top:4px}
+.evolution-list span{gap:2px;min-width:0}.evolution-list small{overflow-wrap:anywhere}.evolution-list em{font-size:calc(11px * var(--ui-font-scale, 1));font-style:normal;font-weight:800;color:var(--teal)}.evolution-list button:disabled em{color:var(--muted)}
+.evolution-route .capsule-evolution{border-color:#b69160;background:#fff8e8}
+.evolution-source{font-size:calc(12px * var(--ui-font-scale, 1));color:var(--muted)}.evolution-source summary{padding:5px 2px;cursor:pointer;font-weight:700;color:var(--forest)}
+.evolution-source ul{margin:5px 0;padding-left:20px}.evolution-source li{margin:4px 0;line-height:1.45}.evolution-source p{margin:7px 0;line-height:1.5}
+@media(max-width:720px){.evolution-list button{min-height:54px}.evolution-source summary{min-height:38px;display:flex;align-items:center}}

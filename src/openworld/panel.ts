@@ -2,6 +2,7 @@ import type { Graph } from '../core/brain';
 import { getMove, getSpecies } from '../data/pokemon';
 import { pokemonModelUrl, pokemonSpriteUrl } from '../game/assets';
 import { getMoveLayout } from '../game/move-layout';
+import { evolutionItemUses } from '../game/engine';
 import { buyItem, depositMonster, experienceAtLevel, heal, ITEM_LABELS, ITEM_PRICES, SHOP_ITEMS, statsFor, withdrawMonster, type GameState, type InventoryItem, type Monster } from '../game/engine';
 import { CAMPAIGN_TRAINERS, campaignTravelReason, getCampaignGyms, getNextCampaignTrainer, getRegionalBadges, regionalWildLevels, type CampaignRegion } from '../game/campaign';
 import { getWorldAtlas } from './atlas';
@@ -326,6 +327,7 @@ export class OpenWorldPanel {
   async tick(): Promise<void> {
     if (this.tickPending || !this.renderer || !this.ready) return;
     this.simulation.synchronizeWorldClock(Date.now());
+    this.simulation.synchronizeEvolutionContext(this.multiplayer?.view.status === 'connected' && this.multiplayer.view.players.length > 0);
     if (this.paused || document.hidden || document.querySelector('dialog[open]')) { this.manualIdleSeconds = 0; return; }
     this.tickPending = true;
     try {
@@ -555,7 +557,7 @@ export class OpenWorldPanel {
     this.html('#world-control-help', world.controlMode === 'manual' ? (battle || game.captureOffer ? '기술 1–4 · M 전환' : '3초간 이동 입력이 없으면 자동') : '가까운 포켓몬 자동 배틀');
     this.html('#world-ball-stock', `몬스터볼 ${game.inventory['poke-ball']}개 · ₩${game.player.money.toLocaleString('ko-KR')}`);
     this.html('#world-team-count', String(game.player.team.length));
-    this.html('#world-shop-items', SHOP_ITEMS.map(item => `<div><strong>${ITEM_LABELS[item]} <small>보유 ${game.inventory[item]}개 · 개당 ₩${ITEM_PRICES[item].toLocaleString('ko-KR')}</small></strong>${[1, 5].map(quantity => { const total = ITEM_PRICES[item] * quantity, reason = game.player.money < total ? `₩${(total - game.player.money).toLocaleString('ko-KR')} 부족` : ''; return `<button data-world-buy="${item}" data-quantity="${quantity}" ${reason ? `disabled title="${reason}"` : ''}>${quantity}개 · ₩${total.toLocaleString('ko-KR')}${reason ? `<small>${reason}</small>` : ''}</button>`; }).join('')}</div>`).join(''));
+    this.html('#world-shop-items', SHOP_ITEMS.map(item => `<div><strong>${ITEM_LABELS[item]} <small>보유 ${game.inventory[item]}개 · 개당 ₩${ITEM_PRICES[item].toLocaleString('ko-KR')}</small>${evolutionItemUses(item) ? `<small>${escape(evolutionItemUses(item))} · 팀·박스에서 사용</small>` : ''}</strong>${[1, 5].map(quantity => { const total = ITEM_PRICES[item] * quantity, reason = game.player.money < total ? `₩${(total - game.player.money).toLocaleString('ko-KR')} 부족` : ''; return `<button data-world-buy="${item}" data-quantity="${quantity}" ${reason ? `disabled title="${reason}"` : ''}>${quantity}개 · ₩${total.toLocaleString('ko-KR')}${reason ? `<small>${reason}</small>` : ''}</button>`; }).join('')}</div>`).join(''));
     this.html('#world-shop-note', `몬스터볼 30초마다 +1 · 기본 보충 한도 20개 · 다음 ${Math.ceil(30 - (game.ballRefillSeconds ?? 0))}초. ` + (game.player.money < Math.min(...SHOP_ITEMS.map(item => ITEM_PRICES[item])) ? '소지금이 부족합니다. 배틀에서 이기면 상금을 받습니다.' : '배틀 중에도 구매와 박스 관리를 할 수 있습니다.'));
     this.host.querySelectorAll<HTMLButtonElement>('[data-world-buy]').forEach(button => button.onclick = () => { const item = button.dataset.worldBuy as InventoryItem, quantity = Number(button.dataset.quantity), total = ITEM_PRICES[item] * quantity; try { buyItem(game, item, quantity); this.options.notify(`${ITEM_LABELS[item]} ${quantity}개 · ₩${total.toLocaleString('ko-KR')} 구매 완료`); this.options.changed(); this.refresh(); } catch (error) { this.options.notify(String(error), true); } });
     const offer = game.captureOffer, offerNode = this.host.querySelector<HTMLElement>('#world-capture-offer')!;

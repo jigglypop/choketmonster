@@ -8,12 +8,15 @@ import { getMoveLayout, reconcileMoveOrder } from './move-layout';
 import { getRegion, REGIONS } from './regions';
 import { CAMPAIGN_REGIONS, CAMPAIGN_TRAINERS, campaignProgress, campaignTravelReason, canChallengeRed, getRegionalBadges, getNextCampaignTrainer, getCampaignGyms, recordCampaignGymVictory, recordCampaignLeagueVictory, validateExpansionCampaign, type CampaignRegion, type CampaignProgress } from './campaign';
 import { duplicateMergeValue } from './growth';
+import { EXTRA_EVOLUTION_ITEM_IDS, EXTRA_EVOLUTION_PRICES, EXTRA_EVOLUTION_LABELS, emptyExtraEvolutionInventory, ITEM_EVOLUTION_RULES, type ExtraEvolutionItem } from './evolution-items';
+import { initialEvolutionProgress, evolutionProgress, validateEvolutionProgress, validateEvolutionContext, type EvolutionProgress, type EvolutionContext } from './evolution-progress';
+import { feedEvolutionTreat, naturalEvolution, needsSpecialEvolution, sourceEvolutionItems, sourceEvolutionRules, specialEvolutionLevel } from './evolution-conditions';
 import { getFieldTrainer, type FieldTrainer } from '../data/field-trainers';
 export { duplicateMergeValue } from './growth';
 
 export const SAVE_SCHEMA_VERSION = 2 as const;
 export type BallItem = 'poke-ball' | 'great-ball' | 'ultra-ball';
-export type InventoryItem = BallItem | 'potion' | 'super-potion' | 'rare-candy' | 'fire-stone' | 'water-stone' | 'thunder-stone' | 'leaf-stone' | 'moon-stone' | 'link-cable';
+export type InventoryItem = BallItem | 'potion' | 'super-potion' | 'rare-candy' | 'fire-stone' | 'water-stone' | 'thunder-stone' | 'leaf-stone' | 'moon-stone' | 'link-cable' | ExtraEvolutionItem;
 export type BattleKind = 'wild' | 'gym' | 'trainer' | 'champion' | 'elite' | 'red';
 
 export type MonsterStats = BaseStats;
@@ -37,6 +40,7 @@ export type Monster = {
   brain?: BrainState;
   /** Persisted game-learning telemetry, keyed by move ID; it does not contain graph data. */
   moveLearning?: Record<string, MoveLearningStat>;
+  evolutionProgress?: EvolutionProgress;
 };
 
 export type BattleSide = { team: Monster[]; activeIndex: number };
@@ -120,6 +124,7 @@ export type GameState = {
   versionCaught?: Record<string, number[]>;
   /** Active-play seconds toward one free ball; this is an engineered game rule. */
   ballRefillSeconds?: number;
+  evolutionContext?: EvolutionContext;
   battle?: BattleState;
   /** Open-world victory reward, held until the player catches or releases it. */
   captureOffer?: Monster;
@@ -133,12 +138,14 @@ export const ITEM_PRICES: Readonly<Record<InventoryItem, number>> = {
   potion: 300, 'super-potion': 700, 'rare-candy': 2400,
   'fire-stone': 3000, 'water-stone': 3000, 'thunder-stone': 3000,
   'leaf-stone': 3000, 'moon-stone': 3000, 'link-cable': 4000,
+  ...EXTRA_EVOLUTION_PRICES,
 };
 export const ITEM_LABELS: Readonly<Record<InventoryItem, string>> = {
   'poke-ball': '몬스터볼', 'great-ball': '슈퍼볼', 'ultra-ball': '하이퍼볼',
   potion: '상처약', 'super-potion': '좋은상처약', 'rare-candy': '이상한사탕',
   'fire-stone': '불꽃의돌', 'water-stone': '물의돌', 'thunder-stone': '천둥의돌',
   'leaf-stone': '리프의돌', 'moon-stone': '달의돌', 'link-cable': '연결의끈',
+  ...EXTRA_EVOLUTION_LABELS,
 };
 const INVENTORY_ITEMS = Object.keys(ITEM_PRICES) as InventoryItem[];
 export const SHOP_ITEMS: readonly InventoryItem[] = INVENTORY_ITEMS.filter(item => item !== 'great-ball' && item !== 'ultra-ball');
@@ -280,7 +287,7 @@ export function createMonster(state: Pick<GameState, 'nextInstanceId'>, speciesI
   const species = getSpecies(speciesId);
   const normalizedLevel = Math.max(1, Math.min(100, Math.floor(level)));
   const stats = statsFor(species, normalizedLevel);
-  return {
+  const monster: Monster = {
     instanceId: `mon-${state.nextInstanceId++}`,
     speciesId,
     nickname: species.name,
@@ -290,6 +297,8 @@ export function createMonster(state: Pick<GameState, 'nextInstanceId'>, speciesI
     stats,
     moves: knownMoves(species, normalizedLevel),
   };
+  monster.evolutionProgress = initialEvolutionProgress(monster);
+  return monster;
 }
 
 export function createGame(starterId: 1 | 4 | 7 | 152 | 155 | 158, seed: number | string): GameState {
@@ -303,6 +312,7 @@ export function createGame(starterId: 1 | 4 | 7 | 152 | 155 | 158, seed: number 
       'poke-ball': 8, 'great-ball': 0, 'ultra-ball': 0, potion: 3, 'super-potion': 0,
       'rare-candy': 0, 'fire-stone': 0, 'water-stone': 0, 'thunder-stone': 0,
       'leaf-stone': 0, 'moon-stone': 0, 'link-cable': 0,
+      ...emptyExtraEvolutionInventory(),
     },
     dex: { seen: [starterId], caught: [starterId] }, regionId: REGIONS[0].id,
     defeatedGyms: [], defeatedFieldTrainers: [], championDefeated: false, experienceShare: true, adventureVersion: 'red', versionCaught: { red: [starterId] }, ballRefillSeconds: 0, logs: [],
@@ -531,6 +541,8 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
     return;
   }
   const move = getMove(slot.moveId);
+  const growth = evolutionProgress(attacker);
+  growth.moveUses[String(move.id)] = Math.min(1e9, (growth.moveUses[String(move.id)] ?? 0) + 1);
   let hpRecovered = 0, statStageDelta = 0, ailmentApplied = false;
   const damagingMove = move.damageClass !== 'status' && (move.power > 0 || fixedMoveDamage(move.id, attacker, defender) !== undefined || [12, 32, 90].includes(move.id));
   const attackerStages = battle.statStages?.[attacker.instanceId] ?? {}; const defenderStages = battle.statStages?.[defender.instanceId] ?? {};
@@ -577,7 +589,10 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
 
   if (move.drain && totalDamage > 0) {
     const amount = Math.max(1, Math.floor(totalDamage * Math.abs(move.drain) / 100));
-    if (move.drain > 0) { const before = attacker.hp; attacker.hp = Math.min(attacker.stats.hp, attacker.hp + amount); hpRecovered += attacker.hp - before; } else attacker.hp = Math.max(0, attacker.hp - amount);
+    if (move.drain > 0) { const before = attacker.hp; attacker.hp = Math.min(attacker.stats.hp, attacker.hp + amount); hpRecovered += attacker.hp - before; } else {
+      const recoil = Math.min(attacker.hp, amount); attacker.hp -= recoil;
+      growth.recoilDamage = attacker.hp > 0 ? Math.min(1e9, growth.recoilDamage + recoil) : 0;
+    }
     events.push(event(battle, move.drain > 0 ? `${attacker.nickname}은(는) HP를 ${amount} 흡수했다.` : `${attacker.nickname}은(는) 반동으로 ${amount} 피해를 입었다.`, 'status'));
   }
   if (move.healing && move.healing > 0) {
@@ -607,6 +622,9 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
   }
   if (!totalDamage && !move.statChanges?.length && !move.healing && !move.ailment && move.id !== 144) events.push(event(battle, `${move.name}의 특수 효과는 이 로컬 규칙에서 축약되어 변화가 없었다.`));
   const failed = isOhko && attacker.level < defender.level;
+  const defenderGrowth = evolutionProgress(defender);
+  defenderGrowth.damageTaken = defender.hp > 0 ? Math.min(1e9, defenderGrowth.damageTaken + totalDamage) : 0;
+  if (defender.hp <= 0) defenderGrowth.recoilDamage = 0;
   const hasHealing = !!((move.healing ?? 0) > 0 || (move.drain ?? 0) > 0 || move.id === 156), hasBuff = !!move.statChanges?.length, hasStatus = !!(move.ailment && move.ailment !== 'none');
   const category = damagingMove && (hasHealing || hasBuff || hasStatus) ? 'mixed' : hasHealing ? 'healing' : hasBuff ? 'buff' : hasStatus || move.damageClass === 'status' ? 'status' : 'damage';
   executedMoves.push({ actorInstanceId: attacker.instanceId, targetInstanceId: defender.instanceId,
@@ -636,6 +654,7 @@ function gainExperience(monster: Monster, amount: number, events?: BattleLogEntr
   while (monster.level < 100 && monster.xp >= experienceAtLevel(monster.level + 1, getSpecies(monster.speciesId).growthRate)) {
     const oldMax = monster.stats.hp;
     monster.level++;
+    const progress = evolutionProgress(monster); progress.friendship = Math.min(255, progress.friendship + 5);
     monster.stats = statsFor(getSpecies(monster.speciesId), monster.level);
     monster.hp += monster.stats.hp - oldMax;
     for (const learned of getSpecies(monster.speciesId).moves.filter((entry) => entry.level === monster.level)) {
@@ -827,6 +846,11 @@ function useHealingItem(state: GameState, item: 'potion' | 'super-potion', targe
 export function useItem(state: GameState, item: InventoryItem, targetInstanceId?: string, quantity = 1): void {
   if (!Number.isSafeInteger(quantity) || quantity < 1) throw new Error('사용 수량은 1 이상의 정수여야 합니다.');
   if (!targetInstanceId) throw new Error('대상 포켓몬을 선택해야 합니다.');
+  if (['friendship-treat', 'beauty-treat', 'affection-treat'].includes(item)) {
+    if (state.battle) throw new Error('전투 중에는 간식을 줄 수 없습니다.');
+    if (quantity > state.inventory[item]) throw new Error('간식 보유 수량이 부족합니다.');
+    if (feedEvolutionTreat(findOwned(state, targetInstanceId), item, quantity)) { state.inventory[item] -= quantity; return; }
+  }
   if (item === 'potion' || item === 'super-potion') {
     if (quantity !== 1) throw new Error('회복 도구는 한 번에 1개만 사용할 수 있습니다.');
     useHealingItem(state, item, targetInstanceId); return;
@@ -838,11 +862,11 @@ export function useItem(state: GameState, item: InventoryItem, targetInstanceId?
     if (quantity > state.inventory[item]) throw new Error('이상한사탕 보유 수량이 부족합니다.');
     if (quantity > 100 - monster.level) throw new Error('레벨 100을 넘도록 사용할 수 없습니다.');
     const targetLevel = monster.level + quantity;
-    const grown: Monster = { ...monster, moves: structuredClone(monster.moves), moveOrder: monster.moveOrder?.slice(), movePpReserve: structuredClone(monster.movePpReserve) };
+    const grown: Monster = { ...monster, evolutionProgress: structuredClone(evolutionProgress(monster)), moves: structuredClone(monster.moves), moveOrder: monster.moveOrder?.slice(), movePpReserve: structuredClone(monster.movePpReserve) };
     gainExperience(grown, experienceAtLevel(targetLevel, getSpecies(monster.speciesId).growthRate) - monster.xp);
     state.inventory[item] -= quantity;
     Object.assign(monster, { xp: grown.xp, level: grown.level, stats: grown.stats, hp: grown.hp,
-      moves: grown.moves, moveOrder: grown.moveOrder, movePpReserve: grown.movePpReserve });
+      moves: grown.moves, moveOrder: grown.moveOrder, movePpReserve: grown.movePpReserve, evolutionProgress: grown.evolutionProgress });
     return;
   }
   throw new Error('이 아이템은 진화 또는 전투 전용입니다.');
@@ -854,8 +878,37 @@ export function evolve(state: GameState, instanceId: string, option: { targetId?
   const evolutions = getSpecies(monster.speciesId).evolutions.filter((evolution) => option.targetId === undefined || evolution.target === option.targetId);
   const evolution = evolutions.find((candidate) => evolutionReady(state, monster, candidate, option.item));
   if (!evolution) throw new Error('현재 조건으로 가능한 진화가 없습니다.');
-  const requiredItem = evolution.method === 'trade' ? 'link-cable' : evolution.method === 'stone' ? normalizeEvolutionItem(evolution.item ?? option.item) : undefined;
+  const route = evolutionRoute(state, monster, evolution, option.item)!;
+  const requiredItem = route.item;
   if (requiredItem) state.inventory[requiredItem]--;
+  // Shedinja is a second individual: keep Nincada/Ninjask's identity and neural memory.
+  if (route.shed) {
+    const shed = createMonster(state, 292, monster.level);
+    state.player.team.push(shed); state.inventory['poke-ball']--;
+    const ninjask = getSpecies(monster.speciesId).evolutions.find(candidate => candidate.target === 291)!;
+    applyEvolution(state, monster, ninjask);
+    state.dex.seen = uniqueSorted([...state.dex.seen, 292]); recordCapture(state, 292);
+    addLog(state, '남은 팀 자리에 껍질몬이 나타났다.'); return shed;
+  }
+  const leaveShell = monster.speciesId === 290 && evolution.target === 291
+    && state.player.team.includes(monster) && state.player.team.length < 6 && state.inventory['poke-ball'] > 0;
+  if (leaveShell) {
+    const shed = createMonster(state, 292, monster.level);
+    state.player.team.push(shed); state.inventory['poke-ball']--;
+    state.dex.seen = uniqueSorted([...state.dex.seen, 292]); recordCapture(state, 292);
+    addLog(state, '남은 팀 자리에 껍질몬이 나타났다.');
+  }
+  return applyEvolution(state, monster, evolution);
+}
+
+function applyEvolution(state: GameState, monster: Monster, evolution: Evolution): Monster {
+  const before = getSpecies(monster.speciesId), after = getSpecies(evolution.target);
+  if (before.growthRate !== after.growthRate) {
+    const floor = experienceAtLevel(monster.level, before.growthRate), ceiling = experienceAtLevel(monster.level + 1, before.growthRate);
+    const progress = ceiling > floor ? (monster.xp - floor) / (ceiling - floor) : 0;
+    const nextFloor = experienceAtLevel(monster.level, after.growthRate), nextCeiling = experienceAtLevel(monster.level + 1, after.growthRate);
+    monster.xp = nextFloor + (nextCeiling > nextFloor ? Math.min(nextCeiling - nextFloor - 1, Math.floor((nextCeiling - nextFloor) * Math.max(0, Math.min(1, progress)))) : 0);
+  }
   const oldMax = monster.stats.hp;
   monster.speciesId = evolution.target; monster.nickname = getSpecies(evolution.target).name;
   monster.stats = statsFor(getSpecies(evolution.target), monster.level);
@@ -874,11 +927,47 @@ function normalizeEvolutionItem(item?: string): InventoryItem | undefined {
   return INVENTORY_ITEMS.includes(normalized as InventoryItem) ? normalized as InventoryItem : undefined;
 }
 
+export function evolutionItemFor(speciesId: number, evolution: Evolution): InventoryItem | undefined {
+  return evolutionItemsFor(speciesId, evolution)[0];
+}
+
+export function evolutionItemsFor(speciesId: number, evolution: Evolution): InventoryItem[] {
+  const explicit = ITEM_EVOLUTION_RULES.find(rule => rule.from === speciesId && rule.to === evolution.target)?.item;
+  const source = sourceEvolutionItems(speciesId, evolution.target).map(normalizeEvolutionItem).filter((item): item is InventoryItem => !!item);
+  return [...new Set([...(explicit ? [explicit] : []), ...source])];
+}
+
+let evolutionUses: Map<InventoryItem, string> | undefined;
+export function evolutionItemUses(item: InventoryItem): string {
+  if (!evolutionUses) {
+    const names = new Map<InventoryItem, string[]>();
+    for (const species of POKEMON) for (const evolution of species.evolutions) {
+      for (const required of evolutionItemsFor(species.id, evolution)) {
+        const list = names.get(required) ?? [];
+        list.push(`${species.name} → ${getSpecies(evolution.target).name}`); names.set(required, list);
+      }
+    }
+    evolutionUses = new Map([...names].map(([id, list]) => [id, list.join(' · ')]));
+  }
+  return ({ 'evolution-catalyst': '친밀도·성별·기술·시간·장소·동료·특수 행동 조건을 대체합니다. 필요한 레벨은 유지합니다.',
+    'friendship-treat': '개체 친밀도 +20 · 걷기와 레벨업으로도 상승합니다.', 'beauty-treat': '개체 아름다움 +20', 'affection-treat': '개체 애정 +20' } as Partial<Record<InventoryItem, string>>)[item] ?? evolutionUses.get(item) ?? '';
+}
+
+export function evolutionRoute(state: GameState, monster: Monster, evolution: Evolution, supplied?: InventoryItem): { item?: InventoryItem; shed?: boolean } | undefined {
+  if (state.battle) return undefined;
+  if (supplied === 'evolution-catalyst') return needsSpecialEvolution(monster.speciesId, evolution)
+    && monster.level >= specialEvolutionLevel(monster.speciesId, evolution.target) && state.inventory[supplied] > 0 ? { item: supplied } : undefined;
+  if (supplied === undefined) {
+    const natural = naturalEvolution(state, monster, evolution);
+    if (natural) return natural.trigger === 4 ? { shed: true } : {};
+    // Compatibility for authored data without a source row. Source-backed rows never bypass predicates.
+    if (!sourceEvolutionRules(monster.speciesId, evolution.target).length && evolution.method === 'level' && monster.level >= (evolution.level ?? 1)) return {};
+  }
+  const item = evolutionItemsFor(monster.speciesId, evolution).find(item => state.inventory[item] > 0 && (supplied === undefined || item === supplied));
+  return item ? { item } : undefined;
+}
 function evolutionReady(state: GameState, monster: Monster, evolution: Evolution, supplied?: InventoryItem): boolean {
-  if (evolution.method === 'special') return false;
-  if (evolution.method === 'level') return monster.level >= (evolution.level ?? 1);
-  const required = evolution.method === 'trade' ? 'link-cable' : normalizeEvolutionItem(evolution.item ?? supplied);
-  return !!required && state.inventory[required] > 0 && (supplied === undefined || supplied === required);
+  return !!evolutionRoute(state, monster, evolution, supplied);
 }
 
 export function availableEvolutions(state: GameState, instanceId: string): Evolution[] {
@@ -1037,10 +1126,10 @@ export function mergeDuplicateMonsters(state: GameState, targetId: string, donor
   const box = state.player.box.filter(monster => !ids.has(monster.instanceId) && (!plan.movesToTeam || monster !== target));
   if (plan.movesToTeam) team.push(target);
   // Stage growth before any collection mutation; keep the original neural objects intact.
-  const grown: Monster = { ...target, moves: structuredClone(target.moves), moveOrder: target.moveOrder?.slice(), movePpReserve: structuredClone(target.movePpReserve) };
+  const grown: Monster = { ...target, evolutionProgress: structuredClone(evolutionProgress(target)), moves: structuredClone(target.moves), moveOrder: target.moveOrder?.slice(), movePpReserve: structuredClone(target.movePpReserve) };
   gainExperience(grown, plan.gainedXp);
   Object.assign(target, { xp: grown.xp, level: grown.level, stats: grown.stats, hp: grown.hp,
-    moves: grown.moves, moveOrder: grown.moveOrder, movePpReserve: grown.movePpReserve });
+    moves: grown.moves, moveOrder: grown.moveOrder, movePpReserve: grown.movePpReserve, evolutionProgress: grown.evolutionProgress });
   state.player.team = team; state.player.box = box;
   addLog(state, `${target.nickname} (${targetId})에게 같은 종 ${plan.count}마리의 레벨 합계 ${plan.donorLevels} 중 20%를 합쳐 +${plan.gainedLevels}레벨. 남긴 개체의 회로 기억을 유지한다.`);
   return plan;
@@ -1093,7 +1182,10 @@ export function validateGame(value: unknown): GameState {
   if (!Number.isInteger(state.rngState) || state.rngState <= 0 || state.rngState > 0xffffffff || !Number.isSafeInteger(state.nextInstanceId) || state.nextInstanceId < 1) throw new Error('난수/개체 ID 상태가 손상되었습니다.');
   if (!state.player || !Number.isSafeInteger(state.player.money) || state.player.money < 0 || !Number.isInteger(state.player.badges) || state.player.badges < 0 || state.player.badges > 8 || !Array.isArray(state.player.team) || !Array.isArray(state.player.box) || state.player.team.length < 1 || state.player.team.length > 6 || state.player.box.length > 10000) throw new Error('플레이어/팀/박스 데이터가 손상되었습니다.');
   if (!state.inventory || !state.dex || !Array.isArray(state.dex.seen) || !Array.isArray(state.dex.caught)) throw new Error('가방 또는 도감 데이터가 손상되었습니다.');
-  for (const item of INVENTORY_ITEMS) if (!Number.isInteger(state.inventory[item]) || state.inventory[item] < 0) throw new Error(`가방 수량이 잘못되었습니다: ${item}`);
+  if (Array.isArray(state.inventory) || Object.keys(state.inventory).some(item => !INVENTORY_ITEMS.includes(item as InventoryItem))) throw new Error('가방 품목 구성이 올바르지 않습니다.');
+  // Only genuinely absent new keys are legacy defaults; explicit invalid values still fail.
+  for (const item of EXTRA_EVOLUTION_ITEM_IDS) if (!Object.hasOwn(state.inventory, item)) state.inventory[item] = 0;
+  for (const item of INVENTORY_ITEMS) if (!Number.isSafeInteger(state.inventory[item]) || state.inventory[item] < 0 || state.inventory[item] > 1_000_000_000) throw new Error(`가방 수량이 잘못되었습니다: ${item}`);
   normalizeBalls(state);
   for (const id of [...state.dex.seen, ...state.dex.caught]) if (!Number.isInteger(id) || !POKEMON.some(species => species.id === id)) throw new Error('도감 번호가 잘못되었습니다.');
   if (!Array.isArray(state.defeatedGyms) || state.defeatedGyms.length !== state.player.badges || state.defeatedGyms.some((badge, index) => badge !== index + 1)) throw new Error('배지 진행이 손상되었습니다.');
@@ -1115,9 +1207,12 @@ export function validateGame(value: unknown): GameState {
   const ids = new Set<string>(); let maximumGeneratedId = 0;
   if (state.captureOffer && (state.battle || state.captureOffer.hp !== 0 || !state.dex.seen.includes(state.captureOffer.speciesId))) throw new Error('승리 후 포획 대상이 올바르지 않습니다.');
   const monsters = [...state.player.team, ...state.player.box, ...(state.battle?.enemy.team ?? []), ...(state.captureOffer ? [state.captureOffer] : [])];
+  if (state.evolutionContext !== undefined) validateEvolutionContext(state.evolutionContext);
   for (const monster of monsters) {
     if (!monster || typeof monster.instanceId !== 'string' || !/^mon-[1-9]\d*$/.test(monster.instanceId) || ids.has(monster.instanceId)) throw new Error('개체 ID가 없거나 중복되었습니다.');
     ids.add(monster.instanceId); const species = getSpecies(monster.speciesId);
+    if (monster.evolutionProgress === undefined) monster.evolutionProgress = initialEvolutionProgress(monster);
+    else validateEvolutionProgress(monster.evolutionProgress);
     const match = /^mon-(\d+)$/.exec(monster.instanceId); if (match) maximumGeneratedId = Math.max(maximumGeneratedId, Number(match[1]));
     if (typeof monster.nickname !== 'string' || !monster.nickname || monster.nickname.length > 40 || !Number.isInteger(monster.level) || monster.level < 1 || monster.level > 100 || !Number.isSafeInteger(monster.xp) || monster.xp < experienceAtLevel(monster.level, species.growthRate) || (monster.level < 100 && monster.xp >= experienceAtLevel(monster.level + 1, species.growthRate))) throw new Error('이름/레벨/경험치가 잘못되었습니다.');
     const expectedStats = statsFor(species, monster.level);
@@ -1167,6 +1262,9 @@ export function validateGame(value: unknown): GameState {
       const battleRegion = getRegion(battle.regionId);
       if (battle.regionId !== state.regionId || battleRegion.minBadges > state.player.badges) throw new Error('전투 지역이 손상되었습니다.');
     } else if (battle.regionId !== (battle.kind === 'red' ? 'mt-silver' : 'pokemon-league')) throw new Error('리그 전투 지역이 손상되었습니다.');
+    if (Array.isArray(battle.player.team)) for (const member of battle.player.team) {
+      if (member && member.evolutionProgress === undefined && state.player.team.some(owned => owned.instanceId === member.instanceId && owned.speciesId === member.speciesId)) member.evolutionProgress = initialEvolutionProgress(member);
+    }
     if (!Array.isArray(battle.player.team) || JSON.stringify(battle.player.team) !== JSON.stringify(state.player.team)) throw new Error('전투 팀과 플레이어 팀이 일치하지 않습니다.');
     if (battle.awaitingSwitch !== undefined && battle.awaitingSwitch !== 'player') throw new Error('강제 교체 상태가 손상되었습니다.');
     const activePlayer = state.player.team[battle.player.activeIndex];

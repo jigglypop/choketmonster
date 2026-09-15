@@ -72,10 +72,23 @@ async function main() {
   reorderMonsterMoves(game, customized.instanceId, 1, 3);
   const moveOrder = structuredClone(customized.moveOrder!);
   const movePpReserve = structuredClone(customized.movePpReserve!);
+  customized.evolutionProgress!.friendship = 190;
+  customized.evolutionProgress!.beauty = 80;
+  customized.evolutionProgress!.steps = 1234;
+  customized.evolutionProgress!.moveUses[String(customized.moves[0].moveId)] = 20;
+  game.inventory['metal-coat'] = 2; game.inventory['evolution-catalyst'] = 3;
+  game.evolutionContext = { period: 'night', regionId: 'kanto', locationId: 'pallet', raining: false, multiplayer: false };
+  const expectedGrowth = structuredClone(customized.evolutionProgress);
   const save = packSave(game, graph, defaultView());
   const storedMonster = (envelope: Record<string, unknown>) => (envelope.save as { game?: GameState } | undefined)?.game?.player.team.find(monster => monster.instanceId === customized.instanceId);
   const hasMoveOrder = (envelope: Record<string, unknown>) => JSON.stringify(storedMonster(envelope)?.moveOrder) === JSON.stringify(moveOrder);
   const hasMovePpReserve = (envelope: Record<string, unknown>) => JSON.stringify(storedMonster(envelope)?.movePpReserve) === JSON.stringify(movePpReserve);
+  const hasEvolution = (envelope: Record<string, unknown>) => {
+    const stored = (envelope.save as { game?: GameState } | undefined)?.game;
+    return JSON.stringify(storedMonster(envelope)?.evolutionProgress) === JSON.stringify(expectedGrowth)
+      && stored?.inventory['metal-coat'] === 2 && stored?.inventory['evolution-catalyst'] === 3
+      && JSON.stringify(stored.evolutionContext) === JSON.stringify(game.evolutionContext);
+  };
   const creatureId = customized.instanceId, slot = `api-check-${suffix}`;
   const first = new CookieJar(), second = new CookieJar();
 
@@ -119,6 +132,7 @@ async function main() {
     call = await request(`/api/saves/${encodeURIComponent(slot)}`, {}, first); const stored = await json(call.response);
     record('saved game restores', call.response.status === 200 && Number(stored.revision) === revision && (stored.save as { format?: string } | undefined)?.format === 'choketmon', 'GET returns the same game envelope and revision', call.elapsedMs, call.response.status);
     record('move layout survives server save', call.response.status === 200 && hasMoveOrder(stored), 'GET preserves the individual move-order preference', call.elapsedMs, call.response.status);
+    record('evolution growth and tools survive server save', call.response.status === 200 && hasEvolution(stored), 'GET preserves growth counters, context and evolution inventory', call.elapsedMs, call.response.status);
     record('unequipped move PP survives server save', call.response.status === 200 && hasMovePpReserve(stored), 'GET preserves spent PP for the replaced move without refreshing it', call.elapsedMs, call.response.status);
 
     call = await request('/api/auth/register', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: usernames[1], password }) });
@@ -141,6 +155,7 @@ async function main() {
     record('relogin succeeds', call.response.status === 200, 'first account can create a fresh session', call.elapsedMs, call.response.status);
     call = await request(`/api/saves/${encodeURIComponent(slot)}`, {}, restored); const restoredSave = await json(call.response);
     record('relogin restores save', call.response.status === 200 && Number(restoredSave.revision) === revision, 'saved revision remains attached to the account', call.elapsedMs, call.response.status);
+    record('relogin restores evolution growth and tools', call.response.status === 200 && hasEvolution(restoredSave), 'growth counters and inventory survive a fresh session', call.elapsedMs, call.response.status);
     record('relogin restores move layout', call.response.status === 200 && hasMoveOrder(restoredSave), 'move-order preference remains attached to the individual after logout and login', call.elapsedMs, call.response.status);
     record('relogin restores unequipped move PP', call.response.status === 200 && hasMovePpReserve(restoredSave), 'spent PP for the replaced move remains attached to the individual after logout and login', call.elapsedMs, call.response.status);
 
