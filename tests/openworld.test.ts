@@ -160,12 +160,12 @@ describe('connectome open world', () => {
     player.brain = brain.snapshot();
     const world = new OpenWorldSimulation(graph, game, 912, undefined, policy), target = world.entities.find(entity => entity.kind === 'wild')!;
     world.startEncounter(target.id);
-    const form = createMonster(game, 7, 16), transformedMoves = structuredClone(player.moves); transformedMoves.forEach(move => { move.pp = 0; }); transformedMoves[2] = { moveId: 14, pp: 3 };
+    const form = createMonster(game, 7, 16), transformedMoves = [{ moveId: 45, pp: 0 }, { moveId: 39, pp: 0 }, { moveId: 14, pp: 0 }];
     game.battle!.transformations = { [player.instanceId]: { speciesId: form.speciesId, stats: form.stats, moves: transformedMoves } };
     const automatic = world.step({ deltaSeconds: 1, learning: true }).events.find(event => event.type === 'battle-turn');
     expect(automatic?.type === 'battle-turn' && automatic.result.playerAction).toEqual({ type: 'move', index: 2 });
     expect(automatic?.type === 'battle-turn' && automatic.result.executedMoves.find(move => move.actorInstanceId === player.instanceId)).toMatchObject({ moveId: 14, category: 'buff', strategicEffect: true });
-    expect(game.battle!.transformations![player.instanceId].moves[2].pp).toBe(2);
+    expect(game.battle!.transformations![player.instanceId].moves[2].pp).toBe(0);
     expect(player.moveLearning?.[14]).toMatchObject({ choices: 1, executed: 1, effective: 1 });
     player.hp = Math.max(1, player.hp - 1);
     const updatesBeforeManual = player.brain!.updates;
@@ -224,6 +224,29 @@ describe('connectome open world', () => {
     }
     expect(outcome).toBe('caught'); expect(game.dex.caught).toContain(targetSpecies); expect(game.inventory['poke-ball']).toBeLessThan(8);
     expect(world.rosterStatus()).toEqual({ alive: 14, pending: 1, total: 15 });
+  });
+
+  it('auto mode replaces a pinned distant target with the nearest wild even without balls or a legacy hunt flag', async () => {
+    const graph = await loadGraph(), policy = await loadPolicy(), game = createGame(1, 'one-auto-mode');
+    const initial = new OpenWorldSimulation(graph, game, 557, undefined, policy), checkpoint = initial.snapshot();
+    checkpoint.controlMode = 'manual'; checkpoint.autoHunt = false;
+    checkpoint.player = { x: -90, z: -24, heading: 1 }; checkpoint.spawnAnchor = { ...checkpoint.player };
+    const companion = checkpoint.entities.find(entity => entity.kind === 'companion')!;
+    Object.assign(companion, checkpoint.player);
+    const wilds = checkpoint.entities.filter(entity => entity.kind === 'wild');
+    wilds.forEach((entity, index) => Object.assign(entity, REMOTE_FIXTURE_POINTS[index]));
+    Object.assign(wilds[0], { x: -89, z: -24 });
+    checkpoint.selectedWildId = wilds[1].id; checkpoint.selectionPinned = true;
+    game.inventory['poke-ball'] = game.inventory['great-ball'] = game.inventory['ultra-ball'] = 0;
+    const world = new OpenWorldSimulation(graph, game, 557, checkpoint, policy);
+    world.step({ deltaSeconds: 0 }); expect(game.battle).toBeUndefined();
+    world.setControlMode('auto');
+    expect(world.selectionPinned).toBe(false);
+    expect(world.step({ deltaSeconds: 0 }).events).toContainEqual(expect.objectContaining({ type: 'encounter', entityId: wilds[0].id }));
+    expect(world.battleWildId).toBe(wilds[0].id);
+    expect(world.autoHunt).toBe(true);
+    const saved = world.snapshot(); saved.autoHunt = false;
+    expect(new OpenWorldSimulation(graph, game, 557, saved, policy).autoHunt).toBe(true);
   });
 
   it('auto-selects, approaches through the connectome, battles for rewards, and restores a delayed replacement', async () => {

@@ -2,7 +2,7 @@ import { Brain, validateGraph, type BrainState, type Graph } from '../core/brain
 import { Random, clamp } from '../core/random';
 import { POKEMON, getMove, getSpecies } from '../data/pokemon';
 import { getVersionSpeciesIds } from '../data/pokemon-versions';
-import { replenishBalls, challengeCampaignGym, challengeCampaignTrainer, recoverTeamPpOutsideBattle } from '../game/engine';
+import { replenishBalls, challengeCampaignGym, challengeCampaignTrainer } from '../game/engine';
 import { getRegionalBadges, getCampaignGyms, getNextCampaignTrainer, campaignTravelReason, regionalWildLevels } from '../game/campaign';
 import type { FieldTrainer } from '../data/field-trainers';
 import { chooseRegionalEncounter, encounterPeriodAt, regionalSourcePools, supplementalEncounterRules, type EncounterPeriod } from '../data/regional-encounters';
@@ -162,7 +162,8 @@ export class OpenWorldSimulation {
   lastMovementBlock?: string;
   rewardLedgers: Record<string, RewardLedger> = {};
   autoCapture = true;
-  autoHunt = true;
+  /** Kept in checkpoints for compatibility; automatic movement always hunts. */
+  get autoHunt(): boolean { return this.controlMode === 'auto'; }
   controlMode: 'auto' | 'manual' = 'auto';
   worldClockSeconds = 0;
   battleWildId?: string;
@@ -367,7 +368,7 @@ export class OpenWorldSimulation {
 
   trackSelected(): boolean {
     if (!this.selectedWildId || this.game.battle || this.game.captureOffer) return false;
-    this.setControlMode('auto'); this.selectionPinned = true; this.trackingSelected = true; return true;
+    this.setControlMode('auto', true); this.selectionPinned = true; this.trackingSelected = true; return true;
   }
 
   canEngageWild(id: string): boolean {
@@ -378,12 +379,16 @@ export class OpenWorldSimulation {
   setAutoCapture(enabled: boolean): void { if (typeof enabled !== 'boolean') throw new Error('Auto-capture flag must be boolean'); this.autoCapture = enabled; }
   get hasBalls(): boolean { return this.bestBall() !== undefined; }
   get escaping(): boolean { return this.pendingAction?.type === 'run'; }
-  setAutoHunt(enabled: boolean): void { if (typeof enabled !== 'boolean') throw new Error('Auto-hunt flag must be boolean'); this.autoHunt = enabled; if (!this.game.battle) this.selectWild(null); }
+  setAutoHunt(enabled: boolean): void { if (typeof enabled !== 'boolean') throw new Error('Auto-hunt flag must be boolean'); this.setControlMode(enabled ? 'auto' : 'manual'); }
 
-  setControlMode(mode: 'auto' | 'manual'): void {
+  setControlMode(mode: 'auto' | 'manual', keepSelectedTarget = false): void {
     if (mode !== 'auto' && mode !== 'manual') throw new Error('Invalid control mode');
     this.controlMode = mode; this.pendingAction = undefined; this.pendingCapture = false; this.battleElapsed = 0;
     if (mode === 'manual') this.trackingSelected = false;
+    else {
+      this.manualControlRemaining = 0;
+      if (!this.game.battle && !keepSelectedTarget) this.selectWild(null);
+    }
     const companion = this.entities.find(entity => entity.kind === 'companion');
     if (companion) { this.brain(companion.id).state.previous = null; companion.action = 4; companion.reward = 0; }
     if (this.game.battle) this.clearPendingLearning(this.game.battle.player.team[this.game.battle.player.activeIndex]);
@@ -487,7 +492,6 @@ export class OpenWorldSimulation {
     if (!finite(deltaSeconds) || deltaSeconds < 0 || deltaSeconds > 5 || typeof learning !== 'boolean' || !finite(epsilon) || epsilon < 0 || epsilon > 1) throw new Error('Invalid open-world step options');
     this.worldClockSeconds = (this.worldClockSeconds + deltaSeconds) % (20 * 60);
     replenishBalls(this.game, deltaSeconds);
-    recoverTeamPpOutsideBattle(this.game);
     const events: OpenWorldEvent[] = [];
     const manualControlActive = this.manualControlRemaining > 0; this.manualControlRemaining = Math.max(0, this.manualControlRemaining - deltaSeconds);
     this.syncCompanion();
@@ -498,11 +502,7 @@ export class OpenWorldSimulation {
     if (!this.game.battle) {
       this.streamTravelEncounters();
       this.advanceRespawns(deltaSeconds);
-      if (this.autoHunt && this.controlMode === 'auto' && !this.selectionPinned) {
-        const companion = this.entities.find(entity => entity.kind === 'companion'), nearest = this.nearestWildToCompanion();
-        const current = this.selectedWildId ? this.entities.find(entity => entity.id === this.selectedWildId && entity.kind === 'wild') : undefined;
-        if (nearest && (!current || !companion || distance(nearest, companion) + 2 < distance(current, companion))) this.selectedWildId = nearest.id;
-      }
+      if (this.controlMode === 'auto' && !this.selectionPinned) this.selectedWildId = this.nearestWildToCompanion()?.id;
       this.stepMovement(deltaSeconds, learning, epsilon, manualControlActive, events);
       this.syncPlayerToCompanion(); this.recordTownVisit();
       const selected = this.selectedWildId ? this.entities.find(entity => entity.id === this.selectedWildId) : undefined;
@@ -609,7 +609,7 @@ export class OpenWorldSimulation {
     } else {
       const decision = this.chooseBattle(player, enemy, battle, this.lastPlayerReward, learning);
       if (decision.action < 4) { action = { type: 'move', index: decision.action }; learnedPlayerAction = decision.rawAction === decision.action; }
-      else if (this.autoHunt && !this.serverTurn?.decisions.has(player.instanceId)) action = { type: 'move', index: this.fallbackAttack(player, battle) };
+      else if (this.controlMode === 'auto' && !this.serverTurn?.decisions.has(player.instanceId)) action = { type: 'move', index: this.fallbackAttack(player, battle) };
       else { action = { type: 'wait' }; learnedPlayerAction = true; }
       source = learnedPlayerAction ? 'connectome' : 'fallback';
     }
@@ -709,13 +709,13 @@ export class OpenWorldSimulation {
 
   private fallbackAttack(monster: Monster, battle: NonNullable<GameState['battle']>): number {
     const moves = battle.transformations?.[monster.instanceId]?.moves ?? monster.moves;
-    const damaging = moves.map((slot, index) => ({ index, slot, move: getMove(slot.moveId) })).filter(candidate => candidate.slot.pp > 0 && (candidate.move.power > 0 || [12, 32, 49, 69, 82, 90, 101, 149, 162].includes(candidate.move.id)));
+    const damaging = moves.map((slot, index) => ({ index, move: getMove(slot.moveId) })).filter(candidate => candidate.move.power > 0 || [12, 32, 49, 69, 82, 90, 101, 149, 162].includes(candidate.move.id));
     damaging.sort((a, b) => b.move.power - a.move.power || a.index - b.index);
-    return damaging[0]?.index ?? moves.findIndex(slot => slot.pp > 0) ?? 0;
+    return damaging[0]?.index ?? 0;
   }
 
   private isDamagingAttack(monster: Monster, battle: NonNullable<GameState['battle']>, index: number): boolean {
-    const slot = (battle.transformations?.[monster.instanceId]?.moves ?? monster.moves)[index]; if (!slot || slot.pp <= 0) return false;
+    const slot = (battle.transformations?.[monster.instanceId]?.moves ?? monster.moves)[index]; if (!slot) return false;
     const move = getMove(slot.moveId); return move.power > 0 || [12, 32, 49, 69, 82, 90, 101, 149, 162].includes(move.id);
   }
 
@@ -1225,7 +1225,7 @@ export class OpenWorldSimulation {
         !task || !task.self?.instanceId || !task.other?.instanceId || !Number.isSafeInteger(task.turn) || typeof task.learning !== 'boolean' || !Number.isFinite(task.reward) || Math.abs(task.reward) > 4 || typeof task.episode !== 'string')) throw new Error('서버 보상 대기 기록이 손상되었습니다.');
       this.serverFinalizations = structuredClone(checkpoint.serverFinalizations);
     }
-    this.selectedWildId = checkpoint.selectedWildId; this.autoCapture = checkpoint.autoCapture; this.worldClockSeconds = checkpoint.worldClockSeconds ?? 0; this.autoHunt = checkpoint.autoHunt ?? true; this.battleWildId = checkpoint.battleWildId; this.battleElapsed = checkpoint.battleElapsed;
+    this.selectedWildId = checkpoint.selectedWildId; this.autoCapture = checkpoint.autoCapture; this.worldClockSeconds = checkpoint.worldClockSeconds ?? 0; this.battleWildId = checkpoint.battleWildId; this.battleElapsed = checkpoint.battleElapsed;
     this.pendingCapture = checkpoint.pendingCapture; this.pendingBall = checkpoint.pendingBall === undefined ? undefined : 'poke-ball'; this.lastPlayerReward = checkpoint.lastPlayerReward; this.lastEnemyReward = checkpoint.lastEnemyReward;
     this.pendingAction = structuredClone(checkpoint.pendingAction);
     if (this.pendingAction?.type === 'catch') this.pendingAction.ball = 'poke-ball';

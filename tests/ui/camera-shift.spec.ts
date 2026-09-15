@@ -10,7 +10,6 @@ test('default nameplates, left-drag orbit and wheel work without a camera-reset 
   await expect(page.locator('#ow-host')).toHaveAttribute('data-paused', 'true');
   await openExplorePanel(page);
   await page.locator('#world-mode-manual').click();
-  await page.locator('#world-auto-hunt').uncheck();
   await page.locator('.world-explore-toggle').click();
   await expect(page.locator('#world-nameplates')).toHaveAttribute('aria-pressed', 'true');
   const pose = () => page.evaluate(() => {

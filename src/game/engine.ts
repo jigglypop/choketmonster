@@ -30,7 +30,7 @@ export type Monster = {
   moves: MonsterMove[];
   /** Presentation order by move ID. Engine and neural slots remain in `moves`. */
   moveOrder?: number[];
-  /** Remaining PP for legally learned moves that are not currently equipped. */
+  /** Legacy save data; move uses are unlimited, including unequipped moves. */
   movePpReserve?: Record<string, number>;
   status?: string;
   statusTurns?: number;
@@ -461,18 +461,14 @@ function combatant(monster: Monster, battle: BattleState) {
 }
 
 function validMoveIndexes(monster: Monster, battle: BattleState): number[] {
-  return effectiveMoves(battle, monster).map((move, index) => move.pp > 0 ? index : -1).filter((index) => index >= 0);
+  return effectiveMoves(battle, monster).map((_, index) => index);
 }
 
 function circularMoveIndex(monster: Monster, battle: BattleState, requested: number): number {
   const moves = effectiveMoves(battle, monster); const count = moves.length;
   if (!count) return -1;
   const start = ((Math.floor(requested) % count) + count) % count;
-  for (let offset = 0; offset < count; offset++) {
-    const index = (start + offset) % count;
-    if (moves[index].pp > 0) return index;
-  }
-  return -1;
+  return start;
 }
 
 function pickEnemyMove(state: GameState, battle: BattleState, monster: Monster, aiChoice?: number): { index: number; wait: boolean; source: 'external-brain' | 'seeded-random' } {
@@ -525,7 +521,7 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
   }
 
   const slot = effectiveMoves(battle, attacker)[index];
-  if (!slot || slot.pp <= 0) {
+  if (!slot) {
     const damage = Math.max(1, Math.floor(defender.stats.hp / 8)); defender.hp = Math.max(0, defender.hp - damage);
     attacker.hp = Math.max(0, attacker.hp - Math.max(1, Math.floor(attacker.stats.hp / 4)));
     events.push(event(battle, `${attacker.nickname}은(는) 발버둥쳐 ${damage} 피해를 주었다.`, 'damage'));
@@ -534,7 +530,7 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
       typeMultiplier: 1, damage, category: 'damage', hpRecovered: 0, statStageDelta: 0, ailmentApplied: false, strategicEffect: false, result: 'struggle' });
     return;
   }
-  slot.pp--; const move = getMove(slot.moveId);
+  const move = getMove(slot.moveId);
   let hpRecovered = 0, statStageDelta = 0, ailmentApplied = false;
   const damagingMove = move.damageClass !== 'status' && (move.power > 0 || fixedMoveDamage(move.id, attacker, defender) !== undefined || [12, 32, 90].includes(move.id));
   const attackerStages = battle.statStages?.[attacker.instanceId] ?? {}; const defenderStages = battle.statStages?.[defender.instanceId] ?? {};
@@ -751,7 +747,7 @@ export function actBattle(state: GameState, action: BattleAction, aiChoice?: num
     if (!battle.canRun) throw new Error('이 전투에서는 도망칠 수 없습니다.');
     const player = active(battle.player); const enemy = active(battle.enemy);
     const chance = Math.min(.95, .45 + (player.stats.speed - enemy.stats.speed) / Math.max(1, enemy.stats.speed) * .3);
-    if (random(state) < chance) { state.battle = undefined; recoverTeamPpOutsideBattle(state); events.push(event(battle, '무사히 도망쳤다.')); for (const entry of events) addLog(state, entry.text); result.battleEnded = true; result.outcome = 'escaped'; return result; }
+    if (random(state) < chance) { state.battle = undefined; events.push(event(battle, '무사히 도망쳤다.')); for (const entry of events) addLog(state, entry.text); result.battleEnded = true; result.outcome = 'escaped'; return result; }
     events.push(event(battle, '도망치지 못했다.')); enemyActs(player);
   } else if (action.type === 'catch') {
     if (battle.kind !== 'wild') throw new Error('야생 포켓몬만 잡을 수 있습니다.');
@@ -766,7 +762,7 @@ export function actBattle(state: GameState, action: BattleAction, aiChoice?: num
       state.dex.seen = uniqueSorted([...state.dex.seen, captured.speciesId]);
       recordCapture(state, captured.speciesId);
       state.battle = undefined;
-      recoverTeamPpOutsideBattle(state);
+
       events.push(event(battle, `${captured.nickname}을(를) 잡았다!`, 'capture'));
       for (const entry of events) addLog(state, entry.text);
       result.battleEnded = true; result.outcome = 'caught'; return result;
@@ -796,7 +792,6 @@ export function actBattle(state: GameState, action: BattleAction, aiChoice?: num
   const outcome = concludeIfNeeded(state, battle, events, experienceGains);
   if (outcome) { result.battleEnded = true; result.outcome = outcome; }
   else battle.turn++;
-  if (result.battleEnded) recoverTeamPpOutsideBattle(state);
   if (outcome === 'won' && battle.kind === 'gym' && battle.gymBadge) {
     result.gymVictory = { badge: battle.gymBadge, money: 1500 * battle.gymBadge, ...(battle.campaignRegion ? { region: battle.campaignRegion } : {}) };
   }
@@ -810,29 +805,12 @@ function recoverAfterDefeat(state: GameState): void {
   heal(state);
 }
 
-/** Restores move uses only after combat has ended; HP and learned state are untouched. */
-export function recoverTeamPpOutsideBattle(state: Pick<GameState, 'battle' | 'player'>): boolean {
-  if (state.battle) return false;
-  let changed = false;
-  for (const monster of state.player.team) {
-    for (const slot of monster.moves) {
-      const maximum = getMove(slot.moveId).pp;
-      if (slot.pp !== maximum) { slot.pp = maximum; changed = true; }
-    }
-    if (monster.movePpReserve) for (const moveId of Object.keys(monster.movePpReserve)) {
-      const maximum = getMove(Number(moveId)).pp;
-      if (monster.movePpReserve[moveId] !== maximum) { monster.movePpReserve[moveId] = maximum; changed = true; }
-    }
-  }
-  return changed;
-}
-
 export function heal(state: GameState): void {
   if (state.battle) throw new Error('전투 중에는 치료소를 이용할 수 없습니다.');
   for (const monster of state.player.team) {
     monster.hp = monster.stats.hp; monster.status = undefined; monster.statusTurns = undefined;
   }
-  recoverTeamPpOutsideBattle(state);
+
   addLog(state, '치료소에서 팀이 회복했다.');
 }
 
@@ -954,7 +932,7 @@ export function reorderMonsterMoves(state: GameState, instanceId: string, from: 
   monster.moveOrder = layout.map((entry) => entry.moveId);
 }
 
-/** Equip one legal learned move in a displayed slot without refreshing spent PP. */
+/** Equip a learned move while retaining legacy save fields and individual memory. */
 export function replaceMonsterMove(state: GameState, instanceId: string, displayIndex: number, moveId: number): void {
   const monster = findOwned(state, instanceId);
   if (state.battle || state.captureOffer) throw new Error('전투와 포획 선택을 마친 뒤 기술을 교체할 수 있습니다.');
@@ -1204,7 +1182,7 @@ export function validateGame(value: unknown): GameState {
     }
     battle.player.team = state.player.team;
   }
-  recoverTeamPpOutsideBattle(state);
+
   return state;
 }
 

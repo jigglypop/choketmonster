@@ -21,7 +21,9 @@ presence의 region과 sceneId 안 region은 같아야 한다. 같은 지역의 �
 
 ## 동굴 이동과 렌더링
 
-`CAVE_SCENES`의 각 CaveScene은 서로 다른 결정적 미로다. `wallSegments`는 연속 벽 타일을 합친 렌더용 구간이고 `sample(x,z)`가 같은 벽의 이동 충돌을 판정한다. `encounterLocationId`는 지역 출현표 조회 키다. `name`은 화면 입출구에 표시하는 한국어 이름이다.
+`CAVE_SCENES`의 각 CaveScene은 기존 폭·깊이와 입출구 좌표를 유지하는 열린 직사각형 석실이다. 내부 미로 벽과 충돌은 없으며 `wallSegments`는 외곽 타일을 합친 4개 벽이다. 따라서 과거 저장이 미로 내부의 어느 좌표를 가리켜도 그대로 복원해 통행할 수 있다. `sample(x,z)`는 외곽 벽과 범위 밖만 차단한다. `encounterLocationId`는 기존 지역 출현표 조회 키다. `name`은 화면 입출구에 표시하는 한국어 이름이다.
+
+바닥과 벽은 로컬 `rock_boulder_dry` diffuse/normal/ARM PBR 세트를 하나의 공유 재질로 사용한다. 바닥과 각 벽 지오메트리의 UV를 월드 크기에 맞춰 반복하므로 긴 벽이나 세로 면에서도 텍스처 비율이 유지된다. 별도 동굴 자산이나 사람형 NPC는 추가하지 않는다.
 
 각 portal은 다음 좌표를 제공한다.
 

@@ -116,9 +116,9 @@ describe('move presentation layout', () => {
 
     heal(game);
     replaceMonsterMove(game, monster.instanceId, 1, 244);
-    expect(monster.moves[1].pp).toBe(getMove(244).pp);
+    expect(monster.moves[1].pp).toBe(oldPp);
     replaceMonsterMove(game, monster.instanceId, 1, 401);
-    expect(monster.moves[1].pp).toBe(getMove(401).pp);
+    expect(monster.moves[1].pp).toBe(2);
     expect(restoreGame(serializeGame(game)).player.team[0].movePpReserve).toEqual(monster.movePpReserve);
 
     for (const invalid of [{ '401': 0 }, { '244': getMove(244).pp + 1 }, { '0244': 0 }, { '999999': 0 }] as Array<Record<string, number>>) {

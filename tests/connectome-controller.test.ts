@@ -42,7 +42,7 @@ describe('connectome battle observations', () => {
     expect(water).toHaveLength(12);
     expect(fire.slice(0, 8)).toEqual(water.slice(0, 8));
     expect(fire[8]).toBeGreaterThan(water[8]);
-    expect(controller.observe(monster('legacy', 7), fireOpponent, 3)[8]).toBe(.5);
+    expect(controller.observe(monster('legacy', 7), fireOpponent, 3)[8]).toBe(1);
   });
 
   it('restores an existing 12-input individual brain without resetting learned updates', () => {
@@ -60,11 +60,11 @@ describe('connectome battle observations', () => {
     expect(self.brain!.graph.id).toBe(graph.id);
   });
 
-  it('exports deterministic legality masks and maps empty PP without changing the 12-input schema', () => {
+  it('exports deterministic legality masks and ignores legacy PP without changing the 12-input schema', () => {
     const self = monster('mask', 1);
     self.moves = [{ moveId: 33, pp: 0 }, { moveId: 45, pp: 40 }, { moveId: 73, pp: 0 }];
-    expect(availableMoveMask(self)).toEqual([false, true, false, false, true]);
-    expect(mapToAvailableMove(0, availableMoveMask(self))).toBe(1);
+    expect(availableMoveMask(self)).toEqual([true, true, true, false, true]);
+    expect(mapToAvailableMove(0, availableMoveMask(self))).toBe(0);
     expect(mapToAvailableMove(4, availableMoveMask(self))).toBe(4);
     expect(new ConnectomeController(graph).observe(self, monster('foe', 4), 1)).toHaveLength(12);
   });
@@ -124,15 +124,15 @@ describe('connectome battle observations', () => {
     expect(automatedMoveMask(self, foe, 1)).toEqual([true, false, false, false, false]);
   });
 
-  it('excludes immune and depleted attacks, then permits an effective status fallback', () => {
+  it('excludes immune attacks but permits attacks with legacy zero PP', () => {
     const self = monster('automatic-matchup', 25); self.moves = [
       { moveId: 85, pp: 15 }, // Thunderbolt
       { moveId: 45, pp: 40 }, // Growl
-      { moveId: 33, pp: 0 }, // depleted Tackle
+      { moveId: 33, pp: 0 }, // legacy zero PP Tackle
     ];
     const ground = monster('ground-target', 50);
     expect(automatedMoveMask(self, ground, 1, { otherStatStages: { attack: 0 } }))
-      .toEqual([false, true, false, false, false]);
+      .toEqual([false, false, true, false, false]);
 
     self.moves[2].pp = 20;
     expect(automatedMoveMask(self, ground, 2, { otherStatStages: { attack: 0 } }))
@@ -143,7 +143,6 @@ describe('connectome battle observations', () => {
     const self = monster('automatic-support', 1); self.moves = [
       { moveId: 105, pp: 10 }, // Recover
       { moveId: 77, pp: 35 }, // Poison Powder
-      { moveId: 33, pp: 0 },
     ];
     self.hp = 25;
     expect(automatedMoveMask(self, monster('support-target', 4), 7))
@@ -169,7 +168,7 @@ describe('connectome battle observations', () => {
     expect(availableMoveMask(left)).toEqual([true, true, false, false, true]);
   });
 
-  it('executes Struggle for both automated sides after all PP are depleted', () => {
+  it('executes real moves for both automated sides even with legacy zero PP', () => {
     const game = createGame(1, 'no-pp-auto'), self = game.player.team[0], foe = createMonster(game, 4, 5);
     for (const monster of [self, foe]) monster.moves.forEach(slot => { slot.pp = 0; });
     game.battle = { kind: 'wild', regionId: game.regionId, player: { team: game.player.team, activeIndex: 0 }, enemy: { team: [foe], activeIndex: 0 }, turn: 1, canRun: true };
@@ -178,6 +177,6 @@ describe('connectome battle observations', () => {
     const theirs = controller.choose(foe, self, 1, null, true, { automatic: true });
     const result = actBattle(game, { type: 'move', index: mine.action }, theirs.action);
     expect(result.executedMoves).toHaveLength(2);
-    expect(result.executedMoves.every(move => move.result === 'struggle' && move.damage > 0)).toBe(true);
+    expect(result.executedMoves.every(move => move.result !== 'struggle' && move.moveId > 0)).toBe(true);
   });
 });

@@ -35,7 +35,6 @@ async function start(page: Page) {
   await expect(page.getByRole('status')).toContainText('불러왔습니다');
   await openExplorePanel(page);
   await page.locator('#world-mode-manual').click();
-  await page.locator('#world-auto-hunt').uncheck();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 25000 });
 }
 async function exported(page: Page) {

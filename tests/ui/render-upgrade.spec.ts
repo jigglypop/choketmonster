@@ -12,7 +12,6 @@ test('nameplates are opt-in and selection stays at bottom left on desktop and mo
   await page.locator('[data-starter="152"]').click();
   await openExplorePanel(page);
   await page.locator('#world-mode-manual').click();
-  await page.locator('#world-auto-hunt').uncheck();
   await page.locator('#world-pause').click();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30000 });
   const labels = page.locator('#world-nameplates');

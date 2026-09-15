@@ -11,28 +11,28 @@ export type BattleSenseContext = {
 };
 export type Decision = { rawAction: number; action: number; updates: number; graphId: string; activity: number };
 export const BRAIN_MODEL = 'pokemon-recurrent-v1';
-export const BRAIN_ASSUMPTIONS = '실제 신경 연결 일부를 사용합니다. HP·레벨·속도·상태와 기술별 PP, 공격 상성·면역, 회복 필요, 능력 단계 여유, 상태이상 적용 가능성을 합친 12개 배틀 감각의 투영, tanh 동역학, 4회 순환 계산, 기술 4개·대기 출력, 보상 학습은 게임용 설계입니다. 자동 전투는 유효 공격이 있으면 매 턴 공격 기술만 허용하고, 공격이 없을 때 효과 있는 변화 기술을 허용합니다. 이 제한과 효과 없는 기술 제외는 학습과 분리된 게임 규칙입니다. 감각에서 출력으로 가는 우회 연결은 껐습니다.';
+export const BRAIN_ASSUMPTIONS = '실제 신경 연결 일부를 사용합니다. HP·레벨·속도·상태와 기술별 공격 상성·면역, 회복 필요, 능력 단계 여유, 상태이상 적용 가능성을 합친 12개 배틀 감각의 투영, tanh 동역학, 4회 순환 계산, 기술 4개·대기 출력, 보상 학습은 게임용 설계입니다. 자동 전투는 유효 공격이 있으면 매 턴 공격 기술만 허용하고, 공격이 없을 때 효과 있는 변화 기술을 허용합니다. 이 제한과 효과 없는 기술 제외는 학습과 분리된 게임 규칙입니다. 감각에서 출력으로 가는 우회 연결은 껐습니다.';
 
 const SELF_TARGETS = new Set([4, 7, 13, 15]);
 
 export function availableMoveMask(monster: NeuralMonster): [boolean, boolean, boolean, boolean, boolean] {
-  return [0, 1, 2, 3].map(index => !!monster.moves[index] && monster.moves[index].pp > 0).concat(true) as [boolean, boolean, boolean, boolean, boolean];
+  return [0, 1, 2, 3].map(index => !!monster.moves[index]).concat(true) as [boolean, boolean, boolean, boolean, boolean];
 }
 
 const FIXED_DAMAGE_MOVES = new Set([12, 32, 49, 69, 82, 90, 101, 149, 162]);
 
 /** Game-only action guard for unattended battles; it does not change observations or learning weights. */
 export function automatedMoveMask(self: NeuralMonster, other: NeuralMonster, _turn: number, context: BattleSenseContext = {}): [boolean, boolean, boolean, boolean, boolean] {
-  const ppMask = availableMoveMask(self), defenderTypes = getSpecies(other.speciesId).types;
-  // Slot zero is the engine's Struggle fallback when all move PP are depleted.
-  if (!ppMask.slice(0, 4).some(Boolean)) return [true, false, false, false, false];
+  const moveMask = availableMoveMask(self), defenderTypes = getSpecies(other.speciesId).types;
+  // Slot zero is the engine's Struggle fallback when no move slots exist.
+  if (!moveMask.slice(0, 4).some(Boolean)) return [true, false, false, false, false];
   const attacks = [0, 1, 2, 3].map(index => {
-    const slot = self.moves[index]; if (!slot || slot.pp <= 0 || slot.moveId === undefined) return false;
+    const slot = self.moves[index]; if (!slot || slot.moveId === undefined) return false;
     const move = getMove(slot.moveId);
     return move.damageClass !== 'status' && (move.power > 0 || FIXED_DAMAGE_MOVES.has(move.id)) && typeMultiplier(move.type, defenderTypes) > 0;
   });
   const strategic = [0, 1, 2, 3].map(index => {
-    const slot = self.moves[index]; if (!slot || slot.pp <= 0 || slot.moveId === undefined) return false;
+    const slot = self.moves[index]; if (!slot || slot.moveId === undefined) return false;
     const move = getMove(slot.moveId);
     if (move.damageClass !== 'status') return false;
     const healing = ((move.healing ?? 0) > 0 || move.id === 156) && self.hp < self.stats.hp;
@@ -49,8 +49,8 @@ export function automatedMoveMask(self: NeuralMonster, other: NeuralMonster, _tu
     return healing || stageChange || ailment;
   });
   if (attacks.some(Boolean)) return attacks.concat(false) as [boolean, boolean, boolean, boolean, boolean];
-  let allowed = ppMask.slice(0, 4).map((hasPp, index) => hasPp && strategic[index]);
-  if (!allowed.some(Boolean)) allowed = ppMask.slice(0, 4);
+  let allowed = moveMask.slice(0, 4).map((hasMove, index) => hasMove && strategic[index]);
+  if (!allowed.some(Boolean)) allowed = moveMask.slice(0, 4);
   return allowed.concat(false) as [boolean, boolean, boolean, boolean, boolean];
 }
 
@@ -76,9 +76,9 @@ export function battleMoveSenses(self: NeuralMonster, other: NeuralMonster, cont
   const missingHp = clamp((self.stats.hp - self.hp) / Math.max(1, self.stats.hp), 0, 1);
   return [0, 1, 2, 3].map(index => {
     const slot = self.moves[index];
-    if (!slot || slot.pp <= 0) return -1;
-    if (slot.moveId === undefined) return clamp(slot.pp / 40, 0, 1);
-    const move = getMove(slot.moveId), pp = clamp(slot.pp / Math.max(1, move.pp), 0, 1);
+    if (!slot) return -1;
+    if (slot.moveId === undefined) return 1;
+    const move = getMove(slot.moveId);
     const signals: number[] = [];
     if (move.damageClass !== 'status' && move.power > 0) {
       const multiplier = typeMultiplier(move.type, defenderTypes);
@@ -102,7 +102,8 @@ export function battleMoveSenses(self: NeuralMonster, other: NeuralMonster, cont
       signals.push(target.status || ailmentImmune(move.ailment, types) ? -.9 : .55);
     }
     if (!signals.length) signals.push(move.damageClass === 'status' ? -.35 : 0);
-    return clamp(pp * .25 + signals.reduce((sum, value) => sum + value, 0) / signals.length * .75, -1, 1);
+    // Keep the original full-use input scale for existing 12-column checkpoints.
+    return clamp(.25 + signals.reduce((sum, value) => sum + value, 0) / signals.length * .75, -1, 1);
   }) as [number, number, number, number];
 }
 

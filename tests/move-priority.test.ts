@@ -90,7 +90,7 @@ describe('move priority and speed order', () => {
       actorInstanceId: fixture.player.instanceId,
       moveId: QUICK_ATTACK,
     }));
-    expect(fixture.player.moves[1].pp).toBe(getMove(QUICK_ATTACK).pp - 1);
+    expect(fixture.player.moves[1].pp).toBe(getMove(QUICK_ATTACK).pp);
     expect(fixture.player.moves[0].pp).toBe(getMove(TACKLE).pp);
   });
 });

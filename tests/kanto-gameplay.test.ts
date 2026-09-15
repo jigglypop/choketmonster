@@ -112,7 +112,7 @@ describe('Kanto player flows', () => {
     const turn = game.battle!.turn, result = world.step({ deltaSeconds: 1 });
     expect(result.events.find(event => event.type === 'battle-turn')?.result.outcome).not.toBe('ran');
     expect(game.battle?.turn ?? turn + 1).toBe(turn + 1);
-    expect(world.escaping).toBe(false); expect(world.autoHunt).toBe(true);
+    expect(world.escaping).toBe(false); expect(world.controlMode).toBe('manual');
   });
 
   it('auto-catches after victory into a full team box with the cheapest available ball', () => {

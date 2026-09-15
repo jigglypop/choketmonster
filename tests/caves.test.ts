@@ -37,16 +37,17 @@ describe('expanded world space', () => {
   });
 });
 
-describe('isolated cave layouts', () => {
-  it('provides distinct bounded wall layouts and readable portal labels', () => {
+describe('open cave chambers', () => {
+  it('keeps stable scenes and portals behind four merged perimeter walls', () => {
     expect(CAVE_SCENES).toHaveLength(16);
     expect(new Set(CAVE_SCENES.map(scene => scene.sceneId)).size).toBe(CAVE_SCENES.length);
-    expect(new Set(CAVE_SCENES.map(scene => scene.wallSegments.map(wall => `${wall.x},${wall.z},${wall.width}`).join('|'))).size).toBe(CAVE_SCENES.length);
     for (const scene of CAVE_SCENES) {
       expect(scene.sceneId).toBe(`cave:${scene.regionId}:${scene.id}`);
       expect(scene.label).toMatch(/^[\x20-\x7e]+$/);
       expect(scene.portals.length).toBeGreaterThan(0);
-      expect(scene.wallSegments.length).toBeGreaterThan(20);
+      expect(scene.wallSegments).toHaveLength(4);
+      expect(scene.wallSegments.filter(wall => wall.width === scene.width)).toHaveLength(2);
+      expect(scene.wallSegments.filter(wall => wall.depth === scene.depth - scene.tileSize * 2)).toHaveLength(2);
       expect(getCaveScene(scene.sceneId)).toBe(scene);
       for (const portal of scene.portals) {
         expect(scene.sample(portal.interior.x, portal.interior.z).blocked).toBe(false);
@@ -57,18 +58,18 @@ describe('isolated cave layouts', () => {
     }
   });
 
-  it('connects all entrances through walkable interior tiles and recovers from walls', () => {
+  it('makes every interior tile directly traversable and recovers old blocked positions', () => {
     for (const scene of CAVE_SCENES) {
-      const start = scene.portals[0].interior;
-      const queue = [start], reached = new Set([`${start.x},${start.z}`]);
-      while (queue.length) {
-        const point = queue.shift()!;
-        for (const [dx, dz] of [[scene.tileSize, 0], [-scene.tileSize, 0], [0, scene.tileSize], [0, -scene.tileSize]]) {
-          const next = { x: point.x + dx, z: point.z + dz }, key = `${next.x},${next.z}`;
-          if (!reached.has(key) && !scene.sample(next.x, next.z).blocked) { reached.add(key); queue.push(next); }
+      for (let z = -scene.depth / 2 + scene.tileSize * 1.5; z <= scene.depth / 2 - scene.tileSize * 1.5; z += scene.tileSize)
+        for (let x = -scene.width / 2 + scene.tileSize * 1.5; x <= scene.width / 2 - scene.tileSize * 1.5; x += scene.tileSize)
+          expect(scene.sample(x, z).blocked, `${scene.sceneId} at ${x},${z}`).toBe(false);
+      for (const from of scene.portals) for (const to of scene.portals) {
+        const steps = Math.max(1, Math.ceil(Math.hypot(to.interior.x - from.interior.x, to.interior.z - from.interior.z) / .5));
+        for (let step = 0; step <= steps; step++) {
+          const ratio = step / steps;
+          expect(scene.sample(from.interior.x + (to.interior.x - from.interior.x) * ratio, from.interior.z + (to.interior.z - from.interior.z) * ratio).blocked).toBe(false);
         }
       }
-      for (const portal of scene.portals) expect(reached.has(`${portal.interior.x},${portal.interior.z}`), scene.sceneId).toBe(true);
       const recovered = nearestCaveWalkable(scene.sceneId, scene.width, scene.depth);
       expect(recovered).toBeDefined();
       expect(scene.sample(recovered!.x, recovered!.z).blocked).toBe(false);

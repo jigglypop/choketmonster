@@ -33,6 +33,18 @@ describe('cave simulation scenes', () => {
     expect(restored.sceneId).toBe(portal.surfaceSceneId);
   });
 
+  it('restores historical interior coordinates and walks straight across the open chamber', () => {
+    const game = createGame(1, 'open-cave-restore'), cave = getCaveScene('cave:kanto:mt-moon')!;
+    const world = new OpenWorldSimulation(graph, game, 7183, undefined, policy);
+    expect(world.movePlayer({ ...cave.portals[0].surface, heading: 0 })).toBe(true);
+    expect(world.traverseCavePortal()).toBe(true);
+    world.player = { x: 0, z: 0, heading: 0 };
+    const restored = new OpenWorldSimulation(graph, game, world.seed, world.snapshot(), policy);
+    expect(restored.sceneId).toBe(cave.sceneId);
+    expect(restored.player).toMatchObject({ x: 0, z: 0 });
+    expect(restored.movePlayer({ x: cave.width / 2 - cave.tileSize * 1.5, z: cave.depth / 2 - cave.tileSize * 1.5, heading: 0 })).toBe(true);
+  });
+
   it('populates, restores and exits every shipped cave at the completed-region gate', () => {
     for (const [index, cave] of CAVE_SCENES.entries()) {
       const game=createGame(cave.regionId==='kanto'?1:152,`all-caves-${cave.id}`);

@@ -21,7 +21,6 @@ async function start(page: Page, url = '/') {
   await openExplorePanel(page);
   await page.locator('#world-mode-manual').click();
   await expect(page.locator('#world-mode-manual')).toHaveAttribute('aria-pressed', 'true');
-  await page.locator('#world-auto-hunt').uncheck();
   await expect(page.locator('#ow-host canvas')).toBeVisible();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 20000 });
 }
@@ -46,8 +45,8 @@ test('open world moves, pauses, and restores all brains without duplicating topo
     const probe = (window as unknown as { __renderProbe: { read(): { creatures: { id: string; position: number[] }[] } } }).__renderProbe;
     return probe.read().creatures.find(creature => creature.id.startsWith('companion:'))!.position;
   });
-  // Toggling auto-hunt leaves a checkbox focused; it must not suppress walking.
-  await expect(page.locator('#world-auto-hunt')).toBeFocused();
+  // Clicking the manual-mode control leaves it focused; it must not suppress walking.
+  await expect(page.locator('#world-mode-manual')).toBeFocused();
   const before = await renderedPartner();
   const initialTick = await page.locator('#ow-host').getAttribute('data-tick');
   await expect(page.locator('#ow-host')).not.toHaveAttribute('data-tick', initialTick!);

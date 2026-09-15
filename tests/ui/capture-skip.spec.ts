@@ -31,7 +31,7 @@ test('an imported zero-ball victory passes immediately and keeps automatic hunti
   await expect(page.locator('#world-ball-stock')).toContainText('볼 0개');
   await expect(page.locator('#world-feed')).toContainText('놓아주었습니다', { timeout: 20000 });
   await expect(page.locator('#world-capture-offer')).toBeHidden();
-  await expect(page.locator('#world-auto-hunt')).toBeChecked();
+  await expect(page.locator('#world-auto-hunt')).toHaveCount(0);
   await expect(page.locator('#world-mode-auto')).toHaveAttribute('aria-pressed', 'true');
   await page.locator('#world-pause').click();
   await page.locator('[data-tab="lab"]').click();

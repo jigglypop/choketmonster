@@ -3,7 +3,7 @@ import { getMove, getSpecies, POKEMON } from '../src/data/pokemon';
 import { Brain } from '../src/core/brain';
 import { calculateDamage } from '../src/game/battle';
 import {
-  actBattle, availableEvolutions, availableMonsterMoveIds, challengeChampion, challengeGym, createGame, createMonster, evolve, experienceAtLevel, recoverTeamPpOutsideBattle, restoreGame,
+  actBattle, availableEvolutions, availableMonsterMoveIds, challengeChampion, challengeGym, createGame, createMonster, evolve, experienceAtLevel, restoreGame,
   serializeGame, useItem, type BattleState,
 } from '../src/game/engine';
 import { assertAllSpeciesReachable, REGIONS, speciesEncounterSources } from '../src/game/regions';
@@ -50,7 +50,7 @@ describe('전체 포켓몬 로컬 게임 엔진', () => {
     expect(restored.battle!.turn).toBe(2);
   });
 
-  it('상성 피해, 외부 대기 행동, PP 소비를 전투 상태에 반영한다', () => {
+  it('상성 피해, 외부 대기 행동, 기술 실행을 전투 상태에 반영한다', () => {
     const state = createGame(7, 'battle-rules');
     state.player.team[0] = createMonster(state, 7, 20);
     const battle = wildBattle(state, 4, 20);
@@ -62,7 +62,7 @@ describe('전체 포켓몬 로컬 게임 엔진', () => {
     const result = actBattle(state, { type: 'move', index: waterIndex }, 4);
     expect(result.decisionSource).toBe('external-brain');
     expect(result.enemyAction).toEqual({ type: 'wait' });
-    expect(player.moves[waterIndex].pp).toBe(beforePp - 1);
+    expect(player.moves[waterIndex].pp).toBe(beforePp);
     expect(battle.enemy.team[0].hp).toBeLessThan(beforeHp);
     expect(result.executedMoves).toContainEqual(expect.objectContaining({
       actorInstanceId: player.instanceId,
@@ -88,64 +88,36 @@ describe('전체 포켓몬 로컬 게임 엔진', () => {
     expect(fireDamage.damage).toBeGreaterThan(neutralDamage.damage);
   });
 
-  it('전투 중 PP는 소모하고 전투가 끝난 뒤 장착·미장착 PP만 회복한다', () => {
-    const state = createGame(1, 'outside-battle-pp');
+  it('전투 중 0 PP인 기술을 반복 사용하고 저장 복원 뒤에도 제한하지 않는다', () => {
+    const state = createGame(1, 'unlimited-move-uses');
     state.player.team[0] = createMonster(state, 1, 100);
     const player = state.player.team[0];
-    player.moves = [{ moveId: 33, pp: 2 }];
+    player.moves = [{ moveId: 33, pp: 0 }];
     const reserveMove = availableMonsterMoveIds(player).find(moveId => moveId !== 33)!;
     player.movePpReserve = { [reserveMove]: 0 };
     const battle = wildBattle(state, 7, 100);
-    const hpBefore = player.hp;
-    const brain = new Brain(303).snapshot(); player.brain = brain;
+    player.hp -= 3; player.brain = new Brain(303).snapshot();
     player.moveLearning = { 33: { choices: 2, executed: 1, effective: 1, reward: .25 } };
-    const learningBefore = structuredClone(player.moveLearning);
-
-    const active = actBattle(state, { type: 'move', index: 0 }, 4);
-    expect(active.battleEnded).toBe(false);
-    expect(player.moves[0].pp).toBe(1);
-    expect(recoverTeamPpOutsideBattle(state)).toBe(false);
-    expect(player.moves[0].pp).toBe(1);
-    expect(player.movePpReserve[reserveMove]).toBe(0);
-
+    const before = structuredClone(player);
+    for (let turn = 0; turn < 40; turn++) {
+      battle.enemy.team[0].hp = battle.enemy.team[0].stats.hp;
+      const result = actBattle(state, { type: 'move', index: 0 }, 4);
+      expect(result.battleEnded).toBe(false);
+      expect(result.executedMoves).toContainEqual(expect.objectContaining({ actorInstanceId: player.instanceId, moveId: 33, executed: true }));
+      expect(result.executedMoves.some(move => move.result === 'struggle')).toBe(false);
+      expect(player.moves[0].pp).toBe(0);
+    }
+    const resumed = restoreGame(serializeGame(state));
+    expect(actBattle(resumed, { type: 'move', index: 0 }, 4).executedMoves[0].moveId).toBe(33);
+    expect(resumed.player.team[0].moves[0].pp).toBe(0);
     battle.enemy.team[0].hp = 0;
-    const ended = actBattle(state, { type: 'wait' }, 4);
-    expect(ended).toMatchObject({ battleEnded: true, outcome: 'won' });
-    expect(player.moves[0].pp).toBe(getMove(33).pp);
-    expect(player.movePpReserve[reserveMove]).toBe(getMove(reserveMove).pp);
-    expect(player.hp).toBe(hpBefore);
-    expect(player.brain).toBe(brain);
-    expect(player.moveLearning).toEqual(learningBefore);
-  });
-
-  it('전투 밖 저장의 0 PP를 복원하고 포획 선택 중에도 HP와 기억은 유지한다', () => {
-    const state = createGame(1, 'restored-outside-pp');
-    state.player.team[0] = createMonster(state, 1, 20);
-    const player = state.player.team[0];
-    const reserveMove = availableMonsterMoveIds(player).find(moveId => !player.moves.some(slot => slot.moveId === moveId))!;
-    player.moves[0].pp = 0; player.movePpReserve = { [reserveMove]: 0 };
-    player.hp -= 3; player.brain = new Brain(404).snapshot();
-    const restored = restoreGame(serializeGame(state)), restoredPlayer = restored.player.team[0];
-    expect(restoredPlayer.moves[0].pp).toBe(getMove(restoredPlayer.moves[0].moveId).pp);
-    expect(restoredPlayer.movePpReserve![reserveMove]).toBe(getMove(reserveMove).pp);
-    expect(restoredPlayer.hp).toBe(player.hp);
-    expect(restoredPlayer.brain).toEqual(player.brain);
-
-    restored.captureOffer = createMonster(restored, 4, 5);
-    restored.captureOffer.hp = 0;
-    restored.dex.seen = [...new Set([...restored.dex.seen, 4])];
-    restoredPlayer.moves[0].pp = 0;
-    const hpBefore = restoredPlayer.hp, brainBefore = restoredPlayer.brain;
-    expect(recoverTeamPpOutsideBattle(restored)).toBe(true);
-    expect(restoredPlayer.moves[0].pp).toBe(getMove(restoredPlayer.moves[0].moveId).pp);
-    expect(restoredPlayer.hp).toBe(hpBefore);
-    expect(restoredPlayer.brain).toBe(brainBefore);
-
-    restoredPlayer.moves[0].pp = 0;
-    restored.captureOffer = undefined;
-    wildBattle(restored, 7, 5);
-    const resumedBattle = restoreGame(serializeGame(restored));
-    expect(resumedBattle.player.team[0].moves[0].pp).toBe(0);
+    expect(actBattle(state, { type: 'wait' }, 4)).toMatchObject({ battleEnded: true, outcome: 'won' });
+    expect(player.moves).toEqual(before.moves);
+    expect(player.movePpReserve).toEqual(before.movePpReserve);
+    expect(player.hp).toBe(before.hp);
+    expect(player.brain).toEqual(before.brain);
+    expect(player.moveLearning).toEqual(before.moveLearning);
+    expect(restoreGame(serializeGame(state)).player.team[0].moves).toEqual(before.moves);
   });
 
   it('실행된 기술 텔레메트리는 면역과 행동 차단을 로그 추론 없이 구분한다', () => {

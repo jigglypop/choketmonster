@@ -1,6 +1,6 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useRef } from 'react';
-import { Color, InstancedMesh, Light, Mesh, type LightShadow, type Object3D, type Scene } from 'three';
+import { Color, InstancedMesh, Light, Mesh, type LightShadow, type MeshStandardMaterial, type Object3D, type Scene } from 'three';
 import { getOpenWorldRendererInfo } from './gpu-renderer';
 
 function renderableInventory(scene: Scene) {
@@ -44,6 +44,16 @@ export function RenderProbe() {
         loadedPokemon: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('pokemon-model:')).map(object => Number(object.name.slice('pokemon-model:'.length))),
         modelStatuses: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('pokemon-model-status:')).map(object => object.name.slice('pokemon-model-status:'.length)),
         renderables: renderableInventory(scene),
+        // Cave surfaces have few triangles, so they can fall outside the top-30 inventory.
+        caveSurfaces: scene.getObjectsByProperty('type', 'Mesh')
+          .filter(object => object.name === 'cave-floor' || object.name.startsWith('cave-wall:'))
+          .map(object => {
+            const mesh = object as Mesh, material = mesh.material as MeshStandardMaterial;
+            const uv = mesh.geometry.attributes.uv;
+            return { name: mesh.name, material: material.uuid, albedoLoaded: !!material.map?.image,
+              normalLoaded: !!material.normalMap?.image, roughnessLoaded: !!material.roughnessMap?.image,
+              tiled: !!uv && Array.from(uv.array).some(value => Math.abs(value) > 1) };
+          }),
         detailAssets: ['moss-boulder', 'moss-stone', 'fern'].map(id => {
           const group = scene.getObjectByName(`nature:${id}.glb`);
           return { id, instances: group?.children.reduce((sum, mesh) => sum + Number('count' in mesh ? mesh.count : 0), 0) ?? 0 };

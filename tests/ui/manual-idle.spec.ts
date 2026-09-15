@@ -45,7 +45,7 @@ test('returns to auto after keyboard inactivity, while pause and the map suspend
     await expect(page.locator('#world-mode-manual')).toHaveAttribute('aria-pressed', 'true');
   } finally { await page.keyboard.up('KeyW'); }
   await expect(page.locator('#world-mode-auto')).toHaveAttribute('aria-pressed', 'true', { timeout: 10000 });
-  await expect(page.locator('#world-auto-hunt')).not.toBeChecked();
+  await expect(page.locator('#world-auto-hunt')).toHaveCount(0);
   await page.locator('#world-mode-manual').click();
   await page.locator('#world-map-open').click();
   await page.waitForTimeout(3500);

@@ -67,7 +67,10 @@ describe('full game checkpoint integration', () => {
     expect(restored.battle!.enemy.team[0].brain).not.toBe(restored.player.team[0].brain);
     actBattle(restored, { type: 'move', index: 0 }, 4);
     expect(restored.battle?.player.team[0]?.moves ?? restored.player.team[0].moves).toEqual(restored.player.team[0].moves);
-    expect(game.player.team[0].moves).not.toEqual(restored.player.team[0].moves);
+    expect(game.player.team[0].moves).toEqual(restored.player.team[0].moves);
+    expect(game.player.team[0].moves).not.toBe(restored.player.team[0].moves);
+    expect(game.battle!.turn).toBe(1);
+    expect(restored.battle!.turn).toBe(2);
   });
   it('replays the exact game and neural trajectory after a mid-battle JSON roundtrip', () => {
     const game = battleGame(), controller = new ConnectomeController(graph), view = defaultView();

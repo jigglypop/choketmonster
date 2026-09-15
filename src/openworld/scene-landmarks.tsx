@@ -1,28 +1,43 @@
 import { Html } from '@react-three/drei';
-import { useLayoutEffect, useRef } from 'react';
-import { InstancedMesh, Matrix4 } from 'three';
+import { useEffect, useMemo } from 'react';
+import { BoxGeometry, MeshStandardMaterial, PlaneGeometry } from 'three';
 import { CAVE_SCENES, getCaveScene, type CaveScene } from './caves';
+import { useSurfaceTextures } from './materials';
 import type { WorldPoint, WorldSample } from './types';
 
+const CAVE_TEXTURE_TILE = 2.5;
+
+function tileUvs(geometry: PlaneGeometry | BoxGeometry) {
+  const positions = geometry.attributes.position, normals = geometry.attributes.normal, uvs = geometry.attributes.uv;
+  for (let index = 0; index < positions.count; index++) {
+    const x = positions.getX(index), y = positions.getY(index), z = positions.getZ(index);
+    const nx = Math.abs(normals.getX(index)), ny = Math.abs(normals.getY(index));
+    if (nx > ny && nx > Math.abs(normals.getZ(index))) uvs.setXY(index, z / CAVE_TEXTURE_TILE, y / CAVE_TEXTURE_TILE);
+    else if (ny > Math.abs(normals.getZ(index))) uvs.setXY(index, x / CAVE_TEXTURE_TILE, z / CAVE_TEXTURE_TILE);
+    else uvs.setXY(index, x / CAVE_TEXTURE_TILE, y / CAVE_TEXTURE_TILE);
+  }
+  uvs.needsUpdate = true;
+  return geometry;
+}
+
 export function CaveInterior({ cave, onNavigate }: { cave: CaveScene; onNavigate(point: WorldPoint): void }) {
-  const walls = useRef<InstancedMesh>(null);
-  useLayoutEffect(() => {
-    if (!walls.current) return;
-    const matrix = new Matrix4();
-    cave.wallSegments.forEach((wall, index) => {
-      // Low cutaway walls leave corridors readable from the orbit camera.
-      matrix.makeScale(wall.width, 1.8, wall.depth); matrix.setPosition(wall.x, .9, wall.z);
-      walls.current!.setMatrixAt(index, matrix);
+  const textures = useSurfaceTextures('rock');
+  const material = useMemo(() => {
+    const result = new MeshStandardMaterial({
+      name: 'cave-rock-pbr', color: cave.id === 'ice-path' ? '#a8c5ca' : '#8a8d82', roughness: .95, metalness: 0,
+      map: textures.diffuse, normalMap: textures.normal, roughnessMap: textures.arm, aoMap: textures.arm,
     });
-    walls.current.instanceMatrix.needsUpdate = true; walls.current.computeBoundingSphere();
-  }, [cave]);
-  return <group name={`cave-interior:${cave.id}`}>
-    <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow onClick={event => { event.stopPropagation(); if (event.button === 0 && event.delta <= 5) onNavigate({ x: event.point.x, z: event.point.z }); }}>
-      <planeGeometry args={[cave.width, cave.depth]} /><meshStandardMaterial color={cave.id === 'ice-path' ? '#aacbcf' : '#777b73'} roughness={.95} />
+    result.userData.openWorldSurface = 'cave-rock-uv';
+    return result;
+  }, [cave.id, textures]);
+  const floor = useMemo(() => tileUvs(new PlaneGeometry(cave.width, cave.depth)), [cave]);
+  const walls = useMemo(() => cave.wallSegments.map(wall => tileUvs(new BoxGeometry(wall.width, wall.height, wall.depth))), [cave]);
+  useEffect(() => () => { material.dispose(); floor.dispose(); walls.forEach(wall => wall.dispose()); }, [floor, material, walls]);
+  return <group name={`cave-interior:${cave.id}`} dispose={null}>
+    <mesh name="cave-floor" geometry={floor} material={material} rotation={[-Math.PI / 2, 0, 0]} receiveShadow onClick={event => { event.stopPropagation(); if (event.button === 0 && event.delta <= 5) onNavigate({ x: event.point.x, z: event.point.z }); }}>
     </mesh>
-    <instancedMesh name="cave-walls" ref={walls} args={[undefined, undefined, cave.wallSegments.length]}>
-      <boxGeometry args={[1, 1, 1]} /><meshStandardMaterial color={cave.id === 'ice-path' ? '#51778a' : '#414b48'} roughness={.9} />
-    </instancedMesh>
+    <group name="cave-walls">{cave.wallSegments.map((wall, index) =>
+      <mesh key={index} name={`cave-wall:${index}`} geometry={walls[index]} material={material} position={[wall.x, wall.height / 2, wall.z]} receiveShadow castShadow />)}</group>
   </group>;
 }
 

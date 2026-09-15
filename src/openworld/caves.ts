@@ -54,31 +54,6 @@ const plans: readonly CavePlan[] = [
   { regionId: 'johto', id: 'mt-silver', name: '은빛산 동굴', label: 'Mt. Silver', seed: 179, width: 27, depth: 25, surfaceLocations: ['mt-silver'] },
 ];
 
-const hash = (seed: number, x: number, z: number) => {
-  let value = (seed ^ Math.imul(x + 1, 0x9e3779b1) ^ Math.imul(z + 1, 0x85ebca6b)) >>> 0;
-  value ^= value >>> 16; value = Math.imul(value, 0x7feb352d); value ^= value >>> 15; return value >>> 0;
-};
-
-function carveMaze(width: number, depth: number, seed: number): boolean[][] {
-  const floor = Array.from({ length: depth }, () => Array<boolean>(width).fill(false));
-  const stack: Array<readonly [number, number]> = [[1, 1]]; floor[1][1] = true;
-  while (stack.length) {
-    const [x, z] = stack[stack.length - 1];
-    const choices = [[2, 0], [-2, 0], [0, 2], [0, -2]]
-      .map(([dx, dz]) => ({ x: x + dx, z: z + dz, dx, dz }))
-      .filter(next => next.x > 0 && next.z > 0 && next.x < width - 1 && next.z < depth - 1 && !floor[next.z][next.x])
-      .sort((a, b) => hash(seed, a.x, a.z) - hash(seed, b.x, b.z));
-    const next = choices[0];
-    if (!next) { stack.pop(); continue; }
-    floor[z + next.dz / 2][x + next.dx / 2] = true; floor[next.z][next.x] = true; stack.push([next.x, next.z]);
-  }
-  // Every layout gets a seed-specific chamber while retaining the perfect-maze route.
-  const chamberX = 3 + (hash(seed, width, depth) % Math.max(1, width - 7));
-  const chamberZ = 3 + (hash(seed + 1, depth, width) % Math.max(1, depth - 7));
-  for (let z = chamberZ - 1; z <= chamberZ + 1; z++) for (let x = chamberX - 1; x <= chamberX + 1; x++) floor[z][x] = true;
-  return floor;
-}
-
 const pointForTile = (width: number, depth: number, x: number, z: number): ScenePoint => ({ x: (x - (width - 1) / 2) * TILE_SIZE, z: (z - (depth - 1) / 2) * TILE_SIZE });
 
 function buildScene(plan: CavePlan): CaveScene {
@@ -87,17 +62,18 @@ function buildScene(plan: CavePlan): CaveScene {
   const encounter = exactLocation
     ?? locations.find(item => item.id === plan.surfaceLocations[0]);
   if (!encounter) throw new Error(`Unknown cave encounter location: ${plan.regionId}:${plan.id}`);
-  const floor = carveMaze(plan.width, plan.depth, plan.seed);
+  // The outer tile ring is the chamber boundary. Every tile inside it is open,
+  // including coordinates that older saves may have recorded inside maze walls.
+  const floor = Array.from({ length: plan.depth }, (_, z) =>
+    Array.from({ length: plan.width }, (_, x) => x > 0 && z > 0 && x < plan.width - 1 && z < plan.depth - 1));
   const portalTiles = plan.surfaceLocations.map((_, index) => index === 0 ? { x: 1, z: 1 } : { x: plan.width - 2, z: plan.depth - 2 });
-  for (const tile of portalTiles) floor[tile.z][tile.x] = true;
-  const wallSegments: CaveWallSegment[] = [];
-  for (let z = 0; z < plan.depth; z++) for (let x = 0; x < plan.width;) {
-    if (floor[z][x]) { x++; continue; }
-    const start = x;
-    while (x < plan.width && !floor[z][x]) x++;
-    const center = pointForTile(plan.width, plan.depth, (start + x - 1) / 2, z);
-    wallSegments.push({ ...center, width: (x - start) * TILE_SIZE, depth: TILE_SIZE, height: 3.4 });
-  }
+  const chamberWidth = plan.width * TILE_SIZE, chamberDepth = plan.depth * TILE_SIZE;
+  const wallSegments: CaveWallSegment[] = [
+    { x: 0, z: -(chamberDepth - TILE_SIZE) / 2, width: chamberWidth, depth: TILE_SIZE, height: 3.4 },
+    { x: 0, z: (chamberDepth - TILE_SIZE) / 2, width: chamberWidth, depth: TILE_SIZE, height: 3.4 },
+    { x: -(chamberWidth - TILE_SIZE) / 2, z: 0, width: TILE_SIZE, depth: chamberDepth - TILE_SIZE * 2, height: 3.4 },
+    { x: (chamberWidth - TILE_SIZE) / 2, z: 0, width: TILE_SIZE, depth: chamberDepth - TILE_SIZE * 2, height: 3.4 },
+  ];
   const portals = plan.surfaceLocations.map((locationId, index): CavePortal => {
     const surfaceLocation = locations.find(item => item.id === locationId);
     if (!surfaceLocation) throw new Error(`Unknown cave portal location: ${plan.regionId}:${locationId}`);

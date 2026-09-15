@@ -85,7 +85,7 @@ export class OpenWorldPanel {
       <details class="world-explore-panel"><summary class="world-explore-toggle"><div><strong id="world-location-short">성도</strong><small id="world-explore-short">탐험 설정 · 상점</small></div><i>⌄</i></summary><div class="world-explore-scroll">
       <div class="world-heading"><span class="world-eyebrow" id="world-region-label">성도</span><span id="world-encounter-layout" class="world-encounter-layout">고정 야생 분포</span><h1 id="world-biome">연두마을</h1><p id="world-zone-level">다음 도로로 모험을 떠나세요</p></div>
       <div class="world-tools"><button id="world-pause">Ⅱ 일시 정지</button><button id="world-heal">캠프 회복</button></div>
-      <fieldset class="world-automation"><legend>자동 설정</legend><label><input id="world-auto-hunt" type="checkbox" checked><span>자동 사냥</span></label><label><input id="world-auto-catch" type="checkbox" checked><span>자동 포획</span></label><label title="대기 팀원 80% · 출전 개체보다 낮은 레벨은 100%"><input id="world-exp-share" type="checkbox" checked><span>팀 경험치 공유</span></label><label><input id="world-learning" type="checkbox" checked><span id="world-learning-label">기술 학습</span></label></fieldset>
+      <fieldset class="world-automation"><legend>자동 설정</legend><label><input id="world-auto-catch" type="checkbox" checked><span>자동 포획</span></label><label title="대기 팀원 80% · 출전 개체보다 낮은 레벨은 100%"><input id="world-exp-share" type="checkbox" checked><span>팀 경험치 공유</span></label><label><input id="world-learning" type="checkbox" checked><span id="world-learning-label">기술 학습</span></label></fieldset>
       <div class="world-control-mode" role="group" aria-label="조작 모드"><div class="world-mode-buttons"><button id="world-mode-auto">자동</button><button id="world-mode-manual">수동</button></div><div class="world-control-copy"><strong id="world-control-title"></strong><small id="world-control-help"></small></div></div>
       <details class="world-shop"><summary>프렌들리숍 · <span id="world-ball-stock"></span></summary><div id="world-shop-items"></div><button id="world-box-open" class="world-box-open">박스 관리 · 팀 <span id="world-team-count">1</span>/6</button><small id="world-shop-note">승리 후에는 볼 1개로 확정 포획합니다.</small></details>
       <div class="world-gym" id="world-gym"></div>
@@ -104,7 +104,7 @@ export class OpenWorldPanel {
           <summary><span>PARTNER · 파트너와 배틀</span><strong>파트너 상태</strong><i aria-hidden="true">⌄</i></summary>
           <div class="world-battle-deck">
             <div id="world-combatants"></div><div id="world-moves" class="world-moves"></div><button id="world-edit-moves" class="world-edit-moves">기술 배치</button><div id="world-emergency-action"></div>
-            <div class="world-battle-actions"><button id="world-engage">가까운 포켓몬 배틀</button><button id="world-catch" disabled>볼 던지기</button><button id="world-potion" disabled>상처약</button><button id="world-run" disabled>도망</button><span id="world-battle-state">자동 배틀 대기</span></div>
+            <div class="world-battle-actions"><button id="world-catch" disabled>볼 던지기</button><button id="world-potion" disabled>상처약</button><button id="world-run" disabled>도망</button><span id="world-battle-state">자동 배틀 대기</span></div>
             <details class="world-rewards"><summary>이 개체의 보상 기록</summary><div id="world-rewards"></div><small>게임에서 설계한 보상이며 생물학적 학습의 증거가 아닙니다.</small></details>
           </div>
         </details>
@@ -145,7 +145,7 @@ export class OpenWorldPanel {
       }
     });
     this.compactViewport.addEventListener('change', this.onViewportChange);
-    this.button('#world-mode-auto').onclick = () => this.changeMode('auto');
+    this.button('#world-mode-auto').onclick = () => { this.paused = false; this.changeMode('auto'); };
     this.button('#world-mode-manual').onclick = () => this.changeMode('manual');
     this.button('#world-edit-moves').onclick = () => {
       const game = this.options.game;
@@ -213,17 +213,12 @@ export class OpenWorldPanel {
     };
     this.button('#world-heal').onclick = () => {
       if (this.options.game.battle) return this.options.notify('배틀을 마친 뒤 회복할 수 있습니다.');
-      heal(this.options.game); playGameSound('heal'); this.options.notify('캠프에서 HP·PP·상태 이상을 회복했습니다.'); this.options.changed(); this.refresh();
-    };
-    this.button('#world-engage').onclick = () => {
-      const nearest = this.simulation.visibleEntities(18).filter(entity => entity.kind === 'wild').sort((a, b) => Math.hypot(a.x - this.simulation.player.x, a.z - this.simulation.player.z) - Math.hypot(b.x - this.simulation.player.x, b.z - this.simulation.player.z))[0];
-      if (nearest) { this.simulation.selectWild(nearest.id); this.encounter(nearest.id); }
+      heal(this.options.game); playGameSound('heal'); this.options.notify('캠프에서 HP·상태 이상을 회복했습니다.'); this.options.changed(); this.refresh();
     };
     this.button('#world-catch').onclick = () => { if (this.options.game.captureOffer) this.catchVictory(); else if (this.simulation.requestCapture()) this.options.notify('다음 턴에 볼을 던집니다.'); else this.options.notify('사용할 수 있는 볼이 없습니다. 프렌들리숍에서 구매하세요.'); };
     this.button('#world-potion').onclick = () => { if (this.simulation.requestAction({ type: 'item', item: 'potion' })) this.options.notify('다음 턴에 상처약을 사용합니다.'); };
     this.button('#world-run').onclick = () => { if (this.simulation.requestAction({ type: 'run' })) this.options.notify('다음 턴에 도망을 시도합니다.'); };
     this.input('#world-auto-catch').onchange = e => { this.simulation.setAutoCapture((e.target as HTMLInputElement).checked); if (this.simulation.autoCapture && this.simulation.hasBalls && this.options.game.captureOffer) this.catchVictory(); this.options.changed(); this.refresh(); };
-    this.input('#world-auto-hunt').onchange = e => { this.simulation.setAutoHunt((e.target as HTMLInputElement).checked); this.options.changed(); this.refresh(); };
     this.input('#world-learning').checked = this.options.learning();
     this.input('#world-learning').onchange = e => { this.options.setLearning((e.target as HTMLInputElement).checked); this.options.changed(); };
     this.input('#world-exp-share').onchange = e => { this.options.game.experienceShare = (e.target as HTMLInputElement).checked; this.options.changed(); this.refresh(); };
@@ -526,9 +521,9 @@ export class OpenWorldPanel {
     this.html('#world-moves', Array.from({ length: 4 }, (_, index) => {
       const slot = moveLayout[index]; if (!slot) return `<div class="world-move empty-slot"><span>${index + 1}</span><strong>미습득</strong><small>레벨을 올려 기술을 익히세요</small></div>`;
       const move = getMove(slot.moveId);
-      return `<button data-world-move="${slot.sourceIndex}" data-world-slot="${index}" data-world-move-id="${slot.moveId}" class="world-move type-${move.type}" ${!battle || slot.pp <= 0 ? 'disabled' : ''} title="${move.damageClass === 'physical' ? '물리' : move.damageClass === 'special' ? '특수' : '변화'} · 우선도 ${move.priority} · 클릭하면 다음 턴에 사용"><span>${index + 1} · ${types[move.type]} · 우선 ${move.priority}</span><strong>${move.name}</strong><small><span class="move-details">위력 ${move.power || '—'} · 명중 ${move.accuracy || '—'} · </span>PP ${slot.pp}/${move.pp} · ${battle ? '전투 종료 후 회복' : '자동 회복됨'}</small></button>`;
+      return `<button data-world-move="${slot.sourceIndex}" data-world-slot="${index}" data-world-move-id="${slot.moveId}" class="world-move type-${move.type}" ${!battle ? 'disabled' : ''} title="${move.damageClass === 'physical' ? '물리' : move.damageClass === 'special' ? '특수' : '변화'} · 우선도 ${move.priority} · 클릭하면 다음 턴에 사용"><span>${index + 1} · ${types[move.type]} · 우선 ${move.priority}</span><strong>${move.name}</strong><small><span class="move-details">위력 ${move.power || '—'} · 명중 ${move.accuracy || '—'}</span></small></button>`;
     }).join(''));
-    this.html('#world-emergency-action', battle && !battle.awaitingSwitch && moves.every(slot => slot.pp <= 0) ? '<button id="world-struggle">발버둥 (PP 소진)</button>' : '');
+    this.html('#world-emergency-action', battle && !battle.awaitingSwitch && !moves.length ? '<button id="world-struggle">발버둥</button>' : '');
     const location = this.simulation.locationAt(world.player.x, world.player.z);
     this.html('#world-biome', location.name);
     this.html('#world-location-short', location.name);
@@ -541,11 +536,11 @@ export class OpenWorldPanel {
     const collectionSpecies = new Set(getPlayableSpeciesIds(world.atlas.defaultVersion));
     this.html('#world-objective', `${game.dex.caught.filter(id => collectionSpecies.has(id)).length} / ${collectionSpecies.size}종 · 전체 ${game.dex.caught.filter(isPlayableSpecies).length}종`);
     this.html('#world-feed', game.logs.slice(-3).map(log => `<p>${escape(log)}</p>`).join(''));
-    this.html('#world-battle-state', game.captureOffer ? '승리! 포획 여부를 선택하세요' : battle ? `${battle.awaitingSwitch ? '다음 파트너로 자동 교대 중' : world.escaping ? '도망 시도 중' : world.controlMode === 'manual' ? (battle.canRun ? '기술 선택 · 이동키로 도주' : '기술 선택 대기') : '자동 배틀'} · 턴 ${battle.turn}` : !world.hasBalls ? '볼 소진 · 구매 후 자동 사냥 가능' : this.paused ? '탐험 일시 정지' : world.controlMode === 'manual' ? '수동 탐험 · 배틀 버튼으로만 전투' : world.autoHunt ? '자동 추적 · 접근하면 배틀' : '접근하면 자동 배틀');
+    this.html('#world-battle-state', game.captureOffer ? '승리! 포획 여부를 선택하세요' : battle ? `${battle.awaitingSwitch ? '다음 파트너로 자동 교대 중' : world.escaping ? '도망 시도 중' : world.controlMode === 'manual' ? (battle.canRun ? '기술 선택 · 이동키로 도주' : '기술 선택 대기') : '자동 배틀'} · 턴 ${battle.turn}` : this.paused ? '탐험 일시 정지' : world.controlMode === 'manual' ? '수동 탐험 · 배틀 버튼으로만 전투' : '가까운 포켓몬 추적 · 접근하면 배틀');
     this.button('#world-mode-auto').setAttribute('aria-pressed', String(world.controlMode === 'auto'));
     this.button('#world-mode-manual').setAttribute('aria-pressed', String(world.controlMode === 'manual'));
     this.html('#world-control-title', world.controlMode === 'manual' ? '수동 이동' : '자동 이동 · 배틀');
-    this.html('#world-control-help', world.controlMode === 'manual' ? (battle || game.captureOffer ? '기술 1–4 · M 전환' : '3초간 이동 입력이 없으면 자동') : world.autoHunt ? '대상 자동 선택·추적' : '이동만 자동');
+    this.html('#world-control-help', world.controlMode === 'manual' ? (battle || game.captureOffer ? '기술 1–4 · M 전환' : '3초간 이동 입력이 없으면 자동') : '가까운 포켓몬 자동 배틀');
     this.html('#world-ball-stock', `몬스터볼 ${game.inventory['poke-ball']}개 · ₩${game.player.money.toLocaleString('ko-KR')}`);
     this.html('#world-team-count', String(game.player.team.length));
     this.html('#world-shop-items', SHOP_ITEMS.map(item => `<div><strong>${ITEM_LABELS[item]} <small>보유 ${game.inventory[item]}개 · 개당 ₩${ITEM_PRICES[item].toLocaleString('ko-KR')}</small></strong>${[1, 5].map(quantity => { const total = ITEM_PRICES[item] * quantity, reason = game.player.money < total ? `₩${(total - game.player.money).toLocaleString('ko-KR')} 부족` : ''; return `<button data-world-buy="${item}" data-quantity="${quantity}" ${reason ? `disabled title="${reason}"` : ''}>${quantity}개 · ₩${total.toLocaleString('ko-KR')}${reason ? `<small>${reason}</small>` : ''}</button>`; }).join('')}</div>`).join(''));
@@ -577,11 +572,8 @@ export class OpenWorldPanel {
     this.button('#world-potion').disabled = !battle || game.inventory.potion <= 0 || lead.hp <= 0 || lead.hp >= lead.stats.hp;
     this.button('#world-run').disabled = !battle?.canRun;
     this.button('#world-heal').disabled = Boolean(battle);
-    this.button('#world-engage').disabled = Boolean(battle || offer);
     this.button('#world-pause').textContent = this.paused ? '▶ 계속 탐험' : 'Ⅱ 일시 정지';
     this.input('#world-auto-catch').checked = world.autoCapture;
-    this.input('#world-auto-hunt').checked = world.autoHunt;
-    this.input('#world-auto-hunt').disabled = !world.hasBalls;
     this.input('#world-exp-share').checked = game.experienceShare !== false;
     const ledger = world.rewardLedgers[lead.instanceId], signed = (n: number) => `${n >= 0 ? '+' : ''}${n.toFixed(2)}`;
     const rewardNames = { engagement: '조우', damageDealt: '공격', damageReceived: '피해', typeChoice: '상성', outcome: '승패', growth: '레벨 성장', evolution: '진화' };

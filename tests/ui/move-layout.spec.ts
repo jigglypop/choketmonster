@@ -12,6 +12,7 @@ import { openExplorePanel } from './helpers/explore-panel';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
 const policy = JSON.parse(readFileSync('public/data/openworld-policy.json', 'utf8')) as FieldPolicy;
+test.use({ launchOptions: { args: ['--mute-audio', '--enable-unsafe-webgpu'] } });
 const slots = [
   { moveId: 45, pp: 17 }, // Growl: status
   { moveId: 33, pp: 11 }, // Tackle: attack
@@ -36,6 +37,8 @@ function fixture() {
 }
 
 async function bootstrap(page: Page) {
+  await page.route('**/api/auth/me', route => route.fulfill({ json: { user: null } }));
+  await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   await page.route(/\.(?:glb|gltf)(?:\?.*)?$/, route => route.abort());
   await page.goto('/');
   await expect(page.locator('#starter-dialog [data-starter="152"]')).toBeVisible({ timeout: 30_000 });
@@ -127,6 +130,7 @@ test('team and box layout edits cross attack/status boundaries and persist witho
   const exported = await exportSave(page);
   expect(exported.game.player.team[0].moveOrder).toEqual([45, 33, 22, 73]);
   await page.reload();
+  await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
   await page.locator('[data-tab="team"]').click();
   await expect.poll(() => displayedMoveIds(page)).toEqual([45, 33, 22, 73]);
   await importSave(page, exported);
@@ -134,7 +138,7 @@ test('team and box layout edits cross attack/status boundaries and persist witho
   await expect.poll(() => displayedMoveIds(page)).toEqual([45, 33, 22, 73]);
 });
 
-test('a learned move can replace a displayed slot and restoring it keeps its PP and order', async ({ page }) => {
+test('a learned move can replace a displayed slot and restoring it keeps its legacy PP and order', async ({ page }) => {
   const { game, lead } = fixture();
   const originalPp = lead.moves.find(slot => slot.moveId === 22)!.pp;
   await bootstrap(page);
@@ -151,7 +155,7 @@ test('a learned move can replace a displayed slot and restoring it keeps its PP 
   await expect.poll(() => displayedMoveIds(page)).toEqual([33, 75, 45, 73]);
 
   const restore = page.locator('[data-move-choice="1"]');
-  await expect(restore.locator('option[value="22"]')).toContainText(`PP ${originalPp}/25`);
+  await expect(restore.locator('option[value="22"]')).not.toContainText('PP');
   await restore.selectOption('22');
   await page.locator('[data-replace-move="1"]').click();
   await expect(page.getByRole('status')).toHaveText('기술을 교체하고 저장했습니다.');
@@ -161,9 +165,10 @@ test('a learned move can replace a displayed slot and restoring it keeps its PP 
   expect(saved.game.player.team[0].moveOrder).toEqual([33, 22, 45, 73]);
   expect(saved.game.player.team[0].moves.find(slot => slot.moveId === 22)?.pp).toBe(originalPp);
   await page.reload();
+  await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
   await page.locator('[data-tab="team"]').click();
   await expect.poll(() => displayedMoveIds(page)).toEqual([33, 22, 45, 73]);
-  await expect(page.locator('[data-layout-move="22"]')).toContainText(`PP ${originalPp}/25`);
+  await expect(page.locator('[data-layout-move="22"]')).not.toContainText('PP');
 });
 
 test('classic battle uses the saved presentation order and disables editing', async ({ page }) => {
@@ -183,7 +188,7 @@ test('classic battle uses the saved presentation order and disables editing', as
   await expect(page.locator('.battle-page')).toBeVisible();
 });
 
-test('world slots expose display and source indexes, and Digit1 spends only the first displayed move PP', async ({ page }) => {
+test('world slots expose display and source indexes, and Digit1 executes the first displayed move without changing legacy PP', async ({ page }) => {
   const { game, lead } = fixture();
   lead.moveOrder = [22, 33, 73, 45];
   const world = new OpenWorldSimulation(graph, game, 9917, undefined, policy);
@@ -216,12 +221,12 @@ test('world slots expose display and source indexes, and Digit1 spends only the 
   await page.locator('#world-pause').focus();
   await expect(page.locator('#world-pause')).toBeFocused();
   await page.keyboard.press('Digit1');
-  await expect(page.locator('[data-world-slot="0"]')).toContainText('PP 5/');
+  await expect(page.locator('[data-world-slot="0"]')).not.toContainText('PP');
+  await expect(page.locator('#world-feed')).toContainText(/덩굴채찍! [1-9]\d* 피해/, { timeout: 20_000 });
   await page.locator('#world-pause').click();
   const saved = await exportSave(page);
   const after = saved.game.player.team[0].moves;
-  expect(after[3].pp).toBe(before[3].pp - 1);
-  expect(after.filter((_slot, index) => index !== 3)).toEqual(before.filter((_slot, index) => index !== 3));
+  expect(after).toEqual(before);
 });
 
 test('a legacy status-only set recovers one legal attack with a backup and uses it in automatic battle', async ({ page }) => {
@@ -267,6 +272,7 @@ test('a legacy status-only set recovers one legal attack with a backup and uses 
   expect(recovered.game.player.team[0].moves.map(slot => slot.moveId)).toEqual([401, 244, 133, 472]);
   expect(brainState(recovered.game.player.team[0].brain)).toEqual(originalBrain);
   await page.reload();
+  await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
   await page.locator('[data-tab="team"]').click();
   await expect.poll(() => displayedMoveIds(page)).toEqual([401, 244, 133, 472]);
 
@@ -282,12 +288,12 @@ test('a legacy status-only set recovers one legal attack with a backup and uses 
   await importSave(page, packSave(battleWorld.game, graph, { ...defaultView(), openWorld: battleWorld.snapshot(), openWorldPaused: false }));
   await expect(page.locator('#world-mode-auto')).toHaveAttribute('aria-pressed', 'true');
   const enemyMeter = page.getByRole('meter', { name: '강철톤 HP' });
-  await expect(page.locator('[data-world-move-id="401"]')).not.toContainText('PP 15/15', { timeout: 15_000 });
+  await expect(page.locator('[data-world-move-id="401"]')).not.toContainText('PP');
   await expect(page.locator('#world-feed')).toContainText(/아쿠아테일! [1-9]\d* 피해/, { timeout: 20_000 });
   await expect.poll(async () => Number(await enemyMeter.getAttribute('aria-valuenow')), { timeout: 20_000 }).toBeLessThan(enemyHp);
   await page.locator('#world-pause').click();
   const battled = await exportSave(page);
-  expect(battled.game.player.team[0].moves.find(slot => slot.moveId === 401)!.pp).toBeLessThan(15);
+  expect(battled.game.player.team[0].moves.find(slot => slot.moveId === 401)!.pp).toBe(15);
   expect(battled.game.logs.some(log => /아쿠아테일! [1-9]\d* 피해/.test(log))).toBe(true);
   expect(battled.game.battle!.enemy.team[0].hp).toBeLessThan(enemyHp);
 });

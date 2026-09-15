@@ -20,7 +20,6 @@ describe('open-world battle HP persistence', () => {
 
     const world = new OpenWorldSimulation(graph, game, 7013, undefined, policy);
     world.setControlMode('auto');
-    world.setAutoHunt(false);
     const target = world.entities.find(entity => entity.kind === 'wild')!;
     target.level = 100;
     expect(world.startEncounter(target.id)).toBe(true);
