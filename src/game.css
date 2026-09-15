@@ -13,6 +13,7 @@
   --glass-line:rgba(255,255,255,.72);
   --glass-shadow:0 18px 48px rgba(24,61,51,.14),inset 0 1px 0 rgba(255,255,255,.82);
 }
+.item-use{align-items:flex-start}.candy-use{display:grid;grid-template-columns:minmax(0,1fr) 74px;gap:5px;flex:1}.candy-use label,.candy-use small{font-size:calc(12px * var(--ui-font-scale, 1));color:var(--muted)}.candy-use input{width:100%;min-height:38px;border:1px solid var(--line);border-radius:8px;padding:6px}.candy-use small,.candy-use button{grid-column:1/-1}
 .topbar{height:52px;min-height:52px;padding:6px 18px;gap:16px}
 .brand{font-size:calc(13px * var(--ui-font-scale, 1));grid-template-columns:25px auto;gap:0 6px}
 .brand:before{width:23px;height:23px;border-width:2px}

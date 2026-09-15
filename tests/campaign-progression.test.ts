@@ -105,23 +105,22 @@ describe('regional campaign and growth', () => {
     const before = JSON.stringify(game); expect(() => depositMonster(game, -1)).toThrow(); expect(JSON.stringify(game)).toBe(before);
   });
 
-  it('increases merge rewards for lower frequency and higher level with bounded rarity and retained XP', () => {
+  it('limits duplicate merge value to 20 percent of level without recycling accumulated XP', () => {
     const game = createGame(1, 'rarity');
     const common = duplicateMergeValue(createMonster(game, 19, 20)), rare = duplicateMergeValue(createMonster(game, 113, 20));
-    expect(rare.frequency).toBeLessThan(common.frequency); expect(rare.multiplier).toBeGreaterThan(common.multiplier);
-    expect(rare.xp).toBeGreaterThan(common.xp); expect(rare.multiplier).toBeLessThanOrEqual(4);
-    expect(duplicateMergeValue(createMonster(game, 19, 40)).xp).toBeGreaterThan(common.xp);
-    const same = createMonster(game, 19, 20), reward = duplicateMergeValue(same).xp;
-    expect(duplicateMergeValue({...same,xp:same.xp+1000}).xp - reward).toBe(200);
+    expect(common).toEqual({ levels: 4, percent: 20 }); expect(rare).toEqual(common);
+    expect(duplicateMergeValue(createMonster(game, 19, 40))).toEqual({ levels: 8, percent: 20 });
+    const same = createMonster(game, 19, 20);
+    same.xp += 1000; expect(duplicateMergeValue(same)).toEqual(common);
   });
 
-  it('gives lagging living teammates full XP and equal-level teammates 80 percent without changing boxed XP', () => {
+  it('gives every living teammate equal XP without changing boxed XP', () => {
     const game = createGame(1, 'catch-up'), lead = createMonster(game, 1, 20), lagging = createMonster(game, 4, 5), peer = createMonster(game, 7, 20);
     game.player.team = [lead,lagging,peer]; const enemy = createMonster(game, 19, 20); enemy.hp = 0;
     game.battle = { kind:'wild',regionId:game.regionId,canRun:true,turn:1,player:{team:game.player.team,activeIndex:0},enemy:{team:[enemy],activeIndex:0} };
     const result = actBattle(game, {type:'wait'}, 4), full = result.experienceGains.find(gain=>gain.instanceId===lead.instanceId)!.amount;
     expect(result.experienceGains.find(gain=>gain.instanceId===lagging.instanceId)!.amount).toBe(full);
-    expect(result.experienceGains.find(gain=>gain.instanceId===peer.instanceId)!.amount).toBe(Math.floor(full*.8));
+    expect(result.experienceGains.find(gain=>gain.instanceId===peer.instanceId)!.amount).toBe(full);
   });
 
   it('rejects a forged ball without consuming inventory, a turn or simulation randomness', () => {

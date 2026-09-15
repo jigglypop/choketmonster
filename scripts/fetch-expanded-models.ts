@@ -48,7 +48,11 @@ function parseArgs() {
     throw new Error('--ids must contain unique National Pokedex IDs 152..1025');
   }
   if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 8) throw new Error('--concurrency must be 1..8');
-  return { ids: ids.sort((a, b) => a - b), all, concurrency, catalogOnly: process.argv.includes('--catalog-only') };
+  return {
+    ids: ids.sort((a, b) => a - b), all, concurrency,
+    catalogOnly: process.argv.includes('--catalog-only'),
+    downloadOnly: process.argv.includes('--download-only'),
+  };
 }
 
 async function mapLimit<T, R>(items: T[], limit: number, task: (item: T) => Promise<R>) {
@@ -138,7 +142,8 @@ function makeCatalog(entries: ModelEntry[], missingIds: number[], inspections: I
 }
 
 async function main() {
-  const { ids, all, concurrency, catalogOnly } = parseArgs();
+  const { ids, all, concurrency, catalogOnly, downloadOnly } = parseArgs();
+  if (catalogOnly && downloadOnly) throw new Error('--catalog-only and --download-only cannot be combined');
   const previousManifest = await exists(MANIFEST_OUTPUT)
     ? JSON.parse(await readFile(MANIFEST_OUTPUT, 'utf8')) as PreviousManifest
     : undefined;
@@ -167,6 +172,10 @@ async function main() {
   if (regular.length !== 974 || supported.length !== 820 || missingIds.length !== 54) throw new Error(`Pinned catalog shape changed: regular=${regular.length}, supported=${supported.length}, missing=${missingIds.length}`);
   const selected = all ? supported : ids.map(id => { const entry = supported.find(item => item.id === id); if (!entry) throw new Error(`model ${id} is absent at pinned commit`); return entry; });
   const inspections = catalogOnly ? [] : await mapLimit(selected, concurrency, async entry => inspectGlb(entry.id, await download(entry)));
+  if (downloadOnly) {
+    console.log(`Downloaded and inspected ${inspections.length} models (${selected.reduce((sum, entry) => sum + entry.bytes, 0)} bytes) without changing the runtime catalog.`);
+    return;
+  }
   const supportedById = new Map(supported.map(entry => [entry.id, entry]));
   const mergedById = new Map(previousInspections.filter(item => supportedById.has(item.id)).map(item => [item.id, item]));
   for (const inspection of inspections) mergedById.set(inspection.id, inspection);

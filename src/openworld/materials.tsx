@@ -1,16 +1,40 @@
 import { useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
-import { DataTexture, EquirectangularReflectionMapping, FloatType, LinearSRGBColorSpace, MeshStandardMaterial, PMREMGenerator, RepeatWrapping, RGBAFormat, SRGBColorSpace, Texture, TextureLoader } from 'three';
+import { Color, DataTexture, EquirectangularReflectionMapping, FloatType, LinearSRGBColorSpace, MeshStandardMaterial, PMREMGenerator, RepeatWrapping, RGBAFormat, SRGBColorSpace, Texture, TextureLoader } from 'three';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
 import {
   abs, color, cos, dot, float, instanceIndex, length, materialColor, materialRoughness, max, min, mix, normalView, normalize,
   positionLocal, positionViewDirection, positionWorld, pow, sin, smoothstep, texture, timerLocal, vec2, vec3,
 } from 'three/tsl';
 import { distanceToWaterSurface, selectWaterLod, type WaterLod, type WaterLodPlayer } from './water-lod';
+import type { WorldAtlas } from './atlas';
+import type { WorldSample } from './types';
+import { WORLD_SCALE } from './world-space';
 
 type Surface = 'ground' | 'rock' | 'path';
 export type SurfaceTextures = { diffuse: Texture; normal: Texture; arm: Texture };
 export type WaterMaterialOptions = { lake?: boolean; center?: readonly [number, number]; extent?: readonly [number, number]; radius?: number };
+
+const BIOME_COLORS: Record<Exclude<WorldSample['biome'], 'meadow' | 'lake'>, string> = {
+  forest: '#285b35', rock: '#777763',
+};
+
+/** Vertex tint for the world map. Town and route tint stays atlas-specific while
+ * the shared grass/dirt PBR textures remain visible through the material. */
+export function worldSurfaceColor(atlas: WorldAtlas, sample: WorldSample, x: number, z: number): Color {
+  if (sample.biome === 'lake') return new Color(atlas.palette.water);
+  if (sample.biome === 'rock') return new Color(atlas.id === 'sinnoh' || atlas.id === 'hisui' ? '#acb1ab' : BIOME_COLORS.rock);
+  if (sample.biome === 'forest') return new Color(BIOME_COLORS.forest).lerp(new Color(atlas.palette.ground), .16);
+  const nearest = atlas.locationAt(x, z);
+  const landmarkDistance = Math.hypot(x - nearest.x, z - nearest.z);
+  if (nearest.kind === 'town' && landmarkDistance <= 8.5 * WORLD_SCALE) return new Color(atlas.palette.town).lerp(new Color('#e8dfc5'), .26);
+  if (atlas.distanceToPath(x, z) <= 3.2 * WORLD_SCALE) return new Color(regionTrailColor(atlas)).lerp(new Color(atlas.palette.ground), .28);
+  return new Color(atlas.palette.ground);
+}
+
+export function regionTrailColor(atlas: WorldAtlas): string {
+  return `#${new Color('#a77745').lerp(new Color(atlas.palette.town), .38).getHexString()}`;
+}
 
 /** Palette meshes gain canopy depth and a restrained back-lit leaf response. */
 export function detailCanopy(material: MeshStandardMaterial) {

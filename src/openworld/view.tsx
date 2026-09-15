@@ -54,7 +54,7 @@ import { initialYaw, movementYaw, turnTowards } from './motion';
 import { normalizePokemonModel } from './model-normalization';
 import './view.css';
 import { RenderProbe } from './render-probe';
-import { SkyLighting, SurfaceMaterial, WaterMaterial, useSurfaceMaterial } from './materials';
+import { SkyLighting, SurfaceMaterial, WaterMaterial, regionTrailColor, useSurfaceMaterial, worldSurfaceColor } from './materials';
 import { AdaptiveResolution } from './adaptive-resolution';
 import { MAX_CAMERA_DISTANCE, MIN_CAMERA_DISTANCE } from './camera-navigation';
 import { findWorldPath, headingForStep } from './navigation';
@@ -62,7 +62,8 @@ import { onRenderSuspension, renderingSuspended } from '../three/render-budget';
 
 import { WORLD_MIN, WORLD_MAX, WORLD_SCALE, surfaceSceneId } from './world-space';
 import { getCaveScene } from './caves';
-import { CaveInterior, ScenePortals } from './scene-landmarks';
+import { CaveInterior, GymEntranceStatus, ProgressGate, RegionalLeagueLandmark, ScenePortals, isRegionalLeagueLocation } from './scene-landmarks';
+import { FlyGuide } from './fly-guide';
 import { createOpenWorldRenderer } from './gpu-renderer';
 const MODEL_CACHE_LIMIT = 16;
 const NATURE_DETAIL_RADIUS = 68;
@@ -196,13 +197,9 @@ const Terrain = memo(function Terrain({ sampleWorld, chunk, atlas, material, onN
   const { geometry, skirt } = useMemo(() => {
     const n = chunk.segments, stride = n + 1;
     const vertices: number[] = [], colors: number[] = [], indices: number[] = [];
-    const palette: Record<WorldSample['biome'], Color> = {
-      meadow: new Color(atlas.palette.ground), forest: new Color('#285b35'),
-      lake: new Color(atlas.palette.water), rock: new Color(atlas.id === 'sinnoh' || atlas.id === 'hisui' ? '#acb1ab' : '#777763'),
-    };
     for (let iz = 0; iz <= n; iz++) for (let ix = 0; ix <= n; ix++) {
       const x = chunk.x - 20 + ix * TERRAIN_CHUNK_SIZE / n, z = chunk.z - 20 + iz * TERRAIN_CHUNK_SIZE / n;
-      const sample = sampleWorld(x, z), color = palette[sample.biome].clone();
+      const sample = sampleWorld(x, z), color = worldSurfaceColor(atlas, sample, x, z);
       vertices.push(x, terrainSurfaceHeight(sampleWorld, x, z), z);
       color.offsetHSL(0, .01, Math.sin(x * .12 + z * .07) * .035);
       colors.push(color.r, color.g, color.b);
@@ -359,7 +356,7 @@ function TownPaving({ color }: { color: string }) {
   </instancedMesh>;
 }
 
-function TownBuilding({ townId, townColor, index }: { townId: string; townColor: string; index: number }) {
+function TownBuilding({ townId, townColor, index, gym, badges, showGymLabel }: { townId: string; townColor: string; index: number; gym?: WorldAtlas['gyms'][number]; badges: number; showGymLabel: boolean }) {
   const pallet = townId === 'pallet';
   const role = pallet ? (index === 0 ? 'RED' : index === 1 ? 'BLUE' : 'LAB') : (index === 0 ? 'P' : index === 1 ? 'M' : 'G');
   const accent = pallet ? (index === 0 ? '#c94b3d' : index === 1 ? '#3f79ad' : '#437c62') : (index === 0 ? '#cf493e' : index === 1 ? '#397bb0' : townColor);
@@ -375,11 +372,12 @@ function TownBuilding({ townId, townColor, index }: { townId: string; townColor:
     clone.traverse(object => { if (object instanceof Mesh) { object.castShadow = true; object.receiveShadow = true; } });
     return clone;
   }, [gltf]);
-  return <group>
+  return <group name={`town-building:${townId}:${index}:${model ? 'loaded' : 'fallback'}`}>
     {model
       ? <primitive object={model} dispose={null} />
       : <mesh position={[0, 1.05, 0]} castShadow><boxGeometry args={[3.1, 2.1, 2.5]} /><meshStandardMaterial color="#e8dfc7" roughness={.9} /></mesh>}
     <BuildingSign text={role} color={accent} />
+    {index === 2 && gym && <GymEntranceStatus gym={gym} badges={badges} showLabel={showGymLabel} />}
   </group>;
 }
 
@@ -414,7 +412,7 @@ function RegionalLandmark({ region, x, y, z }: { region: string; x: number; y: n
   </group>;
 }
 
-function TrailAndWater({ sampleWorld, player, badges, atlas, visible, mobile }: { sampleWorld: (x: number, z: number) => WorldSample; player: { x: number; z: number }; badges: number; atlas: WorldAtlas; visible: VisibilityTest; mobile: boolean }) {
+function TrailAndWater({ sampleWorld, player, badges, atlas, visible, mobile, gyms = atlas.gyms }: { sampleWorld: (x: number, z: number) => WorldSample; player: { x: number; z: number }; badges: number; atlas: WorldAtlas; visible: VisibilityTest; mobile: boolean; gyms?: WorldAtlas['gyms'] }) {
   const locations = useMemo(() => new Map(atlas.locations.map(item => [item.id, item])), [atlas]);
   const trail = useMemo(() => {
     const vertices: number[] = [];
@@ -450,7 +448,7 @@ function TrailAndWater({ sampleWorld, player, badges, atlas, visible, mobile }: 
   };
   return (
     <group name={`region-landmarks:${atlas.id}`} userData={{ gaesupWorldObject: 'region-landmarks' }}>
-      <mesh geometry={trail} receiveShadow><SurfaceMaterial surface="path" color="#b89a68" /></mesh>
+      <mesh geometry={trail} receiveShadow><SurfaceMaterial surface="path" color={regionTrailColor(atlas)} /></mesh>
       {atlas.id === 'kanto' && <><mesh position={[-34 * WORLD_SCALE, -.66, 101 * WORLD_SCALE]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}>
         <planeGeometry args={[91 * WORLD_SCALE, 33 * WORLD_SCALE]} /><WaterMaterial player={player} mobile={mobile} center={[-34 * WORLD_SCALE, 101 * WORLD_SCALE]} extent={[45.5 * WORLD_SCALE, 16.5 * WORLD_SCALE]} />
       </mesh>
@@ -458,11 +456,18 @@ function TrailAndWater({ sampleWorld, player, badges, atlas, visible, mobile }: 
         <circleGeometry args={[12 * WORLD_SCALE, 48]} /><WaterMaterial player={player} mobile={mobile} lake center={[61 * WORLD_SCALE, -25 * WORLD_SCALE]} radius={12 * WORLD_SCALE} />
       </mesh></>}
       {atlas.id !== 'kanto' && atlas.locations.filter(item => item.kind === 'sea' && Math.hypot(item.x - player.x, item.z - player.z) < 90).map(item => <mesh key={item.id} position={[item.x, sampleWorld(item.x, item.z).height + .025, item.z]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}><circleGeometry args={[12 * WORLD_SCALE, 32]} /><WaterMaterial player={player} mobile={mobile} lake center={[item.x, item.z]} radius={12 * WORLD_SCALE} /></mesh>)}
-      {atlas.id !== 'kanto' && atlas.locations.filter(item => item.kind === 'special' && Math.hypot(item.x - player.x, item.z - player.z) < 70 && visible(item.x, 5, item.z, 10)).map(item => <RegionalLandmark key={item.id} region={atlas.id} x={item.x} y={terrainSurfaceHeight(sampleWorld, item.x, item.z)} z={item.z} />)}
-      {atlas.locations.filter(item => item.kind === 'town' && Math.hypot(item.x - player.x, item.z - player.z) <= 85 && visible(item.x, 3, item.z, 14 * WORLD_SCALE)).map(town => <group key={town.id} name={`town:${town.id}`} position={[town.x, terrainSurfaceHeight(sampleWorld, town.x, town.z) + .05, town.z]}>
+      {atlas.id !== 'kanto' && atlas.locations.filter(item => item.kind === 'special' && !isRegionalLeagueLocation(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) < 70 && visible(item.x, 5, item.z, 10)).map(item => <RegionalLandmark key={item.id} region={atlas.id} x={item.x} y={terrainSurfaceHeight(sampleWorld, item.x, item.z)} z={item.z} />)}
+      {atlas.locations.filter(item => isRegionalLeagueLocation(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) < 100).map(item => {
+        // Place scenery beyond the existing blocked edge, leaving arrival and walking paths clear.
+        const candidates = [18, 24, 30].flatMap(radius => [0, -.7, .7, -1.4, 1.4].map(angle => ({ x: item.x + Math.sin(angle) * radius, z: item.z - Math.cos(angle) * radius })));
+        const point = candidates.find(point => [-5.2, 0, 5.2].every(dx => [-4, 0, 5.2].every(dz => sampleWorld(point.x + dx, point.z + dz).blocked)));
+        if (!point) return null;
+        return <RegionalLeagueLandmark key={item.id} region={atlas.id} x={point.x} y={terrainSurfaceHeight(sampleWorld, point.x, point.z)} z={point.z} />;
+      })}
+      {atlas.locations.filter(item => item.kind === 'town' && !isRegionalLeagueLocation(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) <= 85 && visible(item.x, 3, item.z, 14 * WORLD_SCALE)).map(town => <group key={town.id} name={`town:${town.id}`} position={[town.x, terrainSurfaceHeight(sampleWorld, town.x, town.z) + .05, town.z]}>
         <TownPaving color={townColors[town.id] ?? atlas.palette.town} />
         {atlas.buildingOffsets(town).map(([x, z], index) => <group key={index} position={[x, 0, z]} scale={WORLD_SCALE}>
-          <TownBuilding townId={town.id} townColor={townColors[town.id] ?? atlas.palette.town} index={index} />
+          <TownBuilding townId={town.id} townColor={townColors[town.id] ?? atlas.palette.town} index={index} gym={gyms.find(item => item.locationId === town.id)} badges={badges} showGymLabel={Math.hypot(town.x - player.x, town.z - player.z) <= 14 * WORLD_SCALE} />
         </group>)}
         <group position={[0, 0, -6 * WORLD_SCALE]}>
           <mesh position={[0, .9, 0]} castShadow><boxGeometry args={[2.4, 1.15, .24]} /><meshStandardMaterial color="#eadb9d" /></mesh>
@@ -470,27 +475,16 @@ function TrailAndWater({ sampleWorld, player, badges, atlas, visible, mobile }: 
           <mesh position={[.82, .35, 0]}><boxGeometry args={[.16, 1.1, .16]} /><meshStandardMaterial color="#6b4b2c" /></mesh>
         </group>
       </group>)}
-      {atlas.locations.filter(item => item.kind === 'cave' && Math.hypot(item.x - player.x, item.z - player.z) <= 80 && visible(item.x, 3, item.z, 8)).map(cave => <group key={cave.id} position={[cave.x, terrainSurfaceHeight(sampleWorld, cave.x, cave.z), cave.z]}>
+      {atlas.locations.filter(item => item.kind === 'cave' && !isRegionalLeagueLocation(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) <= 80 && visible(item.x, 3, item.z, 8)).map(cave => <group key={cave.id} position={[cave.x, terrainSurfaceHeight(sampleWorld, cave.x, cave.z), cave.z]}>
         <mesh position={[0, 1.3, 0]} castShadow><dodecahedronGeometry args={[2.8, 0]} /><meshStandardMaterial color="#5f615f" roughness={1} /></mesh>
         <mesh position={[0, .8, -2.15]}><circleGeometry args={[1.05, 24]} /><meshBasicMaterial color="#171b1c" /></mesh>
       </group>)}
       {atlas.gates.filter(gate => gate.visible !== false).map(gate => {
         const from = locations.get(gate.from)!, to = locations.get(gate.to)!;
         const x = (from.x + to.x) / 2, z = (from.z + to.z) / 2;
-        const rotationY = Math.atan2(to.x - from.x, to.z - from.z);
         const y = terrainSurfaceHeight(sampleWorld, x, z);
-        const locked = badges < gate.requiredBadges;
         const halfWidth = atlas.gateHalfWidth(gate);
-        return <group key={gate.id} position={[x, y, z]} rotation={[0, rotationY, 0]}>
-          {[-halfWidth, halfWidth].map(side => <RigidBody key={side} type="fixed" colliders="cuboid" position={[side, 0, 0]}>
-            <mesh position={[0, 1.35, 0]} castShadow><boxGeometry args={[.55, 2.7, .55]} /><meshStandardMaterial color="#5f513f" roughness={.92} /></mesh>
-          </RigidBody>)}
-          <mesh position={[0, 2.62, 0]} castShadow><boxGeometry args={[halfWidth * 2 + .55, .42, .48]} /><meshStandardMaterial color="#755e3d" roughness={.9} /></mesh>
-          {locked && <RigidBody type="fixed" colliders="cuboid">
-            <mesh position={[0, .72, 0]} castShadow><boxGeometry args={[halfWidth * 2, 1.12, .38]} /><meshStandardMaterial color="#9d4438" roughness={.9} /></mesh>
-          </RigidBody>}
-          {Math.hypot(x - player.x, z - player.z) <= 14 && <WorldLabel name={locked ? `${gate.requiredBadges}배지 필요` : '관문 통과 가능'} x={0} y={3.35} z={0} />}
-        </group>;
+        return <ProgressGate key={gate.id} gate={gate} from={from} to={to} y={y} halfWidth={halfWidth} badges={badges} showLabel={Math.hypot(x - player.x, z - player.z) <= 14} />;
       })}
       {atlas.locations.filter(item => (item.kind === 'town' || item.kind === 'cave') && Math.hypot(item.x - player.x, item.z - player.z) <= 12)
         .map(item => <WorldLabel key={`label:${item.id}`} name={item.name} x={item.x} y={terrainSurfaceHeight(sampleWorld, item.x, item.z) + (item.kind === 'town' ? 1.85 : 3.2)} z={item.kind === 'town' ? item.z - 6 : item.z} />)}
@@ -932,10 +926,10 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
       {!cave && <Sunlight player={snapshot.player} mobile={windowState.mobile} />}
       {cave && <pointLight position={[snapshot.player.x, 5, snapshot.player.z]} color="#ffdda6" intensity={35} distance={28} decay={1.4} />}
       <Physics gravity={[0, -18, 0]} timeStep="vary">
-        {cave ? <CaveInterior cave={cave} onNavigate={onNavigate} /> : <>
+        {cave ? <CaveInterior cave={cave} player={snapshot.player} mobile={windowState.mobile} onNavigate={onNavigate} /> : <>
           <group key={`terrain:${sceneId}`}>{chunks.map(chunk => <Terrain key={`${chunk.key}:${chunk.segments}`} sampleWorld={sample} atlas={atlas} chunk={chunk} material={groundMaterial} onNavigate={onNavigate} />)}</group>
           <Nature key={`nature:${sceneId}`} sampleWorld={sample} player={snapshot.player} atlas={atlas} isVisible={windowState.visible} />
-          <TrailAndWater key={`water:${sceneId}`} sampleWorld={sample} player={snapshot.player} atlas={atlas} visible={windowState.visible} badges={snapshot.badges ?? 0} mobile={windowState.mobile} />
+          <TrailAndWater key={`water:${sceneId}`} sampleWorld={sample} player={snapshot.player} atlas={atlas} gyms={snapshot.gyms} visible={windowState.visible} badges={snapshot.badges ?? 0} mobile={windowState.mobile} />
         </>}
         {options.terrainUrl && <StaticModel item={{
           id: 'openworld-terrain',
@@ -950,6 +944,7 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
         {options.props?.filter(item => Math.hypot(item.x - snapshot.player.x, item.z - snapshot.player.z) < 85 && windowState.visible(item.x, item.y ?? 0, item.z, 8)).map(item => <StaticModel key={item.id} item={item} />)}
         <FoodInstances foods={snapshot.foods} sampleWorld={sample} />
       </Physics>
+      {snapshot.guide && <FlyGuide guide={snapshot.guide} sample={sample} />}
       <ScenePortals sceneId={sceneId} regionId={atlas.id} player={snapshot.player} sample={sample} onNavigate={onNavigate} onPortal={() => options.onPortal?.('nearest')} />
       {visible.map(({ creature, distance, model }) => <Creature key={creature.id} creature={creature} selected={creature.id === snapshot.selectedWildId} showLabels={showLabels} distance={distance} model={model} options={worldOptions} />)}
       {destination && <group position={[destination.x, terrainSurfaceHeight(sample, destination.x, destination.z) + .08, destination.z]}>

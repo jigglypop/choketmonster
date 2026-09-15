@@ -123,6 +123,30 @@ test('browser capture, candy, evolution, save/reload and validated import', asyn
   expect(errors).toEqual([]);
 });
 
+test('feeds several rare candies with a level preview and keeps the selected individual after reload', async ({ page }) => {
+  test.setTimeout(120000);
+  await page.route('**/api/auth/me', route => route.fulfill({ json: { user: null } }));
+  await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
+  await page.route(/\.(?:glb|gltf)(?:\?.*)?$/, route => route.abort());
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  await start(page);
+  const game = createGame(1, 'ui-bulk-candy'), mon = createMonster(game, 1, 15);
+  game.player.team = [mon]; game.inventory['rare-candy'] = 4;
+  await importGame(page, game); await page.locator('[data-tab="team"]').click();
+  await page.locator('#candy-quantity').fill('5');
+  await expect(page.locator('#use-candy')).toBeDisabled();
+  await page.locator('#candy-quantity').fill('3');
+  await expect(page.locator('#candy-preview')).toHaveText('Lv.15 → Lv.18');
+  await page.locator('#use-candy').click();
+  await expect(page.locator('#toast')).toContainText('이상한사탕 3개');
+  await expect(page.locator('.detail-title > p')).toContainText('Lv.18');
+  await expect(page.locator('.team-monster.selected')).toHaveAttribute('data-monster', mon.instanceId);
+  await page.locator('#save-now').click(); await page.reload(); await page.locator('[data-tab="team"]').click();
+  await expect(page.locator('.detail-title > p')).toContainText('Lv.18');
+  await expect(page.locator('#use-candy')).toContainText('최대 1개');
+  expect(errors).toEqual([]);
+});
+
 test('stone and trade evolution keep identity and memories through the interface', async ({ page }) => {
   await start(page);
   const game = createGame(1, 'ui-stone-trade'), pikachu = createMonster(game, 25, 25), kadabra = createMonster(game, 64, 30);

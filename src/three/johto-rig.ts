@@ -5,19 +5,23 @@ import {
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 
 /** Authored articulation, separate from the immutable source models and their clips. */
-export const JOHTO_RIG_VERSION = 'johto-authored-v1';
+export const REGIONAL_RIG_VERSION = 'regional-authored-v2';
+export const JOHTO_RIG_VERSION = REGIONAL_RIG_VERSION;
+// Deoxys' source GLB contains one ArmatureAction whose 402 tracks repeat their bind-pose values.
+// Preserve that source clip for provenance, and append authored motion so the runtime can animate it.
+const STATIC_NATIVE_CLIP_SPECIES = new Set([386]);
 type Shape = 'biped' | 'quadruped' | 'bird' | 'winged' | 'fish' | 'plant' | 'floatingPlant' | 'glyph' | 'serpent' | 'soft';
 type Joint = { bone: Bone; start: Vector3; end: Vector3; role: string; side: number; phase: number };
 const groups: Record<Exclude<Shape, 'biped'>, number[]> = {
-  quadruped: [152, 153, 154, 155, 156, 157, 162, 179, 196, 197, 203, 213, 220, 221, 222, 228, 229, 231, 232, 234, 243, 244, 245],
-  bird: [163, 164, 177, 178, 198, 225, 227, 250],
-  winged: [165, 166, 167, 168, 169, 176, 188, 189, 193, 207, 214, 249],
-  fish: [170, 171, 211, 223, 224, 226, 230],
-  plant: [185, 191, 192],
+  quadruped: [152,153,154,155,156,157,162,179,196,197,203,213,220,221,222,228,229,231,232,234,243,244,245,261,262,263,264,273,274,287,288,289,293,294,295,300,301,304,305,306,309,310,322,323,352,359,371,372,373,377,378,379,387,388,389,399,400,403,404,405,408,409,410,417,427,428,431,432,434,435,443,444,445,446,447,448,449,450,459,460,461,464,465,466,467,470,471,473,495,496,497,498,499,500,504,505,506,507,508,509,510,522,523,524,525,526,529,530,551,552,553,554,555,559,560,585,586,613,614,626,631,632,633,634,638,639,640,643,644,645],
+  bird: [163,164,177,178,198,225,227,250,276,277,333,334,396,397,398,441,519,520,521,561,580,581,627,628,629,630],
+  winged: [165,166,167,168,169,176,188,189,193,207,214,249,267,269,278,279,283,284,290,291,313,314,329,330,414,415,416,455,469,472,527,528,566,567,587,588,595,596,616,617,636,637],
+  fish: [170,171,211,223,224,226,230,318,319,320,321,339,340,349,366,367,368,369,370,382,418,419,456,457,458,484,489,490,535,536,537,550,564,565,592,593,594,602,603,604],
+  plant: [185,191,192,252,253,254,273,274,275,285,286,315,331,332,345,346,357,406,407,420,421,455,459,460,465,470,492,511,512,513,514,515,516,546,547,548,549,556,557,558,590,591,597,598,640],
   floatingPlant: [187],
   glyph: [201],
-  serpent: [206, 208],
-  soft: [200, 204, 205, 218, 219],
+  serpent: [206,208,336,350,384,487,545,621,635],
+  soft: [200,204,205,218,219,292,302,316,317,325,326,351,353,354,355,356,358,360,361,362,363,364,365,380,381,385,386,422,423,425,426,429,433,442,477,478,479,480,481,482,488,491,493,517,518,562,563,577,578,579,582,583,584,605,606,607,608,609,610],
 };
 export const johtoRigShape = (id: number): Shape => (Object.entries(groups).find(([, ids]) => ids.includes(id))?.[0] ?? 'biped') as Shape;
 
@@ -241,9 +245,14 @@ function existingJoints(model: Object3D): Joint[] {
   model.updateMatrixWorld(true);
   return [...bones].map(bone => {
     const name = bone.name.toLowerCase(), side = /^(l|left)|[_.]l($|[_.])/.test(name) ? -1 : /^(r(?!oot)|right)|[_.]r($|[_.])/.test(name) ? 1 : 0;
-    const role = /wing/.test(name) ? 'wing' : /tail/.test(name) ? 'tail' : /thigh|upleg/.test(name) ? 'leg'
+    let role = /wing/.test(name) ? 'wing' : /tail/.test(name) ? 'tail' : /thigh|upleg/.test(name) ? 'leg'
       : /foot|lowerleg|shin/.test(name) ? 'foot' : /arm|shoulder/.test(name) ? 'arm' : /hand/.test(name) ? 'armTip'
         : /head/.test(name) ? 'head' : /neck/.test(name) ? 'neck' : /spine|chest|body|^waist/.test(name) ? 'spine' : /hips|pelvis/.test(name) ? 'hips' : 'other';
+    if (role === 'other') {
+      let depth = 0, parent = bone.parent;
+      while (parent instanceof Bone) { depth++; parent = parent.parent; }
+      role = depth === 0 ? 'hips' : depth === 1 ? 'spine' : depth === 2 ? 'neck' : depth === 3 ? 'head' : 'other';
+    }
     return { bone, start: bone.getWorldPosition(new Vector3()), end: bone.children[0]?.getWorldPosition(new Vector3()) ?? bone.getWorldPosition(new Vector3()).add(new Vector3(0, .1, 0)), role, side, phase: /tail[2-9]/.test(name) ? .5 : 0 };
   });
 }
@@ -266,7 +275,7 @@ function authoredClips(model: Object3D, joints: Joint[], id: number): AnimationC
         if (kind === 'idle') angle = ['head', 'neck'].includes(role) ? loop * .025 : role === 'spine' ? loop * .012 : role === 'tail' ? Math.sin(p * Math.PI * 2 + phase) * .065 : /wing|fin|leaf/.test(role) ? loop * .045 * (side || 1) : 0;
         if (kind === 'walk') angle = role === 'leg' ? gait * .27 : role === 'foot' ? Math.max(0, gait) * -.22 : /wing/.test(role) ? loop * .32 * side : /fin|leaf/.test(role) ? loop * .15 * side : /arm/.test(role) ? gait * -.16 : role === 'tail' ? Math.sin(p * Math.PI * 2 + phase) * .13 : role === 'spine' ? loop * .035 : role === 'head' ? -loop * .025 : 0;
         if (kind === 'attack') angle = Math.sin(p * Math.PI) * (role === 'spine' ? .17 : /arm|wing|fin/.test(role) ? -.35 : role === 'head' ? .14 : role === 'tail' ? .18 : 0);
-        if (kind === 'damage') angle = Math.sin(p * Math.PI) * (role === 'spine' ? -.12 : role === 'head' ? -.1 : /arm|wing/.test(role) ? .16 : 0);
+        if (kind === 'damage') angle = Math.sin(p * Math.PI) * (role === 'spine' ? -.12 : role === 'head' ? -.1 : /arm|wing/.test(role) ? .16 : /leg|foot|tail/.test(role) ? .07 * (side || 1) : 0);
         // Its coarse, connected shoulder mesh folds under large arm rotations.
         if (id === 195 && /arm/.test(role)) angle *= .18;
         if (role.startsWith('shell')) angle = loop * .025 * side;
@@ -294,11 +303,29 @@ function authoredClips(model: Object3D, joints: Joint[], id: number): AnimationC
 }
 
 /** Called once on a loaded template, before per-creature skeleton cloning. No simulation RNG. */
-export function prepareJohtoRig(gltf: Pick<GLTF, 'scene' | 'animations'>, id: number): void {
-  if (id < 152 || id > 251 || gltf.animations.length || gltf.scene.userData.authoredRig) return;
+export function prepareRegionalRig(gltf: Pick<GLTF, 'scene' | 'animations'>, id: number): void {
+  if (id < 152 || id > 649 || gltf.scene.userData.authoredRig) return;
+  const sourceClips = [...gltf.animations];
+  if (sourceClips.length && !STATIC_NATIVE_CLIP_SPECIES.has(id)) return;
   let skinned = false; gltf.scene.traverse(object => { if (object instanceof SkinnedMesh) skinned = true; });
   // Corsola's source has only a rigid waist influence; add actual leg/body joints.
-  const joints = skinned && id !== 222 ? existingJoints(gltf.scene) : skinStaticModel(gltf.scene, id);
-  gltf.animations = authoredClips(gltf.scene, joints, id);
-  gltf.scene.userData.authoredRig = { version: JOHTO_RIG_VERSION, speciesId: id, sourceSkeleton: skinned && id !== 222, joints: joints.length, shape: johtoRigShape(id) };
+  let sourceSkeleton = skinned && id !== 222;
+  let joints = sourceSkeleton ? existingJoints(gltf.scene) : skinStaticModel(gltf.scene, id);
+  const motionRoles = /^(hips|spine|neck|head|tail|leg|foot|arm|armTip|wing|wingTip|shell|shellTip|antenna|fin|finTip|leaf|leafTip)$/;
+  if (sourceSkeleton && joints.filter(joint => motionRoles.test(joint.role)).length < 2) {
+    joints = skinStaticModel(gltf.scene, id); sourceSkeleton = false;
+  }
+  gltf.animations = [...sourceClips, ...authoredClips(gltf.scene, joints, id)];
+  gltf.scene.userData.authoredRig = {
+    version: JOHTO_RIG_VERSION,
+    speciesId: id,
+    sourceSkeleton,
+    sourceClipsPreserved: sourceClips.length,
+    reason: sourceClips.length ? 'static-native-clips' : 'missing-native-clips',
+    joints: joints.length,
+    shape: johtoRigShape(id),
+  };
 }
+
+/** Backward-compatible entry point used by the shared GLTF loader. */
+export const prepareJohtoRig = prepareRegionalRig;

@@ -34,6 +34,9 @@ export type WorldTrainer = WorldPoint & { id: string; name: string; trainerClass
 export type WorldPortal = WorldPoint & { id: string; label: string; targetSceneId: string };
 
 export type OpenWorldRenderSnapshot = {
+  /** Game-designed progression directions, separate from neural movement decisions. */
+  guide?: import('./next-destination').DestinationGuide;
+  gyms?: readonly import('./kanto').KantoGym[];
   regionId?: string;
   sceneId?: string;
   timeOfDay?: 'morning' | 'day' | 'night';
@@ -51,6 +54,8 @@ export type OpenWorldRenderSnapshot = {
 
 export type WorldSample = {
   height: number;
+  /** The sampler already interpolates the local rendered triangle grid. */
+  exactHeight?: boolean;
   biome: 'meadow' | 'forest' | 'lake' | 'rock';
   blocked: boolean;
 };

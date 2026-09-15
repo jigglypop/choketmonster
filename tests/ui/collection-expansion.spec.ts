@@ -9,7 +9,7 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
 });
 
-test('duplicate XP and release use cancellable app modals, with readable team actions and reload persistence', async ({ page }) => {
+test('bounded duplicate levels and release use cancellable app modals, with readable team actions and reload persistence', async ({ page }) => {
   test.setTimeout(150000);
   const errors: string[] = [], browserDialogs: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -49,12 +49,12 @@ test('duplicate XP and release use cancellable app modals, with readable team ac
   await page.locator('.settings-close').click();
 
   await page.locator('#merge-duplicate').click();
-  const modal = page.getByRole('dialog', { name: '경험치를 합칠까요?' });
+  const modal = page.getByRole('dialog', { name: '레벨을 합칠까요?' });
   await expect(modal).toBeVisible();
   await expect(modal.locator('.confirmation-cancel')).toBeFocused();
   await expect(modal).toContainText('mon-2');
   await expect(modal).toContainText('mon-1');
-  await expect(modal).toContainText(`조정 경험치 ${duplicateMergeValue(donor).xp.toLocaleString()}`);
+  await expect(modal).toContainText(`+${Math.floor(duplicateMergeValue(donor).levels)}레벨`);
   const fits = await modal.evaluate(dialog => { const r = dialog.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && dialog.scrollWidth <= dialog.clientWidth + 1; });
   expect(fits).toBe(true);
   await modal.screenshot({ path: `${output}/merge-modal-mobile-150.png` });
@@ -68,8 +68,8 @@ test('duplicate XP and release use cancellable app modals, with readable team ac
   await expect(modal).toHaveCount(0);
   await expect(page.locator('[data-monster="mon-2"]')).toHaveCount(1);
   await page.locator('#merge-duplicate').click();
-  await modal.getByRole('button', { name: '경험치 합치기', exact: true }).click();
-  await expect(page.locator('#toast')).toContainText('경험치를 합쳤습니다');
+  await modal.getByRole('button', { name: '레벨 합치기', exact: true }).click();
+  await expect(page.locator('#toast')).toContainText('레벨을 합쳤습니다');
   await expect(page.locator('[data-monster="mon-2"]')).toHaveCount(0);
   await expect(page.locator('.detail-title > p')).not.toContainText('Lv.5');
   await page.locator('[data-monster="mon-3"]').click();

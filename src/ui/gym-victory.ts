@@ -1,14 +1,15 @@
 import { REGIONS } from '../game/regions';
 import type { GymVictory } from '../game/engine';
-import { KANTO_GATES, KANTO_GYMS, KANTO_LOCATIONS } from '../openworld/kanto';
 import { JOHTO_CAMPAIGN_GYMS } from '../game/campaign';
-import { JOHTO_LOCATIONS } from '../openworld/johto';
+import { getWorldAtlas } from '../openworld/atlas';
+import { CAMPAIGN_TRAINERS } from '../game/campaign';
 
 /** Acknowledgment only: the battle engine has already granted and saved the reward. */
 export function showGymVictory(victory: GymVictory, world = true): Promise<void> {
   const region = victory.region ?? 'kanto';
-  const gyms = region === 'johto' ? JOHTO_CAMPAIGN_GYMS : KANTO_GYMS;
-  const locations = region === 'johto' ? JOHTO_LOCATIONS : KANTO_LOCATIONS;
+  const atlas = getWorldAtlas(region);
+  const gyms = region === 'johto' ? JOHTO_CAMPAIGN_GYMS : atlas.gyms;
+  const locations = atlas.locations;
   const gym = world ? gyms.find(item => item.badge === victory.badge) : undefined;
   const classic = REGIONS.find(item => item.gym?.badge === victory.badge);
   const classicNext = REGIONS.find(item => item.gym?.badge === victory.badge + 1);
@@ -35,7 +36,7 @@ export function showGymVictory(victory: GymVictory, world = true): Promise<void>
     badge.setAttribute('aria-label', `${world ? item.badgeName : `${item.badge}번째 배지`} ${item.badge <= victory.badge ? '획득' : '미획득'}`);
     dialog.querySelector('ol')!.append(badge);
   }
-  const unlocked = world && region === 'kanto' ? KANTO_GATES.filter(gate => gate.requiredBadges === victory.badge) : [];
+  const unlocked = world ? atlas.gates.filter(gate => gate.requiredBadges === victory.badge) : [];
   dialog.querySelector<HTMLElement>('.gym-victory-unlocks')!.hidden = !unlocked.length;
   for (const gate of unlocked) {
     const item = document.createElement('li'); item.textContent = `${locationName(gate.from)} → ${locationName(gate.to)}`;
@@ -45,7 +46,7 @@ export function showGymVictory(victory: GymVictory, world = true): Promise<void>
     ? classicNext ? `다음 도전 · ${classicNext.name}의 ${classicNext.gym!.leader}` : '8개 배지를 모두 모았습니다! 이제 챔피언에게 도전할 수 있습니다.'
     : next
     ? `다음 도전 · ${locationName(next.locationId)}의 ${next.name}`
-    : `8개 배지를 모두 모았습니다! 다음 목표는 ${region === 'johto' ? '동성폭포' : '석영고원'}입니다.`;
+    : `8개 배지를 모두 모았습니다! 다음 목표는 ${locationName(CAMPAIGN_TRAINERS.find(trainer => trainer.region === region && trainer.kind === 'elite')!.locationId)}입니다.`;
   return new Promise(resolve => {
     dialog.addEventListener('close', () => { dialog.remove(); resolve(); }, { once: true });
     document.body.append(dialog); dialog.showModal();

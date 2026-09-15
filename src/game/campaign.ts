@@ -1,13 +1,19 @@
 import type { GameState } from './engine';
 import { KANTO_GYMS, type KantoGym, type KantoLocation } from '../openworld/kanto';
+import { HOENN_GYMS } from '../openworld/hoenn';
+import { SINNOH_GYMS } from '../openworld/sinnoh';
+import { UNOVA_GYMS } from '../openworld/unova';
 
-export type CampaignRegion = 'johto' | 'kanto';
+export type ExpansionCampaignRegion = 'hoenn' | 'sinnoh' | 'unova';
+export type CampaignRegion = 'johto' | 'kanto' | ExpansionCampaignRegion;
+export const CAMPAIGN_REGIONS: readonly CampaignRegion[] = ['johto', 'kanto', 'hoenn', 'sinnoh', 'unova'];
 export type CampaignProgress = {
-  startRegion: CampaignRegion;
+  startRegion: 'johto' | 'kanto';
   johtoBadges: number[];
   johtoLeague: number;
   kantoLeague: number;
   redDefeated: boolean;
+  expansion?: Partial<Record<ExpansionCampaignRegion, { badges: number[]; league: number }>>;
 };
 export type CampaignTrainer = {
   id: string; name: string; region: CampaignRegion; locationId: string;
@@ -38,15 +44,34 @@ export const CAMPAIGN_TRAINERS: readonly CampaignTrainer[] = [
   { id: 'kanto-lance', name: '사천왕 목호', region: 'kanto', locationId: 'indigo-plateau', kind: 'elite', team: [[130,73],[148,73],[148,74],[142,74],[149,75]] },
   { id: 'kanto-blue', name: '챔피언 그린', region: 'kanto', locationId: 'indigo-plateau', kind: 'champion', team: [[18,75],[65,75],[112,76],[103,76],[130,77],[6,78]] },
   { id: 'red', name: '레드', region: 'johto', locationId: 'mt-silver', kind: 'red', team: [[25,88],[196,82],[143,84],[3,84],[6,84],[9,84]] },
+  { id: 'hoenn-sidney', name: '사천왕 혁진', region: 'hoenn', locationId: 'ever-grande-city', kind: 'elite', team: [[262,46],[275,48],[332,48],[319,48],[359,49]] },
+  { id: 'hoenn-phoebe', name: '사천왕 회연', region: 'hoenn', locationId: 'ever-grande-city', kind: 'elite', team: [[356,48],[354,49],[302,50],[354,49],[356,51]] },
+  { id: 'hoenn-glacia', name: '사천왕 미혜', region: 'hoenn', locationId: 'ever-grande-city', kind: 'elite', team: [[364,50],[362,50],[364,52],[362,52],[365,53]] },
+  { id: 'hoenn-drake', name: '사천왕 권수', region: 'hoenn', locationId: 'ever-grande-city', kind: 'elite', team: [[372,52],[334,54],[230,53],[330,53],[373,55]] },
+  { id: 'hoenn-wallace', name: '챔피언 윤진', region: 'hoenn', locationId: 'ever-grande-city', kind: 'champion', team: [[321,57],[73,55],[272,56],[340,56],[130,56],[350,58]] },
+  { id: 'sinnoh-aaron', name: '사천왕 충호', region: 'sinnoh', locationId: 'sinnoh-pokemon-league', kind: 'elite', team: [[469,49],[212,49],[416,50],[214,51],[452,53]] },
+  { id: 'sinnoh-bertha', name: '사천왕 들국화', region: 'sinnoh', locationId: 'sinnoh-pokemon-league', kind: 'elite', team: [[340,50],[472,53],[450,52],[76,52],[464,55]] },
+  { id: 'sinnoh-flint', name: '사천왕 대엽', region: 'sinnoh', locationId: 'sinnoh-pokemon-league', kind: 'elite', team: [[229,52],[136,55],[78,53],[392,55],[467,57]] },
+  { id: 'sinnoh-lucian', name: '사천왕 오엽', region: 'sinnoh', locationId: 'sinnoh-pokemon-league', kind: 'elite', team: [[122,53],[437,54],[196,55],[65,56],[475,59]] },
+  { id: 'sinnoh-cynthia', name: '챔피언 난천', region: 'sinnoh', locationId: 'sinnoh-pokemon-league', kind: 'champion', team: [[442,58],[407,58],[468,60],[448,60],[350,58],[445,62]] },
+  { id: 'unova-shauntal', name: '사천왕 망초', region: 'unova', locationId: 'unova-pokemon-league', kind: 'elite', team: [[563,48],[593,48],[623,48],[609,50]] },
+  { id: 'unova-grimsley', name: '사천왕 블래리', region: 'unova', locationId: 'unova-pokemon-league', kind: 'elite', team: [[560,48],[553,48],[510,48],[625,50]] },
+  { id: 'unova-caitlin', name: '사천왕 카틀레야', region: 'unova', locationId: 'unova-pokemon-league', kind: 'elite', team: [[579,48],[518,48],[561,48],[576,50]] },
+  { id: 'unova-marshal', name: '사천왕 연무', region: 'unova', locationId: 'unova-pokemon-league', kind: 'elite', team: [[538,48],[539,48],[620,48],[534,50]] },
+  { id: 'unova-alder', name: '챔피언 노간주', region: 'unova', locationId: 'unova-pokemon-league', kind: 'champion', team: [[617,60],[589,60],[621,60],[584,60],[626,60],[637,62]] },
 ];
 
 export function campaignProgress(game: GameState): CampaignProgress {
   return game.campaign ?? { startRegion: 'kanto', johtoBadges: [], johtoLeague: 0, kantoLeague: game.championDefeated ? 5 : 0, redDefeated: false };
 }
 export function getRegionalBadges(game: GameState, region: string): number {
+  if (isExpansionCampaignRegion(region)) return campaignProgress(game).expansion?.[region]?.badges.length ?? 0;
   return region === 'johto' ? campaignProgress(game).johtoBadges.length : game.player.badges;
 }
 export function getCampaignGyms(game: GameState, region: string): readonly KantoGym[] {
+  if (region === 'hoenn') return HOENN_GYMS;
+  if (region === 'sinnoh') return SINNOH_GYMS;
+  if (region === 'unova') return UNOVA_GYMS;
   if (region === 'johto') return JOHTO_CAMPAIGN_GYMS;
   if (region !== 'kanto') return [];
   return campaignProgress(game).startRegion === 'johto'
@@ -56,16 +81,52 @@ export function campaignTravelReason(game: GameState, region: string): string | 
   const progress = campaignProgress(game);
   if (region === 'kanto' && progress.startRegion === 'johto' && progress.johtoLeague < 5)
     return '성도 배지 8개와 성도 사천왕·챔피언 클리어 후 관동으로 여행할 수 있습니다.';
+  if (region === 'hoenn' && progress.kantoLeague < 5) return '관동 사천왕·챔피언 클리어 후 호연으로 여행할 수 있습니다.';
+  if (region === 'sinnoh' && (progress.expansion?.hoenn?.league ?? 0) < 5) return '호연 사천왕·챔피언 클리어 후 신오로 여행할 수 있습니다.';
+  if (region === 'unova' && (progress.expansion?.sinnoh?.league ?? 0) < 5) return '신오 사천왕·챔피언 클리어 후 하나로 여행할 수 있습니다.';
 }
 export function canChallengeRed(game: GameState): boolean {
   const progress = campaignProgress(game);
   return game.player.badges === 8 && progress.johtoBadges.length === 8 && progress.kantoLeague === 5 && progress.johtoLeague === 5;
 }
 export function getNextCampaignTrainer(game: GameState, region: string): CampaignTrainer | undefined {
-  if (region !== 'kanto' && region !== 'johto') return undefined;
-  const progress = campaignProgress(game), stage = region === 'johto' ? progress.johtoLeague : progress.kantoLeague;
+  if (!CAMPAIGN_REGIONS.includes(region as CampaignRegion)) return undefined;
+  const progress = campaignProgress(game), stage = region === 'johto' ? progress.johtoLeague : isExpansionCampaignRegion(region) ? progress.expansion?.[region]?.league ?? 0 : progress.kantoLeague;
   if (stage < 5) return CAMPAIGN_TRAINERS.filter(trainer => trainer.region === region && trainer.kind !== 'red')[stage];
   if (region === 'johto' && canChallengeRed(game) && !progress.redDefeated) return CAMPAIGN_TRAINERS.find(trainer => trainer.id === 'red');
+}
+
+export function isExpansionCampaignRegion(region: string): region is ExpansionCampaignRegion {
+  return region === 'hoenn' || region === 'sinnoh' || region === 'unova';
+}
+export function recordCampaignGymVictory(game: GameState, region: CampaignRegion, badge: number): void {
+  game.campaign ??= campaignProgress(game);
+  if (isExpansionCampaignRegion(region)) {
+    const progress = game.campaign.expansion ??= {};
+    const local = progress[region] ??= { badges: [], league: 0 };
+    local.badges = [...new Set([...local.badges, badge])].sort((a, b) => a - b);
+  } else if (region === 'johto') game.campaign.johtoBadges = [...new Set([...game.campaign.johtoBadges, badge])].sort((a, b) => a - b);
+  else { game.defeatedGyms = [...new Set([...game.defeatedGyms, badge])].sort((a, b) => a - b); game.player.badges = game.defeatedGyms.length; }
+}
+export function recordCampaignLeagueVictory(game: GameState, trainer: CampaignTrainer): void {
+  game.campaign ??= campaignProgress(game);
+  if (trainer.kind === 'red') game.campaign.redDefeated = true;
+  else if (isExpansionCampaignRegion(trainer.region)) {
+    const progress = game.campaign.expansion ??= {};
+    const local = progress[trainer.region] ??= { badges: [], league: 0 }; local.league++;
+  } else if (trainer.region === 'johto') game.campaign.johtoLeague++;
+  else { game.campaign.kantoLeague++; game.championDefeated = game.campaign.kantoLeague === 5; }
+}
+export function validateExpansionCampaign(game: GameState): void {
+  const expansion = game.campaign?.expansion;
+  if (expansion === undefined) return;
+  if (!expansion || typeof expansion !== 'object' || Array.isArray(expansion)) throw new Error('추가 지방 진행이 손상되었습니다.');
+  for (const [region, local] of Object.entries(expansion)) {
+    if (!isExpansionCampaignRegion(region) || !local || !Array.isArray(local.badges) || local.badges.length > 8
+      || local.badges.some((badge, index) => badge !== index + 1) || !Number.isInteger(local.league) || local.league < 0 || local.league > 5
+      || (local.league > 0 && local.badges.length !== 8) || ((local.badges.length > 0 || local.league > 0) && campaignTravelReason(game, region)))
+      throw new Error('추가 지방 배지·리그 진행이 손상되었습니다.');
+  }
 }
 
 // Local encounter identities and weights stay fixed. These level bands are game rules.

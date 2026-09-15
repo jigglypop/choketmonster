@@ -90,7 +90,7 @@ test('localized portal enters, persists through reload, and exits the isolated c
   expect(errors).toEqual([]);
 });
 
-test('cave renders Pokemon and its environment without human field NPCs', async ({ page }) => {
+test('cave renders Pokemon and its environment without human field NPCs', async ({ page }, testInfo) => {
   test.setTimeout(120_000);
   const errors: string[] = [], trainerRequests: Array<{ url: string; status: number }> = [], rockTextures = new Set<string>();
   page.on('pageerror', error => errors.push(error.message));
@@ -101,7 +101,9 @@ test('cave renders Pokemon and its environment without human field NPCs', async 
   await expect.poll(() => sceneId(page), { timeout: 45_000 }).toBe(cave.sceneId);
   await expect(page.locator('[data-field-trainer]')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => (window as unknown as { __renderProbe?: { read(): { loadedPokemon: number[] } } }).__renderProbe?.read().loadedPokemon.length ?? 0), { timeout: 45_000 }).toBeGreaterThan(0);
+  await page.waitForFunction(() => ((window as any).__renderProbe?.read().samples.length ?? 0) >= 40);
   await page.screenshot({ path: `${output}/slowpoke-well-without-npcs.png` });
+  await testInfo.attach('cave-final', { body: await page.screenshot(), contentType: 'image/png' });
   const composition = await page.evaluate(() => {
     const describe = (element: Element | null) => element ? { tag: element.tagName, id: element.id, className: element.className } : null;
     const rect = (element: Element | null) => element ? (({ x, y, width, height }) => ({ x, y, width, height }))(element.getBoundingClientRect()) : null;
@@ -110,7 +112,7 @@ test('cave renders Pokemon and its environment without human field NPCs', async 
       canvas: rect(document.querySelector('#ow-host canvas')),
       iframe: rect(document.querySelector('#game-music-panel iframe')),
       musicPanel: rect(document.querySelector('#game-music-panel')),
-      renderer: (window as unknown as { __renderProbe?: { read(): { backend?: string; streaming?: unknown; renderables: Array<{ name: string; instances: number }>; caveSurfaces: Array<{ name: string; material: string; albedoLoaded: boolean; normalLoaded: boolean; roughnessLoaded: boolean; tiled: boolean }> } } }).__renderProbe?.read(),
+      renderer: (window as unknown as { __renderProbe?: { read(): { backend?: string; streaming?: unknown; renderables: Array<{ name: string; instances: number }>; caveGeology: Array<{ name: string; count: number }>; caveSurfaces: Array<{ name: string; material: string; albedoLoaded: boolean; normalLoaded: boolean; roughnessLoaded: boolean; tiled: boolean }> } } }).__renderProbe?.read(),
     };
   });
   expect(composition.renderer).toMatchObject({ background: '182326', fog: null, clearAlpha: 1 });
@@ -119,6 +121,12 @@ test('cave renders Pokemon and its environment without human field NPCs', async 
   expect(surfaces.map(surface => surface.name).sort()).toEqual(['cave-floor', 'cave-wall:0', 'cave-wall:1', 'cave-wall:2', 'cave-wall:3']);
   expect(new Set(surfaces.map(surface => surface.material)).size).toBe(1);
   expect(surfaces.every(surface => surface.albedoLoaded && surface.normalLoaded && surface.roughnessLoaded && surface.tiled)).toBe(true);
+  expect(composition.renderer!.caveGeology).toEqual(expect.arrayContaining([
+    expect.objectContaining({ name: 'cave-rock-strata', count: expect.any(Number) }),
+    expect.objectContaining({ name: 'cave-stalactites', count: expect.any(Number) }),
+    expect.objectContaining({ name: 'cave-stalagmites', count: expect.any(Number) }),
+  ]));
+  expect(composition.renderer!.caveGeology.every(item => item.count > 0)).toBe(true);
   expect([...rockTextures].sort()).toEqual(['rock_boulder_dry_arm.webp', 'rock_boulder_dry_diff.webp', 'rock_boulder_dry_nor_gl.webp']);
   expect(trainerRequests).toEqual([]);
   writeFileSync(`${output}/npc-removal-evidence.json`, JSON.stringify({ sceneId: cave.sceneId, trainerRequests, composition, errors }, null, 2));

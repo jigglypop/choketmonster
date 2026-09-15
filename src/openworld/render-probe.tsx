@@ -44,6 +44,7 @@ export function RenderProbe() {
         nameplates: scene.getObjectsByProperty('name', 'creature-nameplate').length,
         loadedPokemon: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('pokemon-model:')).map(object => Number(object.name.slice('pokemon-model:'.length))),
         modelStatuses: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('pokemon-model-status:')).map(object => object.name.slice('pokemon-model-status:'.length)),
+        townBuildings: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('town-building:')).map(object => object.name),
         renderables: renderableInventory(scene),
         // Cave surfaces have few triangles, so they can fall outside the top-30 inventory.
         caveSurfaces: scene.getObjectsByProperty('type', 'Mesh')
@@ -55,6 +56,12 @@ export function RenderProbe() {
               normalLoaded: !!material.normalMap?.image, roughnessLoaded: !!material.roughnessMap?.image,
               tiled: !!uv && Array.from(uv.array).some(value => Math.abs(value) > 1) };
           }),
+        caveGeology: scene.getObjectsByProperty('isInstancedMesh', true)
+          .filter(object => object.name.startsWith('cave-'))
+          .map(object => ({ name: object.name, count: (object as InstancedMesh).count })),
+        landmarks: scene.getObjectsByProperty('type', 'Group')
+          .filter(object => object.name.startsWith('landmark:league:') || object.name === 'campaign-fly-guide')
+          .map(object => object.name),
         detailAssets: ['moss-boulder', 'moss-stone', 'fern'].map(id => {
           const group = scene.getObjectByName(`nature:${id}.glb`);
           return { id, instances: group?.children.reduce((sum, mesh) => sum + Number('count' in mesh ? mesh.count : 0), 0) ?? 0 };

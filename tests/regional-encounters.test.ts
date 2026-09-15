@@ -52,12 +52,11 @@ describe('fixed regional encounter sources', () => {
     }
   });
 
-  it('uses the time-weighted fixed distribution for duplicate merge rarity', () => {
+  it('uses the same bounded level percentage for every duplicate species', () => {
     expect(Array.from({ length: 251 }, (_, index) => regionalEncounterFrequency(index + 1)).every(frequency => frequency > 0)).toBe(true);
     for (const speciesId of [1, 19, 72, 144, 151, 163, 249, 251]) {
-      const frequency = regionalEncounterFrequency(speciesId);
-      expect(frequency).toBeGreaterThan(0);
-      expect(duplicateMergeValue({ speciesId, level: 20, xp: 10_000 }).frequency).toBe(frequency);
+      expect(speciesId).toBeGreaterThan(0);
+      expect(duplicateMergeValue({ level: 20 })).toEqual({ levels: 4, percent: 20 });
     }
   });
 });

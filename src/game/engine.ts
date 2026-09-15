@@ -6,7 +6,7 @@ import type { BaseStats, Evolution, PokemonMove, PokemonSpecies, PokemonType } f
 import { calculateDamage, catchProbability, turnOrder, typeMultiplier } from './battle';
 import { getMoveLayout, reconcileMoveOrder } from './move-layout';
 import { getRegion, REGIONS } from './regions';
-import { CAMPAIGN_TRAINERS, campaignProgress, campaignTravelReason, canChallengeRed, getRegionalBadges, getNextCampaignTrainer, getCampaignGyms, type CampaignRegion, type CampaignProgress } from './campaign';
+import { CAMPAIGN_REGIONS, CAMPAIGN_TRAINERS, campaignProgress, campaignTravelReason, canChallengeRed, getRegionalBadges, getNextCampaignTrainer, getCampaignGyms, recordCampaignGymVictory, recordCampaignLeagueVictory, validateExpansionCampaign, type CampaignRegion, type CampaignProgress } from './campaign';
 import { duplicateMergeValue } from './growth';
 import { getFieldTrainer, type FieldTrainer } from '../data/field-trainers';
 export { duplicateMergeValue } from './growth';
@@ -655,31 +655,17 @@ function concludeIfNeeded(state: GameState, battle: BattleState, events: BattleL
   const enemy = active(battle.enemy);
   if (enemy.hp <= 0) {
     const winner = active(battle.player);
-    const winnerLevel = winner.level;
     const fullAmount = Math.max(1, Math.floor(getSpecies(enemy.speciesId).baseExperience * enemy.level / 7));
-    if (winner.hp > 0) {
-      const activeGain = gainExperience(winner, fullAmount, events, battle, false);
-      if (activeGain) experienceGains.push(activeGain);
-    }
-    if (state.experienceShare !== false) {
-      for (const teammate of battle.player.team) {
-        if (teammate.instanceId === winner.instanceId || teammate.hp <= 0) continue;
-        const sharedAmount = Math.max(1, Math.floor(fullAmount * (teammate.level < winnerLevel ? 1 : .8)));
-        const sharedGain = gainExperience(teammate, sharedAmount, events, battle, true);
-        if (sharedGain) experienceGains.push(sharedGain);
-      }
+    const recipients = (state.experienceShare === false ? [winner] : battle.player.team).filter(monster => monster.hp > 0);
+    for (const teammate of recipients) {
+      const sharedGain = gainExperience(teammate, fullAmount, events, battle, teammate.instanceId !== winner.instanceId);
+      if (sharedGain) experienceGains.push(sharedGain);
     }
     const next = battle.enemy.team.findIndex((monster) => monster.hp > 0);
     if (next >= 0) { battle.enemy.activeIndex = next; events.push(event(battle, `상대가 ${active(battle.enemy).nickname}을(를) 내보냈다.`)); }
     else {
       if (battle.kind === 'gym' && battle.gymBadge) {
-        if (battle.campaignRegion === 'johto') {
-          state.campaign ??= campaignProgress(state);
-          state.campaign.johtoBadges = uniqueSorted([...state.campaign.johtoBadges, battle.gymBadge]);
-        } else {
-          state.defeatedGyms = uniqueSorted([...state.defeatedGyms, battle.gymBadge]);
-          state.player.badges = state.defeatedGyms.length;
-        }
+        recordCampaignGymVictory(state, battle.campaignRegion ?? 'kanto', battle.gymBadge);
         state.player.money += 1500 * battle.gymBadge;
         events.push(event(battle, `배지 ${battle.gymBadge}을(를) 얻었다.`, 'reward'));
       } else if (battle.kind === 'trainer' && battle.trainerId) {
@@ -690,10 +676,7 @@ function concludeIfNeeded(state: GameState, battle: BattleState, events: BattleL
         events.push(event(battle, `${trainer.trainerClass} ${trainer.name} was defeated.`, 'reward'));
       } else if (battle.trainerId) {
         const trainer = CAMPAIGN_TRAINERS.find(item => item.id === battle.trainerId)!;
-        state.campaign ??= campaignProgress(state);
-        if (trainer.kind === 'red') state.campaign.redDefeated = true;
-        else if (trainer.region === 'johto') state.campaign.johtoLeague++;
-        else { state.campaign.kantoLeague++; state.championDefeated = state.campaign.kantoLeague === 5; }
+        recordCampaignLeagueVictory(state, trainer);
         state.player.money += trainer.kind === 'red' ? 30000 : trainer.kind === 'champion' ? 20000 : 8000;
         events.push(event(battle, `${trainer.name} 클리어! 다음 도전이 열렸습니다.`, 'reward'));
       } else if (battle.kind === 'champion') {
@@ -841,15 +824,25 @@ function useHealingItem(state: GameState, item: 'potion' | 'super-potion', targe
   monster.hp = Math.min(monster.stats.hp, monster.hp + (item === 'potion' ? 20 : 50)); state.inventory[item]--;
 }
 
-export function useItem(state: GameState, item: InventoryItem, targetInstanceId?: string): void {
+export function useItem(state: GameState, item: InventoryItem, targetInstanceId?: string, quantity = 1): void {
+  if (!Number.isSafeInteger(quantity) || quantity < 1) throw new Error('사용 수량은 1 이상의 정수여야 합니다.');
   if (!targetInstanceId) throw new Error('대상 포켓몬을 선택해야 합니다.');
-  if (item === 'potion' || item === 'super-potion') { useHealingItem(state, item, targetInstanceId); return; }
+  if (item === 'potion' || item === 'super-potion') {
+    if (quantity !== 1) throw new Error('회복 도구는 한 번에 1개만 사용할 수 있습니다.');
+    useHealingItem(state, item, targetInstanceId); return;
+  }
   if (item === 'rare-candy') {
     if (state.battle) throw new Error('전투 중에는 이상한사탕을 사용할 수 없습니다.');
-    if (state.inventory[item] <= 0) throw new Error('rare-candy이(가) 없습니다.');
     const monster = findOwned(state, targetInstanceId);
     if (monster.level >= 100) throw new Error('이미 최대 레벨입니다.');
-    state.inventory[item]--; gainExperience(monster, experienceAtLevel(monster.level + 1, getSpecies(monster.speciesId).growthRate) - monster.xp);
+    if (quantity > state.inventory[item]) throw new Error('이상한사탕 보유 수량이 부족합니다.');
+    if (quantity > 100 - monster.level) throw new Error('레벨 100을 넘도록 사용할 수 없습니다.');
+    const targetLevel = monster.level + quantity;
+    const grown: Monster = { ...monster, moves: structuredClone(monster.moves), moveOrder: monster.moveOrder?.slice(), movePpReserve: structuredClone(monster.movePpReserve) };
+    gainExperience(grown, experienceAtLevel(targetLevel, getSpecies(monster.speciesId).growthRate) - monster.xp);
+    state.inventory[item] -= quantity;
+    Object.assign(monster, { xp: grown.xp, level: grown.level, stats: grown.stats, hp: grown.hp,
+      moves: grown.moves, moveOrder: grown.moveOrder, movePpReserve: grown.movePpReserve });
     return;
   }
   throw new Error('이 아이템은 진화 또는 전투 전용입니다.');
@@ -1023,9 +1016,16 @@ export function previewDuplicateMerge(state: GameState, targetId: string, donorI
   const target = findOwned(state, targetId), donors = donorIds.map(id => findOwned(state, id));
   if (donors.some(donor => donor.speciesId !== target.speciesId)) throw new Error('같은 종끼리만 경험치를 합칠 수 있습니다.');
   if (target.level >= 100) throw new Error('이미 최고 레벨입니다.');
-  const totalXp = donors.reduce((sum, donor) => sum + duplicateMergeValue(donor).xp, 0);
-  const gainedXp = Math.min(totalXp, experienceAtLevel(100, getSpecies(target.speciesId).growthRate) - target.xp);
-  return { donorIds: [...donorIds], count: donors.length, totalXp, gainedXp, excessXp: totalXp - gainedXp,
+  const donorLevels = donors.reduce((sum, donor) => sum + donor.level, 0);
+  const totalLevels = Math.floor(duplicateMergeValue({ level: donorLevels }).levels);
+  if (totalLevels < 1) throw new Error('보내는 개체들의 레벨 합계가 5 이상이어야 합칠 수 있습니다.');
+  const gainedLevels = Math.min(totalLevels, 100 - target.level), toLevel = target.level + gainedLevels;
+  const growth = getSpecies(target.speciesId).growthRate;
+  const startXp = experienceAtLevel(target.level, growth), nextXp = experienceAtLevel(target.level + 1, growth);
+  const progress = Math.max(0, Math.min(1, (target.xp - startXp) / (nextXp - startXp)));
+  const destinationXp = experienceAtLevel(toLevel, growth) + (toLevel < 100 ? Math.floor(progress * (experienceAtLevel(toLevel + 1, growth) - experienceAtLevel(toLevel, growth))) : 0);
+  const gainedXp = Math.max(0, destinationXp - target.xp);
+  return { donorIds: [...donorIds], count: donors.length, donorLevels, totalLevels, gainedLevels, toLevel, excessLevels: totalLevels - gainedLevels, gainedXp,
     movesToTeam: state.player.team.every(monster => donorIds.includes(monster.instanceId)) };
 }
 
@@ -1038,11 +1038,11 @@ export function mergeDuplicateMonsters(state: GameState, targetId: string, donor
   if (plan.movesToTeam) team.push(target);
   // Stage growth before any collection mutation; keep the original neural objects intact.
   const grown: Monster = { ...target, moves: structuredClone(target.moves), moveOrder: target.moveOrder?.slice(), movePpReserve: structuredClone(target.movePpReserve) };
-  gainExperience(grown, plan.totalXp);
+  gainExperience(grown, plan.gainedXp);
   Object.assign(target, { xp: grown.xp, level: grown.level, stats: grown.stats, hp: grown.hp,
     moves: grown.moves, moveOrder: grown.moveOrder, movePpReserve: grown.movePpReserve });
   state.player.team = team; state.player.box = box;
-  addLog(state, `${target.nickname} (${targetId})에게 같은 종 ${plan.count}마리의 경험치 ${plan.gainedXp}을(를) 합쳤다. 남긴 개체의 회로 기억을 유지한다.`);
+  addLog(state, `${target.nickname} (${targetId})에게 같은 종 ${plan.count}마리의 레벨 합계 ${plan.donorLevels} 중 20%를 합쳐 +${plan.gainedLevels}레벨. 남긴 개체의 회로 기억을 유지한다.`);
   return plan;
 }
 
@@ -1107,6 +1107,7 @@ export function validateGame(value: unknown): GameState {
     || (progress.startRegion === 'johto' && state.player.badges > 0 && progress.johtoLeague < 5)
     || (progress.kantoLeague === 5) !== state.championDefeated || typeof progress.redDefeated !== 'boolean'
     || (progress.redDefeated && !canChallengeRed(state))) throw new Error('지역별 리그 진행이 손상되었습니다.');
+  validateExpansionCampaign(state);
   if (!Array.isArray(state.logs) || state.logs.length > 200 || state.logs.some((log) => typeof log !== 'string' || log.length > 500)) throw new Error('로그가 손상되었습니다.');
   const region = getRegion(state.regionId);
   if (region.minBadges > state.player.badges) throw new Error('잠기지 않은 지역 진행이 손상되었습니다.');
@@ -1148,7 +1149,7 @@ export function validateGame(value: unknown): GameState {
     const battle = state.battle;
     if (!['wild', 'gym', 'trainer', 'champion', 'elite', 'red'].includes(battle.kind) || !Number.isInteger(battle.turn) || battle.turn < 1 || typeof battle.canRun !== 'boolean' || !Array.isArray(battle.enemy?.team) || battle.enemy.team.length < 1 || !Number.isInteger(battle.enemy.activeIndex) || battle.enemy.activeIndex < 0 || battle.enemy.activeIndex >= battle.enemy.team.length || !Number.isInteger(battle.player?.activeIndex) || battle.player.activeIndex < 0 || battle.player.activeIndex >= state.player.team.length) throw new Error('전투 상태가 손상되었습니다.');
     if (battle.kind === 'wild' ? !battle.canRun || battle.enemy.team.length !== 1 : battle.canRun) throw new Error('전투 도주 규칙이 손상되었습니다.');
-    if (battle.campaignRegion !== undefined && !['johto', 'kanto'].includes(battle.campaignRegion)) throw new Error('전투 지역이 손상되었습니다.');
+    if (battle.campaignRegion !== undefined && !CAMPAIGN_REGIONS.includes(battle.campaignRegion)) throw new Error('전투 지역이 손상되었습니다.');
     if (battle.kind !== 'wild' && campaignTravelReason(state, battle.campaignRegion ?? 'kanto')) throw new Error('리그 여행 조건이 손상되었습니다.');
     if (battle.kind === 'gym' && (!Number.isInteger(battle.gymBadge) || battle.gymBadge !== getRegionalBadges(state, battle.campaignRegion ?? 'kanto') + 1)) throw new Error('체육관 전투 진행이 손상되었습니다.');
     if (battle.kind === 'trainer') {

@@ -2,6 +2,7 @@ import type { WorldSample } from './types';
 import { KANTO_LOCATIONS, type KantoLocation } from './kanto';
 import { JOHTO_LOCATIONS } from './johto';
 import { scaleWorldDistance, surfaceSceneId, type ScenePoint } from './world-space';
+import { caveRelief, caveFloorHeight, type CaveRelief } from './cave-relief';
 
 export type CaveRegionId = 'kanto' | 'johto';
 export type CaveWallSegment = ScenePoint & { width: number; depth: number; height: number };
@@ -30,6 +31,7 @@ export type CaveScene = {
   tileSize: number;
   portals: readonly CavePortal[];
   wallSegments: readonly CaveWallSegment[];
+  relief: CaveRelief;
   sample: (x: number, z: number) => WorldSample;
 };
 
@@ -68,6 +70,7 @@ function buildScene(plan: CavePlan): CaveScene {
     Array.from({ length: plan.width }, (_, x) => x > 0 && z > 0 && x < plan.width - 1 && z < plan.depth - 1));
   const portalTiles = plan.surfaceLocations.map((_, index) => index === 0 ? { x: 1, z: 1 } : { x: plan.width - 2, z: plan.depth - 2 });
   const chamberWidth = plan.width * TILE_SIZE, chamberDepth = plan.depth * TILE_SIZE;
+  const relief = caveRelief(plan.id, plan.seed, chamberWidth, chamberDepth);
   const wallSegments: CaveWallSegment[] = [
     { x: 0, z: -(chamberDepth - TILE_SIZE) / 2, width: chamberWidth, depth: TILE_SIZE, height: 3.4 },
     { x: 0, z: (chamberDepth - TILE_SIZE) / 2, width: chamberWidth, depth: TILE_SIZE, height: 3.4 },
@@ -96,12 +99,13 @@ function buildScene(plan: CavePlan): CaveScene {
   const sample = (x: number, z: number): WorldSample => {
     if (![x, z].every(Number.isFinite)) return { height: 0, biome: 'rock', blocked: true };
     const tileX = Math.round(x / TILE_SIZE + (plan.width - 1) / 2), tileZ = Math.round(z / TILE_SIZE + (plan.depth - 1) / 2);
-    const blocked = tileX < 0 || tileZ < 0 || tileX >= plan.width || tileZ >= plan.depth || !floor[tileZ][tileX];
-    return { height: 0, biome: 'rock', blocked };
+    const rim = Math.min(chamberWidth / 2 - Math.abs(x), chamberDepth / 2 - Math.abs(z));
+    const blocked = tileX < 0 || tileZ < 0 || tileX >= plan.width || tileZ >= plan.depth || !floor[tileZ][tileX] || rim < 2.8;
+    return { height: caveFloorHeight(relief, x, z), exactHeight: true, biome: 'rock', blocked };
   };
   return { id: plan.id, sceneId: `cave:${plan.regionId}:${plan.id}`, regionId: plan.regionId, name: plan.name, label: plan.label,
     encounterLocationId: encounter.id, minLevel: encounter.minLevel, maxLevel: encounter.maxLevel, encounters: encounter.encounters,
-    width: plan.width * TILE_SIZE, depth: plan.depth * TILE_SIZE, tileSize: TILE_SIZE, portals, wallSegments, sample };
+    width: plan.width * TILE_SIZE, depth: plan.depth * TILE_SIZE, tileSize: TILE_SIZE, portals, wallSegments, relief, sample };
 }
 
 export const CAVE_SCENES: readonly CaveScene[] = plans.map(buildScene);

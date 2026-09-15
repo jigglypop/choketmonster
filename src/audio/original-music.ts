@@ -9,6 +9,8 @@ const SELECT_EVENT = 'choketmon:music-select';
 const REMOVE_EVENT = 'choketmon:music-remove';
 const QUERY_EVENT = 'choketmon:music-query';
 const STATUS_EVENT = 'choketmon:music-status';
+const DEFAULT_TRACK_URL = (import.meta.env.VITE_DEFAULT_BGM_URL as string | undefined) ?? '/audio/other-center.mp4';
+const DEFAULT_TRACK_NAME = (import.meta.env.VITE_DEFAULT_BGM_NAME as string | undefined) ?? 'Other Center · Chris Murphy.mp4';
 
 type StoredTrack = { blob: Blob; name: string; type: string; size: number; lastModified: number };
 type MusicStatus = { message: string; hasFile: boolean; name?: string; playing: boolean; state: 'empty' | 'loading' | 'ready' | 'playing' | 'paused' | 'blocked' | 'error' };
@@ -75,10 +77,10 @@ function validateAudio(url: string): Promise<void> {
   });
 }
 
-/** Plays only a user-selected local file. The Blob stays in this browser and is never uploaded. */
+/** Local selection overrides a configured, licensed default track. Blobs are never uploaded. */
 export function mountOriginalMusic(button: HTMLButtonElement): { open(): void; destroy(): void } {
   const input = document.createElement('input');
-  input.id = 'game-music-file'; input.type = 'file'; input.accept = 'audio/*,.mp3,.m4a,.aac,.ogg,.wav,.flac'; input.hidden = true;
+  input.id = 'game-music-file'; input.type = 'file'; input.accept = 'audio/*,video/mp4,.mp4,.mp3,.m4a,.aac,.ogg,.wav,.flac'; input.hidden = true;
   const audio = document.createElement('audio');
   audio.id = 'game-music-audio'; audio.preload = 'metadata'; audio.loop = true; audio.hidden = true;
   const feedback = document.createElement('output');
@@ -194,14 +196,16 @@ export function mountOriginalMusic(button: HTMLButtonElement): { open(): void; d
   input.onchange = async () => {
     const file = input.files?.[0]; input.value = '';
     if (!file) return;
-    const supported = file.type.startsWith('audio/') && (audio.canPlayType(file.type) !== '' || file.type === 'audio/flac');
-    if (!supported) { emit({ message: '지원하는 오디오 파일(MP3, M4A, AAC, OGG, WAV, FLAC)을 선택해 주세요.', hasFile: Boolean(track), name: track?.name, playing: false, state: 'error' }, true); return; }
+    const fallbackTypes: Record<string, string> = { mp4: 'audio/mp4', m4a: 'audio/mp4', mp3: 'audio/mpeg', aac: 'audio/aac', ogg: 'audio/ogg', wav: 'audio/wav', flac: 'audio/flac' };
+    const type = (!file.type || file.type === 'application/octet-stream') ? fallbackTypes[file.name.split('.').pop()?.toLowerCase() ?? ''] ?? '' : file.type;
+    const supported = (type.startsWith('audio/') || type === 'video/mp4') && (audio.canPlayType(type) !== '' || type === 'audio/flac');
+    if (!supported) { emit({ message: '지원하는 음악 파일(MP4, MP3, M4A, AAC, OGG, WAV, FLAC)을 선택해 주세요.', hasFile: Boolean(track), name: track?.name, playing: false, state: 'error' }, true); return; }
     const token = ++generation;
     emit({ message: '선택한 BGM 파일을 읽는 중…', hasFile: Boolean(track), name: track?.name, playing: false, state: 'loading' });
     let next: StoredTrack;
     try {
       const bytes = await file.arrayBuffer();
-      next = { blob: new Blob([bytes], { type: file.type }), name: file.name, type: file.type, size: file.size, lastModified: file.lastModified };
+      next = { blob: new Blob([bytes], { type }), name: file.name, type, size: file.size, lastModified: file.lastModified };
     } catch {
       emit({ message: '선택한 음악 파일을 읽지 못했습니다. 파일 접근 권한을 확인해 주세요.', hasFile: Boolean(track), name: track?.name, playing: false, state: 'error' }, true); return;
     }
@@ -252,6 +256,18 @@ export function mountOriginalMusic(button: HTMLButtonElement): { open(): void; d
   emit({ message: '이 기기에 저장된 BGM을 확인하는 중…', hasFile: false, playing: false, state: 'loading' });
   void readStoredTrack().then(async saved => {
     if (disposed || restoreToken !== generation) return;
+    if (!saved && DEFAULT_TRACK_URL) {
+      try {
+        const response = await fetch(DEFAULT_TRACK_URL);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const blob = await response.blob();
+        if (disposed || restoreToken !== generation) return;
+        await installTrack({ blob, name: DEFAULT_TRACK_NAME, type: blob.type, size: blob.size, lastModified: 0 }, restoreToken);
+      } catch {
+        if (!disposed && restoreToken === generation) emit({ message: '기본 BGM을 불러오지 못했습니다. 재생할 파일을 선택해 주세요.', hasFile: false, playing: false, state: 'error' }, true);
+      }
+      return;
+    }
     if (!saved) { emit({ message: 'BGM 파일을 선택하세요.', hasFile: false, playing: false, state: 'empty' }); return; }
     await installTrack(saved, restoreToken);
   }).catch(() => emit({ message: '이 기기에 저장된 BGM을 불러오지 못했습니다. 파일을 다시 선택해 주세요.', hasFile: false, playing: false, state: 'error' }, true));

@@ -14,7 +14,9 @@ export function terrainSurfaceHeight(sample: (x: number, z: number) => WorldSamp
   const tx = u - ix, tz = v - iz;
   const x0 = Math.fround(WORLD_MIN + ix * size), z0 = Math.fround(WORLD_MIN + iz * size);
   const x1 = Math.fround(WORLD_MIN + (ix + 1) * size), z1 = Math.fround(WORLD_MIN + (iz + 1) * size);
-  const a = Math.fround(sample(x0, z0).height), b = Math.fround(sample(x0, z1).height), d = Math.fround(sample(x1, z0).height);
+  const corner = sample(x0, z0);
+  if (corner.exactHeight) return sample(x, z).height;
+  const a = Math.fround(corner.height), b = Math.fround(sample(x0, z1).height), d = Math.fround(sample(x1, z0).height);
   if (tx + tz <= 1) return a * (1 - tx - tz) + b * tz + d * tx;
   return b * (1 - tx) + Math.fround(sample(x1, z1).height) * (tx + tz - 1) + d * (1 - tz);
 }

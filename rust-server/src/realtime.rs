@@ -117,6 +117,9 @@ fn epoch_seconds() -> u64 {
 enum Region {
     Johto,
     Kanto,
+    Hoenn,
+    Sinnoh,
+    Unova,
 }
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 struct RoomKey {
@@ -706,7 +709,7 @@ fn join(
     activity: Activity,
 ) {
     if !valid_position(x, z, heading)
-        || !(1..=1025).contains(&species_id)
+        || !(1..=649).contains(&species_id)
         || !valid_scene(region, &scene_id)
     {
         send_error(
@@ -850,7 +853,7 @@ fn update_player(
     activity: Activity,
     now: Instant,
 ) {
-    if !valid_position(x, z, heading) || !(1..=1025).contains(&species_id) {
+    if !valid_position(x, z, heading) || !(1..=649).contains(&species_id) {
         send_error(
             state,
             id,
@@ -993,6 +996,9 @@ fn valid_scene(region: Region, value: &str) -> bool {
     let expected_region = match region {
         Region::Kanto => "kanto",
         Region::Johto => "johto",
+        Region::Hoenn => "hoenn",
+        Region::Sinnoh => "sinnoh",
+        Region::Unova => "unova",
     };
     let mut parts = value.split(':');
     matches!(parts.next(), Some("surface") | Some("cave"))
@@ -1173,6 +1179,9 @@ mod tests {
         let scene = match region {
             Region::Kanto => "surface:kanto",
             Region::Johto => "surface:johto",
+            Region::Hoenn => "surface:hoenn",
+            Region::Sinnoh => "surface:sinnoh",
+            Region::Unova => "surface:unova",
         };
         join(
             state,
@@ -1227,10 +1236,60 @@ mod tests {
     fn validates_region_scoped_surface_and_cave_scenes() {
         assert!(valid_scene(Region::Kanto, "surface:kanto"));
         assert!(valid_scene(Region::Johto, "cave:johto:dark-cave-1"));
+        assert!(valid_scene(Region::Hoenn, "surface:hoenn"));
+        assert!(valid_scene(Region::Sinnoh, "surface:sinnoh"));
+        assert!(valid_scene(Region::Unova, "surface:unova"));
         assert!(!valid_scene(Region::Kanto, "surface"));
         assert!(!valid_scene(Region::Kanto, "surface:johto"));
+        assert!(!valid_scene(Region::Hoenn, "surface:sinnoh"));
         assert!(!valid_scene(Region::Johto, "cave:kanto:rock-tunnel"));
         assert!(!valid_scene(Region::Kanto, "cave:kanto:bad_room"));
+    }
+
+    #[test]
+    fn accepts_expansion_presence_through_species_649() {
+        let state = test_state(64);
+        let mut accepted = connect(&state, "aaaa");
+        join(
+            &state,
+            "aaaa",
+            Region::Hoenn,
+            "surface:hoenn".into(),
+            649,
+            1.0,
+            2.0,
+            0.0,
+            Activity::Idle,
+        );
+        assert!(
+            accepted
+                .try_recv()
+                .unwrap()
+                .into_text()
+                .unwrap()
+                .contains("\"type\":\"welcome\"")
+        );
+
+        let mut rejected = connect(&state, "bbbb");
+        join(
+            &state,
+            "bbbb",
+            Region::Unova,
+            "surface:unova".into(),
+            650,
+            1.0,
+            2.0,
+            0.0,
+            Activity::Idle,
+        );
+        assert!(
+            rejected
+                .try_recv()
+                .unwrap()
+                .into_text()
+                .unwrap()
+                .contains("INVALID_JOIN")
+        );
     }
 
     #[test]

@@ -1,12 +1,12 @@
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-import { prepareJohtoRig } from './johto-rig';
+import { prepareRegionalRig } from './johto-rig';
 
 class PokemonGLTFLoader extends GLTFLoader {
   override async loadAsync(url: string, onProgress?: (event: ProgressEvent) => void) {
     const gltf = await super.loadAsync(url, onProgress);
-    const match = url.match(/\/(?:regular|pokemon)\/(\d+)\.glb(?:[?#]|$)/);
-    if (match) prepareJohtoRig(gltf, Number(match[1]));
+    const match = url.match(/\/(?:regular|pokemon)\/(\d+)(?:-[A-Za-z0-9]+)?\.glb(?:[?#]|$)/);
+    if (match) prepareRegionalRig(gltf, Number(match[1]));
     return gltf;
   }
 }

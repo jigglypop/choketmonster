@@ -56,6 +56,21 @@ describe('RealtimeClient', () => {
     client.close();
   });
 
+  it('accepts expansion-region rooms and rejects cross-region scenes or unsupported species', () => {
+    const socket = new FakeSocket(); const client = new RealtimeClient({ url: 'ws://test/api/realtime', ticket: 'test-ticket', createSocket: () => socket as unknown as WebSocket, visible: () => true });
+    let latest = client.snapshot(); client.subscribe(view => { latest = view; });
+    const presence: Presence = { ...base, region: 'hoenn', sceneId: 'surface:hoenn', speciesId: 252 };
+    client.join(presence); socket.open();
+    socket.message({ type: 'welcome', id: 'self', region: 'hoenn', sceneId: 'surface:hoenn', tickRate: 10,
+      players: [
+        { ...presence, id: 'valid', name: '호연', updatedAt: 1 },
+        { ...presence, id: 'cross', name: 'wrong', sceneId: 'surface:sinnoh', updatedAt: 1 },
+        { ...presence, id: 'future', name: 'future', speciesId: 650, updatedAt: 1 },
+      ], history: [] });
+    expect(latest.players.map(player => player.id)).toEqual(['valid']);
+    client.close();
+  });
+
   it('backs off after close and rejoins with the latest state', () => {
     const sockets: FakeSocket[] = [];
     const client = new RealtimeClient({ url: 'ws://test/api/realtime', ticket: 'test-ticket', createSocket: () => { const socket = new FakeSocket(); sockets.push(socket); return socket as unknown as WebSocket; }, visible: () => true, random: () => 0 });

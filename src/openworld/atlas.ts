@@ -1,5 +1,8 @@
 import type { WorldSample } from './types';
 import { JOHTO_ATLAS } from './johto';
+import * as hoennMap from './hoenn';
+import * as sinnohMap from './sinnoh';
+import * as unovaMap from './unova';
 import { CAVE_SCENES, getCaveScene, type CaveScene } from './caves';
 import { WORLD_SCALE, surfaceSceneId } from './world-space';
 import {
@@ -166,7 +169,70 @@ const johto: WorldAtlas = {
 const legacyJohto = createAtlas(plans.find(plan => plan.id === 'johto')!, 1);
 /** Validate old coordinates before migrating them into the reconstructed map. */
 export const getLegacyJohtoAtlas = (): WorldAtlas => legacyJohto;
-export const WORLDS: readonly WorldAtlas[] = [kanto, johto, ...plans.filter(plan => plan.id !== 'johto').map(plan => createAtlas(plan))];
+export type LegacyExpansionRegion = 'hoenn' | 'sinnoh' | 'unova';
+const legacyExpansionPlans = Object.fromEntries(
+  plans.filter((plan): plan is AtlasPlan & { id: LegacyExpansionRegion } => plan.id === 'hoenn' || plan.id === 'sinnoh' || plan.id === 'unova')
+    .map(plan => [plan.id, { v1: createAtlas(plan, 1), v2: createAtlas(plan) }]),
+) as Record<LegacyExpansionRegion, { v1: WorldAtlas; v2: WorldAtlas }>;
+
+/** Resolve the provisional atlas that wrote an expansion save before authored maps shipped. */
+export function getLegacyExpansionAtlas(regionId: string, mapVersion: string | undefined): WorldAtlas | undefined {
+  if (regionId !== 'hoenn' && regionId !== 'sinnoh' && regionId !== 'unova') return undefined;
+  if (mapVersion === `${regionId}-atlas-v1`) return legacyExpansionPlans[regionId].v1;
+  if (mapVersion === `${regionId}-atlas-v2`) return legacyExpansionPlans[regionId].v2;
+  return undefined;
+}
+
+const legacyExpansionLocationIds: Record<LegacyExpansionRegion, Readonly<Record<string, string>>> = {
+  hoenn: {
+    littleroot: 'littleroot-town', petalburg: 'petalburg-city', rustboro: 'rustboro-city', dewford: 'dewford-town',
+    slateport: 'slateport-city', mauville: 'mauville-city', 'mt-chimney': 'fiery-path', lavaridge: 'lavaridge-town',
+    fortree: 'fortree-city', lilycove: 'lilycove-city',
+  },
+  sinnoh: {
+    twinleaf: 'twinleaf-town', sandgem: 'sandgem-town', jubilife: 'jubilife-city', oreburgh: 'oreburgh-city',
+    'mt-coronet': 'mt-coronet', hearthome: 'hearthome-city', veilstone: 'veilstone-city', pastoria: 'pastoria-city',
+    canalave: 'canalave-city', snowpoint: 'snowpoint-city',
+  },
+  unova: {
+    nuvema: 'nuvema-town', accumula: 'accumula-town', striaton: 'striaton-city', nacrene: 'nacrene-city',
+    castelia: 'castelia-city', nimbasa: 'nimbasa-city', driftveil: 'driftveil-city', mistralton: 'mistralton-city',
+    icirrus: 'icirrus-city', opelucid: 'opelucid-city',
+  },
+};
+
+/** Map a provisional landmark id to the corresponding authored-map id. */
+export function migrateLegacyExpansionLocationId(regionId: string, locationId: string): string {
+  if (regionId !== 'hoenn' && regionId !== 'sinnoh' && regionId !== 'unova') return locationId;
+  return legacyExpansionLocationIds[regionId][locationId] ?? locationId;
+}
+const expandedAtlas = (base: WorldAtlas, data: {
+  mapVersion: string; start: WorldAtlas['start']; locations: WorldAtlas['locations']; connections: WorldAtlas['connections'];
+  gates: WorldAtlas['gates']; gyms: WorldAtlas['gyms']; sample: WorldAtlas['sample']; locationAt: WorldAtlas['locationAt'];
+  distanceToPath: WorldAtlas['distanceToPath']; evaluateTraversal: WorldAtlas['evaluateTraversal']; safeArrival: WorldAtlas['safeArrival'];
+}): WorldAtlas => ({
+  ...base, ...data, surfaceConnections: data.connections,
+  defaultVersion: base.id === 'hoenn' ? 'emerald' : base.id === 'sinnoh' ? 'platinum' : 'black',
+  buildingOffsets: base.id === 'hoenn' ? hoennMap.hoennBuildingOffsets : base.id === 'sinnoh' ? sinnohMap.sinnohBuildingOffsets : unovaMap.unovaBuildingOffsets,
+  nearestWalkable: (x, z, badges = 0) => {
+    if (data.evaluateTraversal({ x, z }, { x, z }, badges).allowed) return { x, z };
+    for (const location of [...data.locations].sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z))) {
+      const point = data.safeArrival(location.id, badges); if (point) return point;
+    }
+    return undefined;
+  },
+  travelPoint: (id, badges = 0) => data.locations.find(location => location.id === id)?.kind === 'town' ? data.safeArrival(id, badges) : undefined,
+  encounters: (id, badges) => { const location = data.locations.find(item => item.id === id); return location && location.requiredBadges <= badges ? [...location.encounters] : []; },
+});
+const expansionMaps = {
+  hoenn: { mapVersion: hoennMap.HOENN_MAP_VERSION, start: hoennMap.HOENN_START, locations: hoennMap.HOENN_LOCATIONS, connections: hoennMap.HOENN_CONNECTIONS, gates: hoennMap.HOENN_GATES, gyms: hoennMap.HOENN_GYMS, sample: hoennMap.sampleHoennWorld, locationAt: hoennMap.hoennLocationAt, distanceToPath: hoennMap.distanceToHoennPath, evaluateTraversal: hoennMap.evaluateHoennTraversal, safeArrival: hoennMap.safeHoennArrival },
+  sinnoh: { mapVersion: sinnohMap.SINNOH_MAP_VERSION, start: sinnohMap.SINNOH_START, locations: sinnohMap.SINNOH_LOCATIONS, connections: sinnohMap.SINNOH_CONNECTIONS, gates: sinnohMap.SINNOH_GATES, gyms: sinnohMap.SINNOH_GYMS, sample: sinnohMap.sampleSinnohWorld, locationAt: sinnohMap.sinnohLocationAt, distanceToPath: sinnohMap.distanceToSinnohPath, evaluateTraversal: sinnohMap.evaluateSinnohTraversal, safeArrival: sinnohMap.safeSinnohArrival },
+  unova: { mapVersion: unovaMap.UNOVA_MAP_VERSION, start: unovaMap.UNOVA_START, locations: unovaMap.UNOVA_LOCATIONS, connections: unovaMap.UNOVA_CONNECTIONS, gates: unovaMap.UNOVA_GATES, gyms: unovaMap.UNOVA_GYMS, sample: unovaMap.sampleUnovaWorld, locationAt: unovaMap.unovaLocationAt, distanceToPath: unovaMap.distanceToUnovaPath, evaluateTraversal: unovaMap.evaluateUnovaTraversal, safeArrival: unovaMap.safeUnovaArrival },
+};
+export const WORLDS: readonly WorldAtlas[] = [kanto, johto, ...plans.filter(plan => plan.id !== 'johto').map(plan => {
+  const base = createAtlas(plan);
+  return plan.id === 'hoenn' || plan.id === 'sinnoh' || plan.id === 'unova' ? expandedAtlas(base, expansionMaps[plan.id]) : base;
+})];
 const worldsById = new Map(WORLDS.map(world => [world.id, world]));
 export function getWorldAtlas(id: string): WorldAtlas {
   const world = worldsById.get(id as WorldRegionId); if (!world) throw new RangeError(`Unknown world region: ${id}`); return world;

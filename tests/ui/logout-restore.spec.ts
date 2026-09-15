@@ -2,7 +2,8 @@ import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createGame } from '../../src/game/engine';
 import { ConnectomeController } from '../../src/game/connectome';
-import { defaultView, packSave } from '../../src/game/storage';
+import { defaultView, packSave, type ViewState } from '../../src/game/storage';
+import { OpenWorldSimulation } from '../../src/openworld/simulation';
 import { openExplorePanel } from './helpers/explore-panel';
 
 async function slots(page: Page) {
@@ -18,12 +19,19 @@ async function slots(page: Page) {
   }));
 }
 
-async function fixture(page: Page, loggedIn: boolean, paused = true) {
+async function fixture(page: Page, loggedIn: boolean, paused = true, shortRoster = false) {
   const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8'));
   const game = createGame(4, 'logout-local-restore');
   game.player.team[0].nickname = '저장된 파이리';
   new ConnectomeController(graph).ensure(game.player.team[0]);
-  const save = packSave(game, graph, { ...defaultView(), openWorldPaused: paused });
+  const view: ViewState = { ...defaultView(), openWorldPaused: paused };
+  if (shortRoster) {
+    const world = new OpenWorldSimulation(graph, game, 24_680).snapshot();
+    world.entities = world.entities.filter(entity => entity.kind === 'companion').concat(world.entities.filter(entity => entity.kind === 'wild').slice(0, 8));
+    world.respawnQueue = [];
+    view.openWorld = world;
+  }
+  const save = packSave(game, graph, view);
   const user = { id: 'logout-restore-user', username: 'restore' };
   const state = { loggedIn, rejectLogout: false, rejectCheckpoint: false, puts: [] as any[], reads: 0, remote: save, revision: 1 };
   await page.route('**/api/auth/me', route => route.fulfill({ json: { user: state.loggedIn ? user : null } }));
@@ -44,8 +52,28 @@ async function fixture(page: Page, loggedIn: boolean, paused = true) {
   return { state, save, user };
 }
 
-async function login(page: Page) {
-  await page.locator('[data-open-auth]').click();
+test('login repairs a short server wild roster and preserves its saved individuals across reload', async ({ page }) => {
+  test.setTimeout(120000);
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  const { save, user } = await fixture(page, false, true, true);
+  const savedWorld = save.view.openWorld!;
+  const savedWilds = savedWorld.entities.filter(entity => entity.kind === 'wild').map(entity => ({ id: entity.id, brain: entity.brain }));
+  await page.goto('/');
+  await login(page, true);
+  await expect(page.locator('#toast')).not.toContainText('Open world requires');
+  await page.locator('#save-now').click();
+  const accountKey = `account:${user.id}:current`;
+  await expect.poll(async () => (await slots(page))[accountKey]?.view?.openWorld?.entities?.filter((entity: { kind: string }) => entity.kind === 'wild').length, { timeout: 30000 }).toBe(12);
+  const repaired = (await slots(page))[accountKey].view.openWorld;
+  for (const saved of savedWilds) expect(repaired.entities.find((entity: { id: string }) => entity.id === saved.id)?.brain).toEqual(saved.brain);
+  await page.reload(); await openExplorePanel(page);
+  await expect(page.locator('#world-pause')).toBeVisible({ timeout: 30000 });
+  expect(errors).toEqual([]);
+});
+
+async function login(page: Page, fromStarter = false) {
+  if (fromStarter) { await expect(page.locator('[data-load-account]')).toBeVisible(); await page.locator('[data-load-account]').click(); }
+  else await page.locator('[data-open-auth]').click();
   await page.locator('.account-dialog input[name="username"]').fill('restore');
   await page.locator('.account-dialog input[name="password"]').fill('correct-password');
   await page.locator('.account-submit').click();

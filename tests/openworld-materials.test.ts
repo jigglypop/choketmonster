@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { MeshStandardMaterial, Texture } from 'three';
-import { createWaterNodeMaterial, normalizeStandardMaterial } from '../src/openworld/materials';
+import { Color, MeshStandardMaterial, Texture } from 'three';
+import { createWaterNodeMaterial, normalizeStandardMaterial, regionTrailColor, worldSurfaceColor } from '../src/openworld/materials';
+import { getWorldAtlas } from '../src/openworld/atlas';
 
 describe('open-world TSL materials', () => {
   it('preserves imported PBR appearance while adding node wind', () => {
@@ -28,5 +29,15 @@ describe('open-world TSL materials', () => {
     expect(sea.colorNode).not.toBeNull(); expect(sea.normalNode).not.toBeNull();
     expect(lake.colorNode).not.toBeNull(); expect(lake.normalNode).not.toBeNull();
     sea.dispose(); lake.dispose();
+  });
+
+  it('uses each atlas palette for grass, road, town and water vertex tint', () => {
+    const kanto = getWorldAtlas('kanto'), johto = getWorldAtlas('johto');
+    const pallet = kanto.locations.find(item => item.id === 'pallet')!;
+    expect(worldSurfaceColor(kanto, { height: 0, biome: 'meadow', blocked: false }, pallet.x, pallet.z).getHexString())
+      .not.toBe(worldSurfaceColor(kanto, { height: 0, biome: 'meadow', blocked: false }, 0, 0).getHexString());
+    expect(regionTrailColor(kanto)).not.toBe(regionTrailColor(johto));
+    expect(worldSurfaceColor(johto, { height: 0, biome: 'lake', blocked: false }, 0, 0).getHexString())
+      .toBe(new Color(johto.palette.water).getHexString());
   });
 });

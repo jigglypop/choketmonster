@@ -441,15 +441,24 @@ fn validate_monster(
 const WORLD_MAPS: [(&str, &str); 10] = [
     ("kanto", "kanto-v3"),
     ("johto", "johto-v3"),
-    ("hoenn", "hoenn-atlas-v1"),
-    ("sinnoh", "sinnoh-atlas-v1"),
-    ("unova", "unova-atlas-v1"),
+    ("hoenn", "hoenn-authored-v1"),
+    ("sinnoh", "sinnoh-authored-v1"),
+    ("unova", "unova-authored-v1"),
     ("kalos", "kalos-atlas-v1"),
     ("alola", "alola-atlas-v1"),
     ("galar", "galar-atlas-v1"),
     ("hisui", "hisui-atlas-v1"),
     ("paldea", "paldea-atlas-v1"),
 ];
+
+fn is_legacy_expansion_map(region: Option<&str>, map_version: Option<&str>) -> bool {
+    matches!(
+        (region, map_version),
+        (Some("hoenn"), Some("hoenn-atlas-v1" | "hoenn-atlas-v2"))
+            | (Some("sinnoh"), Some("sinnoh-atlas-v1" | "sinnoh-atlas-v2"))
+            | (Some("unova"), Some("unova-atlas-v1" | "unova-atlas-v2"))
+    )
+}
 
 const KANTO_CAVES: [&str; 7] = [
     "mt-moon",
@@ -567,7 +576,9 @@ fn validate_open_world(view: Option<&Value>) -> Result<(), &'static str> {
                 && matches!(map_version, None | Some("kanto-v1") | Some("kanto-v2"));
             let legacy_johto = region == "johto"
                 && matches!(map_version, Some("johto-v2") | Some("johto-atlas-v1"));
-            if !legacy_kanto && !legacy_johto && map_version != Some(expected) {
+            let legacy_expansion = is_legacy_expansion_map(Some(region), map_version);
+            if !legacy_kanto && !legacy_johto && !legacy_expansion && map_version != Some(expected)
+            {
                 return Err("오픈월드 지도 버전이 지역과 일치하지 않습니다.");
             }
         }
@@ -576,6 +587,25 @@ fn validate_open_world(view: Option<&Value>) -> Result<(), &'static str> {
                 return Err("기존 오픈월드 지도 버전이 올바르지 않습니다.");
             }
         }
+    }
+    if let Some(layout) = world.get("encounterLayout") {
+        let layout = layout
+            .as_str()
+            .ok_or("오픈월드 출현표 버전이 올바르지 않습니다.")?;
+        let expected = match region {
+            Some("johto") => "gold-v1",
+            Some("hoenn" | "sinnoh" | "unova") => "expansion-v1",
+            _ => "red-v1",
+        };
+        if layout != expected
+            && !(is_legacy_expansion_map(region, map_version) && layout == "red-v1")
+        {
+            return Err("오픈월드 출현표 버전이 지역과 일치하지 않습니다.");
+        }
+    } else if matches!(region, Some("hoenn" | "sinnoh" | "unova"))
+        && !is_legacy_expansion_map(region, map_version)
+    {
+        return Err("추가 지방 오픈월드 출현표 버전이 필요합니다.");
     }
     if let Some(scene) = world.get("sceneId") {
         let scene = scene.as_str().ok_or("오픈월드 장면이 올바르지 않습니다.")?;
@@ -590,6 +620,11 @@ fn validate_open_world(view: Option<&Value>) -> Result<(), &'static str> {
             .is_some_and(|seconds| seconds.is_finite() && (0.0..1200.0).contains(&seconds))
     {
         return Err("오픈월드 시간이 올바르지 않습니다.");
+    }
+    if let Some(index) = world.get("nextBattleTeamIndex")
+        && !index.as_i64().is_some_and(|index| (0..=5).contains(&index))
+    {
+        return Err("자동 전투 순서가 올바르지 않습니다.");
     }
     for key in ["player", "spawnAnchor"] {
         if let Some(point) = world.get(key) {
@@ -655,6 +690,26 @@ struct CampaignProgress<'a> {
     johto_badges: &'a Vec<Value>,
     kanto_league: i64,
     johto_league: i64,
+    expansion: HashMap<&'a str, RegionalCampaignProgress>,
+}
+
+#[derive(Clone, Copy)]
+struct RegionalCampaignProgress {
+    badges: i64,
+    league: i64,
+}
+
+fn validate_badge_order(value: &Value, message: &'static str) -> Result<i64, &'static str> {
+    let badges = value.as_array().ok_or(message)?;
+    if badges.len() > 8
+        || badges
+            .iter()
+            .enumerate()
+            .any(|(index, badge)| badge.as_i64() != Some(index as i64 + 1))
+    {
+        return Err(message);
+    }
+    Ok(badges.len() as i64)
 }
 
 fn validate_campaign(
@@ -668,14 +723,21 @@ fn validate_campaign(
     let campaign = campaign
         .as_object()
         .ok_or("캠페인 진행 형식이 올바르지 않습니다.")?;
-    let fields = [
+    let required_fields = [
         "startRegion",
         "johtoBadges",
         "kantoLeague",
         "johtoLeague",
         "redDefeated",
     ];
-    if campaign.len() != fields.len() || fields.iter().any(|field| !campaign.contains_key(*field)) {
+    if campaign.len() > required_fields.len() + 1
+        || required_fields
+            .iter()
+            .any(|field| !campaign.contains_key(*field))
+        || campaign
+            .keys()
+            .any(|field| !required_fields.contains(&field.as_str()) && field != "expansion")
+    {
         return Err("캠페인 진행 형식이 올바르지 않습니다.");
     }
     let start_region = campaign
@@ -687,14 +749,10 @@ fn validate_campaign(
         .get("johtoBadges")
         .and_then(Value::as_array)
         .ok_or("성도 배지 진행이 올바르지 않습니다.")?;
-    if johto_badges.len() > 8
-        || johto_badges
-            .iter()
-            .enumerate()
-            .any(|(index, badge)| badge.as_i64() != Some(index as i64 + 1))
-    {
-        return Err("성도 배지 진행이 올바르지 않습니다.");
-    }
+    validate_badge_order(
+        campaign.get("johtoBadges").unwrap(),
+        "성도 배지 진행이 올바르지 않습니다.",
+    )?;
     let kanto_league = integer(campaign.get("kantoLeague"), 0, 5)?;
     let johto_league = integer(campaign.get("johtoLeague"), 0, 5)?;
     let red_defeated = campaign
@@ -715,11 +773,58 @@ fn validate_campaign(
     {
         return Err("레드 진행 조건이 올바르지 않습니다.");
     }
+    let mut expansion = HashMap::new();
+    if let Some(value) = campaign.get("expansion") {
+        let regions = value
+            .as_object()
+            .filter(|regions| regions.len() <= 3)
+            .ok_or("추가 지방 진행 형식이 올바르지 않습니다.")?;
+        for (region, value) in regions {
+            if !matches!(region.as_str(), "hoenn" | "sinnoh" | "unova") {
+                return Err("추가 지방 진행 형식이 올바르지 않습니다.");
+            }
+            let progress = value
+                .as_object()
+                .filter(|progress| {
+                    progress.len() == 2
+                        && progress.contains_key("badges")
+                        && progress.contains_key("league")
+                })
+                .ok_or("추가 지방 배지·리그 진행이 올바르지 않습니다.")?;
+            let badges = validate_badge_order(
+                progress.get("badges").unwrap(),
+                "추가 지방 배지·리그 진행이 올바르지 않습니다.",
+            )?;
+            let league = integer(progress.get("league"), 0, 5)?;
+            if league > 0 && badges != 8 {
+                return Err("추가 지방 리그 진행과 배지 진행이 일치하지 않습니다.");
+            }
+            expansion.insert(region.as_str(), RegionalCampaignProgress { badges, league });
+        }
+    }
+    let progressed = |region: &str| {
+        expansion
+            .get(region)
+            .is_some_and(|value| value.badges > 0 || value.league > 0)
+    };
+    if progressed("hoenn") && kanto_league < 5
+        || progressed("sinnoh")
+            && expansion
+                .get("hoenn")
+                .map_or(true, |value| value.league < 5)
+        || progressed("unova")
+            && expansion
+                .get("sinnoh")
+                .map_or(true, |value| value.league < 5)
+    {
+        return Err("추가 지방 캠페인 진행 순서가 올바르지 않습니다.");
+    }
     Ok(Some(CampaignProgress {
         start_region,
         johto_badges,
         kanto_league,
         johto_league,
+        expansion,
     }))
 }
 
@@ -789,21 +894,38 @@ fn validate_battle_progress(
     };
     let campaign_region = campaign_region
         .as_str()
-        .filter(|region| matches!(*region, "johto" | "kanto"))
+        .filter(|region| matches!(*region, "johto" | "kanto" | "hoenn" | "sinnoh" | "unova"))
         .ok_or("캠페인 전투 지역이 올바르지 않습니다.")?;
     let campaign = campaign.ok_or("캠페인 전투 진행이 올바르지 않습니다.")?;
     if campaign_region == "kanto" && campaign.start_region == "johto" && campaign.johto_league < 5 {
         return Err("성도 리그 완료 전에 관동 전투를 저장할 수 없습니다.");
     }
+    if campaign_region == "hoenn" && campaign.kanto_league < 5
+        || campaign_region == "sinnoh"
+            && campaign
+                .expansion
+                .get("hoenn")
+                .map_or(true, |progress| progress.league < 5)
+        || campaign_region == "unova"
+            && campaign
+                .expansion
+                .get("sinnoh")
+                .map_or(true, |progress| progress.league < 5)
+    {
+        return Err("이전 지방 리그 완료 전에 추가 지방 전투를 저장할 수 없습니다.");
+    }
 
     match kind {
         "gym" => {
-            let completed = if campaign_region == "johto" {
-                campaign.johto_badges.len() as i64
-            } else {
-                kanto_badges
+            let completed = match campaign_region {
+                "johto" => campaign.johto_badges.len() as i64,
+                "kanto" => kanto_badges,
+                expansion => campaign
+                    .expansion
+                    .get(expansion)
+                    .map_or(0, |progress| progress.badges),
             };
-            let expected_region = if campaign_region == "johto" {
+            let expected_region = if campaign_region != "kanto" {
                 "safari-meadow"
             } else {
                 KANTO_GYM_REGIONS
@@ -823,8 +945,8 @@ fn validate_battle_progress(
             if battle.get("gymBadge").is_some() || region_id != "pokemon-league" {
                 return Err("캠페인 리그 전투 진행이 올바르지 않습니다.");
             }
-            let (league, trainers) = if campaign_region == "johto" {
-                (
+            let (league, trainers) = match campaign_region {
+                "johto" => (
                     campaign.johto_league,
                     [
                         "johto-will",
@@ -833,9 +955,8 @@ fn validate_battle_progress(
                         "johto-karen",
                         "johto-lance",
                     ],
-                )
-            } else {
-                (
+                ),
+                "kanto" => (
                     campaign.kanto_league,
                     [
                         "kanto-lorelei",
@@ -844,7 +965,47 @@ fn validate_battle_progress(
                         "kanto-lance",
                         "kanto-blue",
                     ],
-                )
+                ),
+                "hoenn" => (
+                    campaign
+                        .expansion
+                        .get("hoenn")
+                        .map_or(0, |progress| progress.league),
+                    [
+                        "hoenn-sidney",
+                        "hoenn-phoebe",
+                        "hoenn-glacia",
+                        "hoenn-drake",
+                        "hoenn-wallace",
+                    ],
+                ),
+                "sinnoh" => (
+                    campaign
+                        .expansion
+                        .get("sinnoh")
+                        .map_or(0, |progress| progress.league),
+                    [
+                        "sinnoh-aaron",
+                        "sinnoh-bertha",
+                        "sinnoh-flint",
+                        "sinnoh-lucian",
+                        "sinnoh-cynthia",
+                    ],
+                ),
+                "unova" => (
+                    campaign
+                        .expansion
+                        .get("unova")
+                        .map_or(0, |progress| progress.league),
+                    [
+                        "unova-shauntal",
+                        "unova-grimsley",
+                        "unova-caitlin",
+                        "unova-marshal",
+                        "unova-alder",
+                    ],
+                ),
+                _ => return Err("캠페인 리그 지역이 올바르지 않습니다."),
             };
             let trainer = trainers
                 .get(league as usize)
@@ -1123,6 +1284,16 @@ mod tests {
         save["game"]["championDefeated"] = Value::Bool(kanto_league == 5);
     }
 
+    fn set_expansion_progress(save: &mut Value, region: &str, badges: i64, league: i64) {
+        if save["game"]["campaign"].get("expansion").is_none() {
+            save["game"]["campaign"]["expansion"] = serde_json::json!({});
+        }
+        save["game"]["campaign"]["expansion"][region] = serde_json::json!({
+            "badges":(1..=badges).collect::<Vec<_>>(),
+            "league":league
+        });
+    }
+
     fn set_battle(
         save: &mut Value,
         kind: &str,
@@ -1194,6 +1365,46 @@ mod tests {
 
         premature_kanto["game"]["campaign"]["startRegion"] = Value::String("kanto".into());
         validate_save(&premature_kanto).unwrap();
+    }
+
+    #[test]
+    fn validates_expansion_campaign_order_and_shape() {
+        let mut hoenn = valid_save();
+        set_kanto_badges(&mut hoenn, 8);
+        set_campaign(&mut hoenn, 8, 5, 5, false);
+        set_expansion_progress(&mut hoenn, "hoenn", 8, 2);
+        validate_save(&hoenn).unwrap();
+
+        let mut sinnoh = hoenn.clone();
+        set_expansion_progress(&mut sinnoh, "hoenn", 8, 5);
+        set_expansion_progress(&mut sinnoh, "sinnoh", 3, 0);
+        validate_save(&sinnoh).unwrap();
+
+        let mut unova = sinnoh.clone();
+        set_expansion_progress(&mut unova, "sinnoh", 8, 5);
+        set_expansion_progress(&mut unova, "unova", 1, 0);
+        validate_save(&unova).unwrap();
+
+        let mut premature_sinnoh = hoenn.clone();
+        set_expansion_progress(&mut premature_sinnoh, "sinnoh", 1, 0);
+        assert!(validate_save(&premature_sinnoh).is_err());
+
+        let mut premature_unova = sinnoh;
+        set_expansion_progress(&mut premature_unova, "unova", 1, 0);
+        assert!(validate_save(&premature_unova).is_err());
+
+        for expansion in [
+            serde_json::json!({"kalos":{"badges":[],"league":0}}),
+            serde_json::json!({"hoenn":{"badges":[1,3],"league":0}}),
+            serde_json::json!({"hoenn":{"badges":[],"league":1}}),
+            serde_json::json!({"hoenn":{"badges":[],"league":0,"extra":true}}),
+        ] {
+            let mut edited = valid_save();
+            set_kanto_badges(&mut edited, 8);
+            set_campaign(&mut edited, 8, 5, 5, false);
+            edited["game"]["campaign"]["expansion"] = expansion;
+            assert!(validate_save(&edited).is_err());
+        }
     }
 
     #[test]
@@ -1305,6 +1516,53 @@ mod tests {
             None,
         );
         assert!(validate_save(&premature_red).is_err());
+    }
+
+    #[test]
+    fn validates_expansion_gym_and_league_battles() {
+        let mut hoenn_gym = valid_save();
+        set_kanto_badges(&mut hoenn_gym, 8);
+        set_campaign(&mut hoenn_gym, 8, 5, 5, false);
+        set_expansion_progress(&mut hoenn_gym, "hoenn", 2, 0);
+        set_battle(
+            &mut hoenn_gym,
+            "gym",
+            "safari-meadow",
+            Some("hoenn"),
+            None,
+            Some(3),
+        );
+        validate_save(&hoenn_gym).unwrap();
+
+        let mut hoenn_elite = valid_save();
+        set_kanto_badges(&mut hoenn_elite, 8);
+        set_campaign(&mut hoenn_elite, 8, 5, 5, false);
+        set_expansion_progress(&mut hoenn_elite, "hoenn", 8, 2);
+        set_battle(
+            &mut hoenn_elite,
+            "elite",
+            "pokemon-league",
+            Some("hoenn"),
+            Some("hoenn-glacia"),
+            None,
+        );
+        validate_save(&hoenn_elite).unwrap();
+
+        let mut wrong_trainer = hoenn_elite.clone();
+        wrong_trainer["game"]["battle"]["trainerId"] = Value::String("hoenn-drake".into());
+        assert!(validate_save(&wrong_trainer).is_err());
+
+        let mut gated_sinnoh = hoenn_elite;
+        set_expansion_progress(&mut gated_sinnoh, "sinnoh", 8, 0);
+        set_battle(
+            &mut gated_sinnoh,
+            "elite",
+            "pokemon-league",
+            Some("sinnoh"),
+            Some("sinnoh-aaron"),
+            None,
+        );
+        assert!(validate_save(&gated_sinnoh).is_err());
     }
 
     #[test]
@@ -1451,6 +1709,99 @@ mod tests {
         duplicate_visit["view"]["openWorld"]["visitedTownsByRegion"]["paldea"] =
             serde_json::json!(["cabo-poco", "cabo-poco"]);
         assert!(validate_save(&duplicate_visit).is_err());
+    }
+
+    #[test]
+    fn validates_expansion_open_world_version_layout_and_scene() {
+        for (region, map_versions) in [
+            (
+                "hoenn",
+                ["hoenn-authored-v1", "hoenn-atlas-v1", "hoenn-atlas-v2"],
+            ),
+            (
+                "sinnoh",
+                ["sinnoh-authored-v1", "sinnoh-atlas-v1", "sinnoh-atlas-v2"],
+            ),
+            (
+                "unova",
+                ["unova-authored-v1", "unova-atlas-v1", "unova-atlas-v2"],
+            ),
+        ] {
+            for map_version in map_versions {
+                let mut save = valid_save();
+                save["view"]["openWorld"] = serde_json::json!({
+                    "regionId":region,
+                    "mapVersion":map_version,
+                    "encounterLayout":"expansion-v1",
+                    "sceneId":format!("surface:{region}")
+                });
+                validate_save(&save).unwrap();
+                if map_version.contains("atlas") {
+                    let mut old_layout = save.clone();
+                    old_layout["view"]["openWorld"]["encounterLayout"] =
+                        Value::String("red-v1".into());
+                    validate_save(&old_layout).unwrap();
+
+                    let mut no_layout = save;
+                    no_layout["view"]["openWorld"]
+                        .as_object_mut()
+                        .unwrap()
+                        .remove("encounterLayout");
+                    validate_save(&no_layout).unwrap();
+                }
+            }
+
+            let mut save = valid_save();
+            save["view"]["openWorld"] = serde_json::json!({
+                "regionId":region,
+                "mapVersion":format!("{region}-authored-v1"),
+                "encounterLayout":"expansion-v1",
+                "sceneId":format!("surface:{region}")
+            });
+
+            let mut wrong_scene = save.clone();
+            wrong_scene["view"]["openWorld"]["sceneId"] = Value::String("surface:kanto".into());
+            assert!(validate_save(&wrong_scene).is_err());
+
+            let mut wrong_layout = save.clone();
+            wrong_layout["view"]["openWorld"]["encounterLayout"] = Value::String("red-v1".into());
+            assert!(validate_save(&wrong_layout).is_err());
+
+            let mut missing_layout = save;
+            missing_layout["view"]["openWorld"]
+                .as_object_mut()
+                .unwrap()
+                .remove("encounterLayout");
+            assert!(validate_save(&missing_layout).is_err());
+
+            let mut wrong_legacy_region = valid_save();
+            wrong_legacy_region["view"]["openWorld"] = serde_json::json!({
+                "regionId":region,
+                "mapVersion":if region == "hoenn" { "sinnoh-atlas-v1" } else { "hoenn-atlas-v1" },
+                "encounterLayout":"expansion-v1",
+                "sceneId":format!("surface:{region}")
+            });
+            assert!(validate_save(&wrong_legacy_region).is_err());
+        }
+    }
+
+    #[test]
+    fn validates_optional_open_world_battle_rotation_index() {
+        for index in [0, 5] {
+            let mut save = valid_save();
+            save["view"]["openWorld"] = serde_json::json!({"nextBattleTeamIndex":index});
+            validate_save(&save).unwrap();
+        }
+        for index in [
+            serde_json::json!(-1),
+            serde_json::json!(6),
+            serde_json::json!(1.5),
+            serde_json::json!("1"),
+        ] {
+            let mut save = valid_save();
+            save["view"]["openWorld"] = serde_json::json!({"nextBattleTeamIndex":index});
+            assert!(validate_save(&save).is_err());
+        }
     }
 
     #[test]

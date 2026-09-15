@@ -43,6 +43,7 @@ import { attachGameAudio, playGameSound } from './audio';
 import { mountTradePanel } from './game/trade-panel';
 import { mountOriginalMusic } from './audio/original-music';
 import { regionalSpeciesHabitats } from './data/regional-encounters';
+import { expansionSpeciesHabitats } from './data/expansion-spawns';
 
 type Tab = 'map' | 'team' | 'dex' | 'shop' | 'lab';
 type PersistentView = ViewState & { rewards?: Record<string, number>; openWorld?: OpenWorldSnapshot };
@@ -293,8 +294,8 @@ function modelMotionHtml(id: number) {
   return `<details class="model-motion"><summary>${label}</summary><p>${description}</p></details>`;
 }
 function detailHtml(selected: Monster) {
-  if (!game) return ''; const species = getSpecies(selected.speciesId), ready = availableEvolutions(game, selected.instanceId); controller.ensure(selected);
-  return `<div class="detail-portrait"><span>No.${String(species.id).padStart(3, '0')}</span><img src="${species.frontSprite}" alt="${species.name}"></div><div class="detail-title"><div>${typesHtml(species.id)}</div><h2>${escapeHtml(selected.nickname)}</h2><p>Lv.${selected.level} · 개체 ID <code>${escapeHtml(selected.instanceId)}</code></p>${modelMotionHtml(species.id)}<span class="brain-memory"><i></i> 이 개체의 회로 상태 · ${selected.brain ? '저장됨' : '준비 중'}</span></div><div class="stat-list">${([['HP', `${selected.hp}/${selected.stats.hp}`], ['공격', selected.stats.attack], ['방어', selected.stats.defense], ['특공', selected.stats.specialAttack], ['특방', selected.stats.specialDefense], ['스피드', selected.stats.speed], ['이동 속도', `${movementSpeed(selected.speciesId, selected.level).toFixed(1)} m/s`]] as const).map(([label, value]) => `<span>${label}<b>${value}</b></span>`).join('')}</div><div class="detail-xp"><span>누적 경험치</span><strong>${selected.xp.toLocaleString()}</strong></div><h3>기술 배치</h3>${moveLayoutHtml(selected)}<h3>다음 습득 기술</h3><div class="move-list">${species.moves.filter(entry => entry.level > selected.level).slice(0, 3).map(entry => `<span><b>${getMove(entry.moveId).name}</b><small>Lv.${entry.level}</small></span>`).join('') || '<p class="empty">레벨업 기술을 모두 익혔습니다.</p>'}</div><div class="item-use"><button id="use-potion">상처약 ×${game.inventory.potion}</button><button id="use-candy">이상한사탕 ×${game.inventory['rare-candy']}</button></div><h3>진화</h3><div class="evolution-list">${species.evolutions.map(evo => { const target = getSpecies(evo.target), available = ready.some(c => c.target === evo.target), requirement = evo.method === 'special' ? '특수 진화 · 이 게임에서는 야생 포획으로 수집' : evo.method === 'level' ? `Lv.${evo.level}` : evo.method === 'trade' ? '연결의끈' : ITEM_LABELS[evo.item as InventoryItem] ?? evo.item; return `<button data-evolve="${evo.target}" ${available ? '' : 'disabled'}><img src="${target.frontSprite}" alt=""><span><b>${target.name}</b><small>${requirement}</small></span></button>`; }).join('') || '<p class="empty">더 이상 진화하지 않습니다.</p>'}</div>`;
+  if (!game) return ''; const species = getSpecies(selected.speciesId), ready = availableEvolutions(game, selected.instanceId), candyMax = Math.min(game.inventory['rare-candy'], 100 - selected.level); controller.ensure(selected);
+  return `<div class="detail-portrait"><span>No.${String(species.id).padStart(3, '0')}</span><img src="${species.frontSprite}" alt="${species.name}"></div><div class="detail-title"><div>${typesHtml(species.id)}</div><h2>${escapeHtml(selected.nickname)}</h2><p>Lv.${selected.level} · 개체 ID <code>${escapeHtml(selected.instanceId)}</code></p>${modelMotionHtml(species.id)}<span class="brain-memory"><i></i> 이 개체의 회로 상태 · ${selected.brain ? '저장됨' : '준비 중'}</span></div><div class="stat-list">${([['HP', `${selected.hp}/${selected.stats.hp}`], ['공격', selected.stats.attack], ['방어', selected.stats.defense], ['특공', selected.stats.specialAttack], ['특방', selected.stats.specialDefense], ['스피드', selected.stats.speed], ['이동 속도', `${movementSpeed(selected.speciesId, selected.level).toFixed(1)} m/s`]] as const).map(([label, value]) => `<span>${label}<b>${value}</b></span>`).join('')}</div><div class="detail-xp"><span>누적 경험치</span><strong>${selected.xp.toLocaleString()}</strong></div><h3>기술 배치</h3>${moveLayoutHtml(selected)}<h3>다음 습득 기술</h3><div class="move-list">${species.moves.filter(entry => entry.level > selected.level).slice(0, 3).map(entry => `<span><b>${getMove(entry.moveId).name}</b><small>Lv.${entry.level}</small></span>`).join('') || '<p class="empty">레벨업 기술을 모두 익혔습니다.</p>'}</div><div class="item-use"><button id="use-potion">상처약 ×${game.inventory.potion}</button><div class="candy-use"><label for="candy-quantity">이상한사탕 수량</label><input id="candy-quantity" type="number" min="1" max="${Math.max(1, candyMax)}" value="1" ${candyMax ? '' : 'disabled'}><small id="candy-preview">${candyMax ? `Lv.${selected.level} → Lv.${selected.level + 1}` : selected.level >= 100 ? '이미 Lv.100입니다' : '보유한 사탕이 없습니다'}</small><button id="use-candy" ${candyMax && !game.battle ? '' : 'disabled'}>${candyMax ? `이상한사탕 사용 · 최대 ${candyMax}개` : `이상한사탕 ×${game.inventory['rare-candy']}`}</button></div></div><h3>진화</h3><div class="evolution-list">${species.evolutions.map(evo => { const target = getSpecies(evo.target), available = ready.some(c => c.target === evo.target), requirement = evo.method === 'special' ? '특수 진화 · 이 게임에서는 야생 포획으로 수집' : evo.method === 'level' ? `Lv.${evo.level}` : evo.method === 'trade' ? '연결의끈' : ITEM_LABELS[evo.item as InventoryItem] ?? evo.item; return `<button data-evolve="${evo.target}" ${available ? '' : 'disabled'}><img src="${target.frontSprite}" alt=""><span><b>${target.name}</b><small>${requirement}</small></span></button>`; }).join('') || '<p class="empty">더 이상 진화하지 않습니다.</p>'}</div>`;
 }
 function renderSelectedDetail() {
   if (!game) return; const selected = owned().find(monster => monster.instanceId === selectedMonsterId) ?? game.player.team[0]; selectedMonsterId = selected.instanceId;
@@ -338,9 +339,13 @@ function renderSelectedDetail() {
     } catch (error) { button.disabled = false; notify(error instanceof Error ? error.message : '공격 기술을 배치하지 못했습니다.', true); }
   });
   detail.querySelectorAll<HTMLButtonElement>('[data-evolve]').forEach(button => button.onclick = () => action(() => evolve(game!, selected.instanceId, { targetId: Number(button.dataset.evolve) }), '진화가 완료됐습니다.'));
-  $<HTMLButtonElement>('#use-potion').onclick = () => action(() => useItem(game!, 'potion', selected.instanceId)); $<HTMLButtonElement>('#use-candy').onclick = () => action(() => useItem(game!, 'rare-candy', selected.instanceId));
+  $<HTMLButtonElement>('#use-potion').onclick = () => action(() => useItem(game!, 'potion', selected.instanceId));
+  const candyInput = $<HTMLInputElement>('#candy-quantity'), candyButton = $<HTMLButtonElement>('#use-candy'), candyPreview = $<HTMLElement>('#candy-preview');
+  const updateCandyPreview = () => { const quantity = Number(candyInput.value), valid = Number.isSafeInteger(quantity) && quantity >= 1 && quantity <= Number(candyInput.max); candyButton.disabled = !valid || Boolean(game!.battle); candyPreview.textContent = valid ? `Lv.${selected.level} → Lv.${selected.level + quantity}` : `1~${candyInput.max}개를 입력하세요`; };
+  candyInput.oninput = updateCandyPreview;
+  candyButton.onclick = () => { const quantity = Number(candyInput.value); action(() => useItem(game!, 'rare-candy', selected.instanceId, quantity), `이상한사탕 ${quantity}개를 먹였습니다.`); };
   const duplicates = owned().filter(monster => monster.speciesId === selected.speciesId && monster.instanceId !== selected.instanceId);
-  detail.insertAdjacentHTML('beforeend', `<section class="collection-actions"><h3>개체 관리</h3><p>경험치를 합치면 선택한 중복 개체를 놓아주고, 현재 개체의 회로 기억을 유지합니다. 출현 빈도가 낮고 레벨이 높은 개체일수록 더 많은 경험치를 보냅니다.</p>${duplicates.length ? `<button id="merge-all-duplicates" ${selected.level >= 100 ? 'disabled' : ''}>같은 포켓몬 ${duplicates.length}마리 한 번에 합치기</button><label for="merge-donor">경험치를 보낼 중복 개체</label><select id="merge-donor">${duplicates.map(monster => { const value = duplicateMergeValue(monster); return `<option value="${monster.instanceId}">Lv.${monster.level} · 출현지수 ${value.frequency.toFixed(2)}% · 희귀도 ×${value.multiplier.toFixed(2)} · 합치기 XP ${value.xp.toLocaleString()}</option>`; }).join('')}</select><button id="merge-duplicate" ${selected.level >= 100 ? 'disabled' : ''}>이 포켓몬에게 경험치 합치기</button>` : '<small>같은 종을 더 잡으면 경험치를 합칠 수 있습니다.</small>'}<button id="release-monster" class="danger" ${game.player.team.length === 1 && game.player.team[0].instanceId === selected.instanceId ? 'disabled' : ''}>이 포켓몬 놓아주기</button></section>`);
+  detail.insertAdjacentHTML('beforeend', `<section class="collection-actions"><h3>개체 관리</h3><p>합치면 보내는 중복 개체 레벨 합계의 20%만큼 현재 개체의 레벨이 오릅니다. 현재 레벨의 경험치 진행도와 회로 기억은 유지합니다.</p>${duplicates.length ? `<button id="merge-all-duplicates" ${selected.level >= 100 ? 'disabled' : ''}>같은 포켓몬 ${duplicates.length}마리 한 번에 합치기</button><label for="merge-donor">레벨을 보낼 중복 개체</label><select id="merge-donor">${duplicates.map(monster => { const value = duplicateMergeValue(monster); return `<option value="${monster.instanceId}">Lv.${monster.level} · 합치기 +${Math.floor(value.levels)}레벨</option>`; }).join('')}</select><button id="merge-duplicate" ${selected.level >= 100 ? 'disabled' : ''}>이 포켓몬에게 레벨 합치기</button>` : '<small>같은 종을 더 잡으면 레벨을 합칠 수 있습니다.</small>'}<button id="release-monster" class="danger" ${game.player.team.length === 1 && game.player.team[0].instanceId === selected.instanceId ? 'disabled' : ''}>이 포켓몬 놓아주기</button></section>`);
   let managingCollection = false;
   const remove = async (donorId: string, merge: boolean) => {
     if (!game || managingCollection) return;
@@ -349,12 +354,12 @@ function renderSelectedDetail() {
     managingCollection = true;
     try {
       const confirmed = await confirmAction({
-        title: merge ? '경험치를 합칠까요?' : '포켓몬을 놓아줄까요?',
+        title: merge ? '레벨을 합칠까요?' : '포켓몬을 놓아줄까요?',
         message: merge
-          ? (() => { const plan = previewDuplicateMerge(editedGame, selected.instanceId, [donorId]); return `${donor.nickname} (Lv.${donor.level} · ${donorId})을 보내 조정 경험치 ${plan.gainedXp.toLocaleString()}을 ${selected.nickname} (${selected.instanceId})에게 합칩니다.${plan.excessXp ? ` 레벨 100 상한으로 ${plan.excessXp.toLocaleString()}은 적용되지 않습니다.` : ''}`; })()
+          ? (() => { const plan = previewDuplicateMerge(editedGame, selected.instanceId, [donorId]); return `${donor.nickname} (Lv.${donor.level} · ${donorId})을 보내 ${selected.nickname} (${selected.instanceId})을 Lv.${plan.toLevel}까지 +${plan.gainedLevels}레벨 올립니다.${plan.excessLevels ? ` 레벨 100 상한으로 ${plan.excessLevels}레벨은 적용되지 않습니다.` : ''}`; })()
           : `${donor.nickname} (Lv.${donor.level} · ${donorId})을 놓아줍니다.`,
-        detail: merge ? '경험치를 보낸 포켓몬은 팀·박스에서 떠납니다. 남긴 포켓몬의 회로 기억은 유지합니다.' : '이 포켓몬은 팀·박스에서 떠나며, 도감의 수집 기록은 유지합니다.',
-        confirmLabel: merge ? '경험치 합치기' : '놓아주기', destructive: !merge,
+        detail: merge ? '레벨을 보낸 포켓몬은 팀·박스에서 떠납니다. 남긴 포켓몬의 회로 기억은 유지합니다.' : '이 포켓몬은 팀·박스에서 떠나며, 도감의 수집 기록은 유지합니다.',
+        confirmLabel: merge ? '레벨 합치기' : '놓아주기', destructive: !merge,
       });
       if (!confirmed) return;
       if (game !== editedGame) throw new Error('모험이 바뀌었습니다. 현재 포켓몬을 다시 선택해 주세요.');
@@ -362,7 +367,7 @@ function renderSelectedDetail() {
       if (game !== editedGame) throw new Error('모험이 바뀌었습니다. 현재 포켓몬을 다시 선택해 주세요.');
       if (merge) mergeDuplicateMonster(editedGame, selected.instanceId, donorId); else releaseMonster(editedGame, donorId);
       if (view.rewards) delete view.rewards[donorId];
-      captureWorld(); renderTeam(); shellStats(); await saveNow(false, true); notify(merge ? '경험치를 합쳤습니다.' : '포켓몬을 놓아주었습니다.');
+      captureWorld(); renderTeam(); shellStats(); await saveNow(false, true); notify(merge ? '레벨을 합쳤습니다.' : '포켓몬을 놓아주었습니다.');
     } catch (error) { notify(String(error), true); }
     finally { managingCollection = false; }
   };
@@ -378,8 +383,8 @@ function renderSelectedDetail() {
       const plan = previewDuplicateMerge(editedGame, selected.instanceId, donorIds);
       const confirmed = await confirmAction({
         title: '모두 합치기',
-        message: `${selected.nickname} (Lv.${selected.level} · ${selected.instanceId}) 한 마리를 남기고, 같은 종 ${plan.count}마리의 경험치 ${plan.gainedXp.toLocaleString()}을 한 번에 보냅니다.`,
-        detail: `합친 ${plan.count}마리는 팀·박스에서 떠납니다. 남긴 포켓몬의 회로 기억과 학습 기록은 유지합니다.${plan.movesToTeam ? ' 남긴 포켓몬은 박스에서 팀으로 나옵니다.' : ''}${plan.excessXp ? ` 레벨 100 상한으로 초과 경험치 ${plan.excessXp.toLocaleString()}은 사라집니다.` : ''}`,
+        message: `${selected.nickname} (Lv.${selected.level} · ${selected.instanceId}) 한 마리를 남기고, 같은 종 ${plan.count}마리의 레벨 합계 ${plan.donorLevels} 중 20%를 보내 +${plan.gainedLevels}레벨 올립니다.`,
+        detail: `합친 ${plan.count}마리는 팀·박스에서 떠납니다. 남긴 포켓몬의 회로 기억과 학습 기록은 유지합니다.${plan.movesToTeam ? ' 남긴 포켓몬은 박스에서 팀으로 나옵니다.' : ''}${plan.excessLevels ? ` 레벨 100 상한으로 초과 ${plan.excessLevels}레벨은 사라집니다.` : ''}`,
         confirmLabel: `${plan.count}마리 합치기`,
       });
       if (!confirmed) return;
@@ -389,7 +394,7 @@ function renderSelectedDetail() {
       const result = mergeDuplicateMonsters(editedGame, selected.instanceId, donorIds);
       if (view.rewards) for (const id of donorIds) delete view.rewards[id];
       captureWorld(); renderTeam(); shellStats(); await saveNow(false, true);
-      notify(`${result.count}마리를 합쳐 경험치 ${result.gainedXp.toLocaleString()}을 보냈습니다.`);
+      notify(`${result.count}마리를 합쳐 +${result.gainedLevels}레벨 올랐습니다.`);
     } catch (error) { notify(error instanceof Error ? error.message : String(error), true); }
     finally { managingCollection = false; }
   });
@@ -425,16 +430,16 @@ function renderDex() {
   const filtered = pool.filter(s => (!q || s.name.includes(q) || s.englishName.toLowerCase().includes(q) || String(s.id) === q || s.types.some(type => type.includes(q) || typeLabel[type].includes(q)))
     && (dexMode === 'all' || (dexMode === 'caught' ? caughtIds : game!.dex.seen).includes(s.id)));
   const pageSize = 60, pages = Math.max(1, Math.ceil(filtered.length / pageSize)); dexPage = Math.min(dexPage, pages - 1);
-  const versionName = '관동·성도 통합 도감';
+  const versionName = '관동·성도·호연·신오·하나 통합 도감';
   $('#screen').innerHTML = `<div class="page dex-page"><section class="section-heading"><div><span class="kicker">POKÉDEX · COLLECTION</span><h1>${escapeHtml(versionName)}</h1><p>수록 ${pool.length}종 · 3D 지원 ${pool.filter(s => hasPokemonModel(s.id)).length}종 · 수집 ${caughtIds.filter(id => pool.some(s => s.id === id)).length}종</p></div>
     <div class="dex-tools"><input id="dex-search" type="search" aria-label="도감 검색" value="${escapeHtml(dexQuery)}" placeholder="이름, 번호, 타입 검색"><div>${(['all', 'seen', 'caught'] as const).map(mode => `<button data-dex-mode="${mode}" class="${dexMode === mode ? 'active' : ''}">${mode === 'all' ? '전체' : mode === 'seen' ? '발견' : '수집'}</button>`).join('')}</div></div></section>
-    <section class="collection-note"><p>관동은 레드, 성도는 크리스탈 분포로 고정됩니다. 시간대와 배지 조건을 맞춰 희귀 포켓몬까지 찾아보세요.</p></section>
+    <section class="collection-note"><p>레드·크리스탈·에메랄드·플라티나·블랙의 지역별 출현표로 고정됩니다. 원본 분포와 희귀 추가 분포를 구분해 표시합니다.</p></section>
     <div class="dex-grid">${filtered.slice(dexPage * pageSize, (dexPage + 1) * pageSize).map(s => {
       const seen = game!.dex.seen.includes(s.id), caught = caughtIds.includes(s.id);
-      const sourceNames = regionalSpeciesHabitats(s.id).map(habitat => {
+      const sourceNames = [...regionalSpeciesHabitats(s.id), ...expansionSpeciesHabitats(s.id)].map(habitat => {
         const atlas = getWorldAtlas(habitat.region), periods = habitat.periods.map(period => ({ morning: '아침', day: '낮', night: '밤' })[period]).join('·');
         const names = habitat.locationIds.map(id => atlas.locations.find(item => item.id === id)?.name ?? id).join(', ');
-        return `${atlas.name} ${names} (${periods}${habitat.origin === 'supplemental' ? ` · 희귀 · 배지 ${habitat.requiredBadges}개` : ''})`;
+        return `${atlas.name} ${names} (${periods}${habitat.origin === 'supplemental' ? ` · 희귀 추가 · 배지 ${habitat.requiredBadges}개` : ' · 원본'})`;
       });
       const parents = POKEMON.filter(species => species.evolutions.some(evolution => evolution.target === s.id));
       const regions = !hasPokemonModel(s.id) ? '3D 미지원 · 도감 자료만 제공' : isPlayableSpecies(s.id)

@@ -3,11 +3,12 @@ import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { createGLTFLoader } from '../src/three/gltf-loader';
 import { prepareJohtoRig } from '../src/three/johto-rig';
 import { normalizePokemonModel } from '../src/openworld/model-normalization';
+import { inspectAnimationDeformation } from './animation-deformation';
 
 /** Browser-only inspection of actual source bytes, deformation, and local GLB export. */
 export async function probeJohtoRig(id: number, exportGlb = false) {
   const asset = await createGLTFLoader().loadAsync(`/rig-source/${id}.glb`);
-  const before = new Box3().setFromObject(asset.scene, true), sourceClips = asset.animations.length;
+  const before = new Box3().setFromObject(asset.scene, true), originalClips = [...asset.animations], sourceClips = originalClips.length;
   const original: Vector3[] = [], point = new Vector3();
   asset.scene.updateMatrixWorld(true);
   asset.scene.traverse(object => {
@@ -37,26 +38,17 @@ export async function probeJohtoRig(id: number, exportGlb = false) {
     }
   });
   const boundScale = Math.max(before.getSize(new Vector3()).length(), 1e-5);
-  const mixer = new AnimationMixer(asset.scene), clipResults = [];
-  for (const clip of asset.animations.filter(clip => /^CM_/.test(clip.name))) {
-    mixer.stopAllAction(); mixer.clipAction(clip).reset().play();
-    const first: Vector3[] = [], animated = new Box3(); let changed = 0, maxDelta = 0;
-    for (let frame = 0; frame <= 12; frame++) {
-      mixer.setTime(clip.duration * frame / 12); asset.scene.updateMatrixWorld(true);
-      let index = 0;
-      for (const skin of skins) {
-        skin.skeleton.update();
-        for (let i = 0; i < skin.geometry.getAttribute('position').count; i += 13) {
-          skin.getVertexPosition(i, point).applyMatrix4(skin.matrixWorld); animated.expandByPoint(point);
-          if (frame === 0) first.push(point.clone());
-          else { const delta = point.distanceTo(first[index]); if (delta > boundScale * .0001) changed++; maxDelta = Math.max(maxDelta, delta); }
-          index++;
-        }
-      }
-    }
-    clipResults.push({ name: clip.name, changedSamples: changed, relativeMaxDelta: maxDelta / boundScale, relativeBounds: animated.getSize(new Vector3()).length() / boundScale });
-  }
-  mixer.stopAllAction(); mixer.uncacheRoot(asset.scene);
+  const sourceClipResults = originalClips.map(clip => inspectAnimationDeformation(asset.scene, clip, boundScale));
+  const authoredClipResults = asset.animations.filter(clip => /^CM_/.test(clip.name)).map(clip => inspectAnimationDeformation(asset.scene, clip, boundScale));
+  const clipResults = sourceClips ? [...sourceClipResults, ...authoredClipResults] : authoredClipResults;
+  const sourceAnimationPassed = sourceClipResults.length === sourceClips
+    && sourceClipResults.every(clip => clip.finitePose && clip.nonFiniteSamples === 0)
+    && sourceClipResults.some(clip => clip.changedSamples > 0);
+  const authoredAnimationPassed = authoredClipResults.length === 4
+    && authoredClipResults.every(clip => clip.finitePose && clip.nonFiniteSamples === 0 && clip.changedSamples > 0 && clip.relativeBounds < 1.6);
+  const animationPassed = sourceClips
+    ? sourceAnimationPassed || authoredAnimationPassed
+    : authoredAnimationPassed;
   let binary: number[] | undefined;
   if (exportGlb && !sourceClips) {
     const result = await new GLTFExporter().parseAsync(asset.scene, { binary: true, animations: asset.animations });
@@ -75,7 +67,8 @@ export async function probeJohtoRig(id: number, exportGlb = false) {
   renderer.dispose(); renderer.forceContextLoss();
   asset.scene.traverse(object => { if (object instanceof Mesh) { object.geometry.dispose(); for (const material of Array.isArray(object.material) ? object.material : [object.material]) material.dispose(); } });
   return { id, sourceClips, authored: asset.scene.userData.authoredRig, meshes, skinnedMeshes: skins.length, vertices, unweighted, invalidWeights,
-    relativeBindError: bindError / boundScale, rigMs, clipResults, image, binary,
-    passed: Boolean(skins.length && !unweighted && !invalidWeights && bindError / boundScale < .0001 && (sourceClips || clipResults.length === 4 && clipResults.every(clip => clip.changedSamples > 0 && clip.relativeBounds < 1.6))),
+    relativeBindError: bindError / boundScale, rigMs, clipResults, sourceClipResults, authoredClipResults,
+    sourceAnimationPassed, authoredAnimationPassed, animationPassed, image, binary,
+    passed: Boolean(skins.length && !unweighted && !invalidWeights && bindError / boundScale < .0001 && animationPassed),
   };
 }

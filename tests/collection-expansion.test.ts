@@ -23,7 +23,7 @@ describe('expanded collection and individual lifecycle', () => {
       expect([...encounters].sort((a, b) => a - b), version.id).toEqual([...version.speciesIds].sort((a, b) => a - b));
     }
     expect(versionEncounters('pallet', 'gold', 8)).toEqual(versionEncounters('pallet', 'red', 8));
-    expect(getPlayableSpeciesIds('national')).toHaveLength(251);
+    expect(getPlayableSpeciesIds('national')).toHaveLength(649);
   });
 
   it('limits playable collection changes while retaining the partner and separate collection records', () => {
@@ -43,14 +43,14 @@ describe('expanded collection and individual lifecycle', () => {
     expect(() => validateGame(game)).not.toThrow();
   });
 
-  it('merges XP once, learns level-up moves, and preserves only the recipient memory', () => {
+  it('merges 20% of the donor level once, learns level-up moves, and preserves only the recipient memory', () => {
     const game = createGame(1, 'merge');
     const target = game.player.team[0], donor = createMonster(game, 1, 30);
     game.player.box.push(donor); controller.ensure(target); controller.ensure(donor);
-    const before = structuredClone(target.brain), xp = target.xp + duplicateMergeValue(donor).xp;
+    const before = structuredClone(target.brain), plan = previewDuplicateMerge(game, target.instanceId, [donor.instanceId]);
     const world = new OpenWorldSimulation(graph, game, 88);
-    expect(mergeDuplicateMonster(game, target.instanceId, donor.instanceId)).toBe(duplicateMergeValue(donor).xp);
-    expect(target.xp).toBe(xp); expect(target.level).toBeGreaterThan(5);
+    expect(mergeDuplicateMonster(game, target.instanceId, donor.instanceId)).toBe(plan.gainedXp);
+    expect(target.level).toBe(11); expect(plan).toMatchObject({ donorLevels: 30, totalLevels: 6, gainedLevels: 6, toLevel: 11 });
     expect(target.brain).toEqual(before);
     expect(game.player.box).toHaveLength(0);
     expect(() => mergeDuplicateMonster(game, target.instanceId, donor.instanceId)).toThrow();
@@ -77,15 +77,15 @@ describe('expanded collection and individual lifecycle', () => {
     const a = createMonster(game, 1, 12), b = createMonster(game, 1, 20), other = createMonster(game, 25, 8);
     game.player.team.push(a); game.player.box.push(b, other);
     game.dex.seen.push(25); game.dex.caught.push(25);
-    const expectedXp = target.xp + duplicateMergeValue(a).xp + duplicateMergeValue(b).xp, dex = structuredClone(game.dex);
+    const plan = previewDuplicateMerge(game, target.instanceId, [a.instanceId, b.instanceId]), dex = structuredClone(game.dex);
     const result = mergeDuplicateMonsters(game, target.instanceId, [a.instanceId, b.instanceId]);
-    expect(result).toMatchObject({ count: 2, gainedXp: duplicateMergeValue(a).xp + duplicateMergeValue(b).xp, movesToTeam: false });
+    expect(result).toEqual(plan); expect(result).toMatchObject({ count: 2, donorLevels: 32, gainedLevels: 6, toLevel: 11, movesToTeam: false });
     expect(game.player.team).toEqual([target]); expect(game.player.box).toEqual([other]);
-    expect(target.xp).toBe(expectedXp); expect(target.brain).toBe(brain); expect(target.brain).toEqual(memory);
+    expect(target.level).toBe(11); expect(target.xp).toBe(target.level < 100 ? experienceAtLevel(11, 'medium-slow') : target.xp); expect(target.brain).toBe(brain); expect(target.brain).toEqual(memory);
     expect(target.moveLearning).toEqual(learning); expect(game.dex).toEqual(dex);
     expect(() => validateGame(game)).not.toThrow();
     expect(() => mergeDuplicateMonsters(game, target.instanceId, [a.instanceId, b.instanceId])).toThrow();
-    expect(target.xp).toBe(expectedXp);
+    expect(target.xp).toBe(experienceAtLevel(11, 'medium-slow'));
   });
 
   it('moves a boxed survivor into the team and commits every donor even when XP hits the cap', () => {
@@ -93,7 +93,7 @@ describe('expanded collection and individual lifecycle', () => {
     game.player.box.push(target, donor);
     const ids = [game.player.team[0].instanceId, donor.instanceId];
     const before = JSON.stringify(game), plan = previewDuplicateMerge(game, target.instanceId, ids);
-    expect(JSON.stringify(game)).toBe(before); expect(plan.movesToTeam).toBe(true); expect(plan.excessXp).toBeGreaterThan(0);
+    expect(JSON.stringify(game)).toBe(before); expect(plan.movesToTeam).toBe(true); expect(plan.excessLevels).toBeGreaterThan(0);
     expect(mergeDuplicateMonsters(game, target.instanceId, ids)).toEqual(plan);
     expect(game.player.team).toEqual([target]); expect(game.player.box).toEqual([]);
     expect(target.level).toBe(100); expect(target.xp).toBe(experienceAtLevel(100, 'medium-slow'));

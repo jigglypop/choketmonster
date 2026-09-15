@@ -1,12 +1,15 @@
 import { WORLDS, regionForVersion, type WorldRegionId } from './atlas';
 import { getVersionSpeciesIds } from '../data/pokemon-versions';
+import { EXPANSION_ASSET_AUDIT } from '../data/expansion-asset-availability';
 
 // Atlas definitions also decode old saves. They are not a list of shipped maps.
 // Public map facts may be reconstructed with our own 3D terrain and cleared assets.
 // Only regions with a verified geometry, traversal and encounter implementation ship.
-const playableRegions = new Set<WorldRegionId>(['kanto', 'johto']);
+const playableRegions = new Set<WorldRegionId>(['kanto', 'johto', 'hoenn', 'sinnoh', 'unova']);
 export const PLAYABLE_WORLDS = WORLDS.filter(world => playableRegions.has(world.id));
-const playableSpeciesIds = Object.freeze([...new Set(PLAYABLE_WORLDS.flatMap(world => getVersionSpeciesIds(world.defaultVersion)))].sort((a, b) => a - b));
+const expansionNatives = Object.entries(EXPANSION_ASSET_AUDIT.regions).filter(([region]) => playableRegions.has(region as WorldRegionId))
+  .flatMap(([, { nationalDex: [first, last] }]) => Array.from({ length: last - first + 1 }, (_, index) => first + index));
+const playableSpeciesIds = Object.freeze([...new Set([...PLAYABLE_WORLDS.flatMap(world => getVersionSpeciesIds(world.defaultVersion)), ...expansionNatives])].sort((a, b) => a - b));
 const playableSpecies = new Set(playableSpeciesIds);
 export const PLAYABLE_SPECIES_IDS = playableSpeciesIds;
 /** Species whose native region has a shipped map, optionally narrowed to one version dex. */

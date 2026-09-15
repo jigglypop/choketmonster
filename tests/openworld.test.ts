@@ -55,6 +55,38 @@ describe('connectome open world', () => {
     expect(JSON.stringify(world.snapshot())).not.toContain('"edges"');
   });
 
+  it('repairs a short saved roster while preserving every saved wild brain across another restore', async () => {
+    const graph = await loadGraph(), policy = await loadPolicy(), game = createGame(1, 'short-roster-restore');
+    const source = new OpenWorldSimulation(graph, game, 24_680, undefined, policy);
+    const raw = JSON.parse(serializeOpenWorld(game, source));
+    raw.world.entities = raw.world.entities.filter((entity: { kind: string }) => entity.kind === 'companion')
+      .concat(raw.world.entities.filter((entity: { kind: string }) => entity.kind === 'wild').slice(0, 8));
+    raw.world.respawnQueue = [];
+    const savedWilds = new Map(raw.world.entities.filter((entity: { kind: string }) => entity.kind === 'wild').map((entity: { id: string; brain: unknown }) => [entity.id, entity.brain]));
+
+    const repaired = restoreOpenWorld(graph, JSON.stringify(raw), policy);
+    expect(repaired.simulation.rosterStatus()).toEqual({ alive: 12, pending: 0, total: 12 });
+    for (const [id, brain] of savedWilds) expect(repaired.simulation.snapshot().entities.find(entity => entity.id === id)?.brain).toEqual(brain);
+    const restoredAgain = restoreOpenWorld(graph, serializeOpenWorld(repaired.game, repaired.simulation), policy);
+    expect(restoredAgain.simulation.snapshot()).toEqual(repaired.simulation.snapshot());
+  });
+
+  it('rotates healthy team members into automatic wild battles and persists the next slot', async () => {
+    const graph = await loadGraph(), policy = await loadPolicy(), game = createGame(1, 'automatic-team-rotation');
+    game.player.team.push(createMonster(game, 4, 5), createMonster(game, 7, 5));
+    const world = new OpenWorldSimulation(graph, game, 93_112, undefined, policy);
+    const wilds = world.entities.filter(entity => entity.kind === 'wild');
+    expect(world.startEncounter(wilds[0].id)).toBe(true);
+    expect(game.battle?.player.activeIndex).toBe(0);
+    expect(world.snapshot().nextBattleTeamIndex).toBe(1);
+    game.battle!.enemy.team[0].hp = 0;
+    world.step({ deltaSeconds: 1, learning: false });
+    expect(world.startEncounter(wilds[1].id)).toBe(true);
+    expect(game.battle?.player.activeIndex).toBe(1);
+    const restored = restoreOpenWorld(graph, serializeOpenWorld(game, world), policy);
+    expect(restored.simulation.nextBattleTeamIndex).toBe(2);
+  });
+
   it('maps species Speed to frame-rate independent movement and samples long paths for obstacles', async () => {
     const graph = await loadGraph(), policy = forceRight(await loadPolicy()), game = createGame(1, 'open-world-speed');
     expect(movementSpeed(150)).toBeGreaterThan(movementSpeed(1));

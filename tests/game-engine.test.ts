@@ -50,6 +50,25 @@ describe('전체 포켓몬 로컬 게임 엔진', () => {
     expect(restored.battle!.turn).toBe(2);
   });
 
+  it('uses several rare candies atomically with inventory and level-100 bounds', () => {
+    const state = createGame(1, 'bulk-candy'), monster = createMonster(state, 1, 97);
+    state.player.team = [monster]; state.inventory['rare-candy'] = 5;
+    const brain = new Brain(448).snapshot(); monster.brain = brain;
+    useItem(state, 'rare-candy', monster.instanceId, 3);
+    expect(monster).toMatchObject({ level: 100, xp: experienceAtLevel(100, getSpecies(1).growthRate), brain });
+    expect(monster.brain).toBe(brain); expect(state.inventory['rare-candy']).toBe(2);
+    const completed = JSON.stringify(state);
+    expect(() => useItem(state, 'rare-candy', monster.instanceId, 1)).toThrow(/최대 레벨/);
+    expect(JSON.stringify(state)).toBe(completed);
+
+    const lower = createMonster(state, 4, 10); state.player.box.push(lower);
+    const before = JSON.stringify(state);
+    expect(() => useItem(state, 'rare-candy', lower.instanceId, 3)).toThrow(/보유 수량/);
+    expect(JSON.stringify(state)).toBe(before);
+    expect(() => useItem(state, 'rare-candy', lower.instanceId, 0)).toThrow(/사용 수량/);
+    expect(JSON.stringify(state)).toBe(before);
+  });
+
   it('상성 피해, 외부 대기 행동, 기술 실행을 전투 상태에 반영한다', () => {
     const state = createGame(7, 'battle-rules');
     state.player.team[0] = createMonster(state, 7, 20);
@@ -175,7 +194,7 @@ describe('전체 포켓몬 로컬 게임 엔진', () => {
     ]);
   });
 
-  it('승리 경험치를 활성 개체와 살아 있는 벤치에 개체별로 기록한다', () => {
+  it('승리 경험치를 활성 개체와 살아 있는 벤치에 같은 양으로 기록한다', () => {
     const state = createGame(1, 'experience-share');
     const active = state.player.team[0];
     const bench = createMonster(state, 7, 5);
@@ -192,15 +211,14 @@ describe('전체 포켓몬 로컬 게임 엔진', () => {
     const battle = wildBattle(state, 4, 5);
     const defeated = battle.enemy.team[0];
     const fullAmount = Math.max(1, Math.floor(getSpecies(defeated.speciesId).baseExperience * defeated.level / 7));
-    const sharedAmount = Math.max(1, Math.floor(fullAmount * .8));
-    bench.xp = experienceAtLevel(bench.level + 1, getSpecies(bench.speciesId).growthRate) - sharedAmount;
+    bench.xp = experienceAtLevel(bench.level + 1, getSpecies(bench.speciesId).growthRate) - fullAmount;
     const before = { active: active.xp, activeLevel: active.level, bench: bench.xp, fainted: fainted.xp, boxed: boxed.xp };
     defeated.hp = 0;
     const result = actBattle(state, { type: 'wait' }, 4);
 
     expect(result.experienceGains).toEqual([
       { instanceId: active.instanceId, amount: fullAmount, levelsGained: active.level - before.activeLevel, shared: false },
-      { instanceId: bench.instanceId, amount: sharedAmount, levelsGained: 1, shared: true },
+      { instanceId: bench.instanceId, amount: fullAmount, levelsGained: 1, shared: true },
     ]);
     expect(active.xp).toBe(before.active + fullAmount);
     expect(bench.level).toBe(6);
@@ -224,6 +242,18 @@ describe('전체 포켓몬 로컬 게임 엔진', () => {
     expect(result.experienceGains).toHaveLength(1);
     expect(result.experienceGains[0]).toMatchObject({ instanceId: active.instanceId, shared: false });
     expect(bench.xp).toBe(beforeBenchXp);
+  });
+
+  it('경험치 공유를 꺼도 동시에 쓰러진 출전 개체를 레벨업으로 되살리지 않는다', () => {
+    const state = createGame(1, 'experience-double-faint'); state.experienceShare = false;
+    state.player.team.push(createMonster(state, 7, 5));
+    const battle = wildBattle(state, 4, 30), ally = state.player.team[0];
+    ally.hp = 1; ally.status = 'poison';
+    battle.enemy.team[0].hp = 1; battle.enemy.team[0].status = 'poison';
+    const xp = ally.xp;
+    const result = actBattle(state, { type: 'wait' }, 4);
+    expect(result.experienceGains).toEqual([]);
+    expect(ally.hp).toBe(0); expect(ally.xp).toBe(xp);
   });
 
   it('다중 상대의 첫 승리 뒤 저장 복원해도 같은 상대 경험치를 다시 주지 않는다', () => {
