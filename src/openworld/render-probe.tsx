@@ -20,7 +20,7 @@ function renderableInventory(scene: Scene) {
 
 /** Opt-in, read-only renderer counters. Never reads or advances simulation RNG. */
 export function RenderProbe() {
-  const { gl, scene, camera } = useThree();
+  const { gl, scene, camera, get } = useThree();
   const samples = useRef<Array<Record<string, number>>>([]);
   useEffect(() => {
     const backend = getOpenWorldRendererInfo(gl);
@@ -28,7 +28,8 @@ export function RenderProbe() {
     const target = window as unknown as { __renderProbe?: { read(): unknown; reset(): void } };
     target.__renderProbe = {
       read: () => ({ samples: [...samples.current], dpr: gl.getPixelRatio(),
-        streaming: scene.userData.streaming, camera: camera.position.toArray(), objects: scene.children.length,
+        streaming: scene.userData.streaming, camera: camera.position.toArray(),
+        cameraTarget: (get().controls as unknown as { target?: { toArray(): number[] } } | null)?.target?.toArray(), objects: scene.children.length,
         background: scene.background instanceof Color ? scene.background.getHexString() : null,
         fog: scene.fog?.color.getHexString() ?? null, clearAlpha: gl.getClearAlpha(),
         lights: scene.getObjectsByProperty('isLight', true).map(object => {

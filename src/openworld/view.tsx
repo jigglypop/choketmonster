@@ -725,7 +725,7 @@ function PlayerCamera({ snapshot, options, destination, onDestination }: { snaps
   const listenersReady = useRef(false);
   const path = useRef<WorldPoint[]>([]);
   const announcedReady = useRef(false);
-  const { camera } = useThree();
+  const { camera, size } = useThree();
   const sample = options.sampleWorld ?? fallbackSample;
 
   useEffect(() => {
@@ -837,14 +837,17 @@ function PlayerCamera({ snapshot, options, destination, onDestination }: { snaps
     }
     if (controls.current) {
       cameraTarget.current.set(target.x, target.y + 1.2, target.z);
-      controls.current.target.lerp(cameraTarget.current, 1 - Math.exp(-delta * 12));
-      controls.current.update();
+      // Translate the focus together with the camera. A lagging focus changes
+      // the orbit angle while walking, especially at close zoom.
+      controls.current.target.copy(cameraTarget.current);
       const cameraFloor = terrainSurfaceHeight(sample, camera.position.x, camera.position.z) + 2;
       if (camera.position.y < cameraFloor) { camera.position.y = cameraFloor; camera.lookAt(controls.current.target); }
     }
-  });
+  }, -2); // Follow first; drei updates OrbitControls once at priority -1.
 
-  return <OrbitControls ref={controls} makeDefault enablePan={false} enableDamping dampingFactor={.08} minDistance={MIN_CAMERA_DISTANCE} maxDistance={MAX_CAMERA_DISTANCE} minPolarAngle={.38} maxPolarAngle={1.18} />;
+  return <OrbitControls ref={controls} makeDefault enablePan={false} enableDamping dampingFactor={.2}
+    rotateSpeed={size.width <= 720 ? .25 : .32} zoomSpeed={.65}
+    minDistance={MIN_CAMERA_DISTANCE} maxDistance={MAX_CAMERA_DISTANCE} minPolarAngle={.38} maxPolarAngle={1.18} />;
 }
 
 function Sunlight({ player, mobile }: { player: { x: number; z: number }; mobile: boolean }) {
