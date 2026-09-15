@@ -1,11 +1,12 @@
 import { useThree } from '@react-three/fiber';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { DataTexture, EquirectangularReflectionMapping, FloatType, LinearSRGBColorSpace, MeshStandardMaterial, PMREMGenerator, RepeatWrapping, RGBAFormat, SRGBColorSpace, Texture, TextureLoader } from 'three';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
 import {
   abs, color, cos, dot, float, instanceIndex, length, materialColor, materialRoughness, max, min, mix, normalView, normalize,
   positionLocal, positionViewDirection, positionWorld, pow, sin, smoothstep, texture, timerLocal, vec2, vec3,
 } from 'three/tsl';
+import { distanceToWaterSurface, selectWaterLod, type WaterLod, type WaterLodPlayer } from './water-lod';
 
 type Surface = 'ground' | 'rock' | 'path';
 export type SurfaceTextures = { diffuse: Texture; normal: Texture; arm: Texture };
@@ -209,22 +210,41 @@ export function createWaterNodeMaterial({
 }
 
 export function SurfaceMaterial({ surface, color, vertexColors = false, visible = true }: { surface: Surface; color?: string; vertexColors?: boolean; visible?: boolean }) {
-  const textures = useSurfaceTextures(surface);
-  const material = useMemo(() => {
-    const result = new MeshStandardNodeMaterial({ color, vertexColors, roughness: .94, metalness: 0,
-      polygonOffset: surface === 'path', polygonOffsetFactor: -1, visible });
-    applySurfaceNodes(result, textures, surface);
-    return result;
-  }, [color, vertexColors, textures, surface, visible]);
-  useEffect(() => () => material.dispose(), [material]);
-  return <primitive object={material} attach="material" />;
+  return <meshStandardMaterial color={color} vertexColors={vertexColors} roughness={1} metalness={0}
+    polygonOffset={surface === 'path'} polygonOffsetFactor={-1} visible={visible} />;
 }
 
-/** Analytic TSL waves and geometry-derived shoreline foam; no render target or noise texture. */
-export function WaterMaterial({ lake = false, center, extent, radius }: WaterMaterialOptions) {
-  const material = useMemo(() => createWaterNodeMaterial({ lake, center, extent, radius }), [center?.[0], center?.[1], extent?.[0], extent?.[1], lake, radius]);
-  useEffect(() => () => material.dispose(), [material]);
-  return <primitive object={material} attach="material" />;
+/** Detailed shoreline water nearby, with a stable simple material outside the LOD boundary. */
+export function WaterMaterial({
+  lake = false,
+  center = lake ? [122, -50] : [-68, 202],
+  extent = [91, 33],
+  radius = 24,
+  player,
+  mobile = false,
+}: WaterMaterialOptions & { player?: WaterLodPlayer; mobile?: boolean }) {
+  const shapeKey = `${lake ? 'lake' : 'rect'}:${center[0]}:${center[1]}:${extent[0]}:${extent[1]}:${radius}`;
+  const materials = useMemo(() => {
+    const detailed = createWaterNodeMaterial({ lake, center, extent, radius });
+    detailed.userData.openWorldWaterLod = 'detailed';
+    const simple = new MeshStandardMaterial({
+      color: '#438d93', roughness: 1, metalness: 0, transparent: true, opacity: .88, depthWrite: false,
+    });
+    simple.userData.openWorldWaterLod = 'simple';
+    return { detailed, simple };
+  }, [center[0], center[1], extent[0], extent[1], lake, radius]);
+  useEffect(() => () => {
+    materials.detailed.dispose();
+    materials.simple.dispose();
+  }, [materials]);
+
+  const previous = useRef<{ shapeKey: string; lod: WaterLod } | undefined>(undefined);
+  const distance = player ? distanceToWaterSurface(player, { lake, center, extent, radius }) : 0;
+  const lod = player
+    ? selectWaterLod(previous.current?.shapeKey === shapeKey ? previous.current.lod : undefined, distance, mobile)
+    : 'detailed';
+  previous.current = { shapeKey, lod };
+  return <primitive object={materials[lod]} attach="material" />;
 }
 
 /** Prefilter a small procedural daylight sky once, for PBR ambient reflections.

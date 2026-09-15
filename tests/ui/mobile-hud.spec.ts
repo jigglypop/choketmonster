@@ -53,7 +53,7 @@ test('mobile chat and partner leave the terrain clear and expand one at a time',
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('#world-chat-collapse').click();
   await expect(page.locator('#world-chat-form')).toBeVisible();
-  await expect(page.locator('#game-music-panel')).toBeHidden();
+  await expect(page.locator('#world-chat-input')).toBeVisible();
   await page.screenshot({ path: 'artifacts/mobile-hud/chat-open.png' });
   await partner.locator(':scope > summary').click();
   await expect(page.locator('#world-chat-form')).toBeHidden();

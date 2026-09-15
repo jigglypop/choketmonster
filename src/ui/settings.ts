@@ -16,7 +16,7 @@ export function mountInterfaceSettings(button: HTMLButtonElement): void {
       <label class="settings-field"><span><strong>전투 패널 위치</strong><small>넓은 화면의 파트너·기술 패널</small></span><select id="interface-battle-position"><option value="right">오른쪽</option><option value="left">왼쪽</option><option value="bottom">아래 가운데</option></select></label>
       <label class="settings-field"><span><strong>팀 상세 배치</strong><small>좁은 화면에서는 한 열로 표시</small></span><select id="interface-team-layout"><option value="split">박스 옆에</option><option value="stack">넓게 한 열로</option></select></label>
       <label class="settings-field"><span><strong>패널 대비</strong><small>배경과 글씨를 더 뚜렷하게</small></span><select id="interface-contrast"><option value="normal">기본</option><option value="high">높게</option></select></label>
-      <label class="settings-field"><span><strong>모험 음악</strong><small>레드전 원곡 · YouTube 재생 음량</small></span><input aria-label="음악 음량" id="audio-music" type="range" min="0" max="100" step="1"></label>
+      <label class="settings-field"><span><strong>모험 음악</strong><small>첫 게임 조작부터 이어지는 레드전 원곡 · YouTube</small></span><input aria-label="음악 음량" id="audio-music" type="range" min="0" max="100" step="1"></label>
       <label class="settings-field"><span><strong>포켓몬 효과음</strong><small>만남 · 공격 · 포획</small></span><input aria-label="효과음 음량" id="audio-effects" type="range" min="0" max="100" step="1"></label>
       <label class="settings-field"><span><strong>모든 소리 끄기</strong></span><input id="audio-muted" type="checkbox" aria-label="모든 소리 끄기"></label>
     </div><footer class="settings-footer"><button id="interface-reset">기본값으로</button><span id="interface-save-status" aria-live="polite"></span><button class="primary settings-done">완료</button></footer>`;

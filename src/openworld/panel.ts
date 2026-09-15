@@ -42,6 +42,7 @@ export class OpenWorldPanel {
   private trackedPlayerId?: string;
   private lastChatId?: string;
   private unreadChats = 0;
+  private lastMovementRefresh = -Infinity;
   private readonly compactViewport = window.matchMedia('(max-width: 720px), (max-height: 600px) and (pointer: coarse)');
   private readonly onViewportChange = () => {
     this.setChatCollapsed(this.compactViewport.matches);
@@ -113,7 +114,7 @@ export class OpenWorldPanel {
       <dialog class="world-box-dialog" id="world-box-dialog" aria-labelledby="world-box-title"><header><div><small>POKÉMON STORAGE</small><h2 id="world-box-title">팀 · 박스 관리</h2></div><button id="world-box-close">닫기 ✕</button></header><p>탐험을 일시 정지하고 안전하게 팀을 정리합니다. 전투 중에는 현재 출전 개체와 마지막 생존 개체를 맡길 수 없습니다.</p><div id="world-box-content"></div></dialog>
       <div class="world-feed" id="world-feed" aria-live="polite"></div>
       <div class="world-respawn" id="world-respawn"></div>
-      <details class="world-method"><summary>회로와 게임 규칙</summary><p>브라우저 MaleCNS 실측 부분 회로 ${this.options.graph.nodes.length} 뉴런 · ${this.options.graph.edges.length.toLocaleString()} 연결. 전체 회로가 연결된 배틀은 서버에서 계산하고 반환된 개체 기억은 이 기기에 저장합니다. 감각 입력·행동 대응·학습 보상·월드 속도는 게임을 위해 설계했습니다.</p></details>
+      <details class="world-method"><summary>회로와 게임 규칙</summary><p>브라우저 MaleCNS 실측 부분 회로 ${this.options.graph.nodes.length} 뉴런 · ${this.options.graph.edges.length.toLocaleString()} 연결. 전체 회로가 연결된 배틀은 서버에서 계산하고 반환된 개체 기억은 이 기기에 저장합니다. 감각 입력·행동 대응·학습 보상·월드 속도는 게임을 위해 설계했습니다. 자동 모드에서 추적 대상이 없으면 통행 가능한 탐험 목적지를 게임 규칙으로 정하고, 회로가 이동 방향을 선택합니다.</p></details>
     </section>`;
     this.renderer = mountOpenWorld(host.querySelector('#ow-host')!, {
       getSnapshot: () => this.renderSnapshot(), sampleWorld: (x, z) => this.simulation.sampleWorld(x, z), modelUrl: pokemonModelUrl, spriteUrl: pokemonSpriteUrl,
@@ -123,13 +124,14 @@ export class OpenWorldPanel {
       onPlayerMove: next => {
         if (!this.noteManualInput()) return false;
         const accepted = this.simulation.movePartner(next);
-        if (accepted) { this.renderer?.update(); this.refresh(); }
+        // Camera movement is immediate; HTML updates are limited to 10Hz.
+        const now = performance.now();
+        if (accepted && now - this.lastMovementRefresh >= 100) { this.lastMovementRefresh = now; this.refresh(); }
         return accepted;
       },
       onSelect: id => { if (id?.startsWith('companion:')) return; this.manualIdleSeconds = 0; this.simulation.selectWild(id, true); this.options.changed(); this.refresh(); },
       onInteract: id => this.encounter(id),
       onPortal: () => { if (this.simulation.traverseCavePortal()) { this.multiplayer?.join(this.presence()); this.options.changed(); this.refresh(); this.renderer?.update(); } },
-      onTrainer: id => { if (this.simulation.challengeLocalTrainer(id)) { this.options.changed(); this.refresh(); } },
     });
     this.multiplayer = new MultiplayerSession(() => { if (this.host === host) this.renderRealtime(); });
     this.multiplayer.join(this.presence());
@@ -381,9 +383,7 @@ export class OpenWorldPanel {
     const enemy = battle?.enemy.team[battle.enemy.activeIndex];
     return {
       regionId: this.simulation.regionId,
-      sceneId: this.simulation.sceneId, timeOfDay: this.simulation.dayPeriod,
-      worldHour: this.simulation.worldHour, daylightIntensity: this.simulation.daylightIntensity,
-      trainers: this.simulation.trainerRenderData(),
+      sceneId: this.simulation.sceneId,
       player: { ...this.simulation.player, heading: this.simulation.player.heading as WorldHeading }, tick: this.simulation.tick, selectedWildId: this.simulation.selectedWildId, badges: getRegionalBadges(game, this.simulation.regionId),
       foods: this.simulation.foods.map(food => ({ ...food, id: String(food.id) })),
       entities: this.simulation.visibleEntities(18).map(entity => {
@@ -534,10 +534,8 @@ export class OpenWorldPanel {
     this.html('#world-location-short', location.name);
     const pool = regionalEncounters(location.id, getRegionalBadges(game, world.regionId), world.regionId, world.dayPeriod, world.sampleWorld(world.player.x, world.player.z).biome);
     const levels = regionalWildLevels(game, world.regionId, location);
-    const hour = Math.floor(world.worldHour), minute = Math.floor(world.worldHour % 1 * 60);
-    const timeLabel = `${world.dayPeriod === 'night' ? '☾ 밤' : world.dayPeriod === 'morning' ? '☀ 아침' : '☀ 낮'} ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-    this.html('#world-explore-short', `${timeLabel} · ${pool.length ? `Lv.${levels.minLevel}–${levels.maxLevel}` : '마을'} · 설정`);
-    host.dataset.scene = world.sceneId; host.dataset.period = world.dayPeriod;
+    this.html('#world-explore-short', `${pool.length ? `Lv.${levels.minLevel}–${levels.maxLevel}` : '마을'} · 설정`);
+    host.dataset.scene = world.sceneId;
     this.html('#world-zone-level', pool.length ? `야생 Lv.${levels.minLevel}–${levels.maxLevel} · ${pool.slice(0, 3).map(id => getSpecies(id).name).join(' · ')}` : '도시와 길을 따라 다음 구역으로 탐험하세요');
     this.html('#world-position', `${world.player.x.toFixed(0)}, ${world.player.z.toFixed(0)}`);
     const collectionSpecies = new Set(getPlayableSpeciesIds(world.atlas.defaultVersion));
@@ -564,7 +562,7 @@ export class OpenWorldPanel {
     const badges = getRegionalBadges(game, region);
     const gym = getCampaignGyms(game, region).find(item => item.locationId === location.id);
     const trainer = getNextCampaignTrainer(game, region);
-    const localTrainer = world.localFieldTrainer ?? (badges >= 8 && trainer?.locationId === location.id ? trainer : undefined);
+    const localTrainer = badges >= 8 && trainer?.locationId === location.id ? trainer : undefined;
     const cave = getCaveScene(world.sceneId), portal = cave ? cavePortalAtInterior(world.sceneId, world.player.x, world.player.z) : cavePortalAtSurface(region, world.player.x, world.player.z);
     const challenge = gym ? `<button id="world-gym-challenge" ${battle || offer || gym.badge !== badges + 1 ? 'disabled' : ''}>${gym.name} · Lv.${gym.level} ${badges >= gym.badge ? '클리어 ✓' : '도전'}</button><small>${region === 'johto' ? '성도' : '관동'} 배지 ${badges}/8${gym.badge > badges + 1 ? ' · 앞 체육관부터 도전하세요' : ''}</small>` : localTrainer ? `<button id="world-trainer-challenge" ${battle || offer ? 'disabled' : ''}>${escape(localTrainer.name)} · 도전</button><small>${localTrainer.team.map(([id, level]) => `${getSpecies(id).name} Lv.${level}`).join(' · ')}</small>` : '';
     this.html('#world-gym', challenge + (portal ? `<button id="world-cave-enter" ${battle || offer ? 'disabled' : ''}>${cave ? `${escape(cave.name)} · 밖으로 나가기` : '동굴 들어가기'}</button>` : ''));

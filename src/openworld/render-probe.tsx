@@ -1,6 +1,6 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useRef } from 'react';
-import { Color, InstancedMesh, Mesh, type Object3D, type Scene } from 'three';
+import { Color, InstancedMesh, Light, Mesh, type LightShadow, type Object3D, type Scene } from 'three';
 import { getOpenWorldRendererInfo } from './gpu-renderer';
 
 function renderableInventory(scene: Scene) {
@@ -31,6 +31,12 @@ export function RenderProbe() {
         streaming: scene.userData.streaming, camera: camera.position.toArray(), objects: scene.children.length,
         background: scene.background instanceof Color ? scene.background.getHexString() : null,
         fog: scene.fog?.color.getHexString() ?? null, clearAlpha: gl.getClearAlpha(),
+        lights: scene.getObjectsByProperty('isLight', true).map(object => {
+          const light = object as Light;
+          const shadow = (light as Light & { shadow?: LightShadow }).shadow;
+          return { id: light.uuid, type: light.type, intensity: light.intensity, castsShadow: light.castShadow,
+            shadowSize: shadow?.mapSize.toArray(), shadowAutoUpdate: shadow?.autoUpdate };
+        }),
         creatures: scene.getObjectsByProperty('type', 'Group')
           .filter(object => object.name.startsWith('creature:'))
           .map(object => ({ id: object.name.slice('creature:'.length), position: object.position.toArray(), yaw: object.rotation.y })),
@@ -43,17 +49,25 @@ export function RenderProbe() {
           return { id, instances: group?.children.reduce((sum, mesh) => sum + Number('count' in mesh ? mesh.count : 0), 0) ?? 0 };
         }),
         daylightEnvironment: Boolean(scene.environment),
+        shadowsEnabled: gl.shadowMap.enabled,
+        water: scene.getObjectsByProperty('type', 'Mesh').flatMap(object => {
+          const mesh = object as Mesh, materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+          return materials.filter(material => material.userData.openWorldWaterLod).map(material => ({
+            id: material.uuid, lod: material.userData.openWorldWaterLod, effect: material.userData.openWorldNodeEffect,
+          }));
+        }),
         textures: gl.info.memory.textures, geometries: gl.info.memory.geometries,
         trainers: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('field-trainer:')).map(object => object.name),
         programs: gl.info.programs?.length, backend: backend?.backend ?? 'webgl', renderer: backend?.backend ?? (debug ? context?.getParameter(debug.UNMASKED_RENDERER_WEBGL) : context?.getParameter(context!.RENDERER)) }),
       reset: () => { samples.current = []; },
     };
-    return () => { delete target.__renderProbe; };
+    const owner = target.__renderProbe;
+    return () => { if (target.__renderProbe === owner) delete target.__renderProbe; };
   }, [gl, scene, camera]);
   useFrame((_, delta) => {
     const counters = getOpenWorldRendererInfo(gl)?.render ?? gl.info.render;
     samples.current.push({ frameMs: delta * 1000, calls: counters.calls, triangles: counters.triangles });
-    if (samples.current.length > 180) samples.current.shift();
+    if (samples.current.length > 900) samples.current.shift();
   });
   return null;
 }

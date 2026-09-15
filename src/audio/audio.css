@@ -5,27 +5,40 @@
   gap: .35rem .55rem;
   font-size: .75rem;
 }
-#game-music-panel { position: fixed; z-index: 36; top: 78px; right: 188px; width: 320px; overflow: hidden; border: 1px solid #a2bdb2; border-radius: 12px; color: #ecfff6; background: #172b25; box-shadow: 0 8px 28px #12251d33; }
+
+#game-music-panel {
+  position: fixed;
+  z-index: 36;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  width: 202px;
+  overflow: hidden;
+  border: 1px solid #a2bdb2;
+  border-radius: 12px;
+  color: #ecfff6;
+  background: #172b25;
+  box-shadow: 0 8px 28px #12251d55;
+}
 #game-music-panel[hidden] { display: none; }
-#game-music-panel header { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; font-size: 12px; }
-#game-music-panel iframe { display: block; width: 320px; height: 200px; border: 0; opacity: .999; }
-#game-music-panel button { padding: 5px 8px; border: 1px solid #607d70; background: #2e4b3f; border-radius: 6px; color: #fff; cursor: pointer; font-size: 11px; }
-#game-music-panel .music-actions { display: flex; align-items: center; gap: 8px; padding: 8px; }
-#game-music-panel .music-actions label { display: flex; align-items: center; gap: 4px; font-size: 11px; }
-#game-music-volume { width: 92px; accent-color: #67cda1; }
-#game-music-status, #game-music-panel > a { display: block; margin: 0 10px 8px; font-size: 10px; color: #b3cfc2; }
-@media (max-width: 720px) { #game-music-panel { top: 108px; right: max(10px, calc((100vw - 320px) / 2)); } }
+#game-music-panel iframe { display: block; width: 200px; height: 200px; border: 0; opacity: .999; }
+.music-footer { position: relative; }
+#game-music-details summary { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 40px; padding: 8px 47px 8px 9px; cursor: pointer; font-size: 12px; }
+#game-music-details summary strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#game-music-details summary span { flex: none; color: #b3cfc2; }
+#game-music-panel button { min-height: 40px; padding: 7px 9px; border: 1px solid #607d70; background: #2e4b3f; border-radius: 6px; color: #fff; cursor: pointer; font-size: 12px; }
+#game-music-close { position: absolute; top: 0; right: 1px; width: 40px; z-index: 1; }
+#game-music-panel .music-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding: 0 8px 8px; }
+#game-music-panel .music-actions label { display: flex; align-items: center; gap: 4px; font-size: 12px; }
+#game-music-volume { width: 78px; accent-color: #67cda1; }
+#game-music-status, #game-music-details > a { display: block; margin: 0 9px 8px; font-size: 12px; line-height: 1.45; color: #b3cfc2; }
 
-.game-audio-controls input[type="range"] {
-  min-width: 0;
-  accent-color: #f2d86f;
-}
-
-.game-audio-controls .game-audio-mute {
-  grid-column: 1 / -1;
-  min-height: 2rem;
-}
+.game-audio-controls input[type="range"] { min-width: 0; accent-color: #f2d86f; }
+.game-audio-controls .game-audio-mute { grid-column: 1 / -1; min-height: 2rem; }
 
 @media (max-width: 720px) {
+  #game-music-panel { top: calc(140px + env(safe-area-inset-top)); right: auto; bottom: auto; left: 8px; transform: none; }
+  body:has(#game-music-panel:not([hidden])) .adventure .world-explore-panel[open] { width: 160px; }
+  body:has(.world-explore-panel[open]) #game-music-panel:not([hidden]) { top: calc(250px + env(safe-area-inset-top)); right: 8px; left: auto; }
   .game-audio-controls { grid-template-columns: 4rem minmax(7rem, 1fr); }
 }

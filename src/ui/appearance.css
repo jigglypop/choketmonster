@@ -352,3 +352,19 @@ input[type=search], input[type=text], select { border: 1px solid var(--ui-border
 @media(prefers-reduced-motion: reduce) { .gym-victory-emblem { animation: none; } }
 
 .world-encounter-layout { display: block; width: fit-content; padding: 5px 9px; margin: 10px 0 8px; border: 1px solid #80aaff60; border-radius: 8px; color: #dce9ff; background: #376dc92b; font-size: calc(12px * var(--ui-font-scale)); font-weight: 600; }
+
+/* Keep game text readable without translucent blur over moving terrain. */
+.adventure :is(.world-explore-panel, .world-battle-hud, .social-dock, .world-radar) {
+  color: #f5f8ff;
+  background: #172731;
+  backdrop-filter: none;
+  text-shadow: none;
+}
+.adventure :is(.world-explore-panel, .world-battle-hud, .social-dock, .world-radar) :is(button, label, small, p, span, input, summary) {
+  font-size: max(14px, calc(14px * var(--ui-font-scale, 1)));
+  line-height: 1.4;
+  opacity: 1;
+}
+.adventure :is(.world-explore-panel, .world-battle-hud, .social-dock, .world-radar) :is(small, p, label) { color: #e1eaf2; }
+.adventure #world-chat-input::placeholder { color: #d1dce6; opacity: 1; }
+.topbar nav button { font-size: max(14px, calc(14px * var(--ui-font-scale, 1))); }

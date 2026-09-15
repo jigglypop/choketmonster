@@ -2,9 +2,9 @@ import { Brain, validateGraph, type BrainState, type Graph } from '../core/brain
 import { Random, clamp } from '../core/random';
 import { POKEMON, getMove, getSpecies } from '../data/pokemon';
 import { getVersionSpeciesIds } from '../data/pokemon-versions';
-import { replenishBalls, challengeCampaignGym, challengeCampaignTrainer, challengeFieldTrainer } from '../game/engine';
+import { replenishBalls, challengeCampaignGym, challengeCampaignTrainer } from '../game/engine';
 import { getRegionalBadges, getCampaignGyms, getNextCampaignTrainer, campaignTravelReason, regionalWildLevels } from '../game/campaign';
-import { FIELD_TRAINERS, availableFieldTrainer, getFieldTrainer, type FieldTrainer } from '../data/field-trainers';
+import type { FieldTrainer } from '../data/field-trainers';
 import { chooseRegionalEncounter, encounterPeriodAt, regionalSourcePools, supplementalEncounterRules, type EncounterPeriod } from '../data/regional-encounters';
 import { gameplayHabitat } from '../game/habitat';
 import { ConnectomeController, type NeuralMonster } from '../game/connectome';
@@ -26,7 +26,7 @@ export type WorldSample = { height: number; biome: WorldBiome; blocked: boolean 
 export type WorldPosition = { x: number; z: number; heading: number };
 export type WorldFood = { id: number; x: number; z: number };
 export type WorldRespawn = { id: string; speciesId: number; level: number; biome: WorldBiome; originX: number; originZ: number; remainingSeconds: number };
-export type WorldTarget = { kind: 'food' | 'player' | 'wild'; id: string; x: number; z: number };
+export type WorldTarget = { kind: 'food' | 'player' | 'wild' | 'explore'; id: string; x: number; z: number };
 export type WorldBrainState = Omit<BrainState, 'graph'> & { graphId: string };
 export type OpenWorldEntity = {
   id: string; kind: 'wild' | 'companion'; speciesId: number; level: number;
@@ -117,7 +117,7 @@ export function biomeForSpecies(speciesId: number): WorldBiome {
 /** Engineered mapping from Pokemon base Speed to open-world units per second. */
 export function movementSpeed(speciesId: number, level = 5): number {
   const baseSpeed = getSpecies(speciesId).baseStats.speed;
-  return Math.min(11, (1.2 + baseSpeed * .018 + Math.max(0, level - 5) * .012) * 2.2);
+  return Math.min(16, (1.2 + baseSpeed * .018) * 3.5 + Math.max(0, level - 5) * .0264);
 }
 
 export function nextSpeciesInBiome(speciesId: number): number {
@@ -192,40 +192,17 @@ export class OpenWorldSimulation {
   get dayPeriod(): EncounterPeriod { return encounterPeriodAt(this.worldClockSeconds); }
   get timeOfDay(): EncounterPeriod { return this.dayPeriod; }
   get worldHour(): number { return this.worldClockSeconds / (20 * 60) * 24; }
-  get daylightIntensity(): number {
-    const hour = this.worldHour;
-    if (hour >= 10 && hour < 20) return 1;
-    if (hour >= 4 && hour < 10) return .3 + (hour - 4) / 6 * .7;
-    return .25;
-  }
+  // Legacy encounter clock remains save-compatible; presentation is always daytime.
+  get daylightIntensity(): number { return 1; }
   synchronizeWorldClock(epochMilliseconds: number): void {
     if (!Number.isFinite(epochMilliseconds) || epochMilliseconds < 0) throw new Error('World clock timestamp must be non-negative');
     this.worldClockSeconds = epochMilliseconds / 1000 % (20 * 60);
   }
-  get localFieldTrainer(): FieldTrainer | undefined {
-    const location = this.locationAt(this.player.x, this.player.z);
-    return availableFieldTrainer(this.regionId, location.id, this.game.defeatedFieldTrainers);
-  }
+  // Keep source records and historical battles loadable, without spawning NPCs.
+  get localFieldTrainer(): FieldTrainer | undefined { return undefined; }
   trainerRenderData(radius = 40): Array<FieldTrainer & { x: number; z: number }> {
     if (!finite(radius) || radius <= 0 || radius > 120) throw new Error('Trainer render radius must be 0..120');
-    const defeated = new Set(this.game.defeatedFieldTrainers ?? []), cave = getCaveScene(this.sceneId);
-    const matchLocation = (trainerId: string, locationId: string) => trainerId === locationId
-      || (trainerId === 'route-42' && locationId.startsWith('route-42-'))
-      || (trainerId === 'dark-cave' && locationId.startsWith('dark-cave-'));
-    const candidates = FIELD_TRAINERS.filter(trainer => trainer.region === this.regionId && !defeated.has(trainer.id));
-    const used: Array<{x:number;z:number}> = [];
-    return candidates.flatMap(trainer => {
-      const location = cave ? caveLocation(this.sceneId)! : this.atlas.locations.find(item => matchLocation(trainer.locationId, item.id));
-      if (!location || cave && trainer.locationId !== cave.encounterLocationId || !cave && distance(location, this.player) > radius) return [];
-      const seed = hash(`${trainer.id}:${trainer.sourceX ?? 0}:${trainer.sourceZ ?? 0}`);
-      for (let attempt=0; attempt<48; attempt++) {
-        const angle=((seed%360)+attempt*137.5)*Math.PI/180, range=3+(seed%7)+Math.floor(attempt/12)*2;
-        const raw={x:(cave?0:location.x)+Math.cos(angle)*range,z:(cave?0:location.z)+Math.sin(angle)*range};
-        const point=cave ? nearestCaveWalkable(this.sceneId,raw.x,raw.z) : !this.sampleWorld(raw.x,raw.z).blocked ? raw : undefined;
-        if(point && used.every(other=>distance(other,point)>1.5)){used.push(point);return [{...trainer,...point}];}
-      }
-      return [];
-    });
+    return [];
   }
   portalRenderData(radius = 60): Array<{ id: string; label: string; targetSceneId: string; x: number; z: number }> {
     const cave = getCaveScene(this.sceneId);
@@ -428,18 +405,11 @@ export class OpenWorldSimulation {
     return true;
   }
 
-  challengeFieldTrainerById(id: string): boolean {
-    if (this.game.battle || this.game.captureOffer || !this.game.player.team.some(monster => monster.hp > 0)) return false;
-    const trainer = getFieldTrainer(id), rendered = this.trainerRenderData(40).find(item => item.id === id);
-    if (!trainer || !rendered || distance(rendered, this.player) > 5 || (this.game.defeatedFieldTrainers ?? []).includes(id)) return false;
-    challengeFieldTrainer(this.game, trainer); this.battleWildId = `trainer:${trainer.id}`; this.resetTrainerTurn(); return true;
-  }
+  challengeFieldTrainerById(_id: string): boolean { return false; }
 
   challengeLocalTrainer(id?: string): boolean {
     if (this.regionId !== 'kanto' && this.regionId !== 'johto' || this.game.battle || this.game.captureOffer || !this.game.player.team.some(monster => monster.hp > 0)) return false;
     if (id) return this.challengeFieldTrainerById(id);
-    const nearby = this.trainerRenderData(40).filter(item => distance(item, this.player) <= 5).sort((a,b)=>distance(a,this.player)-distance(b,this.player))[0];
-    if (nearby) return this.challengeFieldTrainerById(nearby.id);
     const trainer = getNextCampaignTrainer(this.game, this.regionId);
     if (!trainer || this.locationAt(this.player.x, this.player.z).id !== trainer.locationId || this.regionalBadges < 8) return false;
     challengeCampaignTrainer(this.game, this.regionId);
@@ -919,10 +889,29 @@ export class OpenWorldSimulation {
   private targetFor(entity: OpenWorldEntity): WorldTarget | undefined {
     if (entity.kind === 'companion') {
       const selected = this.selectedWildId ? this.entities.find(item => item.id === this.selectedWildId) : undefined;
-      return selected && (!this.selectionPinned || this.trackingSelected) ? { kind: 'wild', id: selected.id, x: selected.x, z: selected.z } : { kind: 'player', id: 'player', x: this.player.x, z: this.player.z };
+      if (selected && (!this.selectionPinned || this.trackingSelected)) return { kind: 'wild', id: selected.id, x: selected.x, z: selected.z };
+      if (this.controlMode === 'auto' && !this.selectionPinned) return this.explorationTarget(entity);
+      return { kind: 'player', id: 'player', x: this.player.x, z: this.player.z };
     }
     const food = [...this.foods].sort((a, b) => distance(entity, a) - distance(entity, b) || a.id - b.id)[0];
     return food ? { kind: 'food', id: String(food.id), x: food.x, z: food.z } : undefined;
+  }
+
+  /** Game-designed waypoints feed the existing sensory inputs. The circuit
+   * still selects each movement; the target is included in the entity save. */
+  private explorationTarget(entity: OpenWorldEntity): WorldTarget {
+    const previous = entity.target;
+    const created = previous?.kind === 'explore' && /^explore:\d+$/.test(previous.id) ? Number(previous.id.slice(8)) : -1;
+    if (previous && created >= 0 && this.tick >= created && this.tick - created < 80
+      && finite(previous.x) && finite(previous.z) && distance(entity, previous) > 2 && distance(entity, previous) <= 40
+      && !this.pathBlocked(entity, previous.x, previous.z, [])) return previous;
+    const start = hash(`${this.seed}:${this.tick}:${entity.id}`) % 16;
+    for (const radius of [28, 20, 12, 6]) for (let index = 0; index < 16; index++) {
+      const angle = (start + index) * Math.PI / 8;
+      const target = { kind: 'explore' as const, id: `explore:${this.tick}`, x: entity.x + Math.cos(angle) * radius, z: entity.z + Math.sin(angle) * radius };
+      if (!this.pathBlocked(entity, target.x, target.z, [])) return target;
+    }
+    return { kind: 'player', id: 'player', x: entity.x, z: entity.z };
   }
 
   private observe(entity: OpenWorldEntity, target: WorldTarget | undefined, occupied: Array<{ x: number; z: number }>, deltaSeconds: number): number[] {

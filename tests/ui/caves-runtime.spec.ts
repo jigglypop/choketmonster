@@ -27,14 +27,10 @@ function saveAtSurface(seed: number): SaveEnvelope {
   return packSave(game, graph, { ...defaultView(), openWorld: world.snapshot(), openWorldPaused: true, learning: false });
 }
 
-function saveAtTrainer(seed: number) {
+function saveInCave(seed: number) {
   const { game, world } = simulation(seed);
   expect(world.traverseCavePortal()).toBe(true);
-  const trainer = world.trainerRenderData().find(item => item.id === 'crystal-gruntm-gruntm-29');
-  expect(trainer).toBeDefined();
-  world.player = { x: trainer!.x, z: trainer!.z, heading: 0 };
-  Object.assign(world.entities.find(entity => entity.kind === 'companion')!, world.player);
-  return { trainer: trainer!, save: packSave(game, graph, { ...defaultView(), openWorld: world.snapshot(), openWorldPaused: true, learning: false }) };
+  return packSave(game, graph, { ...defaultView(), openWorld: world.snapshot(), openWorldPaused: true, learning: false });
 }
 
 async function load(page: Page, save: SaveEnvelope, expectedScene: string, expectedPosition?: string) {
@@ -86,21 +82,17 @@ test('localized portal enters, persists through reload, and exits the isolated c
   expect(errors).toEqual([]);
 });
 
-test('cave trainer loads the real GLB and the exact trainer id starts battle', async ({ page }) => {
+test('cave renders Pokemon and its environment without human field NPCs', async ({ page }) => {
   test.setTimeout(120_000);
   const errors: string[] = [], trainerRequests: Array<{ url: string; status: number }> = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   page.on('response', response => { if (response.url().includes('/models/trainer.glb')) trainerRequests.push({ url: response.url(), status: response.status() }); });
-  const fixture = saveAtTrainer(95_202);
-  await load(page, fixture.save, cave.sceneId);
+  await load(page, saveInCave(95_202), cave.sceneId);
   await expect.poll(() => sceneId(page), { timeout: 45_000 }).toBe(cave.sceneId);
-  const label = page.locator(`[data-field-trainer="${fixture.trainer.id}"]`);
-  await expect(label).toBeVisible({ timeout: 45_000 });
-  await expect(label).toContainText(fixture.trainer.name);
-  await expect.poll(() => page.evaluate(id => (window as unknown as { __renderProbe: { read(): { trainers: string[] } } }).__renderProbe.read().trainers.includes(`field-trainer:${id}`), fixture.trainer.id)).toBe(true);
-  await expect.poll(() => trainerRequests.some(request => request.status === 200)).toBe(true);
-  await page.screenshot({ path: `${output}/slowpoke-well-trainer.png` });
+  await expect(page.locator('[data-field-trainer]')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __renderProbe?: { read(): { loadedPokemon: number[] } } }).__renderProbe?.read().loadedPokemon.length ?? 0), { timeout: 45_000 }).toBeGreaterThan(0);
+  await page.screenshot({ path: `${output}/slowpoke-well-without-npcs.png` });
   const composition = await page.evaluate(() => {
     const describe = (element: Element | null) => element ? { tag: element.tagName, id: element.id, className: element.className } : null;
     const rect = (element: Element | null) => element ? (({ x, y, width, height }) => ({ x, y, width, height }))(element.getBoundingClientRect()) : null;
@@ -112,10 +104,9 @@ test('cave trainer loads the real GLB and the exact trainer id starts battle', a
       renderer: (window as unknown as { __renderProbe?: { read(): { backend?: string; streaming?: unknown } } }).__renderProbe?.read(),
     };
   });
-  await expect(page.locator('#game-music-panel')).toBeHidden();
-  expect(composition.renderer).toMatchObject({ background: '182326', fog: '182326', clearAlpha: 1 });
-  await label.click();
-  await expect(page.locator('#world-battle-state')).toContainText('턴 1');
-  writeFileSync(`${output}/trainer-evidence.json`, JSON.stringify({ sceneId: cave.sceneId, trainerId: fixture.trainer.id, trainerRequests, composition, errors }, null, 2));
+  expect(composition.renderer).toMatchObject({ background: '182326', fog: null, clearAlpha: 1 });
+  expect(composition.renderer).toMatchObject({ trainers: [] });
+  expect(trainerRequests).toEqual([]);
+  writeFileSync(`${output}/npc-removal-evidence.json`, JSON.stringify({ sceneId: cave.sceneId, trainerRequests, composition, errors }, null, 2));
   expect(errors).toEqual([]);
 });

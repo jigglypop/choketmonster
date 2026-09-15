@@ -3,7 +3,7 @@ import { Html, OrbitControls } from '@react-three/drei';
 import { Physics, RigidBody } from '@react-three/rapier';
 import { GaesupWorld, createCameraPlugin } from 'gaesup-world';
 import { createGaesupRuntime } from 'gaesup-world/runtime';
-import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { type ReactNode, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import {
   AnimationMixer,
@@ -16,7 +16,6 @@ import {
   Color,
   DirectionalLight,
   Float32BufferAttribute,
-  Fog,
   Frustum,
   Sphere,
   Group,
@@ -55,7 +54,7 @@ import { initialYaw, movementYaw, turnTowards } from './motion';
 import { normalizePokemonModel } from './model-normalization';
 import './view.css';
 import { RenderProbe } from './render-probe';
-import { SkyLighting, SurfaceMaterial, WaterMaterial, normalizeStandardMaterial, useSurfaceTextures, type SurfaceTextures } from './materials';
+import { SkyLighting, SurfaceMaterial, WaterMaterial } from './materials';
 import { AdaptiveResolution } from './adaptive-resolution';
 import { MAX_CAMERA_DISTANCE, MIN_CAMERA_DISTANCE } from './camera-navigation';
 import { findWorldPath, headingForStep } from './navigation';
@@ -65,17 +64,10 @@ import { WORLD_MIN, WORLD_MAX, WORLD_SCALE, surfaceSceneId } from './world-space
 import { getCaveScene } from './caves';
 import { CaveInterior, ScenePortals } from './scene-landmarks';
 import { createOpenWorldRenderer } from './gpu-renderer';
-import type { WorldTrainer } from './types';
 const MODEL_CACHE_LIMIT = 16;
 const NATURE_DETAIL_RADIUS = 68;
-// Fog is fully opaque at 85 world units. The rounded 16-unit streaming cell can
-// be eight units from the player, so 94 keeps every potentially visible prop.
+// Bound scenery streaming even though the view no longer uses fog.
 const NATURE_VISIBLE_RADIUS = 94;
-const NATURE_SHADOW_CASTERS = new Set([
-  'tree-round', 'tree-oak', 'tree-pine', 'tree-fat', 'tree-thin',
-  'rock-large', 'rock-moss', 'rock-tall', 'rock-ridge', 'cliff', 'moss-boulder',
-  'stump', 'fallen-log',
-]);
 const loader = createGLTFLoader();
 const DEFAULT_CAMERA_OFFSET = new Vector3(5.6, 7.6, 8.8);
 
@@ -200,7 +192,7 @@ function fallbackSample(x: number, z: number): WorldSample {
   return { height, biome: Math.abs(x) + Math.abs(z) > 175 ? 'rock' : 'meadow', blocked: false };
 }
 
-function Terrain({ sampleWorld, chunk, atlas, onNavigate }: { sampleWorld: (x: number, z: number) => WorldSample; chunk: TerrainChunk; atlas: WorldAtlas; onNavigate?: (point: WorldPoint) => void }) {
+const Terrain = memo(function Terrain({ sampleWorld, chunk, atlas, onNavigate }: { sampleWorld: (x: number, z: number) => WorldSample; chunk: TerrainChunk; atlas: WorldAtlas; onNavigate?: (point: WorldPoint) => void }) {
   const { geometry, skirt } = useMemo(() => {
     const n = chunk.segments, stride = n + 1;
     const vertices: number[] = [], colors: number[] = [], indices: number[] = [];
@@ -241,10 +233,11 @@ function Terrain({ sampleWorld, chunk, atlas, onNavigate }: { sampleWorld: (x: n
     event.stopPropagation(); if (event.button === 0 && event.delta <= 5) onNavigate?.({ x: event.point.x, z: event.point.z });
   }}><SurfaceMaterial surface="ground" vertexColors /></mesh>;
   return <group>
-    {chunk.distance <= 20 ? <RigidBody type="fixed" colliders="trimesh" friction={1}>{surface}</RigidBody> : surface}
+    {surface}
     <mesh geometry={skirt}><SurfaceMaterial surface="ground" vertexColors /></mesh>
   </group>;
-}
+}, (before, after) => before.chunk.key === after.chunk.key && before.chunk.segments === after.chunk.segments
+  && before.sampleWorld === after.sampleWorld && before.atlas === after.atlas && before.onNavigate === after.onNavigate);
 
 function InstancedPart({ geometry, material, sourceMatrix, placements, shadows }: {
   geometry: BufferGeometry;
@@ -254,7 +247,10 @@ function InstancedPart({ geometry, material, sourceMatrix, placements, shadows }
   shadows: boolean;
 }) {
   const mesh = useRef<InstancedMesh>(null);
-  useEffect(() => { const instance = mesh.current; return () => { instance?.dispose(); }; }, [placements.length]);
+  // Reuse GPU buffers when visibility changes the active instance count.
+  const capacity = useRef(64);
+  capacity.current = Math.max(capacity.current, 2 ** Math.ceil(Math.log2(Math.max(1, placements.length))));
+  useEffect(() => { const instance = mesh.current; return () => { instance?.dispose(); }; }, [capacity.current]);
   useLayoutEffect(() => {
     if (!mesh.current) return;
     const placementMatrix = new Matrix4();
@@ -274,10 +270,10 @@ function InstancedPart({ geometry, material, sourceMatrix, placements, shadows }
     mesh.current.instanceMatrix.needsUpdate = true;
     mesh.current.computeBoundingSphere();
   }, [placements, sourceMatrix]);
-  return <instancedMesh ref={mesh} args={[geometry, material, placements.length]} castShadow={shadows} receiveShadow dispose={null} />;
+  return <instancedMesh ref={mesh} args={[geometry, material, capacity.current]} count={placements.length} castShadow={shadows} receiveShadow dispose={null} />;
 }
 
-function InstancedAsset({ url, placements, shadows, wind, rockTextures }: { url: string; placements: readonly SceneryPlacement[]; shadows: boolean; wind: boolean; rockTextures?: SurfaceTextures }) {
+function InstancedAsset({ url, placements, shadows = false }: { url: string; placements: readonly SceneryPlacement[]; shadows?: boolean }) {
   const gltf = useCachedModel(url);
   const parts = useMemo(() => {
     if (!gltf) return [];
@@ -286,13 +282,11 @@ function InstancedAsset({ url, placements, shadows, wind, rockTextures }: { url:
     gltf.scene.traverse(object => {
       if (!(object instanceof Mesh)) return;
       const source = Array.isArray(object.material) ? object.material : [object.material];
-      const normalized = source.map(material => material instanceof MeshStandardMaterial
-        ? normalizeStandardMaterial(material, { wind, canopy: url.includes('/props/tree-'), surface: rockTextures ? 'rock' : undefined, textures: rockTextures })
-        : material.clone());
+      const normalized = source.map(material => material.clone());
       meshes.push({ geometry: object.geometry, material: Array.isArray(object.material) ? normalized : normalized[0], matrix: object.matrixWorld.clone() });
     });
     return meshes;
-  }, [gltf, wind, rockTextures, url]);
+  }, [gltf]);
   useEffect(() => () => {
     for (const part of parts) {
       const materials = Array.isArray(part.material) ? part.material : [part.material];
@@ -305,9 +299,8 @@ function InstancedAsset({ url, placements, shadows, wind, rockTextures }: { url:
 
 function Nature({ sampleWorld, player, atlas, isVisible }: { sampleWorld: (x: number, z: number) => WorldSample; player: { x: number; z: number }; atlas: WorldAtlas; isVisible: VisibilityTest }) {
   const placements = useMemo(() => createSceneryPlacements(sampleWorld, atlas), [sampleWorld, atlas]);
-  const rockTextures = useSurfaceTextures('rock');
   const cellX = Math.round(player.x / 16) * 16, cellZ = Math.round(player.z / 16) * 16;
-  // 85m fog + 48m camera reach + 12m cell margin: unload only fully hidden props.
+  // Keep distant props bounded without adding fog or animated shader effects.
   const nearby = useMemo(() => Object.fromEntries(SCENERY_ASSETS.map(asset => {
     const visible = placements[asset.id]
       .filter(item => Math.hypot(item.x - cellX, item.z - cellZ) < (['moss-boulder', 'moss-stone', 'fern'].includes(asset.id) ? NATURE_DETAIL_RADIUS : NATURE_VISIBLE_RADIUS) && (Math.hypot(item.x - player.x, item.z - player.z) < 12 || isVisible(item.x, item.y + 3, item.z, 6)))
@@ -320,9 +313,7 @@ function Nature({ sampleWorld, player, atlas, isVisible }: { sampleWorld: (x: nu
         key={asset.id}
         url={asset.url}
         placements={nearby[asset.id]}
-        rockTextures={!asset.authoredMaterials && (asset.id.startsWith('rock') || asset.id === 'cliff') ? rockTextures : undefined}
-        shadows={NATURE_SHADOW_CASTERS.has(asset.id)}
-        wind={asset.id === 'grass-tuft' || asset.id === 'grass-soft' || asset.id.startsWith('flower') || asset.id === 'bush' || asset.id === 'lily' || asset.id === 'fern'}
+        shadows={asset.id.startsWith('tree') || asset.id.startsWith('rock') || asset.id === 'cliff'}
       />)}
     </group>
   );
@@ -423,7 +414,7 @@ function RegionalLandmark({ region, x, y, z }: { region: string; x: number; y: n
   </group>;
 }
 
-function TrailAndWater({ sampleWorld, player, badges, atlas, visible }: { sampleWorld: (x: number, z: number) => WorldSample; player: { x: number; z: number }; badges: number; atlas: WorldAtlas; visible: VisibilityTest }) {
+function TrailAndWater({ sampleWorld, player, badges, atlas, visible, mobile }: { sampleWorld: (x: number, z: number) => WorldSample; player: { x: number; z: number }; badges: number; atlas: WorldAtlas; visible: VisibilityTest; mobile: boolean }) {
   const locations = useMemo(() => new Map(atlas.locations.map(item => [item.id, item])), [atlas]);
   const trail = useMemo(() => {
     const vertices: number[] = [];
@@ -461,12 +452,12 @@ function TrailAndWater({ sampleWorld, player, badges, atlas, visible }: { sample
     <group name={`region-landmarks:${atlas.id}`} userData={{ gaesupWorldObject: 'region-landmarks' }}>
       <mesh geometry={trail} receiveShadow><SurfaceMaterial surface="path" color="#b89a68" /></mesh>
       {atlas.id === 'kanto' && <><mesh position={[-34 * WORLD_SCALE, -.66, 101 * WORLD_SCALE]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}>
-        <planeGeometry args={[91 * WORLD_SCALE, 33 * WORLD_SCALE]} /><WaterMaterial center={[-34 * WORLD_SCALE, 101 * WORLD_SCALE]} extent={[45.5 * WORLD_SCALE, 16.5 * WORLD_SCALE]} />
+        <planeGeometry args={[91 * WORLD_SCALE, 33 * WORLD_SCALE]} /><WaterMaterial player={player} mobile={mobile} center={[-34 * WORLD_SCALE, 101 * WORLD_SCALE]} extent={[45.5 * WORLD_SCALE, 16.5 * WORLD_SCALE]} />
       </mesh>
       <mesh position={[61 * WORLD_SCALE, -.66, -25 * WORLD_SCALE]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}>
-        <circleGeometry args={[12 * WORLD_SCALE, 48]} /><WaterMaterial lake center={[61 * WORLD_SCALE, -25 * WORLD_SCALE]} radius={12 * WORLD_SCALE} />
+        <circleGeometry args={[12 * WORLD_SCALE, 48]} /><WaterMaterial player={player} mobile={mobile} lake center={[61 * WORLD_SCALE, -25 * WORLD_SCALE]} radius={12 * WORLD_SCALE} />
       </mesh></>}
-      {atlas.id !== 'kanto' && atlas.locations.filter(item => item.kind === 'sea' && Math.hypot(item.x - player.x, item.z - player.z) < 90).map(item => <mesh key={item.id} position={[item.x, sampleWorld(item.x, item.z).height + .025, item.z]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}><circleGeometry args={[12 * WORLD_SCALE, 32]} /><WaterMaterial lake center={[item.x, item.z]} radius={12 * WORLD_SCALE} /></mesh>)}
+      {atlas.id !== 'kanto' && atlas.locations.filter(item => item.kind === 'sea' && Math.hypot(item.x - player.x, item.z - player.z) < 90).map(item => <mesh key={item.id} position={[item.x, sampleWorld(item.x, item.z).height + .025, item.z]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}><circleGeometry args={[12 * WORLD_SCALE, 32]} /><WaterMaterial player={player} mobile={mobile} lake center={[item.x, item.z]} radius={12 * WORLD_SCALE} /></mesh>)}
       {atlas.id !== 'kanto' && atlas.locations.filter(item => item.kind === 'special' && Math.hypot(item.x - player.x, item.z - player.z) < 70 && visible(item.x, 5, item.z, 10)).map(item => <RegionalLandmark key={item.id} region={atlas.id} x={item.x} y={terrainSurfaceHeight(sampleWorld, item.x, item.z)} z={item.z} />)}
       {atlas.locations.filter(item => item.kind === 'town' && Math.hypot(item.x - player.x, item.z - player.z) <= 85 && visible(item.x, 3, item.z, 14 * WORLD_SCALE)).map(town => <group key={town.id} name={`town:${town.id}`} position={[town.x, terrainSurfaceHeight(sampleWorld, town.x, town.z) + .05, town.z]}>
         <TownPaving color={townColors[town.id] ?? atlas.palette.town} />
@@ -626,7 +617,7 @@ function CreatureBillboard({ creature, hp, distance, emphasized }: { creature: W
     canvas.width = 512;
     canvas.height = 128;
     const context = canvas.getContext('2d')!;
-    context.fillStyle = 'rgba(19, 56, 47, .92)';
+    context.fillStyle = '#102b25';
     context.beginPath();
     context.roundRect(4, 4, 504, 120, 24);
     context.fill();
@@ -635,10 +626,10 @@ function CreatureBillboard({ creature, hp, distance, emphasized }: { creature: W
     context.stroke();
     context.fillStyle = '#fff5d6';
     context.textAlign = 'center';
-    context.font = '700 30px system-ui, sans-serif';
-    context.fillText(creature.remotePlayer ? creature.remotePlayer.name : `${creature.name} · Lv.${creature.level}`, 256, 45);
-    context.font = '700 22px system-ui, sans-serif';
-    context.fillText(creature.remotePlayer ? `같은 지역 플레이어 · ${creature.remotePlayer.activity === 'battle' ? '배틀 중' : creature.remotePlayer.activity === 'moving' ? '이동 중' : '대기'}` : `${Math.max(0, Math.ceil(creature.hp))} / ${creature.maxHp} HP`, 256, 76);
+    context.font = '800 44px system-ui, sans-serif';
+    context.fillText(creature.remotePlayer ? creature.remotePlayer.name : `${creature.name} · Lv.${creature.level}`, 256, 49, 468);
+    context.font = '700 32px system-ui, sans-serif';
+    context.fillText(creature.remotePlayer ? `${creature.remotePlayer.activity === 'battle' ? '배틀 중' : creature.remotePlayer.activity === 'moving' ? '이동 중' : '대기'}` : `${Math.max(0, Math.ceil(creature.hp))} / ${creature.maxHp} HP`, 256, 84, 468);
     if (creature.remotePlayer) {
       const result = new CanvasTexture(canvas); result.colorSpace = SRGBColorSpace; return result;
     }
@@ -656,7 +647,7 @@ function CreatureBillboard({ creature, hp, distance, emphasized }: { creature: W
   }, [creature.hp, creature.level, creature.maxHp, creature.name, creature.remotePlayer?.activity, hp]);
   useEffect(() => () => texture.dispose(), [texture]);
   if (distance > 34 && !emphasized) return null;
-  const width = emphasized ? 2.4 : 2.0;
+  const width = emphasized ? 2.8 : 2.4;
   return <sprite name="creature-nameplate" position={[0, (creature.displayHeight ?? 1.2) + .5, 0]} scale={[width, width * .25, 1]}><spriteMaterial map={texture} transparent depthTest depthWrite={false} /></sprite>;
 }
 
@@ -690,7 +681,7 @@ function Creature({ creature, selected, distance, options, showLabels, model }: 
   useFrame((_, delta) => {
     if (!root.current) return;
     const remaining = visual.current.distanceTo(target.current);
-    const speed = MathUtils.clamp(creature.movementSpeed ?? 2.4, .5, 12);
+    const speed = MathUtils.clamp(creature.movementSpeed ?? 2.4, .5, 16);
     const step = Math.max(speed * Math.min(delta, .05) * 1.2, remaining * Math.min(1, delta * 4));
     if (remaining > 0) visual.current.lerp(target.current, Math.min(1, step / remaining));
     visual.current.y = terrainSurfaceHeight(sample, visual.current.x, visual.current.z);
@@ -819,7 +810,7 @@ function PlayerCamera({ snapshot, options, destination, onDestination }: { snaps
         right.current.set(-forward.current.z, 0, forward.current.x);
         movement.current.copy(forward.current).multiplyScalar(forwardAxis).addScaledVector(right.current, sideAxis).normalize();
       }
-      movement.current.multiplyScalar(Math.min(delta, .05) * (snapshot.entities.find(entity => entity.id.startsWith('companion:'))?.movementSpeed ?? 2.2));
+      movement.current.multiplyScalar(Math.min(delta, .1) * (snapshot.entities.find(entity => entity.id.startsWith('companion:'))?.movementSpeed ?? 2.2));
       const x = MathUtils.clamp(target.x + movement.current.x, WORLD_MIN, WORLD_MAX);
       const z = MathUtils.clamp(target.z + movement.current.z, WORLD_MIN, WORLD_MAX);
       const terrain = sample(x, z);
@@ -856,15 +847,24 @@ function PlayerCamera({ snapshot, options, destination, onDestination }: { snaps
   return <OrbitControls ref={controls} makeDefault enablePan={false} enableDamping dampingFactor={.08} minDistance={MIN_CAMERA_DISTANCE} maxDistance={MAX_CAMERA_DISTANCE} minPolarAngle={.38} maxPolarAngle={1.18} />;
 }
 
-function Sunlight({ player, daylight = 1 }: { player: { x: number; z: number }; daylight?: number }) {
+function Sunlight({ player, mobile }: { player: { x: number; z: number }; mobile: boolean }) {
   const sun = useRef<DirectionalLight>(null);
   const target = useMemo(() => new Object3D(), []);
+  const elapsed = useRef(1);
+  const reach = mobile ? 16 : 24;
+  useFrame((_, delta) => {
+    elapsed.current += delta;
+    if (sun.current && elapsed.current >= 1 / (mobile ? 10 : 15)) {
+      sun.current.shadow.needsUpdate = true;
+      elapsed.current = 0;
+    }
+  });
   const x = Math.round(player.x / 4) * 4, z = Math.round(player.z / 4) * 4;
   useLayoutEffect(() => { target.position.set(x, 0, z); target.updateMatrixWorld(); }, [x, z, target]);
-  return <><primitive object={target} /><directionalLight ref={sun} target={target} position={[x + 28, 52, z + 22]} intensity={.18 + daylight * 2.42} color={daylight < .35 ? '#abc3ee' : '#fff0d5'} castShadow
-    shadow-mapSize={[1024, 1024]} shadow-camera-near={1} shadow-camera-far={150}
-    shadow-camera-left={-44} shadow-camera-right={44} shadow-camera-top={44} shadow-camera-bottom={-44}
-    shadow-normalBias={.10} shadow-bias={-.0004} /></>;
+  return <><primitive object={target} /><directionalLight ref={sun} target={target} position={[x + 28, 52, z + 22]} intensity={2.6} color="#fff0d5" castShadow
+    shadow-autoUpdate={false} shadow-mapSize={[mobile ? 256 : 512, mobile ? 256 : 512]}
+    shadow-camera-near={1} shadow-camera-far={120} shadow-camera-left={-reach} shadow-camera-right={reach}
+    shadow-camera-top={reach} shadow-camera-bottom={-reach} shadow-normalBias={.06} shadow-bias={-.0004} /></>;
 }
 
 function FoodInstances({ foods, sampleWorld }: { foods: OpenWorldRenderSnapshot['foods']; sampleWorld: (x: number, z: number) => WorldSample }) {
@@ -900,28 +900,13 @@ function useViewWindow() {
   return { ...windowState, visible };
 }
 
-function TrainerActor({ trainer, sample, player, onNavigate, onChallenge }: { trainer: WorldTrainer; sample(x: number, z: number): WorldSample; player: WorldPoint; onNavigate(point: WorldPoint): void; onChallenge(id: string): void }) {
-  const source = useCachedModel('/models/trainer.glb');
-  const object = useMemo(() => {
-    if (!source) return null;
-    const clone = cloneSkinned(source.scene), box = new Box3().setFromObject(clone), scale = 1.65 / Math.max(.01, box.max.y - box.min.y);
-    clone.scale.multiplyScalar(scale); clone.position.y -= box.min.y * scale;
-    return clone;
-  }, [source]);
-  const interact = () => { if (Math.hypot(trainer.x - player.x, trainer.z - player.z) > 5) onNavigate(trainer); else onChallenge(trainer.id); };
-  return <group name={`field-trainer:${trainer.id}`} position={[trainer.x, terrainSurfaceHeight(sample, trainer.x, trainer.z), trainer.z]} onClick={event => { event.stopPropagation(); interact(); }}>
-    {object && <primitive object={object} />}
-    <Html center position={[0, 2.1, 0]} zIndexRange={[10, 9]}><button className="world-trainer-label" data-field-trainer={trainer.id} onClick={interact}><strong>{trainer.name}</strong><span>{trainer.trainerClass} · 배틀</span></button></Html>
-  </group>;
-}
-
 function Scene({ snapshot, options, showLabels, destination, onNavigate, onDestination }: { snapshot: OpenWorldRenderSnapshot; options: OpenWorldViewOptions; showLabels: boolean; destination: WorldPoint | null; onNavigate: (point: WorldPoint) => void; onDestination: (point: WorldPoint | null) => void }) {
   const atlas = getWorldAtlas(snapshot.regionId ?? 'kanto');
   const sceneId = snapshot.sceneId ?? surfaceSceneId(atlas.id), cave = getCaveScene(sceneId);
   const sample = cave?.sample ?? atlas.sample;
-  const daylight = snapshot.daylightIntensity ?? 1;
-  const skyColor = useMemo(() => cave ? new Color('#182326') : new Color('#14263d').lerp(new Color('#afcfc1'), daylight), [cave, daylight]);
-  const fog = useMemo(() => new Fog('#182326', cave ? 28 : 48, cave ? 65 : 85), [cave]);
+  // Fixed daytime presentation: never rebuild lighting or sky for a world clock tick.
+  const daylight = 1;
+  const skyColor = useMemo(() => new Color(cave ? '#182326' : '#afcfc1'), [cave]);
   const worldOptions = useMemo(() => ({ ...options, sampleWorld: sample }), [options, sample]);
   const windowState = useViewWindow();
   const chunks = useMemo(() => terrainChunks(snapshot.player, windowState.visible), [snapshot.player.x, snapshot.player.z, windowState.visible]);
@@ -931,22 +916,22 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
     // Scene is rendered inside a group. JSX attach="background"/"fog" there
     // would only assign unused properties to that group, not the root scene.
     const previousBackground = scene.background, previousFog = scene.fog;
-    scene.background = skyColor; scene.fog = fog; fog.color.copy(skyColor);
+    scene.background = skyColor; scene.fog = null;
     return () => { scene.background = previousBackground; scene.fog = previousFog; };
-  }, [scene, skyColor, fog]);
+  }, [scene, skyColor]);
   useFrame(() => { scene.userData.streaming = { region: atlas.id, sceneId, daylight, player: { x: snapshot.player.x, z: snapshot.player.z }, terrainChunks: cave ? 0 : chunks.length, terrainTotal: ((WORLD_MAX - WORLD_MIN) / TERRAIN_CHUNK_SIZE) ** 2, highDetailChunks: chunks.filter(c => c.segments === 12).length,
     visibleCreatures: visible.length, detailedCreatures: visible.filter(v => v.model && hasPokemonModel(v.creature.speciesId)).length, cachedModels: modelCache.size, activeLoads, queuedLoads: loadQueue.length, modelLimit: windowState.mobile ? 4 : 8 }; });
   return (
     <>
-      <hemisphereLight args={[cave ? '#b9cbd1' : '#d9eeed', '#434f3f', cave ? .85 : .4 + daylight * .7]} />
+      <hemisphereLight color={cave ? '#b9cbd1' : '#d9eeed'} groundColor="#434f3f" intensity={cave ? .85 : 1.1} />
       <SkyLighting />
-      {!cave && <Sunlight player={snapshot.player} daylight={daylight} />}
+      {!cave && <Sunlight player={snapshot.player} mobile={windowState.mobile} />}
       {cave && <pointLight position={[snapshot.player.x, 5, snapshot.player.z]} color="#ffdda6" intensity={35} distance={28} decay={1.4} />}
       <Physics gravity={[0, -18, 0]} timeStep="vary">
         {cave ? <CaveInterior cave={cave} onNavigate={onNavigate} /> : <>
           <group key={`terrain:${sceneId}`}>{chunks.map(chunk => <Terrain key={`${chunk.key}:${chunk.segments}`} sampleWorld={sample} atlas={atlas} chunk={chunk} onNavigate={onNavigate} />)}</group>
           <Nature key={`nature:${sceneId}`} sampleWorld={sample} player={snapshot.player} atlas={atlas} isVisible={windowState.visible} />
-          <TrailAndWater key={`water:${sceneId}`} sampleWorld={sample} player={snapshot.player} atlas={atlas} visible={windowState.visible} badges={snapshot.badges ?? 0} />
+          <TrailAndWater key={`water:${sceneId}`} sampleWorld={sample} player={snapshot.player} atlas={atlas} visible={windowState.visible} badges={snapshot.badges ?? 0} mobile={windowState.mobile} />
         </>}
         {options.terrainUrl && <StaticModel item={{
           id: 'openworld-terrain',
@@ -962,7 +947,6 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
         <FoodInstances foods={snapshot.foods} sampleWorld={sample} />
       </Physics>
       <ScenePortals sceneId={sceneId} regionId={atlas.id} player={snapshot.player} sample={sample} onNavigate={onNavigate} onPortal={() => options.onPortal?.('nearest')} />
-      {(snapshot.trainers ?? []).map(trainer => <TrainerActor key={trainer.id} trainer={trainer} sample={sample} player={snapshot.player} onNavigate={onNavigate} onChallenge={id => options.onTrainer?.(id)} />)}
       {visible.map(({ creature, distance, model }) => <Creature key={creature.id} creature={creature} selected={creature.id === snapshot.selectedWildId} showLabels={showLabels} distance={distance} model={model} options={worldOptions} />)}
       {destination && <group position={[destination.x, terrainSurfaceHeight(sample, destination.x, destination.z) + .08, destination.z]}>
         <mesh rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[.42, .62, 28]} /><meshBasicMaterial color="#ffe27a" transparent opacity={.9} /></mesh>
@@ -1017,7 +1001,7 @@ function OpenWorldApp({ store, options, lifetime }: { store: SnapshotStore; opti
       enablePhysics
       gravity={[0, -18, 0]}
     >
-      <Canvas eventSource={lifetime.host} frameloop={renderPaused ? 'never' : 'always'} shadows dpr={renderDpr} camera={{ position: [12, 18, 16], fov: 48, near: .1, far: 160 }} gl={defaults => createRenderer({ ...defaults, canvas: defaults.canvas as HTMLCanvasElement })} onPointerMissed={() => options.onSelect(null)} onCreated={state => {
+      <Canvas eventSource={lifetime.host} frameloop={renderPaused ? 'never' : 'always'} shadows="percentage" dpr={renderDpr} camera={{ position: [12, 18, 16], fov: 48, near: .1, far: 160 }} gl={defaults => createRenderer({ ...defaults, canvas: defaults.canvas as HTMLCanvasElement })} onPointerMissed={() => options.onSelect(null)} onCreated={state => {
         // Canvas can finish its async WebGPU setup after logout or a tab change.
         // Keep the event target valid, then retire that stale R3F root before it
         // can render or install scene controls for the previous adventure.
