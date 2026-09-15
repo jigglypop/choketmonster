@@ -58,6 +58,7 @@ impl AppState {
     }
 }
 pub(crate) type ApiResult<T> = Result<T, ApiError>;
+#[derive(Debug)]
 pub(crate) struct ApiError(pub(crate) StatusCode, pub(crate) &'static str);
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
@@ -350,7 +351,7 @@ struct Credentials {
     username: String,
     password: String,
 }
-fn credentials(body: Credentials) -> ApiResult<(String, String)> {
+fn username(body: &Credentials) -> ApiResult<String> {
     let name = body.username.trim().to_lowercase();
     if !(3..=32).contains(&name.len())
         || !name
@@ -361,10 +362,66 @@ fn credentials(body: Credentials) -> ApiResult<(String, String)> {
             "아이디는 영문·숫자·밑줄·하이픈 3~32자로 입력해 주세요.",
         ));
     }
-    if !(10..=128).contains(&body.password.len()) {
-        return Err(bad("비밀번호는 10~128바이트로 입력해 주세요."));
+    Ok(name)
+}
+fn register_credentials(body: Credentials) -> ApiResult<(String, String)> {
+    let name = username(&body)?;
+    let length = body.password.chars().count();
+    if !(10..=128).contains(&length) {
+        return Err(bad("비밀번호는 10~128자로 입력해 주세요."));
+    }
+    if body.password.trim().is_empty() {
+        return Err(bad("비밀번호를 공백만으로 만들 수 없습니다."));
     }
     Ok((name, body.password))
+}
+fn login_credentials(body: Credentials) -> ApiResult<(String, String)> {
+    let name = username(&body)?;
+    let length = body.password.chars().count();
+    if length == 0 {
+        return Err(bad("비밀번호를 입력해 주세요."));
+    }
+    if length > 128 {
+        return Err(bad("비밀번호는 128자 이하로 입력해 주세요."));
+    }
+    Ok((name, body.password))
+}
+
+#[cfg(test)]
+mod credential_tests {
+    use super::*;
+
+    fn body(password: &str) -> Credentials {
+        Credentials {
+            username: " Valid_User ".into(),
+            password: password.into(),
+        }
+    }
+
+    #[test]
+    fn registration_counts_unicode_code_points_at_boundaries() {
+        assert!(register_credentials(body(&"😀".repeat(10))).is_ok());
+        assert!(register_credentials(body(&"😀".repeat(128))).is_ok());
+        assert!(register_credentials(body(&"가".repeat(9))).is_err());
+        assert!(register_credentials(body(&"가".repeat(129))).is_err());
+    }
+
+    #[test]
+    fn registration_rejects_whitespace_only_passwords() {
+        let error = register_credentials(body(&" ".repeat(10))).unwrap_err();
+        assert_eq!(error.0, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(error.1, "비밀번호를 공백만으로 만들 수 없습니다.");
+    }
+
+    #[test]
+    fn login_keeps_legacy_passwords_unchanged() {
+        let (_, short) = login_credentials(body("짧음")).unwrap();
+        assert_eq!(short, "짧음");
+        let (_, spaced) = login_credentials(body("  pass  ")).unwrap();
+        assert_eq!(spaced, "  pass  ");
+        assert!(login_credentials(body("")).is_err());
+        assert!(login_credentials(body(&"😀".repeat(129))).is_err());
+    }
 }
 async fn session(state: &AppState, user: User) -> ApiResult<Response> {
     let mut random = [0u8; 32];
@@ -394,7 +451,7 @@ async fn register(
     State(state): State<AppState>,
     Json(body): Json<Credentials>,
 ) -> ApiResult<Response> {
-    let (username, password) = credentials(body)?;
+    let (username, password) = register_credentials(body)?;
     rate_limit(&state, "register:global".into(), 300)?;
     rate_limit(&state, format!("register:{username}"), 5)?;
     let permit = state
@@ -432,7 +489,7 @@ async fn login(
     State(state): State<AppState>,
     Json(body): Json<Credentials>,
 ) -> ApiResult<Response> {
-    let (username, password) = credentials(body)?;
+    let (username, password) = login_credentials(body)?;
     rate_limit(&state, "login:global".into(), 300)?;
     rate_limit(&state, format!("login:{username}"), 20)?;
     let row = sqlx::query("SELECT id,username,password_hash FROM users WHERE username=$1")

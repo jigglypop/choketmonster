@@ -751,7 +751,7 @@ export function actBattle(state: GameState, action: BattleAction, aiChoice?: num
     if (!battle.canRun) throw new Error('이 전투에서는 도망칠 수 없습니다.');
     const player = active(battle.player); const enemy = active(battle.enemy);
     const chance = Math.min(.95, .45 + (player.stats.speed - enemy.stats.speed) / Math.max(1, enemy.stats.speed) * .3);
-    if (random(state) < chance) { state.battle = undefined; events.push(event(battle, '무사히 도망쳤다.')); for (const entry of events) addLog(state, entry.text); result.battleEnded = true; result.outcome = 'escaped'; return result; }
+    if (random(state) < chance) { state.battle = undefined; recoverTeamPpOutsideBattle(state); events.push(event(battle, '무사히 도망쳤다.')); for (const entry of events) addLog(state, entry.text); result.battleEnded = true; result.outcome = 'escaped'; return result; }
     events.push(event(battle, '도망치지 못했다.')); enemyActs(player);
   } else if (action.type === 'catch') {
     if (battle.kind !== 'wild') throw new Error('야생 포켓몬만 잡을 수 있습니다.');
@@ -766,6 +766,7 @@ export function actBattle(state: GameState, action: BattleAction, aiChoice?: num
       state.dex.seen = uniqueSorted([...state.dex.seen, captured.speciesId]);
       recordCapture(state, captured.speciesId);
       state.battle = undefined;
+      recoverTeamPpOutsideBattle(state);
       events.push(event(battle, `${captured.nickname}을(를) 잡았다!`, 'capture'));
       for (const entry of events) addLog(state, entry.text);
       result.battleEnded = true; result.outcome = 'caught'; return result;
@@ -795,6 +796,7 @@ export function actBattle(state: GameState, action: BattleAction, aiChoice?: num
   const outcome = concludeIfNeeded(state, battle, events, experienceGains);
   if (outcome) { result.battleEnded = true; result.outcome = outcome; }
   else battle.turn++;
+  if (result.battleEnded) recoverTeamPpOutsideBattle(state);
   if (outcome === 'won' && battle.kind === 'gym' && battle.gymBadge) {
     result.gymVictory = { badge: battle.gymBadge, money: 1500 * battle.gymBadge, ...(battle.campaignRegion ? { region: battle.campaignRegion } : {}) };
   }
@@ -808,13 +810,29 @@ function recoverAfterDefeat(state: GameState): void {
   heal(state);
 }
 
+/** Restores move uses only after combat has ended; HP and learned state are untouched. */
+export function recoverTeamPpOutsideBattle(state: Pick<GameState, 'battle' | 'player'>): boolean {
+  if (state.battle) return false;
+  let changed = false;
+  for (const monster of state.player.team) {
+    for (const slot of monster.moves) {
+      const maximum = getMove(slot.moveId).pp;
+      if (slot.pp !== maximum) { slot.pp = maximum; changed = true; }
+    }
+    if (monster.movePpReserve) for (const moveId of Object.keys(monster.movePpReserve)) {
+      const maximum = getMove(Number(moveId)).pp;
+      if (monster.movePpReserve[moveId] !== maximum) { monster.movePpReserve[moveId] = maximum; changed = true; }
+    }
+  }
+  return changed;
+}
+
 export function heal(state: GameState): void {
   if (state.battle) throw new Error('전투 중에는 치료소를 이용할 수 없습니다.');
   for (const monster of state.player.team) {
     monster.hp = monster.stats.hp; monster.status = undefined; monster.statusTurns = undefined;
-    for (const slot of monster.moves) slot.pp = getMove(slot.moveId).pp;
-    if (monster.movePpReserve) for (const moveId of Object.keys(monster.movePpReserve)) monster.movePpReserve[moveId] = getMove(Number(moveId)).pp;
   }
+  recoverTeamPpOutsideBattle(state);
   addLog(state, '치료소에서 팀이 회복했다.');
 }
 
@@ -1186,6 +1204,7 @@ export function validateGame(value: unknown): GameState {
     }
     battle.player.team = state.player.team;
   }
+  recoverTeamPpOutsideBattle(state);
   return state;
 }
 

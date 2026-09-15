@@ -209,9 +209,23 @@ export function createWaterNodeMaterial({
   return material;
 }
 
-export function SurfaceMaterial({ surface, color, vertexColors = false, visible = true }: { surface: Surface; color?: string; vertexColors?: boolean; visible?: boolean }) {
-  return <meshStandardMaterial color={color} vertexColors={vertexColors} roughness={1} metalness={0}
-    polygonOffset={surface === 'path'} polygonOffsetFactor={-1} visible={visible} />;
+type SurfaceMaterialOptions = { surface: Surface; color?: string; vertexColors?: boolean; visible?: boolean };
+
+/** One owner shares its textures and material across streamed terrain chunks. */
+export function useSurfaceMaterial({ surface, color, vertexColors = false, visible = true }: SurfaceMaterialOptions) {
+  const textures = useSurfaceTextures(surface);
+  const material = useMemo(() => {
+    const result = new MeshStandardNodeMaterial({ color, vertexColors, roughness: .94, metalness: 0,
+      polygonOffset: surface === 'path', polygonOffsetFactor: -1, visible });
+    applySurfaceNodes(result, textures, surface);
+    return result;
+  }, [color, vertexColors, textures, surface, visible]);
+  useEffect(() => () => material.dispose(), [material]);
+  return material;
+}
+
+export function SurfaceMaterial(options: SurfaceMaterialOptions) {
+  return <primitive object={useSurfaceMaterial(options)} attach="material" />;
 }
 
 /** Detailed shoreline water nearby, with a stable simple material outside the LOD boundary. */

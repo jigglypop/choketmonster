@@ -14,9 +14,11 @@ test('account save continues locally after logout and restores Johto from the se
   await expect(page.locator('#starter-dialog')).toBeHidden();
 
   await page.locator('[data-open-auth]').click();
+  await page.locator('.account-mode button[value="register"]').click();
   await page.locator('.account-dialog input[name="username"]').fill(username);
   await page.locator('.account-dialog input[name="password"]').fill(password);
-  await page.locator('.account-dialog button[value="register"]').click();
+  await page.locator('.account-dialog input[name="passwordConfirmation"]').fill(password);
+  await page.locator('.account-submit').click();
   await expect(page.locator('.account-name')).toContainText(username);
   await expect(page.locator('.account-dialog')).toBeHidden();
   await expect(page.locator('#starter-dialog')).toBeVisible();
@@ -89,7 +91,7 @@ test('account save continues locally after logout and restores Johto from the se
   await page.locator('[data-open-auth]').click();
   await page.locator('.account-dialog input[name="username"]').fill(username);
   await page.locator('.account-dialog input[name="password"]').fill(password);
-  await page.locator('.account-dialog button[value="login"]').click();
+  await page.locator('.account-submit').click();
   await expect(page.locator('.account-name')).toContainText(username, { timeout: 30000 });
   await page.locator('[data-tab="team"]').click();
   await expect(page.locator('.monster-card strong').first()).toContainText('브케인');
@@ -107,7 +109,7 @@ test('account save continues locally after logout and restores Johto from the se
     await cleanPage.locator('.account-dialog input[name="password"]').fill(password);
     const restoreStarted = Date.now();
     const restoreResponse = cleanPage.waitForResponse(response => response.request().method() === 'GET' && response.url().includes('/api/saves/current') && response.ok());
-    await cleanPage.locator('.account-dialog button[value="login"]').click();
+    await cleanPage.locator('.account-submit').click();
     await restoreResponse;
     const restoreResponseMs = Date.now() - restoreStarted;
     await expect(cleanPage.locator('.account-dialog')).toBeHidden();

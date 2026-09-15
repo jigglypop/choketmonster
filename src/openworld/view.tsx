@@ -54,7 +54,7 @@ import { initialYaw, movementYaw, turnTowards } from './motion';
 import { normalizePokemonModel } from './model-normalization';
 import './view.css';
 import { RenderProbe } from './render-probe';
-import { SkyLighting, SurfaceMaterial, WaterMaterial } from './materials';
+import { SkyLighting, SurfaceMaterial, WaterMaterial, useSurfaceMaterial } from './materials';
 import { AdaptiveResolution } from './adaptive-resolution';
 import { MAX_CAMERA_DISTANCE, MIN_CAMERA_DISTANCE } from './camera-navigation';
 import { findWorldPath, headingForStep } from './navigation';
@@ -192,7 +192,7 @@ function fallbackSample(x: number, z: number): WorldSample {
   return { height, biome: Math.abs(x) + Math.abs(z) > 175 ? 'rock' : 'meadow', blocked: false };
 }
 
-const Terrain = memo(function Terrain({ sampleWorld, chunk, atlas, onNavigate }: { sampleWorld: (x: number, z: number) => WorldSample; chunk: TerrainChunk; atlas: WorldAtlas; onNavigate?: (point: WorldPoint) => void }) {
+const Terrain = memo(function Terrain({ sampleWorld, chunk, atlas, material, onNavigate }: { sampleWorld: (x: number, z: number) => WorldSample; chunk: TerrainChunk; atlas: WorldAtlas; material: Material; onNavigate?: (point: WorldPoint) => void }) {
   const { geometry, skirt } = useMemo(() => {
     const n = chunk.segments, stride = n + 1;
     const vertices: number[] = [], colors: number[] = [], indices: number[] = [];
@@ -229,15 +229,15 @@ const Terrain = memo(function Terrain({ sampleWorld, chunk, atlas, onNavigate }:
     return { geometry, skirt };
   }, [chunk.x, chunk.z, chunk.segments, sampleWorld, atlas]);
   useEffect(() => () => { geometry.dispose(); skirt.dispose(); }, [geometry, skirt]);
-  const surface = <mesh geometry={geometry} receiveShadow name={`terrain-chunk:${chunk.key}:${chunk.segments}`} onClick={event => {
+  const surface = <mesh geometry={geometry} material={material} dispose={null} receiveShadow name={`terrain-chunk:${chunk.key}:${chunk.segments}`} onClick={event => {
     event.stopPropagation(); if (event.button === 0 && event.delta <= 5) onNavigate?.({ x: event.point.x, z: event.point.z });
-  }}><SurfaceMaterial surface="ground" vertexColors /></mesh>;
+  }} />;
   return <group>
     {surface}
-    <mesh geometry={skirt}><SurfaceMaterial surface="ground" vertexColors /></mesh>
+    <mesh geometry={skirt} material={material} dispose={null} />
   </group>;
 }, (before, after) => before.chunk.key === after.chunk.key && before.chunk.segments === after.chunk.segments
-  && before.sampleWorld === after.sampleWorld && before.atlas === after.atlas && before.onNavigate === after.onNavigate);
+  && before.sampleWorld === after.sampleWorld && before.atlas === after.atlas && before.material === after.material && before.onNavigate === after.onNavigate);
 
 function InstancedPart({ geometry, material, sourceMatrix, placements, shadows }: {
   geometry: BufferGeometry;
@@ -904,6 +904,7 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
   const atlas = getWorldAtlas(snapshot.regionId ?? 'kanto');
   const sceneId = snapshot.sceneId ?? surfaceSceneId(atlas.id), cave = getCaveScene(sceneId);
   const sample = cave?.sample ?? atlas.sample;
+  const groundMaterial = useSurfaceMaterial({ surface: 'ground', vertexColors: true });
   // Fixed daytime presentation: never rebuild lighting or sky for a world clock tick.
   const daylight = 1;
   const skyColor = useMemo(() => new Color(cave ? '#182326' : '#afcfc1'), [cave]);
@@ -929,7 +930,7 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
       {cave && <pointLight position={[snapshot.player.x, 5, snapshot.player.z]} color="#ffdda6" intensity={35} distance={28} decay={1.4} />}
       <Physics gravity={[0, -18, 0]} timeStep="vary">
         {cave ? <CaveInterior cave={cave} onNavigate={onNavigate} /> : <>
-          <group key={`terrain:${sceneId}`}>{chunks.map(chunk => <Terrain key={`${chunk.key}:${chunk.segments}`} sampleWorld={sample} atlas={atlas} chunk={chunk} onNavigate={onNavigate} />)}</group>
+          <group key={`terrain:${sceneId}`}>{chunks.map(chunk => <Terrain key={`${chunk.key}:${chunk.segments}`} sampleWorld={sample} atlas={atlas} chunk={chunk} material={groundMaterial} onNavigate={onNavigate} />)}</group>
           <Nature key={`nature:${sceneId}`} sampleWorld={sample} player={snapshot.player} atlas={atlas} isVisible={windowState.visible} />
           <TrailAndWater key={`water:${sceneId}`} sampleWorld={sample} player={snapshot.player} atlas={atlas} visible={windowState.visible} badges={snapshot.badges ?? 0} mobile={windowState.mobile} />
         </>}

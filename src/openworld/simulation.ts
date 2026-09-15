@@ -2,7 +2,7 @@ import { Brain, validateGraph, type BrainState, type Graph } from '../core/brain
 import { Random, clamp } from '../core/random';
 import { POKEMON, getMove, getSpecies } from '../data/pokemon';
 import { getVersionSpeciesIds } from '../data/pokemon-versions';
-import { replenishBalls, challengeCampaignGym, challengeCampaignTrainer } from '../game/engine';
+import { replenishBalls, challengeCampaignGym, challengeCampaignTrainer, recoverTeamPpOutsideBattle } from '../game/engine';
 import { getRegionalBadges, getCampaignGyms, getNextCampaignTrainer, campaignTravelReason, regionalWildLevels } from '../game/campaign';
 import type { FieldTrainer } from '../data/field-trainers';
 import { chooseRegionalEncounter, encounterPeriodAt, regionalSourcePools, supplementalEncounterRules, type EncounterPeriod } from '../data/regional-encounters';
@@ -117,7 +117,7 @@ export function biomeForSpecies(speciesId: number): WorldBiome {
 /** Engineered mapping from Pokemon base Speed to open-world units per second. */
 export function movementSpeed(speciesId: number, level = 5): number {
   const baseSpeed = getSpecies(speciesId).baseStats.speed;
-  return Math.min(16, (1.2 + baseSpeed * .018) * 3.5 + Math.max(0, level - 5) * .0264);
+  return Math.min(12, (1.2 + baseSpeed * .018) * 2.4 + Math.max(0, level - 5) * .0264);
 }
 
 export function nextSpeciesInBiome(speciesId: number): number {
@@ -487,6 +487,7 @@ export class OpenWorldSimulation {
     if (!finite(deltaSeconds) || deltaSeconds < 0 || deltaSeconds > 5 || typeof learning !== 'boolean' || !finite(epsilon) || epsilon < 0 || epsilon > 1) throw new Error('Invalid open-world step options');
     this.worldClockSeconds = (this.worldClockSeconds + deltaSeconds) % (20 * 60);
     replenishBalls(this.game, deltaSeconds);
+    recoverTeamPpOutsideBattle(this.game);
     const events: OpenWorldEvent[] = [];
     const manualControlActive = this.manualControlRemaining > 0; this.manualControlRemaining = Math.max(0, this.manualControlRemaining - deltaSeconds);
     this.syncCompanion();

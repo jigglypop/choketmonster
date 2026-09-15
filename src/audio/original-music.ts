@@ -1,238 +1,272 @@
-import { getGameAudioSettings, setGameAudioSettings, subscribeGameAudioSettings } from './game-audio';
+import { getGameAudioSettings, subscribeGameAudioSettings } from './game-audio';
 import './audio.css';
 
-export const RED_MUSIC = { id: 'mbffVF79imM', title: '레드전 · 금·은·크리스탈 원곡', url: 'https://www.youtube.com/watch?v=mbffVF79imM' } as const;
+const DB_NAME = 'choketmon-local-music-v1';
+const STORE_NAME = 'tracks';
+const TRACK_KEY = 'selected';
 const PAUSED_KEY = 'choketmon-music-paused-v1';
-const HIDDEN_KEY = 'choketmon-music-hidden-v1';
-type Player = { playVideo(): void; pauseVideo(): void; seekTo(seconds: number, allowSeekAhead: boolean): void; setVolume(volume: number): void; mute(): void; unMute(): void; isMuted(): boolean; getPlayerState(): number; destroy(): void };
-type PlayerOptions = { width: number; height: number; videoId: string; playerVars: Record<string, string | number>; events: { onReady(event: { target: Player }): void; onStateChange(event: { data: number }): void; onError(event: { data: number; target: Player }): void; onAutoplayBlocked(): void } };
-type YouTubeWindow = Window & { YT?: { Player: new (element: HTMLElement, options: PlayerOptions) => Player }; onYouTubeIframeAPIReady?: () => void };
+const SELECT_EVENT = 'choketmon:music-select';
+const REMOVE_EVENT = 'choketmon:music-remove';
+const QUERY_EVENT = 'choketmon:music-query';
+const STATUS_EVENT = 'choketmon:music-status';
 
-let apiPromise: Promise<NonNullable<YouTubeWindow['YT']>> | undefined;
-function loadApi(): Promise<NonNullable<YouTubeWindow['YT']>> {
-  const scope = window as YouTubeWindow;
-  if (scope.YT?.Player) return Promise.resolve(scope.YT);
-  return apiPromise ??= new Promise((resolve, reject) => {
-    const existing = document.querySelector<HTMLScriptElement>('script[src="https://www.youtube.com/iframe_api"]');
-    const script = existing ?? document.createElement('script');
-    const timeout = window.setTimeout(() => { script.remove(); apiPromise = undefined; reject(new Error('음악 서비스에 연결하지 못했습니다.')); }, 15_000);
-    const previous = scope.onYouTubeIframeAPIReady;
-    scope.onYouTubeIframeAPIReady = () => { previous?.(); window.clearTimeout(timeout); if (scope.YT) resolve(scope.YT); };
-    script.onerror = () => { window.clearTimeout(timeout); script.remove(); apiPromise = undefined; reject(new Error('음악 서비스를 불러오지 못했습니다.')); };
-    if (!existing) { script.src = 'https://www.youtube.com/iframe_api'; script.async = true; document.head.append(script); }
+type StoredTrack = { blob: Blob; name: string; type: string; size: number; lastModified: number };
+type MusicStatus = { message: string; hasFile: boolean; name?: string; playing: boolean; state: 'empty' | 'loading' | 'ready' | 'playing' | 'paused' | 'blocked' | 'error' };
+
+function openMusicDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, 1);
+    request.onupgradeneeded = () => request.result.createObjectStore(STORE_NAME);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error ?? new Error('음악 저장소를 열지 못했습니다.'));
+    request.onblocked = () => reject(new Error('다른 탭이 음악 저장소를 사용하고 있습니다.'));
   });
 }
 
-/** The original recording stays in a visible provider player; no OST file is copied into the game. */
+async function readStoredTrack(): Promise<StoredTrack | null> {
+  const db = await openMusicDb();
+  try {
+    return await new Promise((resolve, reject) => {
+      const request = db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).get(TRACK_KEY);
+      request.onsuccess = () => resolve((request.result as StoredTrack | undefined) ?? null);
+      request.onerror = () => reject(request.error);
+    });
+  } finally { db.close(); }
+}
+
+async function writeStoredTrack(track: StoredTrack): Promise<void> {
+  const db = await openMusicDb();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, 'readwrite');
+      transaction.objectStore(STORE_NAME).put(track, TRACK_KEY);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error ?? new Error('음악 파일 저장이 중단되었습니다.'));
+    });
+  } finally { db.close(); }
+}
+
+async function deleteStoredTrack(): Promise<void> {
+  const db = await openMusicDb();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, 'readwrite');
+      transaction.objectStore(STORE_NAME).delete(TRACK_KEY);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error ?? new Error('음악 파일 제거가 중단되었습니다.'));
+    });
+  } finally { db.close(); }
+}
+
+function validateAudio(url: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const probe = new Audio();
+    const timeout = window.setTimeout(() => finish(new Error('음악 파일을 읽는 시간이 너무 오래 걸립니다.')), 10_000);
+    const finish = (error?: Error) => {
+      window.clearTimeout(timeout); probe.onloadedmetadata = null; probe.onerror = null; probe.removeAttribute('src'); probe.load();
+      if (error) reject(error); else resolve();
+    };
+    probe.preload = 'metadata';
+    probe.onloadedmetadata = () => finish();
+    probe.onerror = () => finish(new Error('이 음악 파일은 브라우저에서 재생할 수 없거나 손상되었습니다.'));
+    probe.src = url; probe.load();
+  });
+}
+
+/** Plays only a user-selected local file. The Blob stays in this browser and is never uploaded. */
 export function mountOriginalMusic(button: HTMLButtonElement): { open(): void; destroy(): void } {
-  const panel = document.createElement('section');
-  panel.id = 'game-music-panel';
-  panel.dataset.playback = 'loading';
-  const startsHidden = sessionStorage.getItem(HIDDEN_KEY) === '1';
-  const startsPaused = startsHidden || sessionStorage.getItem(PAUSED_KEY) === '1';
-  panel.hidden = startsHidden;
-  panel.dataset.intent = startsPaused ? 'stopped' : 'auto';
-  panel.setAttribute('aria-label', '원곡 음악 플레이어');
-  panel.innerHTML = `<div id="game-music-video"></div><div class="music-footer"><details id="game-music-details"><summary><strong>${RED_MUSIC.title}</strong><span>설정</span></summary><div class="music-actions"><button id="game-music-play">재생</button><label>음량 <input id="game-music-volume" aria-label="BGM 음량" type="range" min="0" max="100"></label><button id="game-music-mute" aria-label="모든 소리 끄기">음소거</button></div><small id="game-music-status" role="status">첫 게임 조작에서 원곡을 재생합니다.</small><a href="${RED_MUSIC.url}" target="_blank" rel="noopener noreferrer">YouTube에서 듣기 ↗</a></details><button id="game-music-close" aria-label="음악 끄고 플레이어 닫기">×</button></div>`;
-  document.body.append(panel);
+  const input = document.createElement('input');
+  input.id = 'game-music-file'; input.type = 'file'; input.accept = 'audio/*,.mp3,.m4a,.aac,.ogg,.wav,.flac'; input.hidden = true;
+  const audio = document.createElement('audio');
+  audio.id = 'game-music-audio'; audio.preload = 'metadata'; audio.loop = true; audio.hidden = true;
+  const feedback = document.createElement('output');
+  feedback.id = 'game-music-feedback'; feedback.setAttribute('role', 'status'); feedback.hidden = true;
+  document.body.append(input, audio, feedback);
 
-  const details = panel.querySelector<HTMLDetailsElement>('#game-music-details')!;
-  const volume = panel.querySelector<HTMLInputElement>('#game-music-volume')!;
-  const status = panel.querySelector<HTMLElement>('#game-music-status')!;
-  const play = panel.querySelector<HTMLButtonElement>('#game-music-play')!;
-  const mute = panel.querySelector<HTMLButtonElement>('#game-music-mute')!;
-  const close = panel.querySelector<HTMLButtonElement>('#game-music-close')!;
-  let player: Player | undefined;
-  let playerReady = false;
-  let preparing: Promise<void> | undefined;
+  let track: StoredTrack | null = null;
+  let objectUrl: string | undefined;
   let disposed = false;
-  let wantsPlayback = !startsPaused;
+  let generation = 0;
+  let wantsPlayback = sessionStorage.getItem(PAUSED_KEY) !== '1';
   let playbackRequested = false;
-  let pausedForVisibility = false;
-  let providerRetriesRemaining = 2;
+  let playbackGeneration = 0;
+  let playAttempt: Promise<void> | undefined;
+  let persistence = Promise.resolve<void>(undefined);
+  let feedbackTimer = 0;
+  let current: MusicStatus = { message: 'BGM 파일을 선택하세요.', hasFile: false, playing: false, state: 'empty' };
 
-  const setStatus = (message: string, playback?: string) => {
-    status.textContent = message;
-    if (playback) panel.dataset.playback = playback;
+  const persist = (operation: () => Promise<void>): Promise<void> => {
+    const result = persistence.catch(() => undefined).then(operation);
+    persistence = result.catch(() => undefined);
+    return result;
   };
-  const sync = () => {
+
+  const emit = (next: MusicStatus, announce = false) => {
+    current = next;
+    document.dispatchEvent(new CustomEvent<MusicStatus>(STATUS_EVENT, { detail: next }));
+    if (announce) {
+      feedback.textContent = next.message; feedback.hidden = false;
+      window.clearTimeout(feedbackTimer);
+      feedbackTimer = window.setTimeout(() => { feedback.hidden = true; }, 4500);
+    }
+  };
+  const syncButton = () => {
+    const playing = !audio.paused && !audio.ended && Boolean(track);
+    button.textContent = track ? (playing ? '♪ BGM 정지' : '♪ BGM 재생') : '♪ BGM 선택';
+    const action = track ? (playing ? 'BGM 정지' : 'BGM 재생') : 'BGM 오디오 파일 선택';
+    button.setAttribute('aria-label', action);
+    button.title = action;
+    button.setAttribute('aria-pressed', String(playing));
+    button.dataset.music = track ? (playing ? 'playing' : 'ready') : 'empty';
+  };
+  const syncSettings = () => {
     const settings = getGameAudioSettings();
-    volume.value = String(Math.round(settings.musicVolume * 100));
-    if (playerReady) player?.setVolume(settings.musicVolume * 100);
-    button.textContent = settings.muted ? '♪ 끔' : '♪ BGM';
-    button.setAttribute('aria-label', '음악 플레이어 설정');
-    button.setAttribute('aria-expanded', String(details.open));
-    mute.textContent = settings.muted ? '소리 켜기' : '음소거';
-    mute.setAttribute('aria-pressed', String(settings.muted));
-    if (playerReady) { if (settings.muted) player?.mute(); else player?.unMute(); }
-    panel.dataset.muted = String(settings.muted);
+    audio.volume = settings.musicVolume;
+    audio.muted = settings.muted;
+    audio.dataset.volume = String(audio.volume);
+    audio.dataset.muted = String(audio.muted);
   };
-  const requestPlay = () => {
-    if (!wantsPlayback || document.hidden || disposed) return;
+  const releaseUrl = () => {
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    objectUrl = undefined;
+  };
+  const installTrack = async (next: StoredTrack, token: number): Promise<boolean> => {
+    const candidateUrl = URL.createObjectURL(next.blob);
+    try { await validateAudio(candidateUrl); }
+    catch (error) {
+      URL.revokeObjectURL(candidateUrl);
+      if (token === generation) emit({ message: error instanceof Error ? error.message : '음악 파일을 읽지 못했습니다.', hasFile: Boolean(track), name: track?.name, playing: false, state: 'error' }, true);
+      return false;
+    }
+    if (disposed || token !== generation) { URL.revokeObjectURL(candidateUrl); return false; }
+    playbackGeneration++; playAttempt = undefined;
+    audio.pause(); audio.removeAttribute('src'); audio.load(); releaseUrl();
+    objectUrl = candidateUrl; track = next; audio.src = candidateUrl; audio.load(); syncSettings(); syncButton();
+    emit({ message: '선택한 BGM 준비 완료', hasFile: true, name: next.name, playing: false, state: 'ready' });
+    if (wantsPlayback && playbackRequested) void attemptPlay();
+    return true;
+  };
+  const attemptPlay = (): Promise<void> => {
+    if (disposed || !track || !wantsPlayback || document.hidden || (!audio.paused && !audio.ended)) return Promise.resolve();
     playbackRequested = true;
-    panel.dataset.intent = 'play';
-    if (!player) { void prepare(); return; }
-    if (!playerReady) return;
-    if (player?.getPlayerState() === 1) return;
-    player?.playVideo();
+    if (playAttempt) return playAttempt;
+    const token = generation, playToken = playbackGeneration, selected = track;
+    let request: Promise<void>;
+    try { request = audio.play(); }
+    catch (error) { request = Promise.reject(error); }
+    const attempt = request.then(() => {
+      if (disposed || token !== generation || playToken !== playbackGeneration || track !== selected) return;
+      if (!wantsPlayback) { audio.pause(); return; }
+      if (document.hidden || audio.paused) return;
+      syncButton();
+      emit({ message: 'BGM 재생 중', hasFile: true, name: selected.name, playing: true, state: 'playing' });
+    }).catch(error => {
+      if (disposed || token !== generation || playToken !== playbackGeneration || track !== selected || !wantsPlayback) return;
+      const blocked = error instanceof DOMException && error.name === 'NotAllowedError';
+      syncButton();
+      emit({ message: blocked ? '브라우저가 재생을 막았습니다. BGM 재생 버튼을 눌러 주세요.' : '음악을 재생하지 못했습니다. 파일을 다시 선택해 주세요.', hasFile: true, name: selected.name, playing: false, state: blocked ? 'blocked' : 'error' }, true);
+    });
+    playAttempt = attempt;
+    void attempt.finally(() => { if (playAttempt === attempt) playAttempt = undefined; });
+    return attempt;
   };
-  const requestFromGameInput = (event: Event) => {
-    if (!wantsPlayback || panel.hidden || document.hidden) return;
-    const target = event.target instanceof Element ? event.target : null;
-    if (target?.closest('#game-music-panel, #game-sound-toggle, #interface-settings')) return;
-    requestPlay();
+  const pause = (announce = false) => {
+    wantsPlayback = false; playbackGeneration++; playAttempt = undefined;
+    sessionStorage.setItem(PAUSED_KEY, '1'); audio.pause(); syncButton();
+    if (track) emit({ message: 'BGM 정지', hasFile: true, name: track.name, playing: false, state: 'paused' }, announce);
   };
-  function prepare(): Promise<void> {
-    if (disposed || player) return Promise.resolve();
-    if (preparing) return preparing;
-    preparing = (async () => {
-      try {
-        const api = await loadApi();
-        if (disposed || player) return;
-        player = new api.Player(panel.querySelector<HTMLElement>('#game-music-video')!, {
-        width: 200, height: 200, videoId: RED_MUSIC.id,
-        playerVars: { origin: location.origin, playsinline: 1, controls: 1, rel: 0 },
-        events: {
-          onReady: event => {
-            player = event.target;
-            playerReady = true;
-            sync();
-            setStatus(startsPaused && !playbackRequested ? '음악을 일시 정지했습니다.' : playbackRequested ? '원곡 재생을 시작하는 중…' : '첫 게임 조작에서 원곡을 재생합니다.', 'ready');
-            if (playbackRequested) requestPlay();
-          },
-          onStateChange: event => {
-            panel.dataset.playback = String(event.data);
-            if (event.data === 1) {
-              pausedForVisibility = false;
-              panel.dataset.providerMuted = String(player?.isMuted() ?? getGameAudioSettings().muted);
-              play.textContent = '일시 정지';
-              setStatus('레드전 원곡 재생 중');
-            } else if (event.data === 2) {
-              play.textContent = '재생';
-              if (!pausedForVisibility) {
-                wantsPlayback = false;
-                sessionStorage.setItem(PAUSED_KEY, '1');
-                panel.dataset.intent = 'stopped';
-                setStatus('음악을 일시 정지했습니다.');
-              }
-            } else if (event.data === 3) {
-              setStatus('음악 불러오는 중…');
-            } else if (event.data === 0 && wantsPlayback && !document.hidden) {
-              player?.seekTo(0, true);
-              requestPlay();
-            }
-          },
-          onError: event => {
-            event.target.destroy();
-            if (player === event.target) player = undefined;
-            playerReady = false;
-            if (!panel.querySelector('#game-music-video')) {
-              const mount = document.createElement('div'); mount.id = 'game-music-video'; panel.prepend(mount);
-            }
-            if (providerRetriesRemaining > 0) {
-              providerRetriesRemaining--;
-              panel.dataset.intent = 'retry';
-              setStatus(`YouTube 오류 ${event.data}. 다음 게임 조작에서 다시 연결합니다.`, 'error');
-            } else {
-              wantsPlayback = false;
-              panel.dataset.intent = 'error';
-              setStatus(`원곡 재생이 제한되었습니다 (YouTube 오류 ${event.data}). 링크에서 확인해 주세요.`, 'error');
-            }
-          },
-          onAutoplayBlocked: () => {
-            panel.dataset.intent = 'blocked';
-            setStatus('브라우저가 재생을 막았습니다. 영상의 재생 버튼을 눌러 주세요.', 'blocked');
-          },
-        },
-        });
-      } catch (error) {
-        player = undefined;
-        playerReady = false;
-        panel.dataset.intent = 'error';
-        setStatus(error instanceof Error ? error.message : '음악 연결을 확인해 주세요.', 'error');
-      } finally {
-        preparing = undefined;
-      }
-    })();
-    return preparing;
-  }
+  const choose = () => input.click();
+  const remove = async () => {
+    const token = ++generation;
+    pause(); track = null; audio.removeAttribute('src'); audio.load(); releaseUrl(); syncButton();
+    try {
+      await persist(deleteStoredTrack);
+      if (disposed || token !== generation) return;
+      emit({ message: '이 기기에서 BGM 파일을 제거했습니다.', hasFile: false, playing: false, state: 'empty' }, true);
+    } catch {
+      if (disposed || token !== generation) return;
+      emit({ message: '현재 재생 파일은 제거했지만 기기 저장소 정리를 완료하지 못했습니다.', hasFile: false, playing: false, state: 'error' }, true);
+    }
+  };
+
+  input.onchange = async () => {
+    const file = input.files?.[0]; input.value = '';
+    if (!file) return;
+    const supported = file.type.startsWith('audio/') && (audio.canPlayType(file.type) !== '' || file.type === 'audio/flac');
+    if (!supported) { emit({ message: '지원하는 오디오 파일(MP3, M4A, AAC, OGG, WAV, FLAC)을 선택해 주세요.', hasFile: Boolean(track), name: track?.name, playing: false, state: 'error' }, true); return; }
+    const token = ++generation;
+    emit({ message: '선택한 BGM 파일을 읽는 중…', hasFile: Boolean(track), name: track?.name, playing: false, state: 'loading' });
+    let next: StoredTrack;
+    try {
+      const bytes = await file.arrayBuffer();
+      next = { blob: new Blob([bytes], { type: file.type }), name: file.name, type: file.type, size: file.size, lastModified: file.lastModified };
+    } catch {
+      emit({ message: '선택한 음악 파일을 읽지 못했습니다. 파일 접근 권한을 확인해 주세요.', hasFile: Boolean(track), name: track?.name, playing: false, state: 'error' }, true); return;
+    }
+    wantsPlayback = true; playbackRequested = true; sessionStorage.removeItem(PAUSED_KEY);
+    if (!await installTrack(next, token)) return;
+    try {
+      await persist(() => writeStoredTrack(next));
+      if (disposed || token !== generation || track !== next) return;
+      emit({ message: '선택한 BGM을 이 기기에 저장했습니다.', hasFile: true, name: next.name, playing: !audio.paused, state: audio.paused ? 'ready' : 'playing' }, true);
+    } catch {
+      if (disposed || token !== generation || track !== next) return;
+      emit({ message: '선택한 BGM은 지금 재생할 수 있지만 이 기기에 저장하지 못했습니다. 저장 공간을 확인해 주세요.', hasFile: true, name: next.name, playing: !audio.paused, state: 'error' }, true);
+    }
+    void attemptPlay();
+  };
 
   button.onclick = () => {
-    if (panel.hidden) {
-      panel.hidden = false;
-      wantsPlayback = true;
-      sessionStorage.removeItem(HIDDEN_KEY);
-      sessionStorage.removeItem(PAUSED_KEY);
-      requestPlay();
-    } else {
-      details.open = !details.open;
-    }
-    sync();
+    if (!track) { choose(); return; }
+    if (!audio.paused && !audio.ended) pause(true);
+    else { wantsPlayback = true; playbackRequested = true; sessionStorage.removeItem(PAUSED_KEY); void attemptPlay(); }
   };
-  details.ontoggle = sync;
-  close.onclick = () => {
-    wantsPlayback = false;
-    sessionStorage.setItem(PAUSED_KEY, '1');
-    sessionStorage.setItem(HIDDEN_KEY, '1');
-    panel.dataset.intent = 'stopped';
-    if (playerReady) player?.pauseVideo();
-    panel.hidden = true;
-    details.open = false;
-    sync();
+  audio.onplay = () => syncButton();
+  audio.onpause = () => syncButton();
+  audio.onerror = () => emit({ message: '음악 파일 재생 중 오류가 발생했습니다. 화면 설정에서 파일을 다시 선택해 주세요.', hasFile: Boolean(track), name: track?.name, playing: false, state: 'error' }, true);
+
+  const onGameInput = (event: Event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest('#game-sound-toggle, #interface-settings, #game-music-file')) return;
+    playbackRequested = true;
+    if (wantsPlayback) void attemptPlay();
   };
-  play.onclick = () => {
-    if (playerReady && player?.getPlayerState() === 1) {
-      wantsPlayback = false;
-      sessionStorage.setItem(PAUSED_KEY, '1');
-      panel.dataset.intent = 'stopped';
-      player.pauseVideo();
-    } else {
-      wantsPlayback = true;
-      providerRetriesRemaining = 2;
-      sessionStorage.removeItem(PAUSED_KEY);
-      requestPlay();
-    }
+  const onVisibility = () => {
+    if (document.hidden) { playbackGeneration++; playAttempt = undefined; audio.pause(); }
+    else if (wantsPlayback && playbackRequested) void attemptPlay();
   };
-  volume.oninput = () => setGameAudioSettings({ musicVolume: Number(volume.value) / 100 });
-  mute.onclick = () => setGameAudioSettings({ muted: !getGameAudioSettings().muted });
-  const unsubscribe = subscribeGameAudioSettings(sync);
-  const visibility = () => {
-    if (document.hidden) {
-      panel.dataset.visibility = 'hidden';
-      if (playerReady && player?.getPlayerState() === 1) {
-        pausedForVisibility = true;
-        player.pauseVideo();
-      }
-    } else if (wantsPlayback && (pausedForVisibility || playbackRequested)) {
-      panel.dataset.visibility = 'visible';
-      requestPlay();
-    }
-  };
-  const online = () => { if (wantsPlayback && playbackRequested) requestPlay(); };
-  document.addEventListener('pointerdown', requestFromGameInput, true);
-  document.addEventListener('pointerup', requestFromGameInput, true);
-  document.addEventListener('touchend', requestFromGameInput, true);
-  document.addEventListener('click', requestFromGameInput, true);
-  document.addEventListener('keydown', requestFromGameInput, true);
-  document.addEventListener('visibilitychange', visibility);
-  window.addEventListener('online', online);
-  sync();
-  void prepare();
+  const onSelect = () => choose();
+  const onRemove = () => { void remove(); };
+  const onQuery = () => emit(current);
+  for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) document.addEventListener(type, onGameInput, true);
+  document.addEventListener('visibilitychange', onVisibility);
+  document.addEventListener(SELECT_EVENT, onSelect);
+  document.addEventListener(REMOVE_EVENT, onRemove);
+  document.addEventListener(QUERY_EVENT, onQuery);
+  const unsubscribe = subscribeGameAudioSettings(syncSettings);
+  syncSettings(); syncButton();
+
+  const restoreToken = generation;
+  emit({ message: '이 기기에 저장된 BGM을 확인하는 중…', hasFile: false, playing: false, state: 'loading' });
+  void readStoredTrack().then(async saved => {
+    if (disposed || restoreToken !== generation) return;
+    if (!saved) { emit({ message: 'BGM 파일을 선택하세요.', hasFile: false, playing: false, state: 'empty' }); return; }
+    await installTrack(saved, restoreToken);
+  }).catch(() => emit({ message: '이 기기에 저장된 BGM을 불러오지 못했습니다. 파일을 다시 선택해 주세요.', hasFile: false, playing: false, state: 'error' }, true));
 
   return {
-    open: () => { panel.hidden = false; details.open = true; wantsPlayback = true; sessionStorage.removeItem(HIDDEN_KEY); sessionStorage.removeItem(PAUSED_KEY); requestPlay(); sync(); },
+    open: () => { if (track) { wantsPlayback = true; playbackRequested = true; sessionStorage.removeItem(PAUSED_KEY); void attemptPlay(); } else choose(); },
     destroy: () => {
-      disposed = true;
-      unsubscribe();
-      document.removeEventListener('pointerdown', requestFromGameInput, true);
-      document.removeEventListener('pointerup', requestFromGameInput, true);
-      document.removeEventListener('touchend', requestFromGameInput, true);
-      document.removeEventListener('click', requestFromGameInput, true);
-      document.removeEventListener('keydown', requestFromGameInput, true);
-      document.removeEventListener('visibilitychange', visibility);
-      window.removeEventListener('online', online);
-      player?.destroy();
-      panel.remove();
+      disposed = true; generation++; playbackGeneration++; playAttempt = undefined;
+      window.clearTimeout(feedbackTimer); unsubscribe(); audio.pause(); audio.removeAttribute('src'); audio.load(); releaseUrl();
+      for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) document.removeEventListener(type, onGameInput, true);
+      document.removeEventListener('visibilitychange', onVisibility);
+      document.removeEventListener(SELECT_EVENT, onSelect);
+      document.removeEventListener(REMOVE_EVENT, onRemove);
+      document.removeEventListener(QUERY_EVENT, onQuery);
+      input.remove(); audio.remove(); feedback.remove();
     },
   };
 }

@@ -134,7 +134,7 @@ test('a committed login with an IndexedDB error cannot overwrite the account wit
   await page.locator('[data-open-auth]').click();
   await page.locator('.account-dialog input[name="username"]').fill('newtrainer');
   await page.locator('.account-dialog input[name="password"]').fill('test-password-123');
-  await page.locator('.account-dialog button[value="login"]').click();
+  await page.locator('.account-submit').click();
   await expect(page.locator('#retry-account')).toHaveCount(1);
   await expect(page.locator('#starter-dialog')).not.toBeVisible();
   await expect(page.locator('#world-version')).toHaveCount(0);

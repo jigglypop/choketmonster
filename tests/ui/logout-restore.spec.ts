@@ -48,7 +48,7 @@ async function login(page: Page) {
   await page.locator('[data-open-auth]').click();
   await page.locator('.account-dialog input[name="username"]').fill('restore');
   await page.locator('.account-dialog input[name="password"]').fill('correct-password');
-  await page.locator('.account-dialog button[value="login"]').click();
+  await page.locator('.account-submit').click();
   await expect(page.locator('.account-dialog')).toBeHidden();
   await expect(page.locator('.account-name')).toContainText('restore');
   await openExplorePanel(page);
@@ -176,7 +176,7 @@ test('pagehide during login cannot write the previous adventure into the new acc
   await page.locator('[data-open-auth]').click();
   await page.locator('.account-dialog input[name="username"]').fill('restore');
   await page.locator('.account-dialog input[name="password"]').fill('correct-password');
-  await page.locator('.account-dialog button[value="login"]').click();
+  await page.locator('.account-submit').click();
   try {
     await expect.poll(() => arrived).toBe(true);
     await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide')));

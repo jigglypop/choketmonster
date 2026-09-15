@@ -1,0 +1,13 @@
+.account-dialog-card > label,
+.account-confirm > label{font-size:calc(12px * var(--ui-font-scale,1));font-weight:800}
+.account-mode{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border-radius:12px;background:rgba(221,235,216,.68)}
+.account-mode button{border:0;border-radius:9px;padding:9px;background:transparent;color:var(--muted);font-weight:800}
+.account-mode button[aria-pressed="true"]{background:#fff;color:var(--forest);box-shadow:0 2px 8px rgba(23,63,57,.12)}
+.account-password-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px}
+.account-password-toggle{min-width:58px;border:1px solid rgba(23,63,57,.2);border-radius:10px;background:#fff;color:var(--forest);font-weight:800}
+.account-help,.account-field-error{margin-top:-9px;font-size:calc(13px * var(--ui-font-scale,1));line-height:1.45}
+.account-help{color:#45645a}
+.account-field-error{color:#8f2f29;font-weight:800}
+.account-dialog-card input[aria-invalid="true"]{border-color:#a43d36;box-shadow:0 0 0 2px rgba(164,61,54,.13)}
+.account-confirm{display:grid;gap:13px}
+.account-submit{width:100%;padding:11px;border-radius:10px}

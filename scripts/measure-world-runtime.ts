@@ -7,6 +7,8 @@ import { getCaveScene } from '../src/openworld/caves';
 
 const label = process.argv[2] ?? 'baseline', scene = process.argv[3] ?? 'surface';
 const moving = process.env.WORLD_MOVING === '1', mobile = process.env.WORLD_MOBILE === '1';
+const baseUrl = process.env.CHOKETMON_BASE_URL ?? `http://127.0.0.1:${process.env.CHOKETMON_TEST_PORT ?? '5173'}`;
+const replayClock = process.env.WORLD_REAL_CLOCK !== '1';
 const viewport = mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 };
 const output = `artifacts/world-speed/${label}-${scene}`;
 await mkdir(output, { recursive: true });
@@ -23,21 +25,21 @@ if (scene === 'cave') {
 }
 const save = packSave(game, graph, { ...defaultView(), openWorld: world.snapshot(), openWorldPaused: true, learning: false });
 await writeFile(`${output}/fixture.json`, JSON.stringify(save));
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--enable-unsafe-webgpu'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--enable-unsafe-webgpu', '--mute-audio'] });
 try {
   const page = await browser.newPage({ viewport, deviceScaleFactor: 1, hasTouch: mobile });
   // Isolate the capture from source edits/HMR in the shared development server.
   await page.routeWebSocket('**', socket => socket.close());
   // Replay the same changing morning light in every capture. A fixed noon
   // would conceal rebuilds caused by the gradual day/night transition.
-  await page.addInitScript(() => { Date.now = () => 1_800_000_000_000 + 300_000 + performance.now(); });
+  if (replayClock) await page.addInitScript(() => { Date.now = () => 1_800_000_000_000 + 300_000 + performance.now(); });
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await page.route('**/api/auth/me', route => route.fulfill({ json: { user: { id: 'world-speed', username: 'benchmark' } } }));
   await page.route('**/api/saves/current', route => route.fulfill({ json: { save, revision: 1 } }));
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   await page.route('**/api/auth/realtime-ticket', route => route.fulfill({ status: 401, json: {} }));
   const started = performance.now();
-  await page.goto(`http://127.0.0.1:${process.env.CHOKETMON_TEST_PORT ?? '5173'}/?renderProbe`);
+  await page.goto(`${baseUrl}/?renderProbe`);
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 60000 });
   const readyMs = performance.now() - started;
   await expect.poll(() => page.evaluate(() => {
@@ -66,7 +68,7 @@ try {
   await writeFile(`${output}/cpu.cpuprofile`, JSON.stringify(profile));
   const durations = counters.samples.map((sample: any) => sample.frameMs).sort((a: number, b: number) => a - b);
   const percent = (p: number) => durations[Math.floor((durations.length - 1) * p)];
-  const result = { label, scene, moving, mobile, path, buildMode: 'vite-development', clock: 'replayed-morning', viewport, readyMs, warmupMs,
+  const result = { label, scene, moving, mobile, path, baseUrl, buildMode: process.env.CHOKETMON_BASE_URL ? 'external' : 'vite-development', clock: replayClock ? 'replayed-morning' : 'real', viewport, readyMs, warmupMs,
     sampleCount: durations.length, medianFrameMs: percent(.5), p95FrameMs: percent(.95), p99FrameMs: percent(.99), maxFrameMs: durations.at(-1),
     movementSpeed: movementSpeed(152, 5), errors, ...counters };
   await page.screenshot({ path: `${output}/scene.png` });
@@ -88,6 +90,9 @@ try {
       const sun = counters.lights.find((light: any) => light.castsShadow);
       expect(sun.shadowSize).toEqual(mobile ? [256, 256] : [512, 512]);
       expect(sun.shadowAutoUpdate).toBe(false);
+      expect(counters.terrainMaterials).toHaveLength(1);
+      expect(counters.terrainMaterials[0].effect).toBe('surface:ground');
+      expect(counters.terrainMaterials).toEqual(before.terrainMaterials);
     }
     if (scene === 'water') {
       expect(counters.water.some((water: any) => water.lod === 'detailed')).toBe(true);

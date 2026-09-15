@@ -7,6 +7,7 @@ import './game.css';
 import './team.css';
 import { currentAccount } from './game/account';
 import { mountAccountPanel } from './game/account-panel';
+import './game/account-form.css';
 import { VERSIONS, getPokemonVersion, getPokemonForms } from './data/pokemon-versions';
 import './three/scene.css';
 import { detachPokemonScene, getPokemonScene } from './three/scene';

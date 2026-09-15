@@ -15,7 +15,7 @@ await mkdir(output, { recursive: true });
 const graph = JSON.parse(await readFile('public/data/connectome.json', 'utf8')) as Graph;
 const policy = JSON.parse(await readFile('public/data/openworld-policy.json', 'utf8')) as FieldPolicy;
 const source = execFileSync('git', ['show', `${baselineRef}:src/openworld/simulation.ts`], { encoding: 'utf8' });
-// Preserve the old simulation while using the unchanged shared engine/data.
+// Preserve the old simulation while holding the shared current engine/data fixed.
 const baselinePath = resolve(output, 'baseline-simulation.ts');
 await writeFile(baselinePath, source.replace(/from (['"])(\.[^'"]+)\1/g,
   (_all, quote, specifier) => `from ${quote}${pathToFileURL(resolve('src/openworld', specifier)).href}${quote}`));

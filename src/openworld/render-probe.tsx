@@ -56,6 +56,13 @@ export function RenderProbe() {
             id: material.uuid, lod: material.userData.openWorldWaterLod, effect: material.userData.openWorldNodeEffect,
           }));
         }),
+        terrainMaterials: [...new Map(scene.getObjectsByProperty('type', 'Mesh')
+          .filter(object => object.name.startsWith('terrain-chunk:'))
+          .flatMap(object => {
+            const mesh = object as Mesh;
+            return (Array.isArray(mesh.material) ? mesh.material : [mesh.material])
+              .map(material => [material.uuid, { id: material.uuid, effect: material.userData.openWorldNodeEffect }] as const);
+          })).values()],
         textures: gl.info.memory.textures, geometries: gl.info.memory.geometries,
         trainers: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('field-trainer:')).map(object => object.name),
         programs: gl.info.programs?.length, backend: backend?.backend ?? 'webgl', renderer: backend?.backend ?? (debug ? context?.getParameter(debug.UNMASKED_RENDERER_WEBGL) : context?.getParameter(context!.RENDERER)) }),

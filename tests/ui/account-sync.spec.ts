@@ -304,7 +304,7 @@ test('account panel serializes login and logout lifecycle callbacks', async ({ p
   await page.locator('[data-open-auth]').click();
   await page.locator('.account-dialog input[name="username"]').fill('trainer');
   await page.locator('.account-dialog input[name="password"]').fill('correct-password');
-  await page.locator('.account-dialog button[value="login"]').click();
+  await page.locator('.account-submit').click();
   await expect(page.locator('.account-name')).toContainText('trainer');
   await expect(page.locator('.account-dialog')).toBeHidden();
   await expect.poll(() => page.evaluate(() => (window as typeof window & { accountEvents?: string[] }).accountEvents)).toContain('after-login');
@@ -345,7 +345,7 @@ test('same-account re-login authenticates before checkpoint and preserves the de
   }, save('preserved-after-expiry'));
   await page.locator('.account-dialog input[name="username"]').fill('TRAINER');
   await page.locator('.account-dialog input[name="password"]').fill('correct-password');
-  await page.locator('.account-dialog button[value="login"]').click();
+  await page.locator('.account-submit').click();
   await expect(page.locator('.account-dialog')).toBeHidden();
   await expect(page.locator('.account-name')).toContainText('trainer');
   const preserved = await page.evaluate(async () => {
@@ -444,7 +444,7 @@ test('login conflict never captures the previous guest adventure into the accoun
   await page.locator('[data-open-auth]').click();
   await page.locator('.account-dialog input[name="username"]').fill(profile.username);
   await page.locator('.account-dialog input[name="password"]').fill('correct-password');
-  await page.locator('.account-dialog button[value="login"]').click();
+  await page.locator('.account-submit').click();
   await expect(page.locator('.save-recovery-dialog')).toBeVisible({ timeout: 30_000 });
   await expect(page.locator('#money')).toContainText('1,111');
   const accountSnapshots = await page.evaluate(async profileId => {

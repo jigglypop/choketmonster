@@ -6,39 +6,32 @@
   font-size: .75rem;
 }
 
-#game-music-panel {
+#game-sound-toggle[aria-pressed="true"] { border-color: #75b99e; background: #dff2e8; color: #173d34; }
+#game-music-feedback {
   position: fixed;
-  z-index: 36;
-  left: 50%;
-  bottom: 14px;
-  transform: translateX(-50%);
-  width: 202px;
-  overflow: hidden;
-  border: 1px solid #a2bdb2;
-  border-radius: 12px;
+  z-index: 80;
+  top: 66px;
+  right: 14px;
+  max-width: min(360px,calc(100vw - 28px));
+  padding: 10px 12px;
+  border: 1px solid #8fb7a6;
+  border-radius: 9px;
   color: #ecfff6;
-  background: #172b25;
-  box-shadow: 0 8px 28px #12251d55;
+  background: #173d34f2;
+  box-shadow: 0 8px 24px #102c2440;
+  font-size: 12px;
+  line-height: 1.45;
 }
-#game-music-panel[hidden] { display: none; }
-#game-music-panel iframe { display: block; width: 200px; height: 200px; border: 0; opacity: .999; }
-.music-footer { position: relative; }
-#game-music-details summary { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 40px; padding: 8px 47px 8px 9px; cursor: pointer; font-size: 12px; }
-#game-music-details summary strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#game-music-details summary span { flex: none; color: #b3cfc2; }
-#game-music-panel button { min-height: 40px; padding: 7px 9px; border: 1px solid #607d70; background: #2e4b3f; border-radius: 6px; color: #fff; cursor: pointer; font-size: 12px; }
-#game-music-close { position: absolute; top: 0; right: 1px; width: 40px; z-index: 1; }
-#game-music-panel .music-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding: 0 8px 8px; }
-#game-music-panel .music-actions label { display: flex; align-items: center; gap: 4px; font-size: 12px; }
-#game-music-volume { width: 78px; accent-color: #67cda1; }
-#game-music-status, #game-music-details > a { display: block; margin: 0 9px 8px; font-size: 12px; line-height: 1.45; color: #b3cfc2; }
-
+#game-music-feedback[hidden] { display: none; }
 .game-audio-controls input[type="range"] { min-width: 0; accent-color: #f2d86f; }
 .game-audio-controls .game-audio-mute { grid-column: 1 / -1; min-height: 2rem; }
+.settings-music-file > span:last-child { display: flex; grid-auto-flow: column; gap: 7px; }
+.settings-music-file button { min-height: 40px; padding: 7px 10px; border: 1px solid #b8c7dc; border-radius: 8px; background: #f6f9fd; color: #253a58; }
+.settings-music-file button:disabled { opacity: .45; cursor: default; }
 
 @media (max-width: 720px) {
-  #game-music-panel { top: calc(140px + env(safe-area-inset-top)); right: auto; bottom: auto; left: 8px; transform: none; }
-  body:has(#game-music-panel:not([hidden])) .adventure .world-explore-panel[open] { width: 160px; }
-  body:has(.world-explore-panel[open]) #game-music-panel:not([hidden]) { top: calc(250px + env(safe-area-inset-top)); right: 8px; left: auto; }
+  #game-music-feedback { top: 58px; right: 8px; }
   .game-audio-controls { grid-template-columns: 4rem minmax(7rem, 1fr); }
+  .settings-music-file > span:last-child { width: 100%; grid-auto-flow: row; grid-template-columns: 1fr 1fr; }
+  .settings-music-file button { width: 100%; }
 }

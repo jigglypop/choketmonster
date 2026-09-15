@@ -40,9 +40,11 @@ async function newPage(context: BrowserContext): Promise<Page> {
 async function register(page: Page, username: string, password: string, fromChat = false): Promise<void> {
   await (fromChat ? page.locator('#world-chat-login') : page.locator('[data-open-auth]')).click();
   await expect(page.locator('.account-dialog')).toBeVisible();
+  await page.locator('.account-mode button[value="register"]').click();
   await page.locator('.account-dialog input[name="username"]').fill(username);
   await page.locator('.account-dialog input[name="password"]').fill(password);
-  await page.locator('.account-dialog button[value="register"]').click();
+  await page.locator('.account-dialog input[name="passwordConfirmation"]').fill(password);
+  await page.locator('.account-submit').click();
   await expect(page.locator('.account-dialog')).toBeHidden({ timeout: 30_000 });
   await expect(page.locator('.account-name')).toContainText(username);
 }
@@ -124,7 +126,7 @@ test('registered account usernames identify bidirectional chat and reauthenticat
     await first.locator('#world-chat-login').click();
     await first.locator('.account-dialog input[name="username"]').fill(firstName.toUpperCase());
     await first.locator('.account-dialog input[name="password"]').fill(password);
-    await first.locator('.account-dialog button[value="login"]').click();
+    await first.locator('.account-submit').click();
     await expect(first.locator('.account-dialog')).toBeHidden({ timeout: 30_000 });
     await expect(first.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
     await expect(first.locator('#world-realtime-status')).toHaveText('연결됨', { timeout: 30_000 });
