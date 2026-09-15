@@ -1,5 +1,5 @@
 /** Render height only; simulation positions, speed and collision stay unchanged. */
 export function pokemonWorldDisplayHeight(heightMeters: number | undefined): number {
   const height = Number.isFinite(heightMeters) ? Math.max(0, heightMeters!) : 1;
-  return Math.min(3.45, Math.max(1.18, height * 2.15 * .72 + .7 * .72)) * .65;
+  return Math.min(3.45, Math.max(1.18, height * 2.15 * .72 + .7 * .72)) * .73;
 }

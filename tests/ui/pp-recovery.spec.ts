@@ -31,6 +31,8 @@ test('PP가 0인 기존 저장도 기술을 실행하고 PP UI나 자동 회복 
   await expect(page.getByRole('status')).toContainText('불러왔습니다');
   await openExplorePanel(page);
 
+  await expect(page.locator('.world-battle-hud')).not.toHaveAttribute('open', '');
+  await page.locator('.world-battle-hud > summary').click();
   const move = page.locator('[data-world-move-id="33"]');
   await expect(move).not.toContainText('PP');
   await expect(page.locator('body')).not.toContainText('자동 회복');

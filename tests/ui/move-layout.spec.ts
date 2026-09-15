@@ -46,7 +46,7 @@ async function bootstrap(page: Page) {
   await openExplorePanel(page);
 }
 
-async function importSave(page: Page, save: unknown) {
+async function importSave(page: Page, save: unknown, classic = false) {
   const status = page.getByRole('status');
   await expect(status).toBeHidden();
   await page.locator('#import-file').setInputFiles({
@@ -54,7 +54,7 @@ async function importSave(page: Page, save: unknown) {
   });
   await expect(status).toBeVisible();
   await expect(status).toContainText('불러왔습니다');
-  await openExplorePanel(page);
+  if (!classic) await openExplorePanel(page);
 }
 
 async function exportSave(page: Page) {
@@ -82,6 +82,7 @@ test('team and box layout edits cross attack/status boundaries and persist witho
   await bootstrap(page);
   await importSave(page, packSave(game, graph, { ...defaultView(), openWorld: world.snapshot(), openWorldPaused: true }));
 
+  await page.locator('.world-battle-hud > summary').click();
   await expect(page.locator('#world-edit-moves')).toBeEnabled();
   await page.locator('#world-edit-moves').click();
   await expect(page.locator('[data-tab="team"]')).toHaveClass(/active/);
@@ -181,7 +182,7 @@ test('classic battle uses the saved presentation order and disables editing', as
     turn: 1, canRun: true,
   };
   await bootstrap(page);
-  await importSave(page, packSave(game, graph, { ...defaultView(), openWorldPaused: true }));
+  await importSave(page, packSave(game, graph, { ...defaultView(), openWorldPaused: true }), true);
 
   await expect(page.locator('[data-battle-move]')).toHaveCount(4);
   await expect(page.locator('[data-battle-move]').evaluateAll(buttons => buttons.map(button => Number((button as HTMLElement).dataset.battleMove)))).resolves.toEqual([3, 1, 2, 0]);
@@ -279,7 +280,6 @@ test('a legacy status-only set recovers one legal attack with a backup and uses 
   const restored = unpackSave(recovered, graph).game;
   const battleWorld = new OpenWorldSimulation(graph, restored, 7013, undefined, policy);
   battleWorld.setControlMode('auto');
-  battleWorld.setAutoHunt(false);
   expect(battleWorld.startEncounter(battleWorld.entities.find(entity => entity.kind === 'wild')!.id)).toBe(true);
   battleWorld.game.battle!.enemy.team = [createMonster(battleWorld.game, 208, 100)];
   const enemy = battleWorld.game.battle!.enemy.team[0];
@@ -287,13 +287,14 @@ test('a legacy status-only set recovers one legal attack with a backup and uses 
   const enemyHp = enemy.hp;
   await importSave(page, packSave(battleWorld.game, graph, { ...defaultView(), openWorld: battleWorld.snapshot(), openWorldPaused: false }));
   await expect(page.locator('#world-mode-auto')).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('.world-battle-hud > summary').click();
   const enemyMeter = page.getByRole('meter', { name: '강철톤 HP' });
   await expect(page.locator('[data-world-move-id="401"]')).not.toContainText('PP');
   await expect(page.locator('#world-feed')).toContainText(/아쿠아테일! [1-9]\d* 피해/, { timeout: 20_000 });
   await expect.poll(async () => Number(await enemyMeter.getAttribute('aria-valuenow')), { timeout: 20_000 }).toBeLessThan(enemyHp);
   await page.locator('#world-pause').click();
   const battled = await exportSave(page);
-  expect(battled.game.player.team[0].moves.find(slot => slot.moveId === 401)!.pp).toBe(15);
+  expect(battled.game.player.team[0].moves.find(slot => slot.moveId === 401)!.pp).toBe(recovered.game.player.team[0].moves.find(slot => slot.moveId === 401)!.pp);
   expect(battled.game.logs.some(log => /아쿠아테일! [1-9]\d* 피해/.test(log))).toBe(true);
   expect(battled.game.battle!.enemy.team[0].hp).toBeLessThan(enemyHp);
 });

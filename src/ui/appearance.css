@@ -156,22 +156,30 @@ input[type=search], input[type=text], select { border: 1px solid var(--ui-border
 .world-feed p { background: #172238d9; border: 1px solid var(--ui-hud-line); color: #dce8fa; border-radius: 9px; }
 .adventure .world-respawn { top: 247px; color: #dae8fd; }
 .adventure .world-lower-hud > .world-battle-hud, .adventure .world-target { background: var(--ui-hud); color: #e5eefc; border: 1px solid var(--ui-hud-line); border-radius: 15px; box-shadow: 0 12px 36px #10182730; }
-.adventure .world-lower-hud > .world-battle-hud { width: 380px; right: 20px; bottom: 24px; max-width: calc(100% - 40px); }
-.world-battle-hud > summary { padding: 14px 16px; min-height: 62px; }
+.adventure .world-lower-hud > .world-battle-hud { width: 320px; right: 20px; bottom: 24px; max-width: calc(100% - 40px); }
+.adventure .world-battle-hud > summary { display: flex; align-items: center; gap: 8px; padding: 8px 10px; min-height: 44px; box-sizing: border-box; }
+.adventure .world-battle-hud > summary > span { display: none; }
+.adventure .world-battle-hud > summary strong { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; margin: 0; }
+.adventure .world-battle-hud > summary .world-summary-name { flex: 1; }
+.adventure .world-battle-hud > summary .world-summary-hp { flex: none; }
 .world-battle-hud > summary span { font-size: calc(12px * var(--ui-font-scale)); letter-spacing: .025em; color: #9fb8df; }
 .world-battle-hud > summary strong { font-size: calc(15px * var(--ui-font-scale)); margin-top: 4px; }
 .world-summary-hp { font-size: calc(13px * var(--ui-font-scale)); color: #b1cdfa; }
-.world-battle-deck { padding: 0 16px 16px; max-height: min(570px, calc(100dvh - 190px)); }
-.world-combatant { gap: 12px; grid-template-columns: 50px minmax(0,1fr); padding: 10px 0; }
-.world-combatant-copy > strong { font-size: calc(17px * var(--ui-font-scale)); color: #edf4ff; }
+.adventure .world-battle-deck { padding: 0 10px 10px; max-height: min(320px, 38dvh); overflow: auto; overscroll-behavior: contain; }
+.adventure #world-combatants { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
+.adventure .world-combatant { gap: 5px; grid-template-columns: 26px minmax(0,1fr); padding: 4px 0; margin: 0; }
+.adventure .world-combatant img { width: 26px; height: 26px; }
+.adventure .world-combatant .world-combatant-meta { display: none; }
+.adventure .world-combatant-copy > strong { font-size: calc(14px * var(--ui-font-scale)); color: #edf4ff; }
 .world-combatant-copy > small, .world-hp-row, .world-combatant .world-combatant-meta { font-size: calc(12px * var(--ui-font-scale)); color: #9fb3d0; }
 .world-hp-row b { font-size: calc(14px * var(--ui-font-scale)); color: #edf4ff; }
 .world-combatant .world-hp { background: #ffffff12; border-radius: 9px; }
 .world-combatant .world-hp i { background: #68bdb1; border-radius: 9px; }
-.world-moves { gap: 8px; }
-.world-move { background: #ffffff07; color: #edf4ff; border: 1px solid var(--ui-hud-line); border-radius: 10px; padding: 12px; box-shadow: none; }
+.adventure .world-moves { gap: 5px; }
+.world-move { background: #ffffff07; color: #edf4ff; border: 1px solid var(--ui-hud-line); border-radius: 8px; padding: 5px 8px; min-height: 44px; box-shadow: none; }
 .world-move:hover:enabled { border-color: #7aabfa; background: #30497180; }
-.world-move strong { font-size: calc(15px * var(--ui-font-scale)); margin: 7px 0; }
+.adventure .world-move strong { font-size: calc(14px * var(--ui-font-scale)); margin: 2px 0 0; }
+.adventure .world-move > small { display: none; }
 .world-move small, .world-move > span { font-size: calc(12px * var(--ui-font-scale)); color: #a9bfdd; line-height: 1.6; }
 .world-edit-moves, .world-battle-actions button { background: #ffffff09; border: 1px solid var(--ui-hud-line); border-radius: 8px; color: #dce9fd; min-height: 42px; font-size: calc(12px * var(--ui-font-scale)); }
 .world-battle-actions { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
@@ -226,10 +234,10 @@ input[type=search], input[type=text], select { border: 1px solid var(--ui-border
   [data-battle-position=left] .adventure .world-radar { right: auto; left: 20px; }
   [data-battle-position=left] .adventure .world-feed, [data-battle-position=left] .adventure .world-respawn { left: 20px; right: auto; }
   [data-battle-position=left] .adventure .world-target { left: auto; right: 20px; }
-  [data-battle-position=bottom] .adventure .world-lower-hud > .world-battle-hud { left: 50%; right: auto; transform: translateX(-50%); width: min(760px,calc(100% - 40px)); }
+  [data-battle-position=bottom] .adventure .world-lower-hud > .world-battle-hud { left: 50%; right: auto; transform: translateX(-50%); width: min(520px,calc(100% - 40px)); }
   [data-battle-position=bottom] .world-moves { grid-template-columns: repeat(4,minmax(0,1fr)); }
-  [data-battle-position=bottom] #world-combatants { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-  [data-battle-position=bottom] .world-battle-deck { max-height: 46dvh; }
+  [data-battle-position=bottom] #world-combatants { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  [data-battle-position=bottom] .world-battle-deck { max-height: min(320px, 38dvh); }
 }
 @media(max-width:1250px) {
   .topbar #money, .topbar #save-state, .interface-settings-trigger > span { display: none; }
@@ -291,7 +299,7 @@ input[type=search], input[type=text], select { border: 1px solid var(--ui-border
   .adventure .world-lower-hud > .world-battle-hud { width: calc(100% - 24px); max-width: none; right: 12px; left: auto; bottom: 22px; transform: none; }
   .adventure .world-lower-hud:has(.world-target:not([hidden])) > .world-battle-hud:not([open]) { width: calc(100% - 24px); }
   .adventure .world-lower-hud > .world-battle-hud[open] { bottom: 22px; max-height: 52dvh; }
-  .adventure .world-lower-hud > .world-battle-hud[open] .world-battle-deck { max-height: calc(52dvh - 82px); }
+  .adventure .world-lower-hud > .world-battle-hud[open] .world-battle-deck { max-height: min(280px, 34dvh); }
   .adventure .world-lower-hud > .world-target { bottom: 104px; left: 12px; width: calc(100% - 24px); }
   .adventure .world-lower-hud:has(.world-target:not([hidden])) > .world-battle-hud[open] { bottom: 22px; }
   .adventure:has(.world-battle-hud[open]) .world-target { display: none; }

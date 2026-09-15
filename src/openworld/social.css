@@ -106,7 +106,7 @@
  .adventure .world-battle-hud > summary .world-summary-name { flex:1; letter-spacing:0; }
  .adventure .world-battle-hud > summary .world-summary-hp { flex:none; letter-spacing:0; color:#e5eefc; }
  .adventure .world-battle-hud > summary i { flex:none; }
- .adventure .world-lower-hud > .world-battle-hud[open] .world-battle-deck { max-height:min(38dvh,320px); overflow:auto; overscroll-behavior:contain; }
+ .adventure .world-lower-hud > .world-battle-hud[open] .world-battle-deck { max-height:min(34dvh,280px); overflow:auto; overscroll-behavior:contain; }
  .adventure .social-toolbar { height:auto; min-height:36px; margin:0; gap:5px; }
  .adventure .social-toolbar > button,.adventure .social-players > summary { min-height:36px; display:flex; align-items:center; padding:6px 8px; box-sizing:border-box; }
  .adventure .social-channel small { display:none; }

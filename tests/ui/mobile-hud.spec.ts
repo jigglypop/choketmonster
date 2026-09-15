@@ -6,7 +6,7 @@ import { OpenWorldSimulation } from '../../src/openworld/simulation';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8'));
 const policy = JSON.parse(readFileSync('public/data/openworld-policy.json', 'utf8'));
-test.use({ hasTouch: true });
+test.use({ hasTouch: true, launchOptions: { args: ['--mute-audio', '--enable-unsafe-webgpu'] } });
 test.setTimeout(120000);
 
 async function loadWorld(page: Page, battle = false) {
@@ -65,14 +65,38 @@ test('mobile chat and partner leave the terrain clear and expand one at a time',
   expect(errors).toEqual([]);
 });
 
-test('automatic battle stays compact on mobile and its actions remain available', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await loadWorld(page, true);
-  const partner = page.locator('.world-battle-hud');
-  await expect(partner).not.toHaveAttribute('open', '');
-  await partner.locator(':scope > summary').click();
-  await expect(page.locator('#world-moves')).toBeVisible();
-  await expect(page.locator('#world-combatants .world-combatant')).toHaveCount(2);
-  await partner.locator(':scope > summary').click();
-  await expect(partner).not.toHaveAttribute('open', '');
-});
+for (const viewport of [{ width: 1440, height: 1100 }, { width: 390, height: 844 }]) {
+  test(`restored battle stays folded and manual actions stay compact at ${viewport.width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await loadWorld(page, true);
+    const partner = page.locator('.world-battle-hud');
+    await expect(partner).not.toHaveAttribute('open', '');
+    expect((await partner.boundingBox())!.height).toBeLessThanOrEqual(48);
+    await partner.locator(':scope > summary').click();
+    await expect(page.locator('#world-moves')).toBeVisible();
+    await expect(page.locator('#world-combatants .world-combatant')).toHaveCount(2);
+    const bounds = await partner.boundingBox();
+    expect(bounds!.height).toBeLessThanOrEqual(viewport.height * .45);
+    if (viewport.width > 720) expect(bounds!.width).toBeLessThanOrEqual(322);
+    const buttons = await page.locator('[data-world-move]').evaluateAll(nodes => nodes.map(node => {
+      const { width, height, bottom } = node.getBoundingClientRect();
+      const deck = node.closest('.world-battle-deck')!.getBoundingClientRect();
+      return { width, height, inView: bottom <= deck.bottom, font: parseFloat(getComputedStyle(node.querySelector('strong')!).fontSize) };
+    }));
+    expect(buttons.length).toBeGreaterThan(0);
+    for (const button of buttons) {
+      expect(button.width).toBeGreaterThanOrEqual(44);
+      expect(button.height).toBeGreaterThanOrEqual(44);
+      expect(button.height).toBeLessThanOrEqual(60);
+      expect(button.font).toBeGreaterThanOrEqual(14);
+      expect(button.inView).toBe(true);
+    }
+    await testInfo.attach('compact-battle', { body: await page.screenshot(), contentType: 'image/png' });
+    await partner.locator(':scope > summary').click();
+    await expect(partner).not.toHaveAttribute('open', '');
+    // A later refresh must respect the user's choice as the battle continues.
+    await page.keyboard.press('Digit1');
+    await expect(page.locator('#world-battle-state')).not.toContainText('턴 0');
+    await expect(partner).not.toHaveAttribute('open', '');
+  });
+}

@@ -58,6 +58,7 @@ async function verifyAutoChoosesNearest(page: Page, seed: number, activate: (pag
   await activate(page);
   await expect(page.locator('#world-mode-auto')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#world-battle-state')).toContainText('자동 배틀', { timeout: 15_000 });
+  await expect(page.locator('.world-battle-hud')).not.toHaveAttribute('open', '');
   await page.locator('#world-pause').click();
   const exported = await exportSave(page);
   expect(exported.view.openWorld.autoHunt).toBe(true);

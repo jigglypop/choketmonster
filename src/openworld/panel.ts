@@ -137,7 +137,7 @@ export class OpenWorldPanel {
     this.multiplayer.join(this.presence());
     window.addEventListener('keydown', this.hotkeys);
     const battleHud = this.host.querySelector<HTMLDetailsElement>('.world-battle-hud')!;
-    battleHud.open = Boolean(this.options.game.battle) && (!this.compactViewport.matches || this.simulation.controlMode === 'manual');
+    battleHud.open = false;
     battleHud.addEventListener('toggle', () => {
       if (battleHud.open && this.compactViewport.matches) {
         this.setChatCollapsed(true);
@@ -486,7 +486,6 @@ export class OpenWorldPanel {
     if (!this.host?.querySelector('#ow-host')) return;
     const game = this.options.game, world = this.simulation, battle = game.battle;
     if (battle && battle !== this.previousBattle) {
-      if (!this.compactViewport.matches || world.controlMode === 'manual') this.host.querySelector<HTMLDetailsElement>('.world-battle-hud')!.open = true;
       playGameSound('encounter', { speciesId: battle.enemy.team[battle.enemy.activeIndex].speciesId });
     }
     this.previousBattle = battle;
@@ -515,13 +514,13 @@ export class OpenWorldPanel {
     const xpStart = experienceAtLevel(lead.level, species.growthRate), xpEnd = experienceAtLevel(lead.level + 1, species.growthRate);
     const xp = Math.min(100, Math.max(0, (lead.xp - xpStart) / Math.max(1, xpEnd - xpStart) * 100));
     const card = (mon: Monster, label: string) => `<div class="world-combatant"><img src="${pokemonSpriteUrl(mon.speciesId)}" alt="${getSpecies(mon.speciesId).name}"><div class="world-combatant-copy"><small>${label} · Lv.${mon.level}</small><strong>${escape(mon.nickname)}</strong><div class="world-hp-row"><span>HP</span><b>${mon.hp} / ${mon.stats.hp}</b>${mon.status ? `<em>${mon.status}</em>` : ''}</div><div class="world-hp" role="meter" aria-label="${escape(mon.nickname)} HP" aria-valuemin="0" aria-valuemax="${mon.stats.hp}" aria-valuenow="${mon.hp}"><i style="width:${mon.hp / mon.stats.hp * 100}%"></i></div><span class="world-combatant-meta">스피드 ${mon.stats.speed} · 이동 ${movementSpeed(mon.speciesId, mon.level).toFixed(1)}m/s</span></div></div>`;
-    this.html('#world-combatants', `${card(lead, '내 파트너')}${enemy ? card(enemy, `${battle!.kind === 'wild' ? '야생' : campaignTrainer?.name ?? '체육관'} · ${world.controlMode === 'manual' ? '수동' : '자동'} 배틀`) : `<div class="world-growth"><small>다음 레벨까지 ${Math.max(0, xpEnd - lead.xp)} EXP</small><div class="world-xp"><i style="width:${xp}%"></i></div><span>${species.moves.filter(move => move.level > lead.level).slice(0, 1).map(move => `Lv.${move.level} ${getMove(move.moveId).name} 습득`).join('') || '현재 레벨의 기술을 모두 익혔습니다.'}</span></div>`}`);
+    this.html('#world-combatants', `${card(lead, '파트너')}${enemy ? card(enemy, battle!.kind === 'wild' ? '야생' : campaignTrainer?.name ?? '체육관') : `<div class="world-growth"><small>다음 레벨까지 ${Math.max(0, xpEnd - lead.xp)} EXP</small><div class="world-xp"><i style="width:${xp}%"></i></div><span>${species.moves.filter(move => move.level > lead.level).slice(0, 1).map(move => `Lv.${move.level} ${getMove(move.moveId).name} 습득`).join('') || '현재 레벨의 기술을 모두 익혔습니다.'}</span></div>`}`);
     const moveLayout = getMoveLayout({ ...lead, moves });
     this.button('#world-edit-moves').disabled = !!battle || !!game.captureOffer || !this.options.editMoves;
     this.html('#world-moves', Array.from({ length: 4 }, (_, index) => {
       const slot = moveLayout[index]; if (!slot) return `<div class="world-move empty-slot"><span>${index + 1}</span><strong>미습득</strong><small>레벨을 올려 기술을 익히세요</small></div>`;
       const move = getMove(slot.moveId);
-      return `<button data-world-move="${slot.sourceIndex}" data-world-slot="${index}" data-world-move-id="${slot.moveId}" class="world-move type-${move.type}" ${!battle ? 'disabled' : ''} title="${move.damageClass === 'physical' ? '물리' : move.damageClass === 'special' ? '특수' : '변화'} · 우선도 ${move.priority} · 클릭하면 다음 턴에 사용"><span>${index + 1} · ${types[move.type]} · 우선 ${move.priority}</span><strong>${move.name}</strong><small><span class="move-details">위력 ${move.power || '—'} · 명중 ${move.accuracy || '—'}</span></small></button>`;
+      return `<button data-world-move="${slot.sourceIndex}" data-world-slot="${index}" data-world-move-id="${slot.moveId}" class="world-move type-${move.type}" ${!battle ? 'disabled' : ''} title="${move.damageClass === 'physical' ? '물리' : move.damageClass === 'special' ? '특수' : '변화'} · 우선도 ${move.priority} · 위력 ${move.power || '—'} · 명중 ${move.accuracy || '—'} · 클릭하면 다음 턴에 사용"><span>${index + 1} · ${types[move.type]}</span><strong>${move.name}</strong><small><span class="move-details">위력 ${move.power || '—'} · 명중 ${move.accuracy || '—'}</span></small></button>`;
     }).join(''));
     this.html('#world-emergency-action', battle && !battle.awaitingSwitch && !moves.length ? '<button id="world-struggle">발버둥</button>' : '');
     const location = this.simulation.locationAt(world.player.x, world.player.z);

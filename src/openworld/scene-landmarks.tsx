@@ -1,11 +1,19 @@
 import { Html } from '@react-three/drei';
 import { useEffect, useMemo } from 'react';
-import { BoxGeometry, MeshStandardMaterial, PlaneGeometry } from 'three';
+import { BoxGeometry, MeshStandardMaterial, PlaneGeometry, Vector3, type Camera, type Object3D } from 'three';
 import { CAVE_SCENES, getCaveScene, type CaveScene } from './caves';
 import { useSurfaceTextures } from './materials';
 import type { WorldPoint, WorldSample } from './types';
 
 const CAVE_TEXTURE_TILE = 2.5;
+const portalProjection = new Vector3();
+function portalScreenPosition(object: Object3D, camera: Camera, size: { width: number; height: number }): [number, number] {
+  portalProjection.setFromMatrixPosition(object.matrixWorld).project(camera);
+  // An initial camera-plane projection can be NaN. Do not let Html cache it:
+  // NaN deltas would otherwise prevent updates until the camera moves.
+  if (!Number.isFinite(portalProjection.x) || !Number.isFinite(portalProjection.y)) return [-1000, -1000];
+  return [(portalProjection.x + 1) * size.width / 2, (1 - portalProjection.y) * size.height / 2];
+}
 
 function tileUvs(geometry: PlaneGeometry | BoxGeometry) {
   const positions = geometry.attributes.position, normals = geometry.attributes.normal, uvs = geometry.attributes.uv;
@@ -58,7 +66,7 @@ export function ScenePortals({ sceneId, regionId, player, sample, onNavigate, on
       <mesh position={[0, .05, 0]} rotation={[-Math.PI / 2, 0, 0]} onClick={event => { event.stopPropagation(); interact(); }}>
         <ringGeometry args={[.6, .85, 24]} /><meshBasicMaterial color={cave ? '#ffd98e' : '#94e2e0'} transparent opacity={.95} />
       </mesh>
-      <Html center position={[0, 2.8, 0]} zIndexRange={[12, 11]} style={{ pointerEvents: 'auto' }}>
+      <Html center calculatePosition={portalScreenPosition} position={[0, 2.8, 0]} zIndexRange={[12, 11]} style={{ pointerEvents: 'auto' }}>
         <button className="world-portal-label" data-portal={entry.id} onClick={interact}><strong>{entry.name}</strong><span>{entry.action}{distance > 4 ? ` · ${Math.round(distance)}m` : ''}</span></button>
       </Html>
     </group>;

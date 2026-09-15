@@ -74,6 +74,12 @@ test('localized portal enters, persists through reload, and exits the isolated c
   await openExplorePanel(page);
   const exit = page.locator(`[data-portal="${portal.id}"]`);
   await expect(exit).toContainText('밖으로 나가기');
+  // Restoring the renderer initially places Html labels at (0, 0). Wait for
+  // projection before resuming so idle auto mode cannot start during the wait.
+  await expect.poll(() => exit.evaluate(element => {
+    const box = element.getBoundingClientRect();
+    return element.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2));
+  }), { timeout: 45_000 }).toBe(true);
   await page.locator('#world-pause').click();
   await exit.click();
   await expect(page.locator('#world-cave-enter')).toHaveCount(1, { timeout: 45_000 });
