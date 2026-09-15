@@ -25,7 +25,7 @@ async function fixture(page: Page, loggedIn: boolean, paused = true) {
   new ConnectomeController(graph).ensure(game.player.team[0]);
   const save = packSave(game, graph, { ...defaultView(), openWorldPaused: paused });
   const user = { id: 'logout-restore-user', username: 'restore' };
-  const state = { loggedIn, rejectLogout: false, puts: [] as any[], reads: 0, remote: save, revision: 1 };
+  const state = { loggedIn, rejectLogout: false, rejectCheckpoint: false, puts: [] as any[], reads: 0, remote: save, revision: 1 };
   await page.route('**/api/auth/me', route => route.fulfill({ json: { user: state.loggedIn ? user : null } }));
   await page.route('**/api/auth/login', route => { state.loggedIn = true; return route.fulfill({ json: { user } }); });
   await page.route('**/api/auth/logout', route => {
@@ -35,6 +35,7 @@ async function fixture(page: Page, loggedIn: boolean, paused = true) {
   await page.route('**/api/saves/current', route => {
     expect(route.request().headers()['x-choketmon-profile']).toBe(user.id);
     if (route.request().method() === 'GET') { state.reads++; return route.fulfill({ json: { save: state.remote, revision: state.revision } }); }
+    if (state.rejectCheckpoint) return route.fulfill({ status: 401, json: { message: 'session expired' } });
     const body = route.request().postDataJSON(); state.puts.push(body); state.remote = body.save;
     return route.fulfill({ json: { revision: ++state.revision } });
   });
@@ -111,9 +112,16 @@ test('logout preserves a running adventure instead of saving the temporary trans
   await expect(page.locator('#world-pause')).toContainText('일시 정지');
   expect(state.puts.at(-1).save.view.openWorldPaused).toBe(false);
   expect((await slots(page)).current.view.openWorldPaused).toBe(false);
+  const tick = await page.locator('#ow-host').getAttribute('data-tick');
+  await expect(page.locator('#ow-host')).not.toHaveAttribute('data-tick', tick!);
+  await page.reload();
+  await expect(page.locator('[data-open-auth]')).toBeEnabled({ timeout: 30000 });
+  await expect(page.locator('#ow-host')).toHaveAttribute('data-paused', 'false');
+  const restoredTick = await page.locator('#ow-host').getAttribute('data-tick');
+  await expect(page.locator('#ow-host')).not.toHaveAttribute('data-tick', restoredTick!);
 });
 
-test('a rejected logout keeps the current account and the previous device save', async ({ page }) => {
+test('a rejected server logout remains logged out locally across reload and preserves both save slots', async ({ page }) => {
   test.setTimeout(90000);
   const { state, user } = await fixture(page, false);
   await page.goto('/'); await page.locator('[data-starter="152"]').click();
@@ -122,14 +130,35 @@ test('a rejected logout keeps the current account and the previous device save',
   const prior = (await slots(page)).current;
   state.rejectLogout = true;
   await page.locator('.logout-button').click();
-  await expect(page.locator('#toast')).toContainText('로그아웃에 실패했습니다');
-  await expect(page.locator('.logout-button')).toBeEnabled();
+  await expect(page.locator('[data-open-auth]')).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('.logout-button')).toBeHidden();
   const stored = await slots(page);
-  expect(stored.current).toEqual(prior);
+  expect(stored.current.game.seed).toBe('logout-local-restore');
   expect(stored[`account:${user.id}:current`].game.seed).toBe('logout-local-restore');
-  expect(Object.keys(stored).filter(key => key.startsWith('backup-before-logout-'))).toEqual([]);
-  await expect(page.locator('.account-name')).toContainText('restore');
+  expect(Object.values(stored).some((value: any) => value?.game?.seed === prior.game.seed)).toBe(true);
   await expect(page.locator('#starter-dialog')).toBeHidden();
+  await page.reload();
+  await expect(page.locator('[data-open-auth]')).toBeVisible({ timeout: 30000 });
+  await expect(page.locator('.logout-button')).toBeHidden();
+  expect((await slots(page)).current.game.seed).toBe('logout-local-restore');
+});
+
+test('an expired save checkpoint cannot block logout or discard its outbox', async ({ page }) => {
+  test.setTimeout(90000);
+  const { state, user } = await fixture(page, true);
+  state.rejectCheckpoint = true;
+  await page.goto('/'); await openExplorePanel(page);
+  await expect(page.locator('.account-name')).toContainText('restore');
+  await page.locator('.logout-button').click();
+  await expect(page.locator('[data-open-auth]')).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('.logout-button')).toBeHidden();
+  const stored = await slots(page);
+  expect(stored.current.game.seed).toBe('logout-local-restore');
+  expect(stored[`account:${user.id}:current`].game.seed).toBe('logout-local-restore');
+  await page.reload();
+  await expect(page.locator('[data-open-auth]')).toBeVisible({ timeout: 30000 });
+  await expect(page.locator('.logout-button')).toBeHidden();
+  expect((await slots(page)).current.game.seed).toBe('logout-local-restore');
 });
 
 test('pagehide during login cannot write the previous adventure into the new account slot', async ({ page }) => {

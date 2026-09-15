@@ -101,8 +101,21 @@ test('cave trainer loads the real GLB and the exact trainer id starts battle', a
   await expect.poll(() => page.evaluate(id => (window as unknown as { __renderProbe: { read(): { trainers: string[] } } }).__renderProbe.read().trainers.includes(`field-trainer:${id}`), fixture.trainer.id)).toBe(true);
   await expect.poll(() => trainerRequests.some(request => request.status === 200)).toBe(true);
   await page.screenshot({ path: `${output}/slowpoke-well-trainer.png` });
+  const composition = await page.evaluate(() => {
+    const describe = (element: Element | null) => element ? { tag: element.tagName, id: element.id, className: element.className } : null;
+    const rect = (element: Element | null) => element ? (({ x, y, width, height }) => ({ x, y, width, height }))(element.getBoundingClientRect()) : null;
+    return {
+      artifactPoint: document.elementsFromPoint(1_000, 850).map(describe),
+      canvas: rect(document.querySelector('#ow-host canvas')),
+      iframe: rect(document.querySelector('#game-music-panel iframe')),
+      musicPanel: rect(document.querySelector('#game-music-panel')),
+      renderer: (window as unknown as { __renderProbe?: { read(): { backend?: string; streaming?: unknown } } }).__renderProbe?.read(),
+    };
+  });
+  await expect(page.locator('#game-music-panel')).toBeHidden();
+  expect(composition.renderer).toMatchObject({ background: '182326', fog: '182326', clearAlpha: 1 });
   await label.click();
   await expect(page.locator('#world-battle-state')).toContainText('턴 1');
-  writeFileSync(`${output}/trainer-evidence.json`, JSON.stringify({ sceneId: cave.sceneId, trainerId: fixture.trainer.id, trainerRequests, errors }, null, 2));
+  writeFileSync(`${output}/trainer-evidence.json`, JSON.stringify({ sceneId: cave.sceneId, trainerId: fixture.trainer.id, trainerRequests, composition, errors }, null, 2));
   expect(errors).toEqual([]);
 });

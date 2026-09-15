@@ -36,7 +36,7 @@ test('original cry decodes and reaches the real audio graph; volume and mute per
   const decoded = await page.evaluate(() => (window as unknown as { cryProbe: { started: number; duration: number; sampleRate: number; connected: boolean; running: boolean } }).cryProbe);
   expect(decoded.started).toBeGreaterThan(0); expect(decoded.duration).toBeGreaterThan(.05); expect(decoded.sampleRate).toBeGreaterThan(8000);
   expect(decoded.connected).toBe(true); expect(decoded.running).toBe(true);
-  await page.locator('#game-music-close').click();
+  await expect(page.locator('#game-music-panel')).toBeHidden();
   await page.locator('#open-interface-settings').click();
   await page.locator('#audio-music').fill('22'); await page.locator('#audio-effects').fill('41'); await page.locator('#audio-muted').check();
   await page.locator('.settings-done').click(); await page.reload();
@@ -50,6 +50,8 @@ test('visible original soundtrack player streams from the provider and accepts v
   await page.locator('[data-starter="152"]').click();
   await page.keyboard.press('Space');
   await page.locator('[data-tab="team"]').click();
+  await expect(page.locator('#game-music-panel')).toBeHidden();
+  await page.getByRole('button', { name: '음악 재생과 음량' }).click();
   await expect(page.locator('#game-music-panel')).toBeVisible();
   await expect(page.locator('#game-music-panel iframe')).toBeVisible({ timeout: 25_000 });
   await page.locator('#game-music-play').click();

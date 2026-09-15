@@ -1,9 +1,9 @@
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Canvas, unmountComponentAtNode, useFrame, useThree } from '@react-three/fiber';
 import { Html, OrbitControls } from '@react-three/drei';
 import { Physics, RigidBody } from '@react-three/rapier';
 import { GaesupWorld, createCameraPlugin } from 'gaesup-world';
 import { createGaesupRuntime } from 'gaesup-world/runtime';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import {
   AnimationMixer,
@@ -16,6 +16,7 @@ import {
   Color,
   DirectionalLight,
   Float32BufferAttribute,
+  Fog,
   Frustum,
   Sphere,
   Group,
@@ -920,17 +921,23 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
   const sample = cave?.sample ?? atlas.sample;
   const daylight = snapshot.daylightIntensity ?? 1;
   const skyColor = useMemo(() => cave ? new Color('#182326') : new Color('#14263d').lerp(new Color('#afcfc1'), daylight), [cave, daylight]);
+  const fog = useMemo(() => new Fog('#182326', cave ? 28 : 48, cave ? 65 : 85), [cave]);
   const worldOptions = useMemo(() => ({ ...options, sampleWorld: sample }), [options, sample]);
   const windowState = useViewWindow();
   const chunks = useMemo(() => terrainChunks(snapshot.player, windowState.visible), [snapshot.player.x, snapshot.player.z, windowState.visible]);
   const visible = useMemo(() => creatureLods(snapshot.entities, snapshot.player, windowState.visible, windowState.mobile, snapshot.selectedWildId), [snapshot, windowState]);
   const { scene } = useThree();
+  useLayoutEffect(() => {
+    // Scene is rendered inside a group. JSX attach="background"/"fog" there
+    // would only assign unused properties to that group, not the root scene.
+    const previousBackground = scene.background, previousFog = scene.fog;
+    scene.background = skyColor; scene.fog = fog; fog.color.copy(skyColor);
+    return () => { scene.background = previousBackground; scene.fog = previousFog; };
+  }, [scene, skyColor, fog]);
   useFrame(() => { scene.userData.streaming = { region: atlas.id, sceneId, daylight, player: { x: snapshot.player.x, z: snapshot.player.z }, terrainChunks: cave ? 0 : chunks.length, terrainTotal: ((WORLD_MAX - WORLD_MIN) / TERRAIN_CHUNK_SIZE) ** 2, highDetailChunks: chunks.filter(c => c.segments === 12).length,
     visibleCreatures: visible.length, detailedCreatures: visible.filter(v => v.model && hasPokemonModel(v.creature.speciesId)).length, cachedModels: modelCache.size, activeLoads, queuedLoads: loadQueue.length, modelLimit: windowState.mobile ? 4 : 8 }; });
   return (
     <>
-      <color attach="background" args={[skyColor]} />
-      <fog attach="fog" args={[skyColor, cave ? 28 : 48, cave ? 65 : 85]} />
       <hemisphereLight args={[cave ? '#b9cbd1' : '#d9eeed', '#434f3f', cave ? .85 : .4 + daylight * .7]} />
       <SkyLighting />
       {!cave && <Sunlight player={snapshot.player} daylight={daylight} />}
@@ -972,7 +979,12 @@ function SaveRenderBudget() {
   return null;
 }
 
-function OpenWorldApp({ store, options }: { store: SnapshotStore; options: OpenWorldViewOptions }) {
+type ViewLifetime = { active: boolean; host: HTMLElement };
+function ActiveWorld({ lifetime, children }: { lifetime: ViewLifetime; children: ReactNode }) {
+  return lifetime.active ? children : null;
+}
+
+function OpenWorldApp({ store, options, lifetime }: { store: SnapshotStore; options: OpenWorldViewOptions; lifetime: ViewLifetime }) {
   const snapshot = useSyncExternalStore(store.subscribe, store.get, store.get);
   const renderPaused = useSyncExternalStore(onRenderSuspension, renderingSuspended, renderingSuspended);
   const runtime = useMemo(() => createGaesupRuntime({ plugins: [createCameraPlugin()], pluginRuntime: 'client' }), []);
@@ -981,6 +993,10 @@ function OpenWorldApp({ store, options }: { store: SnapshotStore; options: OpenW
   const [showLabels, setShowLabels] = useState(true);
   const toggleLabels = () => setShowLabels(previous => !previous);
   const [destination, setDestination] = useState<WorldPoint | null>(null);
+  const createRenderer = useMemo(() => {
+    let pending: ReturnType<typeof createOpenWorldRenderer> | undefined;
+    return (defaults: Parameters<typeof createOpenWorldRenderer>[0]) => pending ??= createOpenWorldRenderer(defaults, { forceWebGL: new URLSearchParams(location.search).get('renderer') === 'webgl' });
+  }, []);
   useEffect(() => { setDestination(null); }, [snapshot.regionId, snapshot.sceneId]);
   const navigate = useCallback((point: WorldPoint) => {
     if (options.onNavigationStart?.() === false) return;
@@ -1001,13 +1017,23 @@ function OpenWorldApp({ store, options }: { store: SnapshotStore; options: OpenW
       enablePhysics
       gravity={[0, -18, 0]}
     >
-      <Canvas frameloop={renderPaused ? 'never' : 'always'} shadows dpr={renderDpr} camera={{ position: [12, 18, 16], fov: 48, near: .1, far: 160 }} gl={defaults => createOpenWorldRenderer({ ...defaults, canvas: defaults.canvas as HTMLCanvasElement }, { forceWebGL: new URLSearchParams(location.search).get('renderer') === 'webgl' })} onPointerMissed={() => options.onSelect(null)}>
+      <Canvas eventSource={lifetime.host} frameloop={renderPaused ? 'never' : 'always'} shadows dpr={renderDpr} camera={{ position: [12, 18, 16], fov: 48, near: .1, far: 160 }} gl={defaults => createRenderer({ ...defaults, canvas: defaults.canvas as HTMLCanvasElement })} onPointerMissed={() => options.onSelect(null)} onCreated={state => {
+        // Canvas can finish its async WebGPU setup after logout or a tab change.
+        // Keep the event target valid, then retire that stale R3F root before it
+        // can render or install scene controls for the previous adventure.
+        if (!lifetime.active) {
+          state.setFrameloop('never');
+          queueMicrotask(() => unmountComponentAtNode(state.gl.domElement));
+        }
+      }}>
+        <ActiveWorld lifetime={lifetime}>
         <AdaptiveResolution setDpr={setRenderDpr} />
         <SaveRenderBudget />
         {new URLSearchParams(location.search).has('renderProbe') && <RenderProbe />}
         <group name="gaesup-world">
           <Scene snapshot={snapshot} options={options} showLabels={showLabels} destination={destination} onNavigate={navigate} onDestination={setDestination} />
         </group>
+        </ActiveWorld>
       </Canvas>
       {!ready && <div className="ow-loading">Gaesup World 준비 중…</div>}
       <div className="ow-camera-controls" aria-label="이름과 체력 표시">
@@ -1021,14 +1047,16 @@ export function mountOpenWorld(host: HTMLElement, options: OpenWorldViewOptions)
   const initial = options.getSnapshot();
   const store = new SnapshotStore(initial);
   const root: Root = createRoot(host);
+  const lifetime: ViewLifetime = { active: true, host };
   host.classList.add('choketmon-openworld');
   // Gaesup's plugin registry rejects concurrent duplicate setup. The view owns
   // one runtime lifecycle, so avoid React development StrictMode's effect replay.
-  root.render(<OpenWorldApp store={store} options={options} />);
+  root.render(<OpenWorldApp store={store} options={options} lifetime={lifetime} />);
   const poll = window.setInterval(() => store.set(options.getSnapshot()), 100);
   return {
     update(snapshot = options.getSnapshot()) { store.set(snapshot); },
     destroy() {
+      lifetime.active = false;
       window.clearInterval(poll);
       root.unmount();
       host.classList.remove('choketmon-openworld');

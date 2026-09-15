@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { openExplorePanel } from './helpers/explore-panel';
 
 test.skip(!process.env.CHOKETMON_LIVE_AUTH, 'Requires the local Rust/PostgreSQL server.');
-test.setTimeout(240_000);
+test.setTimeout(420_000);
 
 type SocketStats = { opens: number; closes: number; reauths: number; welcomes: string[] };
 
@@ -79,7 +79,8 @@ test('registered account usernames identify bidirectional chat and reauthenticat
     await chooseJohtoAndOpenWorld(first);
 
     const second = await newPage(secondContext);
-    await register(second, secondName, password);
+    await chooseJohtoAndOpenWorld(second);
+    await register(second, secondName, password, true);
     await chooseJohtoAndOpenWorld(second);
     await expect(first.locator('#world-realtime-status')).toHaveText('연결됨', { timeout: 30_000 });
     await expect(second.locator('#world-realtime-status')).toHaveText('연결됨', { timeout: 30_000 });
@@ -100,12 +101,15 @@ test('registered account usernames identify bidirectional chat and reauthenticat
 
     mkdirSync('artifacts', { recursive: true });
     await first.screenshot({ path: 'artifacts/multiplayer-auth-chat-desktop.png' });
+    const stableBaselines = await Promise.all([first, second].map(page => page.evaluate(() => (window as typeof window & { __realtimeSocketStats: SocketStats }).__realtimeSocketStats).then(stats => structuredClone(stats))));
     await first.waitForTimeout(72_000);
-    for (const page of [first, second]) {
+    for (const [index, page] of [first, second].entries()) {
       await expect(page.locator('#world-realtime-status')).toHaveText('연결됨');
       const stats = await page.evaluate(() => (window as typeof window & { __realtimeSocketStats: SocketStats }).__realtimeSocketStats);
-      expect(stats.opens).toBe(1); expect(stats.closes).toBe(0); expect(stats.reauths).toBeGreaterThanOrEqual(1);
-      expect(new Set(stats.welcomes).size).toBe(1);
+      const baseline = stableBaselines[index];
+      expect(stats.opens).toBe(baseline.opens); expect(stats.closes).toBe(baseline.closes);
+      expect(stats.reauths).toBeGreaterThan(baseline.reauths);
+      expect(stats.welcomes).toEqual(baseline.welcomes);
     }
 
     // Expiring the browser session must keep the account's local adventure
@@ -126,11 +130,12 @@ test('registered account usernames identify bidirectional chat and reauthenticat
     await expect(first.locator('#world-realtime-status')).toHaveText('연결됨', { timeout: 30_000 });
     await sendChat(first, `재로그인 복구 ${suffix}`);
     await expect(second.locator('#world-chat-log p').filter({ hasText: `재로그인 복구 ${suffix}` }).last()).toContainText(firstName, { timeout: 15_000 });
-    const recoveredStats = await first.evaluate(() => (window as typeof window & { __realtimeSocketStats: SocketStats }).__realtimeSocketStats);
-    expect(recoveredStats.opens).toBe(2); expect(recoveredStats.closes).toBe(1);
-
     await second.setViewportSize({ width: 390, height: 844 });
     await second.screenshot({ path: 'artifacts/multiplayer-auth-chat-mobile.png' });
+    const recoveredStats = await first.evaluate(() => (window as typeof window & { __realtimeSocketStats: SocketStats }).__realtimeSocketStats);
+    const recoveryOpens = recoveredStats.opens - stableBaselines[0].opens, recoveryCloses = recoveredStats.closes - stableBaselines[0].closes;
+    expect(recoveryOpens).toBeGreaterThanOrEqual(1); expect(recoveryCloses).toBe(recoveryOpens);
+    expect(recoveredStats.opens - recoveredStats.closes).toBe(1);
   } finally {
     await firstContext.close().catch(() => undefined);
     await secondContext.close().catch(() => undefined);

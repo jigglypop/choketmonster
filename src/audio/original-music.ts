@@ -25,7 +25,7 @@ export function mountOriginalMusic(button: HTMLButtonElement): { open(): void; d
   panel.innerHTML = `<header><strong>${RED_MUSIC.title}</strong><button id="game-music-close" aria-label="음악 플레이어 닫기">×</button></header><div id="game-music-video"></div><div class="music-actions"><button id="game-music-play">재생</button><label>음량 <input id="game-music-volume" aria-label="BGM 음량" type="range" min="0" max="100"></label><button id="game-music-mute" aria-label="모든 소리 끄기">음소거</button></div><small id="game-music-status" role="status">레드전 원곡을 불러옵니다.</small><a href="${RED_MUSIC.url}" target="_blank" rel="noopener noreferrer">YouTube에서 듣기 ↗</a>`;
   document.body.append(panel);
   const volume = panel.querySelector<HTMLInputElement>('#game-music-volume')!, status = panel.querySelector<HTMLElement>('#game-music-status')!, play = panel.querySelector<HTMLButtonElement>('#game-music-play')!, mute = panel.querySelector<HTMLButtonElement>('#game-music-mute')!;
-  let player: Player | undefined, loading = false, disposed = false, dismissed = false, wanted = true;
+  let player: Player | undefined, loading = false, disposed = false, wanted = true;
   const sync = () => {
     const settings = getGameAudioSettings(); volume.value = String(Math.round(settings.musicVolume * 100)); player?.setVolume(settings.musicVolume * 100);
     button.textContent = settings.muted ? '♪ 끔' : '♪ BGM'; button.setAttribute('aria-label', '음악 재생과 음량');
@@ -35,7 +35,7 @@ export function mountOriginalMusic(button: HTMLButtonElement): { open(): void; d
   const requestPlay = () => { wanted = true; player?.playVideo(); };
   const open = async () => {
     if (disposed) return;
-    dismissed = false; panel.hidden = false; button.setAttribute('aria-expanded', 'true');
+    wanted = true; panel.hidden = false; button.setAttribute('aria-expanded', 'true');
     if (player) { requestPlay(); return; }
     if (loading) return;
     loading = true;
@@ -60,14 +60,12 @@ export function mountOriginalMusic(button: HTMLButtonElement): { open(): void; d
     finally { loading = false; }
   };
   button.onclick = () => void open(); button.setAttribute('aria-expanded', 'false');
-  panel.querySelector<HTMLButtonElement>('#game-music-close')!.onclick = () => { dismissed = true; wanted = false; player?.pauseVideo(); panel.hidden = true; button.setAttribute('aria-expanded', 'false'); };
+  panel.querySelector<HTMLButtonElement>('#game-music-close')!.onclick = () => { wanted = false; player?.pauseVideo(); panel.hidden = true; button.setAttribute('aria-expanded', 'false'); };
   play.onclick = () => { if (player?.getPlayerState() === 1) { wanted = false; player.pauseVideo(); } else if (player) requestPlay(); else void open(); };
   volume.oninput = () => setGameAudioSettings({ musicVolume: Number(volume.value) / 100 });
   mute.onclick = () => setGameAudioSettings({ muted: !getGameAudioSettings().muted });
   const unsubscribe = subscribeGameAudioSettings(sync); sync();
-  const firstGesture = (event: Event) => { if (event instanceof KeyboardEvent && ['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) return; document.removeEventListener('pointerdown', firstGesture); document.removeEventListener('keydown', firstGesture); if (!dismissed && !getGameAudioSettings().muted) void open(); };
-  document.addEventListener('pointerdown', firstGesture, { passive: true }); document.addEventListener('keydown', firstGesture);
   const visibility = () => { if (document.hidden) player?.pauseVideo(); else if (wanted && !panel.hidden) requestPlay(); };
   document.addEventListener('visibilitychange', visibility);
-  return { open: () => void open(), destroy: () => { disposed = true; unsubscribe(); document.removeEventListener('pointerdown', firstGesture); document.removeEventListener('keydown', firstGesture); document.removeEventListener('visibilitychange', visibility); player?.destroy(); panel.remove(); } };
+  return { open: () => void open(), destroy: () => { disposed = true; unsubscribe(); document.removeEventListener('visibilitychange', visibility); player?.destroy(); panel.remove(); } };
 }

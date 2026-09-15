@@ -29,7 +29,9 @@ export async function createOpenWorldRenderer(
   const renderer = new WebGPURenderer({
     canvas: defaults.canvas,
     antialias: defaults.antialias ?? true,
-    alpha: defaults.alpha ?? true,
+    // The world always owns the full viewport. Keep its clear pixels opaque so
+    // the page fallback gradient cannot replace the cave background.
+    alpha: false,
     powerPreference: defaults.powerPreference === 'default' ? undefined : defaults.powerPreference ?? 'high-performance',
     forceWebGL: options.forceWebGL ?? false,
   }) as TaggedRenderer;

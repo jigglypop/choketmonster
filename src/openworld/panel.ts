@@ -42,6 +42,11 @@ export class OpenWorldPanel {
   private trackedPlayerId?: string;
   private lastChatId?: string;
   private unreadChats = 0;
+  private readonly compactViewport = window.matchMedia('(max-width: 720px), (max-height: 600px) and (pointer: coarse)');
+  private readonly onViewportChange = () => {
+    this.setChatCollapsed(this.compactViewport.matches);
+    if (this.compactViewport.matches) this.host?.querySelector<HTMLDetailsElement>('.world-battle-hud')?.removeAttribute('open');
+  };
   private miniTerrain?: HTMLCanvasElement;
   private miniRegion?: string;
   private previousBattle?: GameState['battle'];
@@ -49,7 +54,7 @@ export class OpenWorldPanel {
   private readonly htmlCache = new WeakMap<Element, string>();
   private readonly hotkeys = (event: KeyboardEvent) => {
     if (!this.host || event.repeat || event.isComposing || event.ctrlKey || event.metaKey || event.altKey || document.querySelector('dialog[open]') || (event.target instanceof Element && event.target.closest('input,textarea,select,[contenteditable]'))) return;
-    if (event.code === 'Enter') { event.preventDefault(); this.input('#world-chat-input').focus(); return; }
+    if (event.code === 'Enter') { event.preventDefault(); this.setChatCollapsed(false); this.input('#world-chat-input').focus(); return; }
     if (event.code === 'KeyM') { event.preventDefault(); this.changeMode(this.simulation.controlMode === 'auto' ? 'manual' : 'auto'); }
     const index = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(event.code);
     if (index >= 0 && !this.paused) {
@@ -86,13 +91,13 @@ export class OpenWorldPanel {
       <details class="world-objective"><summary><span>주변 포켓몬 ▾</span><strong id="world-objective">첫 야생 포켓몬 발견하기</strong></summary><small>선택해 정보를 보고 추적·배틀하세요.</small><div id="world-nearby"></div></details>
       </div></details>
       <aside class="world-radar"><button id="world-map-open" aria-label="지역 전체 지도 열기"><canvas id="world-minimap" width="180" height="180" aria-label="월드 지도"></canvas></button><span id="world-position"></span><small id="world-map-caption">지역 지도 ↗</small></aside>
+      <div class="world-lower-hud">
       <section class="world-multiplayer social-dock" aria-label="지역 채팅">
         <div id="world-trainer-track" hidden></div>
         <header class="social-toolbar"><span class="social-channel"><span id="world-realtime-dot"></span><b id="world-chat-region">성도</b><small id="world-realtime-status">연결 중</small></span><details class="social-players"><summary aria-label="접속 트레이너와 위치"><span id="world-realtime-count">0명</span></summary><div class="social-player-popover"><div class="social-identity"><span>내 트레이너</span><strong id="world-chat-identity"></strong></div><div id="world-player-list" aria-label="같은 지역 플레이어"></div><small>이름을 누르면 위치를 표시합니다.</small></div></details><button id="world-trade-open" title="포켓몬 교환 · 게임 머니 거래">교환</button><button id="world-chat-collapse" aria-label="채팅 기록 접기" aria-expanded="true">⌄</button></header>
         <div id="world-chat-log" role="log" aria-label="지역 대화" aria-live="polite" tabindex="0"></div><button id="world-chat-latest" hidden>새 메시지 ↓</button>
         <form id="world-chat-form"><input id="world-chat-input" aria-label="지역 채팅 메시지" autocomplete="off" placeholder="로그인하고 대화하기" enterkeyhint="send"><button type="button" id="world-chat-login">가입 / 로그인</button><button id="world-chat-send" aria-label="메시지 전송" title="Enter로 전송">↑</button></form><small id="world-chat-error" role="status"></small>
       </section>
-      <div class="world-lower-hud">
         <section class="world-target" id="world-target" aria-label="선택한 야생 포켓몬" hidden><div id="world-target-info"></div><div class="world-target-actions"><button id="world-target-track">추적</button><button id="world-target-battle">배틀</button><details><summary>정보</summary><p id="world-target-detail"></p></details><button id="world-target-clear" aria-label="선택 해제">✕</button></div></section>
         <details class="world-battle-hud" aria-label="파트너와 배틀">
           <summary><span>PARTNER · 파트너와 배틀</span><strong>파트너 상태</strong><i aria-hidden="true">⌄</i></summary>
@@ -108,7 +113,6 @@ export class OpenWorldPanel {
       <dialog class="world-box-dialog" id="world-box-dialog" aria-labelledby="world-box-title"><header><div><small>POKÉMON STORAGE</small><h2 id="world-box-title">팀 · 박스 관리</h2></div><button id="world-box-close">닫기 ✕</button></header><p>탐험을 일시 정지하고 안전하게 팀을 정리합니다. 전투 중에는 현재 출전 개체와 마지막 생존 개체를 맡길 수 없습니다.</p><div id="world-box-content"></div></dialog>
       <div class="world-feed" id="world-feed" aria-live="polite"></div>
       <div class="world-respawn" id="world-respawn"></div>
-      <div class="world-dpad" aria-label="터치 이동"><button data-world-step="0,-1" aria-label="북쪽 이동">▲</button><div><button data-world-step="-1,0" aria-label="서쪽 이동">◀</button><button data-world-step="0,1" aria-label="남쪽 이동">▼</button><button data-world-step="1,0" aria-label="동쪽 이동">▶</button></div></div>
       <details class="world-method"><summary>회로와 게임 규칙</summary><p>브라우저 MaleCNS 실측 부분 회로 ${this.options.graph.nodes.length} 뉴런 · ${this.options.graph.edges.length.toLocaleString()} 연결. 전체 회로가 연결된 배틀은 서버에서 계산하고 반환된 개체 기억은 이 기기에 저장합니다. 감각 입력·행동 대응·학습 보상·월드 속도는 게임을 위해 설계했습니다.</p></details>
     </section>`;
     this.renderer = mountOpenWorld(host.querySelector('#ow-host')!, {
@@ -130,7 +134,15 @@ export class OpenWorldPanel {
     this.multiplayer = new MultiplayerSession(() => { if (this.host === host) this.renderRealtime(); });
     this.multiplayer.join(this.presence());
     window.addEventListener('keydown', this.hotkeys);
-    this.host.querySelector<HTMLDetailsElement>('.world-battle-hud')!.open = Boolean(this.options.game.battle);
+    const battleHud = this.host.querySelector<HTMLDetailsElement>('.world-battle-hud')!;
+    battleHud.open = Boolean(this.options.game.battle) && (!this.compactViewport.matches || this.simulation.controlMode === 'manual');
+    battleHud.addEventListener('toggle', () => {
+      if (battleHud.open && this.compactViewport.matches) {
+        this.setChatCollapsed(true);
+        this.host?.querySelector<HTMLDetailsElement>('.world-explore-panel')?.removeAttribute('open');
+      }
+    });
+    this.compactViewport.addEventListener('change', this.onViewportChange);
     this.button('#world-mode-auto').onclick = () => this.changeMode('auto');
     this.button('#world-mode-manual').onclick = () => this.changeMode('manual');
     this.button('#world-edit-moves').onclick = () => {
@@ -164,12 +176,8 @@ export class OpenWorldPanel {
     this.host.querySelector<HTMLDialogElement>('#world-box-dialog')!.addEventListener('cancel', event => { event.preventDefault(); this.closeBox(); });
     this.button('#world-chat-login').onclick = () => this.options.openAccount?.();
     const multiplayerPanel = this.host.querySelector<HTMLElement>('.world-multiplayer')!;
-    this.button('#world-chat-collapse').onclick = () => {
-      const collapsed = multiplayerPanel.classList.toggle('chat-collapsed');
-      this.button('#world-chat-collapse').setAttribute('aria-expanded', String(!collapsed));
-      this.button('#world-chat-collapse').setAttribute('aria-label', collapsed ? '채팅 기록 펼치기' : '채팅 기록 접기');
-      if (!collapsed) this.scrollChatToLatest();
-    };
+    this.setChatCollapsed(this.compactViewport.matches);
+    this.button('#world-chat-collapse').onclick = () => this.setChatCollapsed(!multiplayerPanel.classList.contains('chat-collapsed'));
     this.button('#world-chat-latest').onclick = () => this.scrollChatToLatest();
     this.button('#world-trade-open').onclick = () => this.options.trade?.();
     this.host.querySelector('#world-player-list')!.addEventListener('click', event => {
@@ -217,13 +225,6 @@ export class OpenWorldPanel {
     this.input('#world-learning').checked = this.options.learning();
     this.input('#world-learning').onchange = e => { this.options.setLearning((e.target as HTMLInputElement).checked); this.options.changed(); };
     this.input('#world-exp-share').onchange = e => { this.options.game.experienceShare = (e.target as HTMLInputElement).checked; this.options.changed(); this.refresh(); };
-    host.querySelectorAll<HTMLButtonElement>('[data-world-step]').forEach(button => {
-      let timer: number | undefined;
-      const move = () => { if (!this.noteManualInput()) return; const [x, z] = button.dataset.worldStep!.split(',').map(Number), player = this.simulation.player, companion = this.simulation.entities.find(entity => entity.kind === 'companion')!, step = movementSpeed(companion.speciesId, companion.level) * .1; this.simulation.movePartner({ x: player.x + x * step, z: player.z + z * step, heading: x ? (x > 0 ? 1 : 3) : z > 0 ? 2 : 0 }); this.renderer?.update(); this.refresh(); };
-      const stop = () => { window.clearInterval(timer); timer = undefined; };
-      button.onpointerdown = e => { e.preventDefault(); this.changeMode('manual'); button.setPointerCapture(e.pointerId); stop(); move(); timer = window.setInterval(move, 100); };
-      button.onpointerup = button.onpointercancel = button.onlostpointercapture = stop;
-    });
     const regionSelect = host.querySelector<HTMLSelectElement>('#world-region')!;
     regionSelect.onchange = () => {
       try {
@@ -441,7 +442,8 @@ export class OpenWorldPanel {
     const direction = tracked ? ['북', '북동', '동', '남동', '남', '남서', '서', '북서'][(Math.round(Math.atan2(tracked.x - position.x, position.z - tracked.z) / (Math.PI / 4)) + 8) % 8] : '';
     this.html('#world-trainer-track', tracked ? `<button class="trainer-destination"><b>↗ ${escape(tracked.name)}</b><small>${escape(tracked.location)} · ${direction}쪽 ${Math.round(tracked.distance)}m</small></button><button data-stop-tracking aria-label="트레이너 위치 표시 해제">×</button>` : '<span>트레이너가 다른 지역으로 이동했거나 접속을 종료했습니다.</span><button data-stop-tracking aria-label="트레이너 위치 표시 해제">×</button>');
     const log = this.host.querySelector<HTMLElement>('#world-chat-log')!;
-    const followLatest = log.scrollHeight - log.clientHeight - log.scrollTop <= 8;
+    const collapsed = this.host.querySelector('.social-dock')!.classList.contains('chat-collapsed');
+    const followLatest = !collapsed && log.scrollHeight - log.clientHeight - log.scrollTop <= 8;
     const newest = view.history.at(-1)?.id;
     if (newest !== this.lastChatId) {
       if (this.lastChatId && !followLatest) this.unreadChats += Math.max(1, view.history.length - view.history.findIndex(message => message.id === this.lastChatId) - 1);
@@ -452,11 +454,28 @@ export class OpenWorldPanel {
     if (followLatest) this.unreadChats = 0;
     this.button('#world-chat-latest').hidden = this.unreadChats === 0;
     this.html('#world-chat-latest', `새 메시지 ${this.unreadChats}개 ↓`);
+    this.button('#world-chat-collapse').textContent = collapsed ? `채팅${this.unreadChats ? ` ${this.unreadChats}` : ''} 열기` : '접기';
     if (view.error && account) this.html('#world-chat-error', escape(view.error));
     else if (!account) this.html('#world-chat-error', '');
     else if (view.status === 'connected' && !this.input('#world-chat-input').value) this.html('#world-chat-error', '');
     const mapPeers = this.host.querySelector('#world-map-peers');
     if (mapPeers) this.html('#world-map-peers', this.mapPeers());
+  }
+
+  private setChatCollapsed(collapsed: boolean): void {
+    if (!this.host) return;
+    this.host.querySelector('.social-dock')!.classList.toggle('chat-collapsed', collapsed);
+    const toggle = this.button('#world-chat-collapse');
+    toggle.setAttribute('aria-expanded', String(!collapsed));
+    toggle.setAttribute('aria-label', collapsed ? '채팅 열기' : '채팅 접기');
+    toggle.textContent = collapsed ? '채팅 열기' : '접기';
+    if (!collapsed) {
+      if (this.compactViewport.matches) {
+        this.host.querySelector<HTMLDetailsElement>('.world-battle-hud')!.open = false;
+        this.host.querySelector<HTMLDetailsElement>('.world-explore-panel')!.open = false;
+      }
+      this.scrollChatToLatest();
+    } else if (this.compactViewport.matches && this.host.querySelector('#world-chat-form')?.contains(document.activeElement)) toggle.focus();
   }
 
   private scrollChatToLatest(): void {
@@ -471,7 +490,10 @@ export class OpenWorldPanel {
   refresh(): void {
     if (!this.host?.querySelector('#ow-host')) return;
     const game = this.options.game, world = this.simulation, battle = game.battle;
-    if (battle && battle !== this.previousBattle) { this.host.querySelector<HTMLDetailsElement>('.world-battle-hud')!.open = true; playGameSound('encounter', { speciesId: battle.enemy.team[battle.enemy.activeIndex].speciesId }); }
+    if (battle && battle !== this.previousBattle) {
+      if (!this.compactViewport.matches || world.controlMode === 'manual') this.host.querySelector<HTMLDetailsElement>('.world-battle-hud')!.open = true;
+      playGameSound('encounter', { speciesId: battle.enemy.team[battle.enemy.activeIndex].speciesId });
+    }
     this.previousBattle = battle;
     this.multiplayer?.update(this.presence());
     this.renderRealtime();
@@ -653,5 +675,5 @@ export class OpenWorldPanel {
   private html(selector: string, value: string): void { const node = this.host?.querySelector(selector); if (node && this.htmlCache.get(node) !== value) { node.innerHTML = value; this.htmlCache.set(node, value); } }
   private button(selector: string): HTMLButtonElement { return this.host!.querySelector(selector)!; }
   private input(selector: string): HTMLInputElement { return this.host!.querySelector(selector)!; }
-  unmount(): void { window.removeEventListener('keydown', this.hotkeys); this.multiplayer?.close(); this.multiplayer = undefined; this.renderer?.destroy(); this.renderer = undefined; this.host = undefined; this.ready = false; }
+  unmount(): void { window.removeEventListener('keydown', this.hotkeys); this.compactViewport.removeEventListener('change', this.onViewportChange); this.multiplayer?.close(); this.multiplayer = undefined; this.renderer?.destroy(); this.renderer = undefined; this.host = undefined; this.ready = false; }
 }

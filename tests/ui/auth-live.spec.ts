@@ -2,10 +2,11 @@ import { expect, test } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { openExplorePanel } from './helpers/explore-panel';
 
-test.skip(!process.env.CHOKETMON_LIVE_AUTH, 'Requires the local Rust/PostgreSQL server.');
+test.skip(!process.env.CHOKETMON_LIVE_AUTH, 'Requires an explicitly selected Rust/PostgreSQL server.');
 
-test('account save continues locally after logout and restores Johto from the server in a clean browser', async ({ page, browser }) => {
+test('account save continues locally after logout and restores Johto from the server in a clean browser', async ({ page, browser, baseURL }) => {
   test.setTimeout(240000);
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   const username = `live_${Date.now().toString(36)}`, password = `Test-${crypto.randomUUID()}-pass`;
   await page.goto('/');
   await expect(page.locator('#starter-dialog')).toBeVisible();
@@ -33,8 +34,9 @@ test('account save continues locally after logout and restores Johto from the se
   await page.locator('#world-region').selectOption('johto');
   await expect(page.locator('#ow-host')).toHaveAttribute('data-region', 'johto');
   await page.locator('#world-map-close').click();
-  await page.locator('#world-version').selectOption('gold');
-  await expect(page.locator('#world-version')).toHaveValue('gold');
+  // Encounter versions are now fixed by region; legacy collection metadata
+  // still travels with the save without exposing a version selector.
+  await expect(page.locator('#world-version')).toHaveCount(0);
   await page.evaluate(() => { Reflect.deleteProperty(document, 'hidden'); });
 
   await page.evaluate(() => {
@@ -76,6 +78,11 @@ test('account save continues locally after logout and restores Johto from the se
 
   await page.locator('.logout-button').click();
   await expect(page.locator('[data-open-auth]')).toBeVisible({ timeout: 30000 });
+  expect((await (await page.request.get('/api/auth/me')).json()).user).toBeNull();
+  await page.reload();
+  await expect(page.locator('[data-open-auth]')).toBeEnabled({ timeout: 30000 });
+  await expect(page.locator('#ow-host')).toHaveAttribute('data-region', 'johto');
+  await expect(page.locator('#ow-host')).toHaveAttribute('data-paused', 'true');
   await page.locator('[data-tab="team"]').click();
   await expect(page.locator('.monster-card strong').first()).toContainText('브케인');
 
@@ -87,11 +94,13 @@ test('account save continues locally after logout and restores Johto from the se
   await page.locator('[data-tab="team"]').click();
   await expect(page.locator('.monster-card strong').first()).toContainText('브케인');
 
-  const cleanContext = await browser.newContext({ baseURL: process.env.CHOKETMON_BASE_URL ?? 'http://127.0.0.1:5173', viewport: { width: 1440, height: 1100 } });
+  const cleanContext = await browser.newContext({ baseURL, viewport: { width: 1440, height: 1100 } });
   try {
     const cleanPage = await cleanContext.newPage();
+    cleanPage.on('pageerror', error => errors.push(error.message));
     await cleanPage.goto('/');
     await expect(cleanPage.locator('#starter-dialog')).toBeVisible();
+    expect(await cleanPage.evaluate(async () => (await indexedDB.databases()).some(db => db.name === 'choketmon-neural-cache'))).toBe(false);
     await cleanPage.locator('[data-load-account]').click();
     await expect(cleanPage.locator('.account-dialog')).toBeVisible();
     await cleanPage.locator('.account-dialog input[name="username"]').fill(username);
@@ -104,7 +113,8 @@ test('account save continues locally after logout and restores Johto from the se
     await expect(cleanPage.locator('.account-dialog')).toBeHidden();
     await expect(cleanPage.locator('#ow-host')).toHaveAttribute('data-region', 'johto', { timeout: 30000 });
     const restoreRenderedMs = Date.now() - restoreStarted;
-    await expect(cleanPage.locator('#world-version')).toHaveValue('gold');
+    await expect(cleanPage.locator('#ow-host')).toHaveAttribute('data-paused', 'true');
+    await expect(cleanPage.locator('#world-version')).toHaveCount(0);
     await cleanPage.locator('[data-tab="team"]').click();
     await expect(cleanPage.locator('.monster-card strong').first()).toContainText('브케인');
     const cleanRemote = await cleanPage.evaluate(async () => {
@@ -114,11 +124,27 @@ test('account save continues locally after logout and restores Johto from the se
     expect(cleanRemote.save.game.seed).toBe(savedSeed);
     expect(cleanRemote.save.game.player.team[0].speciesId).toBe(155);
     expect(cleanRemote.save.view.openWorld.regionId).toBe('johto');
+    const restored = await cleanPage.evaluate(profileId => new Promise<any>((resolve, reject) => {
+      const request = indexedDB.open('choketmon-151', 2);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const db = request.result, tx = db.transaction('saves', 'readonly');
+        const save = tx.objectStore('saves').get(`account:${profileId}:current`);
+        tx.oncomplete = () => { resolve(save.result); db.close(); };
+        tx.onerror = () => reject(tx.error);
+      };
+    }), (await (await cleanPage.request.get('/api/auth/me')).json()).user.id);
+    expect(restored.game.seed).toBe(savedSeed);
+    expect(restored.game.player.team[0].brain).toEqual(cleanRemote.save.game.player.team[0].brain);
+    expect(restored.game.player.team[0].brain).toBeTruthy();
+    expect(errors).toEqual([]);
     const output = process.env.CHOKETMON_AUTH_ARTIFACTS ?? 'artifacts/auth-live';
     mkdirSync(output, { recursive: true });
     writeFileSync(`${output}/fresh-context-restore.json`, JSON.stringify({
       saveClickReturnedMs, serverAckMs, ...saveTiming, restoreResponseMs, restoreRenderedMs,
-      revision: remote.body.revision, seed: savedSeed, speciesId: 155, version: 'gold', regionId: 'johto', indexedDbInitiallyEmpty: true,
+      baseURL, checkedAt: new Date().toISOString(), revision: remote.body.revision, seed: savedSeed,
+      speciesId: 155, version: 'gold', regionId: 'johto', freshBrowserContext: true,
+      cookieCleared: true, guestReloadPreservesPause: true, restoredIndividualBrain: true, errors,
     }, null, 2));
   } finally { await cleanContext.close(); }
 });

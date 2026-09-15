@@ -118,12 +118,16 @@ export function mountAccountPanel(options: AccountPanelOptions) {
       const from = currentAccount(), change: AccountSwitch = { from, to: null, reason: 'logout' };
       try {
         await options.beforeSwitch?.(change);
-        await checkpointSave('logout');
-        await logout();
+        // beforeSwitch has already captured the exact adventure in the account
+        // slot. Let a healthy server checkpoint finish quickly, but do not let
+        // an offline or expired save request prevent session termination.
+        const checkpoint = checkpointSave('logout').then(() => true).catch(() => false);
+        await Promise.race([checkpoint, new Promise<boolean>(resolve => window.setTimeout(() => resolve(false), 1000))]);
+        const { serverCleared } = await logout();
         const save = await activateSaveProfile(null, { continueLocally: true });
         if (disposed) return;
         await options.afterSwitch?.({ from, to: null, reason: 'logout', save });
-        options.notify?.('로그아웃했습니다. 방금 하던 모험을 이 기기에서 이어갑니다.');
+        options.notify?.(serverCleared ? '로그아웃했습니다. 방금 하던 모험은 이 기기에서 이어갑니다.' : '이 기기에서 로그아웃했습니다. 새로고침 시 서버 세션 종료를 다시 시도합니다.');
       } catch (failure) {
         try { await options.onSwitchError?.(change, failure); } catch { /* Preserve the original error. */ }
         showError(failure);

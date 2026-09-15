@@ -8,7 +8,7 @@
 #game-music-panel { position: fixed; z-index: 36; top: 78px; right: 188px; width: 320px; overflow: hidden; border: 1px solid #a2bdb2; border-radius: 12px; color: #ecfff6; background: #172b25; box-shadow: 0 8px 28px #12251d33; }
 #game-music-panel[hidden] { display: none; }
 #game-music-panel header { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; font-size: 12px; }
-#game-music-panel iframe { display: block; width: 320px; height: 200px; border: 0; }
+#game-music-panel iframe { display: block; width: 320px; height: 200px; border: 0; opacity: .999; }
 #game-music-panel button { padding: 5px 8px; border: 1px solid #607d70; background: #2e4b3f; border-radius: 6px; color: #fff; cursor: pointer; font-size: 11px; }
 #game-music-panel .music-actions { display: flex; align-items: center; gap: 8px; padding: 8px; }
 #game-music-panel .music-actions label { display: flex; align-items: center; gap: 4px; font-size: 11px; }

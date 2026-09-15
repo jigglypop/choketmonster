@@ -1,5 +1,5 @@
 /* A single conversation column, with optional roster above it. */
-.adventure .social-dock { position:absolute; inset:auto auto 18px 18px; z-index:24; width:min(370px,calc(100% - 36px)); box-sizing:border-box; padding:10px; border:1px solid #a7d5c540; border-radius:12px; background:linear-gradient(180deg,#13352ee8,#142a2af5); box-shadow:0 5px 22px #071f2930; color:#f4fff9; font-size:calc(13px * var(--ui-font-scale,1)); }
+.adventure .social-dock { position:absolute; inset:auto auto 18px 18px; z-index:24; width:min(370px,calc(100% - 36px)); box-sizing:border-box; padding:10px; border:1px solid #a7d5c540; border-radius:12px; background:linear-gradient(180deg,#13352ee8,#142a2af5); box-shadow:0 5px 22px #071f2930; color:#f4fff9; font-size:calc(13px * var(--ui-font-scale,1)); pointer-events:auto; }
 .social-toolbar { display:flex; align-items:center; gap:7px; height:27px; margin-bottom:6px; }
 .social-channel { display:flex; flex:1; align-items:center; gap:6px; min-width:0; white-space:nowrap; }
 .social-channel b { font-size:12px; font-weight:700; }
@@ -57,12 +57,6 @@
  .social-dock #world-chat-log { height:72px; max-height:12dvh; }
  .social-dock #world-chat-log .world-chat-empty { margin-top:16px; }
  .social-dock #world-chat-input { font-size:16px; padding:7px 0; }
- .adventure .world-lower-hud > .world-battle-hud { bottom:192px; max-height:calc(100dvh - 310px); }
- .adventure .world-battle-deck { max-height:calc(100dvh - 375px); }
- .adventure:has(.chat-collapsed) .world-lower-hud > .world-battle-hud { bottom:112px; }
- .adventure .world-lower-hud > .world-target { left:10px; bottom:192px; width:calc(100% - 20px); }
- .adventure:has(.world-target:not([hidden])) .world-lower-hud > .world-battle-hud[open] { bottom:285px; }
- .adventure .world-dpad { bottom:275px; }
  .adventure .world-explore-scroll { max-height:min(42dvh,320px); }
  .adventure .world-method { display:none; }
 }
@@ -75,6 +69,13 @@
 .adventure .world-feed, .adventure .world-respawn { display: none; }
 .adventure .world-method { bottom: 6px; right: 24px; opacity: .7; font-size: 10px; }
 .adventure .world-lower-hud > .world-target { bottom: 290px; left: 20px; }
+.adventure .ow-camera-controls { display:flex; inset:280px 20px auto auto; transform:none; width:auto; height:auto; min-width:0; gap:0; padding:0; border:0; background:none; box-shadow:none; backdrop-filter:none; -webkit-backdrop-filter:none; }
+.adventure .ow-camera-controls #world-nameplates { grid-column:auto; width:auto; min-width:76px; min-height:34px; padding:7px 10px; white-space:nowrap; overflow-wrap:normal; line-height:1.2; font-size:12px; }
+@media (max-width:720px) {
+ .adventure .ow-camera-controls { inset:210px 12px auto auto; }
+ .adventure .ow-camera-controls #world-nameplates { min-width:72px; min-height:34px; }
+ .adventure .world-explore-scroll { max-height:min(42dvh,320px); }
+}
 .map-trainer text { font-size: 5px; font-weight: 700; paint-order: stroke; stroke: #eff9e9; stroke-width: 1.5px; }
 #game-sound-toggle { white-space: nowrap; }
 .world-automation { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 8px; margin: 12px 0; padding: 12px; border: 1px solid var(--ui-border, #d7e4df); border-radius: 12px; }
@@ -88,3 +89,31 @@
 .world-trainer-label strong,.world-trainer-label span { display:block; }
 .world-trainer-label strong { font-size:12px; }
 .world-trainer-label span { color:#e4d6af; font-size:10px; margin-top:2px; }
+
+/* Mobile panels share one stack instead of reserving separate blocks of terrain.
+   Reset fixed anchors from desktop position preferences and older HUD variants. */
+@media (max-width:720px), (max-height:600px) and (pointer:coarse) {
+ .adventure .world-lower-hud { inset:auto 10px 10px; display:flex; flex-direction:column; gap:6px; }
+ .adventure .world-lower-hud > :is(.world-target,.world-battle-hud,.social-dock) {
+   position:relative; inset:auto!important; transform:none; width:100%!important; max-width:none; box-sizing:border-box; margin:0;
+ }
+ .adventure .world-lower-hud > .world-target { order:0; }
+ .adventure .world-lower-hud > .world-battle-hud { order:1; max-height:none; }
+ .adventure .world-lower-hud > .social-dock { order:2; padding:4px 8px; }
+ .adventure .world-battle-hud > summary { display:flex; align-items:center; gap:8px; min-height:44px; padding:8px 10px; box-sizing:border-box; }
+ .adventure .world-battle-hud > summary > span { display:none; }
+ .adventure .world-battle-hud > summary strong { display:flex; align-items:center; gap:8px; flex:1; min-width:0; }
+ .adventure .world-battle-hud > summary .world-summary-name { flex:1; letter-spacing:0; }
+ .adventure .world-battle-hud > summary .world-summary-hp { flex:none; letter-spacing:0; color:#e5eefc; }
+ .adventure .world-battle-hud > summary i { flex:none; }
+ .adventure .world-lower-hud > .world-battle-hud[open] .world-battle-deck { max-height:min(38dvh,320px); overflow:auto; overscroll-behavior:contain; }
+ .adventure .social-toolbar { height:auto; min-height:36px; margin:0; gap:5px; }
+ .adventure .social-toolbar > button,.adventure .social-players > summary { min-height:36px; display:flex; align-items:center; padding:6px 8px; box-sizing:border-box; }
+ .adventure .social-channel small { display:none; }
+ .adventure .social-dock #world-chat-log { height:100px; max-height:18dvh; margin:4px 0 8px; }
+ .adventure .social-dock #world-chat-input { font-size:16px; }
+ .adventure .social-dock #world-chat-form { margin-bottom:4px; }
+ .adventure .social-dock.chat-collapsed :is(#world-chat-form,#world-chat-error,#world-chat-latest,#world-trainer-track) { display:none; }
+ .adventure .social-dock.chat-collapsed .social-channel b { max-width:100px; overflow:hidden; text-overflow:ellipsis; }
+ .adventure .social-dock.chat-collapsed #world-chat-collapse { color:#c6f5df; }
+}

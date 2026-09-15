@@ -61,7 +61,9 @@ test('interface preferences apply immediately, persist in IndexedDB, reset, and 
   await expect(page.locator('#interface-save-status')).toHaveText('이 기기에 저장됨');
   await page.locator('.settings-done').click();
   const bottomPanel = await page.locator('.world-battle-hud').boundingBox();
-  expect(Math.abs(bottomPanel!.x + bottomPanel!.width / 2 - 720)).toBeLessThan(2);
+  const desktopChat = (await page.locator('.social-dock').boundingBox())!;
+  expect(bottomPanel!.x).toBeGreaterThan(desktopChat.x + desktopChat.width);
+  expect(bottomPanel!.x + bottomPanel!.width).toBeLessThanOrEqual(1440);
 
   await page.locator('[data-tab="team"]').click();
   await expect(page.locator('.team-layout')).toHaveCSS('flex-direction', 'column');
@@ -89,11 +91,12 @@ test('interface preferences apply immediately, persist in IndexedDB, reset, and 
   await page.locator('.settings-close').click();
   await page.locator('[data-tab="map"]').click();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
-  // Outside battle, the battle panel stays collapsed beneath the walking controls.
+  // Mobile exploration uses the terrain itself for movement.
   await expect(page.locator('.world-battle-hud')).not.toHaveAttribute('open', '');
-  const dpad = await page.locator('.world-dpad').boundingBox();
+  await expect(page.locator('.world-dpad')).toHaveCount(0);
   const hud = await page.locator('.world-battle-hud').boundingBox();
-  expect(dpad!.y + dpad!.height).toBeLessThanOrEqual(hud!.y);
+  const chat = await page.locator('.social-dock').boundingBox();
+  expect(hud!.y + hud!.height).toBeLessThanOrEqual(chat!.y);
   const cameraFits = await page.locator('.ow-camera-controls').evaluate(panel =>
     panel.scrollWidth <= panel.clientWidth + 1 && panel.getBoundingClientRect().right <= innerWidth);
   expect(cameraFits).toBe(true);

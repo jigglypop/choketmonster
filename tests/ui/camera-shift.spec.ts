@@ -25,8 +25,15 @@ test('default nameplates, left-drag orbit and wheel work without a camera-reset 
   await page.mouse.move(x + 150, y - 45, { steps: 12 }); await page.mouse.up();
   const distance = (a: number[], b: number[]) => Math.hypot(...a.map((n, i) => n - b[i]));
   await expect.poll(async () => distance((await pose()).camera, initial)).toBeGreaterThan(1);
-  // Drain OrbitControls damping before checking that Shift has no camera action.
-  await page.waitForTimeout(1800);
+  // Damping advances with rendered frames, so a fixed delay can still sample
+  // an orbit in motion when model loading slows the renderer.
+  let previous = (await pose()).camera, stableSamples = 0;
+  await expect.poll(async () => {
+    const current = (await pose()).camera;
+    stableSamples = distance(current, previous) < .01 ? stableSamples + 1 : 0;
+    previous = current;
+    return stableSamples;
+  }, { intervals: [250], timeout: 15000 }).toBeGreaterThanOrEqual(3);
   const rotated = (await pose()).camera;
   await page.keyboard.press('Shift');
   await page.waitForTimeout(400);
@@ -34,8 +41,16 @@ test('default nameplates, left-drag orbit and wheel work without a camera-reset 
   await page.mouse.wheel(0, -350);
   await expect.poll(async () => distance((await pose()).camera, rotated)).toBeGreaterThan(.5);
   await expect(page.getByRole('button', { name: '시점 초기화' })).toHaveCount(0);
+  const label = page.locator('#world-nameplates');
+  const desktopLabel = (await label.boundingBox())!;
+  expect(desktopLabel.width).toBeGreaterThan(70);
+  expect(desktopLabel.height).toBeLessThan(45);
+  await page.screenshot({ path: 'artifacts/camera-desktop.png' });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole('button', { name: '시점 초기화' })).toHaveCount(0);
   await expect(page.locator('#world-nameplates')).toBeVisible();
+  const mobileLabel = (await label.boundingBox())!;
+  expect(mobileLabel.x + mobileLabel.width).toBeLessThanOrEqual(390);
+  expect(mobileLabel.height).toBeLessThan(45);
+  await page.screenshot({ path: 'artifacts/camera-mobile.png' });
 });
-

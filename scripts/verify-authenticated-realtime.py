@@ -40,6 +40,9 @@ async def receive_type(socket, expected, timeout=3):
 
 async def verify(args):
     suffix = secrets.token_hex(5)
+    # Production probes stay in unique, non-playable cave rooms so their
+    # synthetic presence and chat cannot reach real players.
+    scenes = [f"cave:kanto:probe-{suffix}-a", f"cave:kanto:probe-{suffix}-b"] if args.isolated else ["surface:kanto", "cave:kanto:test-cave"]
     password = f"Realtime-{secrets.token_urlsafe(18)}"
     first, first_ticket = await asyncio.to_thread(account_client, args.api, args.origin, f"rt-a-{suffix}", password)
     second, second_ticket = await asyncio.to_thread(account_client, args.api, args.origin, f"rt-b-{suffix}", password)
@@ -53,14 +56,14 @@ async def verify(args):
         if invalid.get("code") != "INVALID_MESSAGE":
             raise RuntimeError(f"Spoofed name was not rejected: {invalid}")
         joins = [
-            {"type":"join","region":"kanto","sceneId":"surface:kanto","speciesId":1,"x":0,"z":0,"heading":0,"activity":"idle"},
-            {"type":"join","region":"kanto","sceneId":"cave:kanto:test-cave","speciesId":4,"x":2,"z":2,"heading":0,"activity":"idle"},
+            {"type":"join","region":"kanto","sceneId":scenes[0],"speciesId":1,"x":0,"z":0,"heading":0,"activity":"idle"},
+            {"type":"join","region":"kanto","sceneId":scenes[1],"speciesId":4,"x":2,"z":2,"heading":0,"activity":"idle"},
         ]
         await asyncio.gather(*(socket.send(json.dumps(join)) for socket, join in zip(sockets, joins)))
         welcomes = await asyncio.gather(*(receive_type(socket, "welcome") for socket in sockets))
         if [welcome["id"] for welcome in welcomes] != [first["id"], second["id"]]:
             raise RuntimeError("WebSocket identities do not match authenticated accounts")
-        if [welcome["sceneId"] for welcome in welcomes] != ["surface:kanto", "cave:kanto:test-cave"]:
+        if [welcome["sceneId"] for welcome in welcomes] != scenes:
             raise RuntimeError("Scene acknowledgements are incorrect")
         await sockets[0].send(json.dumps({"type":"chat","text":"surface-only"}))
         own_chat = await receive_type(sockets[0], "chat")
@@ -93,4 +96,5 @@ if __name__ == "__main__":
     parser.add_argument("--ws", default="ws://127.0.0.1:8080/api/realtime")
     parser.add_argument("--origin", default="http://127.0.0.1:5173")
     parser.add_argument("--verify-reauth", action="store_true")
+    parser.add_argument("--isolated", action="store_true", help="Keep probes in unique non-playable scenes; required for production")
     asyncio.run(verify(parser.parse_args()))

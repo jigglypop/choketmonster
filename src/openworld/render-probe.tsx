@@ -1,6 +1,6 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useRef } from 'react';
-import { InstancedMesh, Mesh, type Object3D, type Scene } from 'three';
+import { Color, InstancedMesh, Mesh, type Object3D, type Scene } from 'three';
 import { getOpenWorldRendererInfo } from './gpu-renderer';
 
 function renderableInventory(scene: Scene) {
@@ -29,6 +29,8 @@ export function RenderProbe() {
     target.__renderProbe = {
       read: () => ({ samples: [...samples.current], dpr: gl.getPixelRatio(),
         streaming: scene.userData.streaming, camera: camera.position.toArray(), objects: scene.children.length,
+        background: scene.background instanceof Color ? scene.background.getHexString() : null,
+        fog: scene.fog?.color.getHexString() ?? null, clearAlpha: gl.getClearAlpha(),
         creatures: scene.getObjectsByProperty('type', 'Group')
           .filter(object => object.name.startsWith('creature:'))
           .map(object => ({ id: object.name.slice('creature:'.length), position: object.position.toArray(), yaw: object.rotation.y })),

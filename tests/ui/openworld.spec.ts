@@ -87,28 +87,34 @@ test('open world moves, pauses, and restores all brains without duplicating topo
   expect(errors).toEqual([]);
 });
 
-test('direction pad moves a healthy partner and stops when released', async ({ page }) => {
+test('mobile terrain taps move a healthy partner without a direction pad', async ({ page, browser, baseURL }) => {
+  const context = await browser.newContext({ baseURL, viewport: { width: 390, height: 844 }, hasTouch: true });
+  page = await context.newPage();
+  await page.route('**/api/auth/me', route => route.fulfill({ json: { user: null } }));
+  await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
+  await page.route(/\.(?:glb|gltf)(?:\?.*)?$/, route => /\/(1|152)\.glb$/.test(route.request().url()) ? route.continue() : route.abort());
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await page.setViewportSize({ width: 390, height: 844 });
   await start(page);
   // Keep this input check independent of an automatic battle during shader loading.
-  const world = new OpenWorldSimulation(graph, createGame(1, 'ui-direction-pad'), 35211, undefined, policy);
+  const world = new OpenWorldSimulation(graph, createGame(1, 'ui-mobile-tap'), 35211, undefined, policy);
   world.setControlMode('manual');
   await load(page, world);
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true');
+  await openExplorePanel(page);
   await page.locator('#world-pause').click();
   const position = await page.locator('#world-position').innerText();
-  const button = page.getByRole('button', { name: '남쪽 이동' });
-  const bounds = (await button.boundingBox())!;
-  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
-  await page.mouse.down();
-  try { await expect(page.locator('#world-position')).not.toHaveText(position); }
-  finally { await page.mouse.up(); }
-  const stopped = await page.locator('#world-position').innerText();
-  await page.waitForTimeout(550);
-  await expect(page.locator('#world-position')).toHaveText(stopped);
+  await page.locator('.world-explore-toggle').click();
+  await expect(page.locator('.world-dpad')).toHaveCount(0);
+  const bounds = (await page.locator('#ow-host canvas').boundingBox())!;
+  for (const [x, y] of [[.55, .64], [.43, .55], [.7, .42]] as const) {
+    await page.touchscreen.tap(bounds.x + bounds.width * x, bounds.y + bounds.height * y);
+    try { await expect(page.locator('#world-position')).not.toHaveText(position, { timeout: 2500 }); break; } catch { /* Try another visible patch of ground. */ }
+  }
+  await expect(page.locator('#world-position')).not.toHaveText(position);
   await test.info().attach('touch-movement', { body: await page.screenshot(), contentType: 'image/png' });
   expect(errors).toEqual([]);
+  await context.close();
 });
 
 test('left click walks to ground and keyboard input cancels the route', async ({ page }) => {
