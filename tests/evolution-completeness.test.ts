@@ -3,7 +3,7 @@ import { EVOLUTION_CONDITION_NAMES, EVOLUTION_SOURCE_RULES } from '../src/data/e
 import { getMove, getSpecies, POKEMON } from '../src/data/pokemon';
 import {
   createGame, createMonster, evolve, evolutionItemsFor, evolutionRoute,
-  restoreGame, serializeGame, useItem, type GameState, type InventoryItem,
+  restoreGame, serializeGame, statsFor, useItem, type GameState, type InventoryItem,
 } from '../src/game/engine';
 import {
   nativeEvolutionReady, naturalEvolution, needsSpecialEvolution, sourceEvolutionRules,
@@ -105,6 +105,9 @@ describe('complete source-backed evolution reachability', () => {
     expect(nativeEvolutionReady(burmy, burmyMon, female)).toBe(true);
 
     const tyrogue = ownedFixture(236), tyrogueMon = tyrogue.player.team[0], equal = sourceEvolutionRules(236, 237)[0];
+    // Hitmontop's equal-stat fixture must also have equal individual values.
+    tyrogueMon.ivs!.attack = tyrogueMon.ivs!.defense;
+    tyrogueMon.stats = statsFor(getSpecies(236), tyrogueMon.level, tyrogueMon.ivs);
     expect(tyrogueMon.stats.attack).toBe(tyrogueMon.stats.defense);
     expect(nativeEvolutionReady(tyrogue, tyrogueMon, equal)).toBe(true);
     tyrogueMon.stats.attack++;
