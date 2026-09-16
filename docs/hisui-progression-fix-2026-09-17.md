@@ -36,3 +36,34 @@ same self-lock affected the remaining six challenges. Existing tests granted all
 
 This verifies traversal and starting challenges, not winning every battle in a
 browser. No claims about unrelated model texture completeness are implied.
+
+## Temple investigation → Survey Corps finals follow-up
+
+A separate UI deadlock remained at the final investigation. `temple-of-sinnoh`
+hosts both badge 8 and all five Survey Corps finals. The exploration panel
+always prioritized the location's gym, even when already cleared, hiding both
+the next trainer button and its click handler. The engine's next-trainer logic
+was correct; engine-only progression tests could not detect this UI failure.
+
+- The next available local final now takes precedence over a completed gym.
+  Before badge 8, the investigation remains the actionable challenge. Existing
+  badges, final stages and in-progress battles are not rewritten.
+- The final investigation victory dialog explicitly points to Mi-do in the same
+  temple's exploration settings. Hisui arrival guidance says Survey Corps finals,
+  not a League. Completed later regions now name the next unlocked region;
+  Hisui completion points to Paldea.
+- A real Chrome/WebGPU regression first failed because
+  `#world-trainer-challenge` did not exist. After the fix, all five finals can be
+  started through that button. First/final battles survive save/reload.
+- A near-victory investigation fixture executes its last battle turn, earns
+  badge 8, closes the reward dialog and immediately exposes Mi-do. This also
+  survives save/reload.
+- A near-victory Volo fixture executes its last battle turn, unlocks Paldea,
+  travels there through the map, claims Sprigatito and reloads into Paldea with
+  the real #906 model and no duplicate starter prompt.
+- These near-victory fixtures verify UI handoffs and saved progress, not full
+  combat balance or winning the entire campaign from a new save. All three
+  browser scenarios pass; 20 related campaign/wayfinder unit tests pass.
+
+Evidence: `artifacts/hisui-final-before/`, `artifacts/hisui-final-handoff/`,
+`artifacts/hisui-paldea-handoff/`.

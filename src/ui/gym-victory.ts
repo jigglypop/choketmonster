@@ -14,6 +14,7 @@ export function showGymVictory(victory: GymVictory, world = true): Promise<void>
   const classic = REGIONS.find(item => item.gym?.badge === victory.badge);
   const classicNext = REGIONS.find(item => item.gym?.badge === victory.badge + 1);
   const next = gyms.find(item => item.badge === victory.badge + 1);
+  const firstFinal = CAMPAIGN_TRAINERS.find(trainer => trainer.region === region && trainer.kind === 'elite');
   const locationName = (id: string) => locations.find(item => item.id === id)?.name ?? id;
   const dialog = document.createElement('dialog');
   dialog.className = 'confirmation-dialog gym-victory-dialog';
@@ -46,7 +47,9 @@ export function showGymVictory(victory: GymVictory, world = true): Promise<void>
     ? classicNext ? `다음 도전 · ${classicNext.name}의 ${classicNext.gym!.leader}` : '8개 배지를 모두 모았습니다! 이제 챔피언에게 도전할 수 있습니다.'
     : next
     ? `다음 도전 · ${locationName(next.locationId)}의 ${next.name}`
-    : `8개 배지를 모두 모았습니다! 다음 목표는 ${locationName(CAMPAIGN_TRAINERS.find(trainer => trainer.region === region && trainer.kind === 'elite')!.locationId)}입니다.`;
+    : region === 'hisui' && firstFinal
+    ? `조사증 8개를 모두 모았습니다! 같은 신오신전의 탐험 설정에서 ${firstFinal.name}에게 도전하세요.`
+    : `8개 배지를 모두 모았습니다! 다음 목표는 ${locationName(firstFinal!.locationId)}입니다.`;
   return new Promise(resolve => {
     dialog.addEventListener('close', () => { dialog.remove(); resolve(); }, { once: true });
     document.body.append(dialog); dialog.showModal();

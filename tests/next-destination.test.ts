@@ -43,4 +43,19 @@ describe('campaign wayfinder', () => {
     expect(guide.nextName).toBe('디그다의 굴 입구');
     expect(guide.status).toBe('route');
   });
+  it('hands the Hisui temple from its final investigation to the finals, then directs travel to Paldea', () => {
+    const game = createGame(152, 'hisui-final-guide'), atlas = getWorldAtlas('hisui');
+    const temple = atlas.locations.find(item => item.id === 'temple-of-sinnoh')!;
+    const local = { badges: [1, 2, 3, 4, 5, 6, 7], league: 0 };
+    game.campaign!.expansion = { hisui: local };
+    expect(nextDestinationGuide(game, atlas, atlas.surfaceSceneId, temple).title).toContain('신오신전 조사');
+    local.badges.push(8);
+    const final = nextDestinationGuide(game, atlas, atlas.surfaceSceneId, temple);
+    expect(final.title).toContain('조사대 결승 미도');
+    expect(final.detail).toContain('탐험 설정에서 조사대 결승');
+    local.league = 4;
+    expect(nextDestinationGuide(game, atlas, atlas.surfaceSceneId, temple).title).toContain('신오신전 월로');
+    local.league = 5;
+    expect(nextDestinationGuide(game, atlas, atlas.surfaceSceneId, temple)).toMatchObject({ status: 'complete', detail: '지도에서 팔데아 여행을 선택하세요.' });
+  });
 });

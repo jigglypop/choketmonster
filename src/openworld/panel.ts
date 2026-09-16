@@ -826,10 +826,14 @@ export class OpenWorldPanel {
         if (world.exitCave(chosen)) { world.setControlMode('manual'); this.manualMovementActive = false; this.multiplayer?.join(this.presence()); this.options.changed(); this.refresh(); this.options.notify('동굴 밖으로 나왔습니다.'); }
       };
     }
-    const challenge = gym ? `<button id="world-gym-challenge" ${battle || offer || gym.badge !== badges + 1 ? 'disabled' : ''}>${gym.name} · Lv.${gym.level} ${badges >= gym.badge ? '클리어 ✓' : '도전'}</button><small>${world.atlas.name} 배지 ${badges}/8${gym.badge > badges + 1 ? ' · 앞 체육관부터 도전하세요' : ''}</small>` : localTrainer ? `<button id="world-trainer-challenge" ${battle || offer ? 'disabled' : ''}>${escape(localTrainer.name)} · 도전</button><small>${localTrainer.team.map(([id, level]) => `${getSpecies(id).name} Lv.${level}`).join(' · ')}</small>` : '';
+    // A completed gym and the league can share a location (Hisui's temple).
+    // The next available final must take precedence over the completed trial.
+    const challenge = localTrainer
+      ? `<button id="world-trainer-challenge" ${battle || offer ? 'disabled' : ''}>${escape(localTrainer.name)} · 도전</button><small>${localTrainer.team.map(([id, level]) => `${getSpecies(id).name} Lv.${level}`).join(' · ')}</small>`
+      : gym ? `<button id="world-gym-challenge" ${battle || offer || gym.badge !== badges + 1 ? 'disabled' : ''}>${gym.name} · Lv.${gym.level} ${badges >= gym.badge ? '클리어 ✓' : '도전'}</button><small>${world.atlas.name} 배지 ${badges}/8${gym.badge > badges + 1 ? ' · 앞 체육관부터 도전하세요' : ''}</small>` : '';
     this.html('#world-gym', challenge + (portal ? `<button id="world-cave-enter" ${battle || offer ? 'disabled' : ''}>${cave ? `${escape(cave.name)} · 밖으로 나가기` : '동굴 들어가기'}</button>` : ''));
-    if (gym) this.button('#world-gym-challenge').onclick = () => { if (world.challengeLocalGym()) { this.options.changed(); this.refresh(); } };
-    if (!gym && localTrainer) this.button('#world-trainer-challenge').onclick = () => { if (world.challengeLocalTrainer()) { this.options.changed(); this.refresh(); } };
+    if (gym && !localTrainer) this.button('#world-gym-challenge').onclick = () => { if (world.challengeLocalGym()) { this.options.changed(); this.refresh(); } };
+    if (localTrainer) this.button('#world-trainer-challenge').onclick = () => { if (world.challengeLocalTrainer()) { this.options.changed(); this.refresh(); } };
     if (portal) {
       this.button('#world-cave-enter').onclick = () => { if (world.traverseCavePortal()) { this.multiplayer?.join(this.presence()); this.options.changed(); this.refresh(); } };
     }

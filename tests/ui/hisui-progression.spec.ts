@@ -13,13 +13,13 @@ const atlas = getWorldAtlas('hisui');
 test.setTimeout(150_000);
 test.use({ launchOptions: { args: ['--mute-audio', '--enable-unsafe-webgpu'] } });
 
-function fixture(earned: number, point: { x: number; z: number }) {
+function fixture(earned: number, point: { x: number; z: number }, league = 0, finish?: 'gym' | 'final') {
   const game = createGame(152, `hisui-stage-${earned}`);
   game.defeatedGyms = [...allBadges]; game.player.badges = 8; game.championDefeated = true;
   game.campaign = { startRegion: 'johto', johtoBadges: [...allBadges], johtoLeague: 5, kantoLeague: 5, redDefeated: false, expansion: {
     hoenn: { badges: [...allBadges], league: 5 }, sinnoh: { badges: [...allBadges], league: 5 }, unova: { badges: [...allBadges], league: 5 },
     kalos: { badges: [...allBadges], league: 5 }, alola: { badges: [...allBadges], league: 5 }, galar: { badges: [...allBadges], league: 5 },
-    hisui: { badges: allBadges.slice(0, earned), league: 0 },
+    hisui: { badges: allBadges.slice(0, earned), league },
   } };
   const partner = createMonster(game, 899, 30); partner.originRegion = 'hisui'; game.player.team = [partner];
   game.claimedRegionalStarters = [...new Set([...(game.claimedRegionalStarters ?? []), 'hisui' as const])];
@@ -28,6 +28,16 @@ function fixture(earned: number, point: { x: number; z: number }) {
   world.changeRegion('hisui'); world.setControlMode('manual'); world.setAutoHunt(false);
   world.player = { x: point.x, z: point.z, heading: 0 };
   Object.assign(world.entities.find(entity => entity.kind === 'companion')!, world.player);
+  if (finish) {
+    // A near-victory fixture tests the UI handoff, not combat balance.
+    expect(finish === 'gym' ? world.challengeLocalGym() : world.challengeLocalTrainer()).toBe(true);
+    game.player.team[0].moves = [{ moveId: 58, pp: 10 }];
+    const enemy = game.battle!.enemy;
+    enemy.activeIndex = enemy.team.length - 1;
+    enemy.team.forEach((monster, index) => { monster.hp = index === enemy.activeIndex ? 1 : 0; });
+    Object.assign(enemy.team[enemy.activeIndex], { status: 'sleep', statusTurns: 3 });
+    world.requestAction({ type: 'move', index: 0 });
+  }
   return packSave(game, graph, { ...defaultView(), openWorld: world.snapshot(), openWorldPaused: true, learning: false });
 }
 
@@ -112,5 +122,83 @@ test('a visible terrain gate explains the prerequisite and opens after it is ear
   await expect(page.locator('#toast')).toContainText('저장했습니다');
   await page.reload();
   await expect(label).toHaveAttribute('data-gate-state', 'open', { timeout: 45_000 });
+  expect(errors).toEqual([]);
+});
+
+test('Temple of Sinnoh exposes every final trial instead of the completed investigation', async ({ page }, testInfo) => {
+  const errors = await prepare(page);
+  const temple = atlas.locations.find(location => location.id === 'temple-of-sinnoh')!;
+  for (const [stage, name] of ['조사대 결승 미도', '조사대 결승 주혜', '조사대 결승 찬석', '조사대 결승 전목', '신오신전 월로'].entries()) {
+    await importSave(page, fixture(8, temple, stage));
+    await openExplorePanel(page);
+    const challenge = page.locator('#world-trainer-challenge');
+    await expect(challenge).toBeEnabled();
+    await expect(challenge).toContainText(name);
+    await expect(page.locator('#world-gym-challenge')).toHaveCount(0);
+    await challenge.click();
+    await expect(page.locator('#world-battle-state')).toContainText('턴 1');
+    await expect(page.locator('#world-combatants .world-combatant')).toHaveCount(2);
+    if (stage === 0 || stage === 4) {
+      await page.locator('#save-now').click();
+      await expect(page.locator('#toast')).toContainText('저장했습니다');
+      await page.reload();
+      await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 45_000 });
+      await openExplorePanel(page);
+      await expect(challenge).toContainText(name);
+      await expect(challenge).toBeDisabled();
+      await expect(page.locator('#world-battle-state')).toContainText('턴 1');
+      await testInfo.attach(`hisui-final-${stage}`, { body: await page.screenshot({ path: testInfo.outputPath(`hisui-final-${stage}.png`) }), contentType: 'image/png' });
+    }
+  }
+  expect(errors).toEqual([]);
+});
+
+test('winning the last investigation immediately offers the first final and keeps it after reload', async ({ page }, testInfo) => {
+  const errors = await prepare(page);
+  const temple = atlas.locations.find(location => location.id === 'temple-of-sinnoh')!;
+  await importSave(page, fixture(7, temple, 0, 'gym'));
+  await openExplorePanel(page);
+  await page.locator('#world-pause').click();
+  const victory = page.getByRole('dialog', { name: '신오 조사증 획득!' });
+  await expect(victory).toBeVisible({ timeout: 20_000 });
+  await expect(victory).toContainText('같은 신오신전의 탐험 설정에서 조사대 결승 미도에게 도전하세요.');
+  await victory.getByRole('button', { name: '모험 계속하기' }).click();
+  if (await page.locator('#ow-host').getAttribute('data-paused') !== 'true') await page.locator('#world-pause').click();
+  await expect(page.locator('#world-trainer-challenge')).toBeEnabled();
+  await expect(page.locator('#world-trainer-challenge')).toContainText('조사대 결승 미도');
+  await expect(page.locator('#world-gym-challenge')).toHaveCount(0);
+  await page.locator('#save-now').click();
+  await expect(page.locator('#toast')).toContainText('저장했습니다');
+  await page.reload();
+  await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 45_000 });
+  await openExplorePanel(page);
+  await expect(page.locator('#world-trainer-challenge')).toBeEnabled();
+  await expect(page.locator('#world-trainer-challenge')).toContainText('조사대 결승 미도');
+  await testInfo.attach('investigation-to-finals', { body: await page.screenshot({ path: testInfo.outputPath('investigation-to-finals.png') }), contentType: 'image/png' });
+  expect(errors).toEqual([]);
+});
+
+test('winning Volo unlocks Paldea travel and the regional starter survives reload', async ({ page }, testInfo) => {
+  const errors = await prepare(page);
+  const temple = atlas.locations.find(location => location.id === 'temple-of-sinnoh')!;
+  await importSave(page, fixture(8, temple, 4, 'final'));
+  await openExplorePanel(page);
+  await page.locator('#world-pause').click();
+  await expect(page.locator('#world-next-guide')).toContainText('지도에서 팔데아 여행을 선택하세요.', { timeout: 20_000 });
+  if (await page.locator('#ow-host').getAttribute('data-paused') !== 'true') await page.locator('#world-pause').click();
+  await page.locator('#world-map-open').click();
+  await page.locator('#world-region').selectOption('paldea');
+  await expect(page.locator('#ow-host')).toHaveAttribute('data-region', 'paldea');
+  await page.locator('[data-regional-starter="906"]').click();
+  await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 45_000 });
+  await page.locator('#world-map-close').click();
+  await page.locator('#save-now').click();
+  await expect(page.locator('#toast')).toContainText('저장했습니다');
+  await page.reload();
+  await expect(page.locator('#ow-host')).toHaveAttribute('data-region', 'paldea', { timeout: 45_000 });
+  await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 45_000 });
+  await expect(page.locator('[data-regional-starter]')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => (window as any).__renderProbe?.read().loadedPokemon ?? []), { timeout: 45_000 }).toContain(906);
+  await testInfo.attach('hisui-complete-paldea-restored', { body: await page.screenshot({ path: testInfo.outputPath('paldea-restored.png') }), contentType: 'image/png' });
   expect(errors).toEqual([]);
 });

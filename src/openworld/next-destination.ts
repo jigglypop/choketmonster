@@ -11,6 +11,12 @@ export type DestinationGuide = {
   status: 'route' | 'arrived' | 'unreachable' | 'complete';
 };
 
+const onwardRegions: Partial<Record<WorldAtlas['id'], readonly [string, string]>> = {
+  johto: ['kanto', '관동'], kanto: ['hoenn', '호연'], hoenn: ['sinnoh', '신오'],
+  sinnoh: ['unova', '하나'], unova: ['kalos', '칼로스'], kalos: ['alola', '알로라'],
+  alola: ['galar', '가라르'], galar: ['hisui', '히스이'], hisui: ['paldea', '팔데아'],
+};
+
 /** Authored campaign guidance, independent of the neural policy and its random stream. */
 export function regionalItinerary(atlas: WorldAtlas, from: string, to: string, badges: number): string[] {
   const locations = new Map(atlas.locations.map(item => [item.id, item]));
@@ -42,7 +48,7 @@ export function nextDestinationGuide(game: GameState, atlas: WorldAtlas, sceneId
   const destinationId = gym?.locationId ?? trainer?.locationId;
   const destination = atlas.locations.find(item => item.id === destinationId);
   if (!destination) {
-    const onward = { johto: ['kanto', '관동'], kanto: ['hoenn', '호연'], hoenn: ['sinnoh', '신오'], sinnoh: ['unova', '하나'] }[atlas.id as 'johto' | 'kanto' | 'hoenn' | 'sinnoh'];
+    const onward = onwardRegions[atlas.id];
     return { title: `${atlas.name} 주요 도전 완료`, detail: onward && !campaignTravelReason(game, onward[0]) ? `지도에서 ${onward[1]} 여행을 선택하세요.` : '지도에서 수집할 지역을 확인하세요.', points: [], status: 'complete' };
   }
   const recommendedLevel = gym?.level ?? Math.max(...trainer!.team.map(([, level]) => level));
@@ -65,7 +71,7 @@ export function nextDestinationGuide(game: GameState, atlas: WorldAtlas, sceneId
   } else {
     const current = atlas.locationAt(player.x, player.z), route = regionalItinerary(atlas, current.id, destination.id, badges);
     if (current.id === destination.id && Math.hypot(player.x - destination.x, player.z - destination.z) < 12)
-      return { ...base, detail: `목적지 도착 · 탐험 설정에서 ${gym ? '체육관' : '리그'}에 도전하세요.`, points: [], status: 'arrived' };
+      return { ...base, detail: `목적지 도착 · 탐험 설정에서 ${atlas.id === 'hisui' ? gym ? '조사' : '조사대 결승' : gym ? '체육관' : '리그'}에 도전하세요.`, points: [], status: 'arrived' };
     const nextId = route[1] ?? (route.length ? destination.id : undefined);
     const location = atlas.locations.find(item => item.id === nextId);
     if (location) {
