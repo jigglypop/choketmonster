@@ -13,7 +13,7 @@ second defect clearly.
 including Draco primitives through the game's existing offline decoder. It
 records each source SHA-256 in `artifacts/model-appearance/normal-audit.json`.
 The audit covers 1,025 models / 5,563 primitives: 5,164 normal-bearing triangle
-primitives inspected, 399 primitives in 52 models skipped because of absent or
+primitives inspected, 399 primitives in 62 models skipped because of absent or
 sparse normals or a non-triangle mode. No invalid-length normal was found among
 the inspected attributes. Missing source normals are not counted as inspected.
 
