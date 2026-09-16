@@ -1,15 +1,17 @@
 import {
-  AnimationClip, Bone, Box3, BufferAttribute, BufferGeometry, Mesh, Object3D, Quaternion,
-  QuaternionKeyframeTrack, Skeleton, SkinnedMesh, Vector3, VectorKeyframeTrack,
+  AnimationClip, Bone, Box3, BufferAttribute, BufferGeometry, DataTexture, Mesh, MeshStandardMaterial,
+  NearestFilter, Object3D, Quaternion, QuaternionKeyframeTrack, RGBAFormat, Skeleton, SkinnedMesh,
+  SRGBColorSpace, Vector3, VectorKeyframeTrack,
 } from 'three';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
+import { HOME_AUTHORED_PALETTES } from '../data/pokemon-home-authored-palettes';
 
 /** Authored articulation, separate from the immutable source models and their clips. */
-export const REGIONAL_RIG_VERSION = 'regional-authored-v3';
+export const REGIONAL_RIG_VERSION = 'regional-authored-v4';
 export const JOHTO_RIG_VERSION = REGIONAL_RIG_VERSION;
 // Deoxys' source GLB contains one ArmatureAction whose 402 tracks repeat their bind-pose values.
 // Preserve that source clip for provenance, and append authored motion so the runtime can animate it.
-const STATIC_NATIVE_CLIP_SPECIES = new Set([386,794,796,798,802,805,914]);
+const STATIC_NATIVE_CLIP_SPECIES = new Set([68,122,386,794,796,798,802,805,914]);
 type Shape = 'biped' | 'quadruped' | 'bird' | 'winged' | 'fish' | 'plant' | 'floatingPlant' | 'glyph' | 'serpent' | 'soft';
 type Joint = { bone: Bone; start: Vector3; end: Vector3; role: string; side: number; phase: number };
 const groups: Record<Exclude<Shape, 'biped'>, number[]> = {
@@ -24,6 +26,46 @@ const groups: Record<Exclude<Shape, 'biped'>, number[]> = {
   soft: [200,204,205,218,219,292,302,316,317,325,326,351,353,354,355,356,358,360,361,362,363,364,365,380,381,385,386,422,423,425,426,429,433,442,477,478,479,480,481,482,488,491,493,517,518,562,563,577,578,579,582,583,584,605,606,607,608,609,610],
 };
 export const johtoRigShape = (id: number): Shape => (Object.entries(groups).find(([, ids]) => ids.includes(id))?.[0] ?? 'biped') as Shape;
+
+function applyHomeAuthoredAppearance(model: Object3D, id: number): void {
+  const palette = HOME_AUTHORED_PALETTES[id];
+  if (!palette || model.userData.authoredAppearance) return;
+  let materialIndex = 0, materials = 0, uvMeshes = 0;
+  const channels = (hex: string) => [Number.parseInt(hex.slice(1, 3), 16), Number.parseInt(hex.slice(3, 5), 16), Number.parseInt(hex.slice(5, 7), 16)];
+  const darkest = [...palette].sort((a, b) => channels(a).reduce((sum, value) => sum + value, 0) - channels(b).reduce((sum, value) => sum + value, 0))[0];
+  const warmest = [...palette].sort((a, b) => { const [ar, ag] = channels(a), [br, bg] = channels(b); return (br - bg) - (ar - ag); })[0];
+  const materialColor = (name: string) => {
+    if (/eye|pupil/i.test(name)) return darkest;
+    if (/mouth|tongue|claw/i.test(name)) return warmest;
+    const suffix = name.match(/(?:body|dsp|mat)[a-z]*0*([0-9]+)$/i)?.[1];
+    return palette[suffix ? Number(suffix) % Math.min(3, palette.length) : 0];
+  };
+  const textureFor = (color: string) => {
+    const rgba = (hex: string) => [Number.parseInt(hex.slice(1, 3), 16), Number.parseInt(hex.slice(3, 5), 16), Number.parseInt(hex.slice(5, 7), 16), 255];
+    const texel = rgba(color); const texture = new DataTexture(new Uint8Array([...texel, ...texel, ...texel, ...texel]), 2, 2, RGBAFormat);
+    texture.colorSpace = SRGBColorSpace; texture.magFilter = NearestFilter; texture.minFilter = NearestFilter; texture.needsUpdate = true;
+    texture.name = `CM_HOME_${id}_${materialIndex}`;
+    return texture;
+  };
+  model.traverse(object => {
+    if (!(object instanceof Mesh)) return;
+    const hasUv = Boolean(object.geometry.getAttribute('uv')); if (hasUv) uvMeshes++;
+    const source = Array.isArray(object.material) ? object.material : [object.material];
+    const authored = source.map(value => {
+      const material = value.clone() as MeshStandardMaterial;
+      const color = materialColor(value.name);
+      if (material.color) material.color.set(hasUv ? '#ffffff' : color);
+      if (hasUv && 'map' in material) material.map = textureFor(color);
+      if ('metalness' in material) material.metalness = 0;
+      if ('roughness' in material) material.roughness = .82;
+      material.vertexColors = false;
+      material.name = `${value.name || `material-${materialIndex}`}-CM-authored-palette`;
+      material.needsUpdate = true; materialIndex++; materials++; return material;
+    });
+    object.material = Array.isArray(object.material) ? authored : authored[0];
+  });
+  model.userData.authoredAppearance = { version: 'home-sprite-palette-v1', speciesId: id, materials, uvMeshes, sourceSprite: `/pokemon/${id}.png`, classification: 'authored-derived-palette-not-source-texture' };
+}
 
 function buildSkeleton(model: Object3D, size: Vector3, center: Vector3, floor: number, id: number): Joint[] {
   const shape = johtoRigShape(id), joints: Joint[] = [];
@@ -258,7 +300,11 @@ function existingJoints(model: Object3D): Joint[] {
       while (parent instanceof Bone) { depth++; parent = parent.parent; }
       role = depth === 0 ? 'hips' : depth === 1 ? 'spine' : depth === 2 ? 'neck' : depth === 3 ? 'head' : 'other';
     }
-    return { bone, start: bone.getWorldPosition(new Vector3()), end: bone.children[0]?.getWorldPosition(new Vector3()) ?? bone.getWorldPosition(new Vector3()).add(new Vector3(0, .1, 0)), role, side, phase: /tail[2-9]/.test(name) ? .5 : 0 };
+    let endpoint = bone.children.find(child => child instanceof Bone) as Bone | undefined;
+    if (role === 'arm') {
+      bone.traverse(child => { if (child !== bone && child instanceof Bone && /forearm|arm_02|lowerarm/i.test(child.name) && !endpoint?.name.match(/forearm|arm_02|lowerarm/i)) endpoint = child; });
+    }
+    return { bone, start: bone.getWorldPosition(new Vector3()), end: endpoint?.getWorldPosition(new Vector3()) ?? bone.getWorldPosition(new Vector3()).add(new Vector3(0, .1, 0)), role, side, phase: /tail[2-9]/.test(name) ? .5 : 0 };
   });
 }
 
@@ -270,21 +316,29 @@ function authoredClips(model: Object3D, joints: Joint[], id: number): AnimationC
   return (['idle', 'walk', 'attack', 'damage'] as const).map(kind => {
     const duration = kind === 'idle' ? 2.4 : kind === 'walk' ? .9 : .65;
     const times = Array.from({ length: 25 }, (_, i) => i * duration / 24), tracks: Array<QuaternionKeyframeTrack | VectorKeyframeTrack> = [];
-    for (const { bone, role, side, phase } of animated) {
+    for (const { bone, start, end, role, side, phase } of animated) {
       const base = bone.quaternion.clone(), world = bone.getWorldQuaternion(new Quaternion());
       const upperArm = role === 'arm' && !/shoulder/i.test(bone.name);
       // Upper arms in many static source rigs are authored in a horizontal bind pose. Rotate
       // around world Z so idle/walk lower them toward the body instead of only swinging the
       // unchanged T pose around world Y. The side sign lowers both left and right arms.
-      const worldAxis = upperArm ? new Vector3(0, 0, 1)
+      const bindDirection = end.clone().sub(start).normalize();
+      const down = new Vector3(0, -1, 0);
+      const loweringAxis = bindDirection.clone().cross(down);
+      if (loweringAxis.lengthSq() < 1e-8) loweringAxis.set(0, 0, 1);
+      else loweringAxis.normalize();
+      const worldAxis = upperArm ? loweringAxis
         : new Vector3(role.startsWith('wing') || role.startsWith('fin') || role.startsWith('leaf') ? 0 : 1, role === 'tail' ? 1 : 0, role.startsWith('wing') || role.startsWith('fin') || role.startsWith('leaf') ? 1 : 0).normalize();
       const axis = worldAxis.applyQuaternion(world.clone().invert());
+      // Rotate toward world-down from the actual bind segment. This also handles arms whose
+      // source bind direction points mainly forward instead of along model X.
+      const armRestAngle = Math.min(1.3, Math.acos(Math.max(-1, Math.min(1, bindDirection.dot(down)))) * .82);
       const values: number[] = [];
       for (const time of times) {
         const p = time / duration, loop = Math.sin(p * Math.PI * 2), gait = Math.sin(p * Math.PI * 2 + (side === 1 ? Math.PI : 0) + phase);
         let angle = 0;
-        if (kind === 'idle') angle = upperArm ? -side * (.92 + loop * .035) : ['head', 'neck'].includes(role) ? loop * .025 : role === 'spine' ? loop * .012 : role === 'tail' ? Math.sin(p * Math.PI * 2 + phase) * .065 : /wing|fin|leaf/.test(role) ? loop * .045 * (side || 1) : 0;
-        if (kind === 'walk') angle = upperArm ? -side * (.82 + gait * .16) : role === 'leg' ? gait * .27 : role === 'foot' ? Math.max(0, gait) * -.22 : /wing/.test(role) ? loop * .32 * side : /fin|leaf/.test(role) ? loop * .15 * side : /arm/.test(role) ? gait * -.16 : role === 'tail' ? Math.sin(p * Math.PI * 2 + phase) * .13 : role === 'spine' ? loop * .035 : role === 'head' ? -loop * .025 : 0;
+        if (kind === 'idle') angle = upperArm ? armRestAngle + loop * .025 : ['head', 'neck'].includes(role) ? loop * .025 : role === 'spine' ? loop * .012 : role === 'tail' ? Math.sin(p * Math.PI * 2 + phase) * .065 : /wing|fin|leaf/.test(role) ? loop * .045 * (side || 1) : 0;
+        if (kind === 'walk') angle = upperArm ? armRestAngle * .92 + gait * .09 : role === 'leg' ? gait * .27 : role === 'foot' ? Math.max(0, gait) * -.22 : /wing/.test(role) ? loop * .32 * side : /fin|leaf/.test(role) ? loop * .15 * side : /arm/.test(role) ? gait * -.16 : role === 'tail' ? Math.sin(p * Math.PI * 2 + phase) * .13 : role === 'spine' ? loop * .035 : role === 'head' ? -loop * .025 : 0;
         if (kind === 'attack') angle = Math.sin(p * Math.PI) * (role === 'spine' ? .17 : /arm|wing|fin/.test(role) ? -.35 : role === 'head' ? .14 : role === 'tail' ? .18 : 0);
         if (kind === 'damage') angle = Math.sin(p * Math.PI) * (role === 'spine' ? -.12 : role === 'head' ? -.1 : /arm|wing/.test(role) ? .16 : /leg|foot|tail/.test(role) ? .07 * (side || 1) : 0);
         // Its coarse, connected shoulder mesh folds under large arm rotations.
@@ -316,6 +370,12 @@ function authoredClips(model: Object3D, joints: Joint[], id: number): AnimationC
 /** Called once on a loaded template, before per-creature skeleton cloning. No simulation RNG. */
 export function prepareRegionalRig(gltf: Pick<GLTF, 'scene' | 'animations'>, id: number): void {
   if (id < 1 || id > 1025 || gltf.scene.userData.authoredRig) return;
+  applyHomeAuthoredAppearance(gltf.scene, id);
+  // Quaquaval's source includes three visible LOD copies of a long battle-only water/gel
+  // effect. It expands the character bounds to 16 units and makes the actual model render
+  // as a tiny silhouette above a vertical chain. Keep the immutable source GLB intact and
+  // omit only these named effect meshes from the runtime character template.
+  if(id===911||id===914){const effects:Object3D[]=[];gltf.scene.traverse(object=>{const geometryName=object instanceof Mesh?object.geometry.name:'';if(id===914?/_gel_mesh(?:_shape)?(?:_lod\d+)?$/i.test(geometryName||object.name):/^(Object_210|Object_212)$/.test(object.name))effects.push(object);});for(const effect of effects)effect.removeFromParent();gltf.scene.userData.authoredModelCleanup={version:REGIONAL_RIG_VERSION,removedEffectNodes:effects.map(effect=>({node:effect.name,geometry:effect instanceof Mesh?effect.geometry.name:''})),reason:id===914?'battle-only-gel-effect-distorts-character-bounds':'duplicate-expanded-bird-effects-distort-character-silhouette'};}
   let skinned = false; gltf.scene.traverse(object => { if (object instanceof SkinnedMesh) skinned = true; });
   const sourceClips = [...gltf.animations];
   if (sourceClips.length && skinned && !STATIC_NATIVE_CLIP_SPECIES.has(id)) return;

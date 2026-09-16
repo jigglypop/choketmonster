@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-09-16T10:23:18.863Z",
+  "generatedAt": "2026-09-16T10:58:22.537Z",
   "source": {
     "repository": "https://github.com/Pokemon-3D-api/assets",
     "commit": "429de1288cea0d43f5b4f56305d2276e94239d65",
@@ -31,7 +31,7 @@
     {
       "repository": "https://github.com/Lilothestitch16/Pokemon-HOME-GLB-Models",
       "commit": "27703273836f38f0e185976d955b1fbfb15448af",
-      "result": "All 54 missing species were inspected locally as research-only geometry. The selected GLBs contain no images or texture references, and the pinned repository has no license; they remain excluded from the runtime catalog."
+      "result": "All 54 primary-source gaps were inspected locally, rigged, and given explicitly authored sprite-derived flat materials. Runtime resolves pinned owner URLs without copying GLBs into public/dist. The repository has no license, so sourceClass and rightsStatus remain explicit and no redistribution-rights claim is made."
     },
     {
       "repository": "https://github.com/dnnyngyen/codex-pokepets",
@@ -114,6 +114,66 @@
       1022,
       1024
     ],
+    "totalPrimarySpecies": 971,
+    "primaryMissingSpecies": 54,
+    "primaryMissingIds": [
+      850,
+      851,
+      852,
+      853,
+      854,
+      859,
+      860,
+      861,
+      863,
+      864,
+      866,
+      868,
+      873,
+      878,
+      879,
+      882,
+      883,
+      918,
+      919,
+      931,
+      935,
+      936,
+      938,
+      939,
+      940,
+      944,
+      950,
+      951,
+      952,
+      953,
+      954,
+      955,
+      956,
+      961,
+      963,
+      964,
+      968,
+      969,
+      970,
+      971,
+      972,
+      976,
+      977,
+      986,
+      988,
+      989,
+      991,
+      992,
+      993,
+      1011,
+      1012,
+      1013,
+      1022,
+      1024
+    ],
+    "externalFallbackSpecies": 54,
+    "totalRuntimeSpecies": 1025,
     "regularFiles": 974,
     "regularBytes": 332666404,
     "expandedEntries": [
@@ -27361,6 +27421,6 @@
   },
   "output": {
     "path": "src/data/pokemon-models.ts",
-    "sha256": "eabc9b0c3b5b360253a036e196274f9f06be279b756931e7b14c6fcd1ee5797e"
+    "sha256": "0f3d9fc66819bf4303177f18eaa30bc12dc233cc5171eed5315be95d1a965aa8"
   }
 }

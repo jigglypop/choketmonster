@@ -34,16 +34,21 @@ try {
       const probe = await page.evaluate(async speciesId => {
         const probePath = '/scripts/johto-rig-probe.ts';
         const { probeJohtoRig } = await import(/* @vite-ignore */ probePath);
-        return probeJohtoRig(speciesId, false);
+        return probeJohtoRig(speciesId, false, true);
       }, id);
+      const posePreviews: Record<string, { path: string; sha256: string }> = {};
+      for (const [pose, data] of Object.entries(probe.poseImages as Record<string, string>)) {
+        const bytes = Buffer.from(data.split(',')[1], 'base64'), path = `${previewDirectory}/${id}-${pose}.png`;
+        writeFileSync(path, bytes); posePreviews[pose] = { path, sha256: createHash('sha256').update(bytes).digest('hex') };
+      }
       const preview = Buffer.from(probe.image.split(',')[1], 'base64');
       const previewPath = `${previewDirectory}/${id}.png`;
       writeFileSync(previewPath, preview);
       const row = {
-        ...probe,
-        image: undefined,
+        ...probe, passed: probe.passed && (probe.humanoidArmPose.arms.length === 0 || probe.humanoidArmPose.bothArmsLoweredInMultipleFrames),
+        image: undefined, poseImages: undefined,
         source: { path: source.localPath, sha256: source.sha256, skins: source.skins, animations: source.animations, images: source.images },
-        preview: { path: previewPath, sha256: createHash('sha256').update(preview).digest('hex') },
+        preview: { path: previewPath, sha256: createHash('sha256').update(preview).digest('hex') }, posePreviews,
         sourceClassification: 'research-only-original-geometry-with-source-skin',
         motionClassification: 'locally-authored-fallback-not-source-animation',
         visualReview: 'requires-human-inspection',
@@ -66,11 +71,11 @@ const receipt = {
   generatedAt: new Date().toISOString(),
   source: manifest.source,
   rights: manifest.rights,
-  method: 'Load each ignored HOME GLB from its SHA-256-verified local cache through the production regional rig function. Sample all four explicitly authored clips across 13 frames and require finite, non-rigid skinned vertex deformation. Save a local PNG preview for human review. Original GLBs are never modified.',
+  method: 'Load each ignored HOME GLB from its SHA-256-verified local cache through the production regional rig and authored sprite-palette appearance functions. Sample all four authored clips across 13 frames and require finite, non-rigid skinned vertex deformation. When upper arms are present, both must point downward in at least two of three samples in idle and walk. Save bind/idle/walk local PNG previews. Original GLBs and sprites are never modified.',
   scope: { requested: typed.length, passed: typed.length - failed.length, failed: failed.map(row => row.id) },
   results,
 };
 writeFileSync(`${outputDirectory}/verification.json`, JSON.stringify(receipt, null, 2) + '\n');
-writeFileSync(`${outputDirectory}/index.html`, `<!doctype html><meta charset="utf-8"><title>HOME research rig previews</title><style>body{font:14px system-ui;background:#17191d;color:#eee}main{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}figure{margin:0;padding:8px;background:#242830;border-radius:8px}img{width:100%;aspect-ratio:1;object-fit:contain;background:#fff}figcaption{display:flex;justify-content:space-between}</style><h1>Research-only authored rig previews</h1><p>Source: ${manifest.source.repository}@${manifest.source.commit}. These are local review artifacts and are not cleared for redistribution.</p><main>${typed.map(row => `<figure><img src="previews/${row.id}.png" alt="National Dex ${row.id}"><figcaption><b>#${row.id}</b><span>${row.passed ? 'deformation pass' : 'FAILED'}</span></figcaption></figure>`).join('')}</main>`);
+writeFileSync(`${outputDirectory}/index.html`, `<!doctype html><meta charset="utf-8"><title>HOME research rig previews</title><style>body{font:14px system-ui;background:#17191d;color:#eee}main{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}figure{margin:0;padding:8px;background:#242830;border-radius:8px}.poses{display:grid;grid-template-columns:repeat(3,1fr)}img{width:100%;aspect-ratio:1;object-fit:contain;background:#fff}figcaption{display:flex;justify-content:space-between}</style><h1>Research-only authored rig and palette previews</h1><p>Source geometry: ${manifest.source.repository}@${manifest.source.commit}. Appearance: authored palettes derived from pinned PokeAPI sprites. These previews use external-source geometry and do not claim source textures or cleared redistribution rights.</p><main>${typed.map(row => `<figure><div class="poses"><img src="previews/${row.id}-bind.png" alt="#${row.id} bind"><img src="previews/${row.id}-idle.png" alt="#${row.id} idle"><img src="previews/${row.id}-walk.png" alt="#${row.id} walk"></div><figcaption><b>#${row.id}</b><span>${row.passed ? 'rig + pose pass' : 'FAILED'}</span></figcaption></figure>`).join('')}</main>`);
 console.log(JSON.stringify(receipt.scope));
 if (failed.length) process.exitCode = 1;

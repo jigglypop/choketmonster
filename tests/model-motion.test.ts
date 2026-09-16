@@ -12,10 +12,9 @@ describe('Pokemon model motion metadata', () => {
     }
     expect(Object.fromEntries(counts)).toEqual({
       'rigged-animated': 261,
-      'rigged-static': 356,
+      'rigged-static': 410,
       'static': 350,
       'transform-animated': 4,
-      unavailable: 54,
     });
   });
 

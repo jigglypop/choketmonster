@@ -5,7 +5,8 @@ import { prepareRegionalRig } from './johto-rig';
 class PokemonGLTFLoader extends GLTFLoader {
   override async loadAsync(url: string, onProgress?: (event: ProgressEvent) => void) {
     const gltf = await super.loadAsync(url, onProgress);
-    const match = url.match(/\/(?:regular|pokemon)\/(\d+)(?:-[A-Za-z0-9]+)?\.glb(?:[?#]|$)/);
+    const match = url.match(/\/(?:regular|pokemon)\/(\d+)(?:-[A-Za-z0-9]+)?\.glb(?:[?#]|$)/)
+      ?? url.match(/\/pm(\d{4})_[^/]+\.glb(?:[?#]|$)/);
     if (match) prepareRegionalRig(gltf, Number(match[1]));
     return gltf;
   }

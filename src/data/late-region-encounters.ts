@@ -8,6 +8,7 @@ export const LATE_REGION_ENCOUNTER_SOURCE = {
   reconstruction: true,
   pokeApiRevision: '8fe210b21c9abbe73de93670f3d5a346c80a3625',
   reason: 'The pinned PokeAPI revision contains no Scarlet/Violet encounter rows and no Legends: Arceus version encounter table.',
+  formPolicy: 'Hisui supplemental slots use National Dex species IDs and therefore render audited regular-form models. They do not claim Hisuian-variant geometry.',
   geographySources: {
     hisui: 'https://legends.arceus.pokemon.com/en-us/story/',
     paldea: 'https://www.nintendo.com/us/store/products/pokemon-scarlet-114549/',
@@ -61,4 +62,3 @@ export const LATE_REGION_ENCOUNTER_POOLS: Readonly<Record<LateRegion, readonly A
     ['paldea-pokemon-league', 'walk', 58, 72, [1005, 1006, 1007, 1008, 1009]],
   ]),
 };
-
