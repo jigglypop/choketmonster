@@ -24,7 +24,7 @@ import { drawBrain } from './render';
 import {
   actBattle, buyItem, challengeChampion, challengeGym, createGame,
   evolutionItemUses,
-  depositMonster, evolve, explore, heal, individualValues, monsterAbility, mergeDuplicateMonster, mergeDuplicateMonsters, previewDuplicateMerge, releaseMonster, reorderMonsterMoves, availableMonsterMoveIds, replaceMonsterMove, recoverableAttackMoveIds, recoverAttackMove, ITEM_LABELS, ITEM_PRICES, SHOP_ITEMS, useItem, withdrawMonster,
+  depositMonster, evolve, explore, heal, individualValues, isMonsterInBattle, monsterAbility, mergeDuplicateMonster, mergeDuplicateMonsters, previewDuplicateMerge, releaseMonster, reorderMonsterMoves, availableMonsterMoveIds, replaceMonsterMove, recoverableAttackMoveIds, recoverAttackMove, ITEM_LABELS, ITEM_PRICES, SHOP_ITEMS, useItem, withdrawMonster,
   type BallItem, type BattleAction, type GameState, type InventoryItem, type Monster,
 } from './game/engine';
 import { BRAIN_ASSUMPTIONS, ConnectomeController } from './game/connectome';
@@ -487,7 +487,10 @@ function renderSelectedDetail() {
     finally { managingCollection = false; }
   });
   $('#release-monster').onclick = () => void remove(selected.instanceId, false);
-  if (game.battle) detail.querySelectorAll<HTMLButtonElement>('[data-reorder-from],[data-replace-move],#recover-attack-move,[data-evolve],[data-capsule-evolve],[data-use-treat],#use-candy').forEach(button => { button.disabled = true; });
+  if (game.battle) {
+    detail.querySelectorAll<HTMLButtonElement>('[data-reorder-from],[data-replace-move],#recover-attack-move,[data-use-treat],#use-candy').forEach(button => { button.disabled = true; });
+    if (isMonsterInBattle(game, selected.instanceId)) detail.querySelectorAll<HTMLButtonElement>('[data-evolve],[data-capsule-evolve]').forEach(button => { button.disabled = true; });
+  }
   if (hasPokemonModel(selected.speciesId)) getPokemonScene().showSpecimen($('.detail-portrait'), selected.speciesId); else getPokemonScene().detach();
 }
 function chooseTeamMonster(card: HTMLElement) {

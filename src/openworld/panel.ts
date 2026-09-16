@@ -60,6 +60,7 @@ export class OpenWorldPanel {
   private cameraHeading = Math.PI;
   private previousBattle?: GameState['battle'];
   private guideCache?: { key: string; guide: DestinationGuide };
+  private locationCopyCache?: { key: string; name: string; short: string; level: string };
   private lastPresence = { x: Number.NaN, z: Number.NaN };
   private readonly htmlCache = new WeakMap<Element, string>();
   private readonly hotkeys = (event: KeyboardEvent) => {
@@ -143,7 +144,7 @@ export class OpenWorldPanel {
       onMovementInput: () => this.noteManualInput(),
       onMovementEnd: () => {
         this.manualMovementActive = false;
-        if (this.simulation.controlMode === 'manual' && this.canAcceptMovement()) this.changeMode('auto');
+        if (this.shouldResumeAutomaticControl()) this.changeMode('auto');
       },
       onPlayerMove: next => {
         if (!this.noteManualInput()) return false;
@@ -299,6 +300,12 @@ export class OpenWorldPanel {
     return true;
   }
 
+  private shouldResumeAutomaticControl(): boolean {
+    return this.simulation.controlMode === 'manual'
+      && this.canAcceptMovement()
+      && !this.simulation.isSafeTown(this.simulation.player.x, this.simulation.player.z);
+  }
+
   private changeMode(mode: 'auto' | 'manual'): void { this.manualIdleSeconds = 0; this.simulation.setControlMode(mode); this.options.changed(); this.refresh(); }
   private catchVictory(): void { const caught = this.simulation.captureVictory(); if (caught) playGameSound('capture'); this.options.notify(caught ? '포획 성공! 팀 또는 박스에 저장했습니다.' : '볼이 없어 포획을 패스합니다.'); this.options.changed(); this.refresh(); }
 
@@ -376,7 +383,8 @@ export class OpenWorldPanel {
     try {
     // A route or held key owns control until the renderer reports movement end.
     // Fixed simulation ticks must not expire that ownership between render frames.
-    if (this.simulation.controlMode === 'manual' && !this.manualMovementActive && this.canAcceptMovement()) {
+    if (this.simulation.controlMode === 'manual' && !this.manualMovementActive && this.canAcceptMovement()
+      && !this.simulation.isSafeTown(this.simulation.player.x, this.simulation.player.z)) {
       this.manualIdleSeconds += .25;
       if (this.manualIdleSeconds >= MANUAL_IDLE_SECONDS) this.changeMode('auto');
     } else this.manualIdleSeconds = 0;
@@ -632,13 +640,26 @@ export class OpenWorldPanel {
     }).join(''));
     this.html('#world-emergency-action', battle && !battle.awaitingSwitch && !moves.length ? '<button id="world-struggle">발버둥</button>' : '');
     const location = this.simulation.locationAt(world.player.x, world.player.z);
-    this.html('#world-biome', location.name);
-    this.html('#world-location-short', location.name);
-    const pool = regionalEncounters(location.id, getRegionalBadges(game, world.regionId), world.regionId, world.dayPeriod, world.sampleWorld(world.player.x, world.player.z).biome);
-    const levels = regionalWildLevels(game, world.regionId, location);
-    this.html('#world-explore-short', `${pool.length ? `Lv.${levels.minLevel}–${levels.maxLevel}` : '마을'} · 설정`);
+    const region = world.regionId as CampaignRegion;
+    const badges = getRegionalBadges(game, region);
+    const biome = world.sampleWorld(world.player.x, world.player.z).biome;
+    const levels = regionalWildLevels(game, region, location);
+    const locationCopyKey = `${region}:${location.id}:${badges}:${world.dayPeriod}:${biome}:${levels.minLevel}:${levels.maxLevel}`;
+    if (this.locationCopyCache?.key !== locationCopyKey) {
+      const pool = regionalEncounters(location.id, badges, region, world.dayPeriod, biome);
+      this.locationCopyCache = {
+        key: locationCopyKey,
+        name: location.name,
+        short: `${pool.length ? `Lv.${levels.minLevel}–${levels.maxLevel}` : '마을'} · 설정`,
+        level: pool.length ? `야생 Lv.${levels.minLevel}–${levels.maxLevel} · ${pool.slice(0, 3).map(id => getSpecies(id).name).join(' · ')}` : '도시와 길을 따라 다음 구역으로 탐험하세요',
+      };
+    }
+    const locationCopy = this.locationCopyCache!;
+    this.text('#world-biome', locationCopy.name);
+    this.text('#world-location-short', locationCopy.name);
+    this.text('#world-explore-short', locationCopy.short);
     host.dataset.scene = world.sceneId;
-    this.html('#world-zone-level', pool.length ? `야생 Lv.${levels.minLevel}–${levels.maxLevel} · ${pool.slice(0, 3).map(id => getSpecies(id).name).join(' · ')}` : '도시와 길을 따라 다음 구역으로 탐험하세요');
+    this.text('#world-zone-level', locationCopy.level);
     this.html('#world-position', `${world.player.x.toFixed(0)}, ${world.player.z.toFixed(0)}`);
     const collectionSpecies = new Set(getPlayableSpeciesIds(world.atlas.defaultVersion));
     this.html('#world-objective', `${game.dex.caught.filter(id => collectionSpecies.has(id)).length} / ${collectionSpecies.size}종 · 전체 ${game.dex.caught.filter(isPlayableSpecies).length}종`);
@@ -647,7 +668,7 @@ export class OpenWorldPanel {
     this.button('#world-mode-auto').setAttribute('aria-pressed', String(world.controlMode === 'auto'));
     this.button('#world-mode-manual').setAttribute('aria-pressed', String(world.controlMode === 'manual'));
     this.html('#world-control-title', world.controlMode === 'manual' ? '수동 이동' : '자동 이동 · 배틀');
-    this.html('#world-control-help', world.controlMode === 'manual' ? (battle || game.captureOffer ? '기술 1–4 · M 전환' : '이동을 멈추면 바로 자동 전환') : '가까운 포켓몬 자동 배틀');
+    this.html('#world-control-help', world.controlMode === 'manual' ? (battle || game.captureOffer ? '기술 1–4 · M 전환' : location.kind === 'town' ? '마을에서는 수동 이동 유지 · M 전환' : '이동을 멈추면 자동 전환') : '가까운 포켓몬 자동 배틀');
     this.html('#world-ball-stock', `몬스터볼 ${game.inventory['poke-ball']}개 · ₩${game.player.money.toLocaleString('ko-KR')}`);
     this.html('#world-team-count', String(game.player.team.length));
     this.html('#world-shop-items', SHOP_ITEMS.map(item => `<div><strong>${ITEM_LABELS[item]} <small>보유 ${game.inventory[item]}개 · 개당 ₩${ITEM_PRICES[item].toLocaleString('ko-KR')}</small>${evolutionItemUses(item) ? `<small>${escape(evolutionItemUses(item))} · 팀·박스에서 사용</small>` : ''}</strong>${[1, 5].map(quantity => { const total = ITEM_PRICES[item] * quantity, reason = game.player.money < total ? `₩${(total - game.player.money).toLocaleString('ko-KR')} 부족` : ''; return `<button data-world-buy="${item}" data-quantity="${quantity}" ${reason ? `disabled title="${reason}"` : ''}>${quantity}개 · ₩${total.toLocaleString('ko-KR')}${reason ? `<small>${reason}</small>` : ''}</button>`; }).join('')}</div>`).join(''));
@@ -660,8 +681,6 @@ export class OpenWorldPanel {
       this.button('#world-win-catch').onclick = () => this.catchVictory();
       this.button('#world-win-release').onclick = () => { world.releaseVictory(); this.options.changed(); this.refresh(); };
     }
-    const region = world.regionId as CampaignRegion;
-    const badges = getRegionalBadges(game, region);
     const gym = getCampaignGyms(game, region).find(item => item.locationId === location.id);
     const trainer = getNextCampaignTrainer(game, region);
     const localTrainer = badges >= 8 && trainer?.locationId === location.id ? trainer : undefined;
@@ -706,7 +725,8 @@ export class OpenWorldPanel {
     }
     const guide = this.destinationGuide();
     this.html('#world-next-guide', `<span class="world-guide-symbol" aria-hidden="true">›</span><span><small>길안내${guide.recommendedLevel ? ` · 권장 Lv.${guide.recommendedLevel}` : ''}</small><strong>${escape(guide.title)}</strong><span>${escape(guide.detail)}</span></span><b aria-hidden="true">지도</b>`);
-    this.host.querySelector<HTMLElement>('#world-next-guide')!.dataset.status = guide.status;
+    const guideNode = this.host.querySelector<HTMLElement>('#world-next-guide')!;
+    if (guideNode.dataset.status !== guide.status) guideNode.dataset.status = guide.status;
     this.minimap(); this.renderer?.update();
   }
 
@@ -796,6 +816,7 @@ export class OpenWorldPanel {
     return (value + extent / 2) / extent * size;
   }
   private html(selector: string, value: string): void { const node = this.host?.querySelector(selector); if (node && this.htmlCache.get(node) !== value) { node.innerHTML = value; this.htmlCache.set(node, value); } }
+  private text(selector: string, value: string): void { const node = this.host?.querySelector(selector); if (node && this.htmlCache.get(node) !== value) { node.textContent = value; this.htmlCache.set(node, value); } }
   private button(selector: string): HTMLButtonElement { return this.host!.querySelector(selector)!; }
   private input(selector: string): HTMLInputElement { return this.host!.querySelector(selector)!; }
   unmount(): void { this.manualMovementActive = false; this.layoutObserver?.disconnect(); this.layoutObserver = undefined; window.removeEventListener('keydown', this.hotkeys); this.compactViewport.removeEventListener('change', this.onViewportChange); this.multiplayer?.close(); this.multiplayer = undefined; this.renderer?.destroy(); this.renderer = undefined; this.host = undefined; this.ready = false; }

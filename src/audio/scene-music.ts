@@ -21,26 +21,15 @@ const titles = {
 } as const;
 export type MusicCue = keyof typeof titles;
 
-export const WILD_BATTLE_MUSIC_DELAY_MS = 4_000;
-export const BATTLE_MUSIC_HOLD_MS = 8_000;
-
 export type ScheduledMusicCue = { cue: MusicCue; nextUpdateAt?: number };
 
-const battleCues = new Set<MusicCue>(['wild-battle', 'trainer-battle', 'gym-battle', 'champion-battle']);
-
 /**
- * Keeps rapid wild encounters from repeatedly replacing the exploration track.
- * The caller owns the one bounded wake-up timer described by `nextUpdateAt`.
+ * Keeps the surrounding area's music uninterrupted while battles and capture
+ * decisions are presented. Location changes still select their normal cue.
  */
 export class SceneMusicDirector {
   private scene: MusicScene = { started: false };
   private cue: MusicCue = 'opening';
-  private explorationCue: MusicCue = 'opening';
-  private wildBattleStartedAt?: number;
-  private battleWasActive = false;
-  private holdUntil?: number;
-
-  constructor(private readonly now: () => number = () => Date.now()) {}
 
   update(scene: MusicScene): ScheduledMusicCue {
     this.scene = scene;
@@ -48,42 +37,7 @@ export class SceneMusicDirector {
   }
 
   resolve(): ScheduledMusicCue {
-    const now = this.now();
-    const scene = this.scene;
-    const explorationScene = { ...scene, battle: undefined, champion: false, captureOffer: false };
-    this.explorationCue = selectMusicCue(explorationScene);
-
-    if (scene.battle) {
-      const battleCue = selectMusicCue(scene);
-      this.holdUntil = undefined;
-      if (!this.battleWasActive) this.wildBattleStartedAt = now;
-      this.battleWasActive = true;
-
-      if (scene.battle.kind !== 'wild' || battleCues.has(this.cue)) {
-        this.cue = battleCue;
-        return { cue: this.cue };
-      }
-
-      const switchAt = (this.wildBattleStartedAt ?? now) + WILD_BATTLE_MUSIC_DELAY_MS;
-      if (now >= switchAt) {
-        this.cue = battleCue;
-        return { cue: this.cue };
-      }
-      return { cue: this.cue, nextUpdateAt: switchAt };
-    }
-
-    if (this.battleWasActive) {
-      this.battleWasActive = false;
-      this.wildBattleStartedAt = undefined;
-      if (battleCues.has(this.cue)) this.holdUntil = now + BATTLE_MUSIC_HOLD_MS;
-    }
-
-    if (this.holdUntil && battleCues.has(this.cue) && now < this.holdUntil) {
-      return { cue: this.cue, nextUpdateAt: this.holdUntil };
-    }
-
-    this.holdUntil = undefined;
-    this.cue = this.explorationCue;
+    this.cue = selectMusicCue(this.scene);
     return { cue: this.cue };
   }
 }
@@ -103,13 +57,6 @@ const places: Record<string, MusicCue> = {
 
 export function selectMusicCue(scene: MusicScene): MusicCue {
   if (!scene.started) return 'opening';
-  if (scene.battle) {
-    if (scene.champion) return 'champion-battle';
-    if (scene.battle.kind === 'wild') return 'wild-battle';
-    if (scene.battle.kind === 'gym') return 'gym-battle';
-    return 'trainer-battle';
-  }
-  if (scene.captureOffer) return 'wild-victory';
   if (scene.sceneId?.startsWith('cave:')) return scene.sceneId.endsWith(':victory-road') ? 'victory-road' : 'cave';
   const location = scene.location;
   if (!location) return 'route1';

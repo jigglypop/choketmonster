@@ -181,6 +181,8 @@ test('mobile uses local assets and shows actual connectome provenance', async ({
 
 test('animated 3D specimens, model switching, and bounded GPU cache', async ({ page }) => {
   test.setTimeout(90000);
+  await page.route('**/api/auth/me', route => route.fulfill({ json: { user: null } }));
+  await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await start(page); await page.locator('[data-tab="dex"]').click();
   for (const id of [1, 4, 7, 25, 26, 64, 65, 94, 129, 130, 132, 150, 151, 1]) {
@@ -192,7 +194,8 @@ test('animated 3D specimens, model switching, and bounded GPU cache', async ({ p
     await expect.poll(async () => Number(await canvas.getAttribute('data-triangles'))).toBeGreaterThan(0);
     const time = Number(await canvas.getAttribute('data-animation-time'));
     await expect.poll(async () => Number(await canvas.getAttribute('data-animation-time'))).toBeGreaterThan(time);
-    expect(Number(await canvas.getAttribute('data-cached-assets'))).toBeLessThanOrEqual(10);
+    // Field and specimen views now share one bounded cache.
+    expect(Number(await canvas.getAttribute('data-cached-assets'))).toBeLessThanOrEqual(24);
     if ([25, 150, 151].includes(id)) await page.screenshot({ path: `artifacts/ui-model-${id}.png` });
     await page.getByRole('button', { name: '닫기', exact: true }).click();
   }

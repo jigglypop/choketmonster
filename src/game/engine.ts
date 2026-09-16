@@ -870,6 +870,10 @@ export function buyItem(state: GameState, item: InventoryItem, quantity = 1): vo
 
 function allOwned(state: GameState): Monster[] { return [...state.player.team, ...state.player.box]; }
 
+export function isMonsterInBattle(state: GameState, instanceId: string): boolean {
+  return Boolean(state.battle?.player.team.some(monster => monster.instanceId === instanceId));
+}
+
 function battleRemovalActiveId(state: GameState, removedIds: ReadonlySet<string>): string | undefined {
   const battle = state.battle;
   if (!battle) return undefined;
@@ -934,8 +938,8 @@ export function useItem(state: GameState, item: InventoryItem, targetInstanceId?
 }
 
 export function evolve(state: GameState, instanceId: string, option: { targetId?: number; item?: InventoryItem } = {}): Monster {
-  if (state.battle) throw new Error('전투 중에는 진화할 수 없습니다.');
   const monster = findOwned(state, instanceId);
+  if (isMonsterInBattle(state, instanceId)) throw new Error('전투에 참가 중인 포켓몬은 진화할 수 없습니다.');
   const evolutions = getSpecies(monster.speciesId).evolutions.filter((evolution) => option.targetId === undefined || evolution.target === option.targetId);
   const evolution = evolutions.find((candidate) => evolutionReady(state, monster, candidate, option.item));
   if (!evolution) throw new Error('현재 조건으로 가능한 진화가 없습니다.');
@@ -1019,7 +1023,7 @@ export function evolutionItemUses(item: InventoryItem): string {
 }
 
 export function evolutionRoute(state: GameState, monster: Monster, evolution: Evolution, supplied?: InventoryItem): { item?: InventoryItem; shed?: boolean } | undefined {
-  if (state.battle) return undefined;
+  if (isMonsterInBattle(state, monster.instanceId)) return undefined;
   if (supplied === 'evolution-catalyst') return needsSpecialEvolution(monster.speciesId, evolution)
     && monster.level >= specialEvolutionLevel(monster.speciesId, evolution.target) && state.inventory[supplied] > 0 ? { item: supplied } : undefined;
   if (supplied === undefined) {

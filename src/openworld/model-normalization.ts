@@ -1,4 +1,6 @@
-import { AnimationMixer, Box3, Group, Object3D, SkinnedMesh, Vector3, type AnimationClip } from 'three';
+import { AnimationMixer, Box3, Group, Mesh, Object3D, SkinnedMesh, Vector3, type AnimationClip, type BufferGeometry } from 'three';
+import { clone } from 'three/addons/utils/SkeletonUtils.js';
+import { selectPokemonMotionClip } from '../data/model-motion';
 import { normalizePokemonMaterials, type PokemonMaterialContext } from './pokemon-materials';
 
 export type NormalizedPokemonModel = {
@@ -6,7 +8,38 @@ export type NormalizedPokemonModel = {
   animatedRoot: Object3D;
   sourceSize: Vector3;
   scale: number;
+  grounding: ReadonlyMap<BufferGeometry, readonly number[]>;
 };
+
+type ModelProfile = { size: Vector3; origin: Vector3; grounding: ReadonlyMap<BufferGeometry, readonly number[]> };
+const profiles = new WeakMap<Object3D, ModelProfile>();
+const preparing = new WeakMap<Object3D, Promise<void>>();
+
+/** Prepare each cached asset once, yielding between poses so new models do not stall input. */
+export function preparePokemonModel(source: Object3D, animations: readonly AnimationClip[]): Promise<void> {
+  if (profiles.has(source)) return Promise.resolve();
+  const pending = preparing.get(source);
+  if (pending) return pending;
+  const task = (async () => {
+    const model = clone(source);
+    try {
+      const iterator = measureModel(model, animations);
+      let step = iterator.next();
+      while (!step.done) {
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+        step = iterator.next();
+      }
+      profiles.set(source, step.value);
+    } finally {
+      const skeletons = new Set<SkinnedMesh['skeleton']>();
+      model.traverse(object => { if (object instanceof SkinnedMesh) skeletons.add(object.skeleton); });
+      skeletons.forEach(skeleton => skeleton.dispose());
+      preparing.delete(source);
+    }
+  })();
+  preparing.set(source, task);
+  return task;
+}
 
 /** Keeps display scaling outside the hierarchy whose root scale may be keyed by a clip. */
 export function normalizePokemonModel(
@@ -14,17 +47,56 @@ export function normalizePokemonModel(
   animations: readonly AnimationClip[],
   displayHeight: number,
   materialContext: PokemonMaterialContext = {},
+  source: Object3D = model,
 ): NormalizedPokemonModel {
   normalizePokemonMaterials(model, materialContext);
-  const idle = animations.find(clip => /idle|wait|stand/i.test(clip.name)) ?? animations[0];
-  const clips = [...new Set([idle, animations.find(clip => /walk|run/i.test(clip.name)), animations.find(clip => /attack|bite|skill/i.test(clip.name))].filter((clip): clip is AnimationClip => !!clip))];
+  let profile = profiles.get(source);
+  if (!profile) {
+    const iterator = measureModel(model, animations);
+    let step = iterator.next();
+    while (!step.done) step = iterator.next();
+    profile = step.value;
+    profiles.set(source, profile);
+  }
+  model.position.sub(profile.origin);
+  const height = Math.max(.05, displayHeight), size = profile.size;
+  const scale = Math.min(height / Math.max(size.y, .001), height * 1.8 / Math.max(Math.hypot(size.x, size.z), .001));
+  const visual = new Group();
+  visual.scale.setScalar(scale);
+  visual.add(model);
+  visual.updateMatrixWorld(true);
+  return { visual, animatedRoot: model, sourceSize: size.clone(), scale, grounding: profile.grounding };
+}
+
+function* measureModel(model: Object3D, animations: readonly AnimationClip[]): Generator<void, ModelProfile> {
+  const idle = selectPokemonMotionClip(animations, 'idle').clip;
+  const clips = [...new Set([idle, selectPokemonMotionClip(animations, 'walk').clip, selectPokemonMotionClip(animations, 'attack').clip].filter((clip): clip is AnimationClip => !!clip))];
   const skins: SkinnedMesh[] = [];
   model.traverse(object => { if (object instanceof SkinnedMesh) skins.push(object); });
+  const meshes: Mesh[] = [];
+  model.traverse(object => { if (object instanceof Mesh && object.geometry.getAttribute('position')) meshes.push(object); });
+  const support = new Map<BufferGeometry, Set<number>>();
+  const heights = meshes.map(mesh => new Float64Array(mesh.geometry.getAttribute('position').count));
+  const vertex = new Vector3();
   const bounds = new Box3(), size = new Vector3(), poseSize = new Vector3();
   const measure = () => {
     model.updateMatrixWorld(true);
     for (const skin of skins) skin.skeleton.update();
-    bounds.setFromObject(model, true);
+    bounds.makeEmpty();
+    meshes.forEach((mesh, index) => {
+      const ys = heights[index];
+      let minY = Infinity, maxY = -Infinity;
+      for (let i = 0; i < ys.length; i++) {
+        mesh.getVertexPosition(i, vertex).applyMatrix4(mesh.matrixWorld);
+        bounds.expandByPoint(vertex); ys[i] = vertex.y;
+        minY = Math.min(minY, vertex.y); maxY = Math.max(maxY, vertex.y);
+      }
+      let candidates = support.get(mesh.geometry);
+      if (!candidates) { candidates = new Set(); support.set(mesh.geometry, candidates); }
+      // Keep the entire lower band of every sampled pose, including feet, fins and tails.
+      const ceiling = minY + Math.max((maxY - minY) * .06, 1e-5);
+      for (let i = 0; i < ys.length; i++) if (ys[i] <= ceiling) candidates.add(i);
+    });
     size.max(bounds.getSize(poseSize));
   };
   const poseMixer = new AnimationMixer(model);
@@ -33,7 +105,7 @@ export function normalizePokemonModel(
   for (const clip of clips) {
     poseMixer.stopAllAction();
     poseMixer.clipAction(clip).play();
-    for (let frame = 0; frame < 8; frame++) { poseMixer.setTime(clip.duration * frame / 8); measure(); }
+    for (let frame = 0; frame < 8; frame++) { poseMixer.setTime(clip.duration * frame / 8); measure(); yield; }
   }
   poseMixer.stopAllAction();
   if (idle) { poseMixer.clipAction(idle).play(); poseMixer.setTime(0); }
@@ -43,12 +115,5 @@ export function normalizePokemonModel(
   poseMixer.uncacheRoot(model);
   if (![size.x, size.y, size.z].every(Number.isFinite) || size.lengthSq() <= 0) throw new Error('Pokemon model bounds are invalid');
 
-  model.position.sub(new Vector3(center.x, floor, center.z));
-  const height = Math.max(.05, displayHeight);
-  const scale = Math.min(height / Math.max(size.y, .001), height * 1.8 / Math.max(Math.hypot(size.x, size.z), .001));
-  const visual = new Group();
-  visual.scale.setScalar(scale);
-  visual.add(model);
-  visual.updateMatrixWorld(true);
-  return { visual, animatedRoot: model, sourceSize: size, scale };
+  return { size, origin: new Vector3(center.x, floor, center.z), grounding: new Map([...support].map(([geometry, indices]) => [geometry, [...indices]])) };
 }

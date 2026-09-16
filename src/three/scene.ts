@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { renderingSuspended } from './render-budget';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
-import { createGLTFLoader } from './gltf-loader';
+import { acquireModel, modelCacheStats } from './model-cache';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import type { GameState } from '../game/engine';
@@ -21,25 +21,6 @@ export type FieldScene = {
   onSelect: (id: string) => void;
   onFood: (x: number, y: number) => void;
 };
-const loader = createGLTFLoader();
-const assets = new Map<string, { task: Promise<GLTF>; value?: GLTF }>();
-function load(url: string) {
-  const cached = assets.get(url);
-  if (cached) { assets.delete(url); assets.set(url, cached); return cached.task; }
-  const entry: { task: Promise<GLTF>; value?: GLTF } = { task: loader.loadAsync(url) };
-  entry.task = entry.task.then(value => { entry.value = value; return value; }).catch(error => { assets.delete(url); throw error; });
-  assets.set(url, entry); return entry.task;
-}
-function disposeTemplate(asset: GLTF) {
-  const geometry = new Set<THREE.BufferGeometry>(), materials = new Set<THREE.Material>(), textures = new Set<THREE.Texture>();
-  asset.scene.traverse(object => { if (object instanceof THREE.Mesh) { geometry.add(object.geometry); for (const material of Array.isArray(object.material) ? object.material : [object.material]) materials.add(material); } });
-  for (const material of materials) { for (const value of Object.values(material)) if (value instanceof THREE.Texture) textures.add(value); material.dispose(); }
-  const images = new Set<ImageBitmap>();
-  for (const texture of textures) { if (typeof ImageBitmap !== 'undefined' && texture.source.data instanceof ImageBitmap) images.add(texture.source.data); texture.dispose(); }
-  for (const bitmap of images) bitmap.close();
-  for (const buffer of geometry) buffer.dispose();
-}
-
 /** One WebGL context survives DOM tab changes; renderer timing never consumes game RNG. */
 export class PokemonScene {
   readonly canvas: HTMLCanvasElement;
@@ -51,6 +32,16 @@ export class PokemonScene {
   private mode: SceneMode = 'map';
   private world?: THREE.Group;
   private worldTask?: Promise<void>;
+  private leases = new Map<string, ReturnType<typeof acquireModel>>();
+  private load(url: string) {
+    let lease = this.leases.get(url);
+    if (!lease) {
+      lease = acquireModel(url); this.leases.set(url, lease);
+      const acquired = lease;
+      void lease.promise.catch(() => { if (this.leases.get(url) === acquired) { acquired.release(); this.leases.delete(url); } });
+    }
+    return lease.promise;
+  }
   private arena = new THREE.Group();
   private actors = new Map<string, Actor>();
   private pending = new Map<string, { token: number; id: number }>();
@@ -150,7 +141,7 @@ export class PokemonScene {
       this.canvas.dataset.fieldPositions = JSON.stringify(field.entities.map(e => [e.id, e.x, e.y]));
     } else this.want('companion', lead.speciesId, pos.clone().add(new THREE.Vector3(-.9, 0, .55)), 0, 1.05);
     this.marker.position.set(pos.x, .035, pos.z);
-    if (!this.worldTask) this.worldTask = load('/models/world.glb').then(asset => {
+    if (!this.worldTask) this.worldTask = this.load('/models/world.glb').then(asset => {
       const scene = asset.scene.clone(true); scene.name = 'Blender world';
       scene.traverse(obj => { if (obj instanceof THREE.Light || obj instanceof THREE.Camera) obj.visible = false; if (obj instanceof THREE.Mesh) { obj.castShadow = true; obj.receiveShadow = true; } });
       this.world = scene; this.scene.add(scene); scene.visible = this.mode === 'map'; this.ready();
@@ -224,7 +215,7 @@ export class PokemonScene {
       const token = ++this.epoch; this.pending.set(key, { token, id: spec.id });
       this.notice.hidden = false; this.notice.textContent = '3D 친구를 불러오고 있어요…';
       const url = spec.id ? pokemonModelUrl(spec.id) : '/models/trainer.glb';
-      void load(url).then(asset => {
+      void this.load(url).then(asset => {
         if (this.disposed || this.pending.get(key)?.token !== token || this.desired.get(key)?.id !== spec.id) { this.trimCache(); return; }
         const model = clone(asset.scene), group = new THREE.Group(); group.add(model);
         if (spec.id) normalizePokemonMaterials(model, { speciesId: spec.id, types: getSpecies(spec.id).types });
@@ -290,10 +281,10 @@ export class PokemonScene {
     }
     this.controls.update(delta); this.renderer.render(this.scene, this.camera);
     this.canvas.dataset.drawCalls = String(this.renderer.info.render.calls); this.canvas.dataset.triangles = String(this.renderer.info.render.triangles);
-    this.canvas.dataset.cachedAssets = String(assets.size);
+    this.canvas.dataset.cachedAssets = String(modelCacheStats().cachedModels);
     this.canvas.dataset.animationTime = String(this.actors.values().next().value?.mixer.time ?? 0);
   }
-  dispose() { this.disposed = true; this.renderer.setAnimationLoop(null); this.observer.disconnect(); this.controls.dispose(); this.clearActors(); this.renderer.dispose(); }
+  dispose() { this.disposed = true; this.renderer.setAnimationLoop(null); this.observer.disconnect(); this.controls.dispose(); this.clearActors(); for (const lease of this.leases.values()) lease.release(); this.leases.clear(); this.renderer.dispose(); }
   private removeActor(actor: Actor) {
     actor.mixer.stopAllAction(); actor.mixer.uncacheRoot(actor.model); this.scene.remove(actor.group);
     const skeletons = new Set<THREE.Skeleton>();
@@ -303,9 +294,8 @@ export class PokemonScene {
   private clearActors() { for (const actor of this.actors.values()) this.removeActor(actor); this.actors.clear(); }
   private trimCache() {
     const protectedUrls = new Set(['/models/world.glb', '/models/trainer.glb', ...[...this.desired.values(), ...this.actors.values()].map(a => pokemonModelUrl(a.id))]);
-    for (const [url, entry] of assets) {
-      if (assets.size <= 10) break;
-      if (!protectedUrls.has(url) && entry.value) { disposeTemplate(entry.value); assets.delete(url); }
+    for (const [url, lease] of this.leases) {
+      if (!protectedUrls.has(url)) { lease.release(); this.leases.delete(url); }
     }
   }
 }

@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { Brain } from '../src/core/brain';
 import { EVOLUTION_CONDITION_NAMES, EVOLUTION_SOURCE_RULES } from '../src/data/evolution-rules';
 import { getMove, getSpecies, POKEMON } from '../src/data/pokemon';
 import {
-  createGame, createMonster, evolve, evolutionItemsFor, evolutionRoute,
+  actBattle, createGame, createMonster, evolve, evolutionItemsFor, evolutionRoute,
   restoreGame, serializeGame, statsFor, useItem, type GameState, type InventoryItem,
 } from '../src/game/engine';
 import {
@@ -160,6 +161,47 @@ describe('complete source-backed evolution reachability', () => {
     expect(direct.speciesId).toBe(292);
     expect(fallback.player.team).toHaveLength(1);
     expect(fallback.inventory['evolution-catalyst']).toBe(0);
+  });
+
+  it('applies the native Nincada evolution from the box without replacing its identity or memory', () => {
+    const game = ownedFixture(290, 20), nincada = game.player.team[0];
+    const partner = createMonster(game, 1, 5), memory = new Brain(290).state;
+    nincada.brain = memory;
+    const instanceId = nincada.instanceId, ivs = nincada.ivs, abilitySlot = nincada.ability && { slot: nincada.ability.slot, hidden: nincada.ability.hidden };
+    game.player.team = [partner]; game.player.box = [nincada]; game.inventory['poke-ball'] = 1;
+    const shell = evolutionOf(290, 292);
+
+    expect(evolutionRoute(game, nincada, shell)).toEqual({ shed: true });
+    const shedinja = evolve(game, instanceId, { targetId: 292 });
+
+    expect(game.player.box[0]).toBe(nincada);
+    expect(nincada).toMatchObject({ instanceId, speciesId: 291 });
+    expect(nincada.brain).toBe(memory); expect(nincada.ivs).toBe(ivs); expect(nincada.ability).toMatchObject(abilitySlot!);
+    expect(game.player.team).toEqual([partner, shedinja]);
+    expect(shedinja.speciesId).toBe(292); expect(game.inventory['poke-ball']).toBe(0);
+    const restored = restoreGame(serializeGame(game));
+    expect(restored.player.box[0]).toMatchObject({ instanceId, speciesId: 291, brain: memory });
+    expect(restored.player.team[1].speciesId).toBe(292);
+  });
+
+  it('evolves a non-participating box individual during battle without changing the battle roster', () => {
+    const game = createGame(1, 'boxed-evolution-during-battle');
+    const boxed = createMonster(game, 1, 16), enemy = createMonster(game, 10, 2);
+    boxed.brain = new Brain(1).state;
+    game.player.box = [boxed]; game.dex.seen = [1, 10]; game.dex.caught = [1];
+    enemy.hp = 1; enemy.status = 'sleep'; enemy.statusTurns = 3;
+    game.battle = { kind: 'wild', regionId: game.regionId, player: { team: game.player.team, activeIndex: 0 }, enemy: { team: [enemy], activeIndex: 0 }, turn: 1, canRun: true };
+    const battlePartnerId = game.battle.player.team[0].instanceId, instanceId = boxed.instanceId, memory = boxed.brain;
+
+    expect(() => evolve(game, game.player.team[0].instanceId, { targetId: 2 })).toThrow();
+    expect(evolutionRoute(game, boxed, evolutionOf(1, 2))).toEqual({});
+    evolve(game, instanceId, { targetId: 2 });
+    expect(boxed).toMatchObject({ instanceId, speciesId: 2 }); expect(boxed.brain).toBe(memory);
+    expect(game.battle.player.team.map(monster => monster.instanceId)).toEqual([battlePartnerId]);
+
+    expect(actBattle(game, { type: 'move', index: 0 }, 4).outcome).toBe('won');
+    expect(game.player.box[0]).toMatchObject({ instanceId, speciesId: 2, brain: memory });
+    expect(restoreGame(serializeGame(game)).player.box[0]).toMatchObject({ instanceId, speciesId: 2, brain: memory });
   });
 
   it('keeps missing growth profiles migratable and invalid inventory or battle attempts atomic', () => {

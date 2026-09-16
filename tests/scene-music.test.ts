@@ -2,22 +2,20 @@ import { describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import {
-  BATTLE_MUSIC_HOLD_MS,
   SceneMusicDirector,
-  WILD_BATTLE_MUSIC_DELAY_MS,
   selectMusicCue,
   sceneMusicTrack,
 } from '../src/audio/scene-music';
 import sources from '../public/audio/pokemon-rg/sources.json';
 
 describe('scene soundtrack', () => {
-  it('prioritizes battle and victory over terrain and returns to exploration', () => {
+  it('keeps the surrounding area cue during every battle and capture state', () => {
     const cave = { started: true, sceneId: 'cave:johto:union-cave', location: { id: 'union-cave', kind: 'cave' as const } };
     expect(selectMusicCue(cave)).toBe('cave');
-    expect(selectMusicCue({ ...cave, battle: { kind: 'wild' } })).toBe('wild-battle');
-    expect(selectMusicCue({ ...cave, captureOffer: true })).toBe('wild-victory');
-    expect(selectMusicCue({ ...cave, battle: { kind: 'gym' } })).toBe('gym-battle');
-    expect(selectMusicCue({ ...cave, battle: { kind: 'trainer' }, champion: true })).toBe('champion-battle');
+    expect(selectMusicCue({ ...cave, battle: { kind: 'wild' } })).toBe('cave');
+    expect(selectMusicCue({ ...cave, captureOffer: true })).toBe('cave');
+    expect(selectMusicCue({ ...cave, battle: { kind: 'gym' } })).toBe('cave');
+    expect(selectMusicCue({ ...cave, battle: { kind: 'trainer' }, champion: true })).toBe('cave');
     expect(selectMusicCue({ started: true, location: { id: 'new-bark', kind: 'town' } })).toBe('pallet');
     expect(selectMusicCue({ started: true, location: { id: 'route-29', kind: 'route' } })).toBe('route1');
     expect(selectMusicCue({ started: true, location: { id: 'ilex-forest', kind: 'forest' } })).toBe('forest');
@@ -34,33 +32,15 @@ describe('scene soundtrack', () => {
     }
   });
 
-  it('keeps exploration music through short wild battles and absorbs chained encounters', () => {
-    let now = 10_000;
-    const director = new SceneMusicDirector(() => now);
+  it('does not schedule or switch music across battles and capture decisions', () => {
+    const director = new SceneMusicDirector();
     const route = { started: true, location: { id: 'route-24', kind: 'route' as const } };
     expect(director.update(route)).toEqual({ cue: 'route24' });
-    expect(director.update({ ...route, battle: { kind: 'wild' } })).toEqual({ cue: 'route24', nextUpdateAt: now + WILD_BATTLE_MUSIC_DELAY_MS });
-    now += WILD_BATTLE_MUSIC_DELAY_MS - 1;
-    expect(director.update({ ...route, battle: { kind: 'wild' } }).cue).toBe('route24');
-    now += 1;
-    expect(director.resolve()).toEqual({ cue: 'wild-battle' });
-
-    expect(director.update({ ...route, captureOffer: true })).toEqual({ cue: 'wild-battle', nextUpdateAt: now + BATTLE_MUSIC_HOLD_MS });
-    now += 2_000;
-    expect(director.update({ ...route, battle: { kind: 'wild' } })).toEqual({ cue: 'wild-battle' });
-    now += 500;
-    expect(director.update(route)).toEqual({ cue: 'wild-battle', nextUpdateAt: now + BATTLE_MUSIC_HOLD_MS });
-    now += BATTLE_MUSIC_HOLD_MS;
+    expect(director.update({ ...route, battle: { kind: 'wild' } })).toEqual({ cue: 'route24' });
     expect(director.resolve()).toEqual({ cue: 'route24' });
-  });
-
-  it('switches important battles immediately without a victory-track interruption', () => {
-    let now = 20_000;
-    const director = new SceneMusicDirector(() => now);
-    const town = { started: true, location: { id: 'pallet', kind: 'town' as const } };
-    expect(director.update(town).cue).toBe('pallet');
-    expect(director.update({ ...town, battle: { kind: 'gym' } }).cue).toBe('gym-battle');
-    now += 100;
-    expect(director.update({ ...town, captureOffer: true }).cue).toBe('gym-battle');
+    expect(director.update({ ...route, captureOffer: true })).toEqual({ cue: 'route24' });
+    expect(director.update({ ...route, battle: { kind: 'gym' } })).toEqual({ cue: 'route24' });
+    expect(director.update({ ...route, battle: { kind: 'trainer' }, champion: true })).toEqual({ cue: 'route24' });
+    expect(director.update(route)).toEqual({ cue: 'route24' });
   });
 });

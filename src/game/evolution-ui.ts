@@ -1,6 +1,6 @@
 import { getSpecies } from '../data/pokemon';
 import type { Evolution } from './contracts';
-import { evolutionItemsFor, evolutionRoute, ITEM_LABELS, type GameState, type InventoryItem, type Monster } from './engine';
+import { evolutionItemsFor, evolutionRoute, isMonsterInBattle, ITEM_LABELS, type GameState, type InventoryItem, type Monster } from './engine';
 import { evolutionGrowthSummary, needsSpecialEvolution, sourceEvolutionDescriptions, specialEvolutionLevel } from './evolution-conditions';
 import { initialEvolutionProgress } from './evolution-progress';
 
@@ -40,10 +40,10 @@ const treats = [
 
 export function evolutionSectionHtml(state: GameState, monster: Monster): string {
   const species = getSpecies(monster.speciesId), progress = monster.evolutionProgress ?? initialEvolutionProgress(monster);
-  const disabled = Boolean(state.battle);
+  const growthDisabled = Boolean(state.battle), evolutionBlocked = isMonsterInBattle(state, monster.instanceId);
   const growth = treats.map(([item, key, label]) => {
     const maximum = Math.min(state.inventory[item], Math.ceil((255 - progress[key]) / 20));
-    return `<div class="evolution-treat"><label for="treat-${item}">${label} 간식 수량</label><input id="treat-${item}" data-treat-quantity="${item}" type="number" min="1" max="${Math.max(1, maximum)}" value="1" ${maximum && !disabled ? '' : 'disabled'}><button data-use-treat="${item}" ${maximum && !disabled ? '' : 'disabled'}>${ITEM_LABELS[item]} 먹이기 · 최대 ${maximum}개</button><small>보유 ${state.inventory[item]}개 · 1개당 +20${progress[key] >= 255 ? ' · 최대치' : ''}</small></div>`;
+    return `<div class="evolution-treat"><label for="treat-${item}">${label} 간식 수량</label><input id="treat-${item}" data-treat-quantity="${item}" type="number" min="1" max="${Math.max(1, maximum)}" value="1" ${maximum && !growthDisabled ? '' : 'disabled'}><button data-use-treat="${item}" ${maximum && !growthDisabled ? '' : 'disabled'}>${ITEM_LABELS[item]} 먹이기 · 최대 ${maximum}개</button><small>보유 ${state.inventory[item]}개 · 1개당 +20${progress[key] >= 255 ? ' · 최대치' : ''}</small></div>`;
   }).join('');
-  return `<section class="evolution-panel"><div class="evolution-growth"><h3>진화 성장</h3><p>${escapeHtml(evolutionGrowthSummary(monster))}</p><div class="evolution-treats">${growth}</div>${disabled ? '<small class="evolution-help">전투 중에는 간식을 먹이거나 진화할 수 없습니다.</small>' : ''}</div><h3>진화</h3><p class="evolution-help">준비 상태와 소비할 도구를 확인하세요. 여러 원본 도구가 가능한 진화는 원하는 도구를 선택할 수 있습니다.</p><div class="evolution-list">${species.evolutions.map(evolution => evolutionCard(state, monster, evolution)).join('') || '<p class="empty">더 이상 진화하지 않습니다.</p>'}</div></section>`;
+  return `<section class="evolution-panel"><div class="evolution-growth"><h3>진화 성장</h3><p>${escapeHtml(evolutionGrowthSummary(monster))}</p><div class="evolution-treats">${growth}</div>${growthDisabled ? `<small class="evolution-help">전투 중에는 간식을 먹일 수 없습니다.${evolutionBlocked ? ' 이 포켓몬은 전투에 참가 중이라 진화도 마친 뒤 가능합니다.' : ' 박스의 비참가 포켓몬은 진화할 수 있습니다.'}</small>` : ''}</div><h3>진화</h3><p class="evolution-help">팀과 박스의 포켓몬 모두 같은 진화 조건을 적용합니다. 준비 상태와 소비할 도구를 확인하세요. 여러 원본 도구가 가능한 진화는 원하는 도구를 선택할 수 있습니다.</p><div class="evolution-list">${species.evolutions.map(evolution => evolutionCard(state, monster, evolution)).join('') || '<p class="empty">더 이상 진화하지 않습니다.</p>'}</div></section>`;
 }

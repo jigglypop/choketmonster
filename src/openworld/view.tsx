@@ -19,6 +19,7 @@ import {
   Float32BufferAttribute,
   Frustum,
   Sphere,
+  SkinnedMesh,
   Group,
   InstancedMesh,
   Material,
@@ -49,7 +50,7 @@ import { createGrounding, terrainSurfaceHeight } from './grounding';
 import { getWorldAtlas, type WorldAtlas } from './atlas';
 import { hasPokemonModel } from '../game/assets';
 import { selectPokemonMotionClip } from '../data/model-motion';
-import { createGLTFLoader } from '../three/gltf-loader';
+import { acquireModel, modelCacheStats } from '../three/model-cache';
 import { creatureLods, terrainChunks, TERRAIN_CHUNK_SIZE, type TerrainChunk, type VisibilityTest } from './lod';
 import { initialYaw, movementYaw, turnTowards } from './motion';
 import { normalizePokemonModel } from './model-normalization';
@@ -69,94 +70,10 @@ import { CaveInterior, GymEntranceStatus, ProgressGate, RegionalLeagueLandmark, 
 import { DestinationPointer } from './destination-pointer';
 import { TargetRoute } from './target-route';
 import { createOpenWorldRenderer } from './gpu-renderer';
-const MODEL_CACHE_LIMIT = 16;
 const NATURE_DETAIL_RADIUS = 68;
 // Bound scenery streaming even though the view no longer uses fog.
 const NATURE_VISIBLE_RADIUS = 94;
-const loader = createGLTFLoader();
 const DEFAULT_CAMERA_OFFSET = new Vector3(5.6, 7.6, 8.8);
-
-type CachedModel = {
-  promise: Promise<GLTF>;
-  gltf?: GLTF;
-  refs: number;
-  lastUsed: number;
-};
-
-const modelCache = new Map<string, CachedModel>();
-
-function disposeTree(root: Object3D): void {
-  root.traverse(object => {
-    if (!(object instanceof Mesh)) return;
-    object.geometry.dispose();
-    const materials = Array.isArray(object.material) ? object.material : [object.material];
-    for (const material of materials) {
-      for (const value of Object.values(material)) {
-        if (value instanceof Texture) value.dispose();
-      }
-      material.dispose();
-    }
-  });
-}
-
-function pruneModelCache(): void {
-  if (modelCache.size <= MODEL_CACHE_LIMIT) return;
-  const candidates = [...modelCache.entries()]
-    .filter(([, entry]) => entry.refs === 0 && entry.gltf)
-    .sort((a, b) => a[1].lastUsed - b[1].lastUsed);
-  while (modelCache.size > MODEL_CACHE_LIMIT && candidates.length) {
-    const [url, entry] = candidates.shift()!;
-    if (entry.gltf) disposeTree(entry.gltf.scene);
-    modelCache.delete(url);
-  }
-}
-
-type LoadTask = { url: string; entry: CachedModel; resolve(value: GLTF): void; reject(error: unknown): void };
-const loadQueue: LoadTask[] = [];
-let activeLoads = 0;
-const failedModels = new Map<string, number>();
-function drainModelQueue(): void {
-  loadQueue.sort((a, b) => Number(/raw\.githubusercontent\.com/.test(b.url)) - Number(/raw\.githubusercontent\.com/.test(a.url)));
-  while (activeLoads < 3 && loadQueue.length) {
-    const task = loadQueue.shift()!;
-    if (!task.entry.refs) {
-      if (modelCache.get(task.url) === task.entry) modelCache.delete(task.url);
-      task.reject(new Error('Model left the visible area before loading')); continue;
-    }
-    activeLoads++;
-    loader.loadAsync(task.url).then(gltf => { task.entry.gltf = gltf; task.resolve(gltf); }, error => {
-      failedModels.set(task.url, performance.now());
-      if (modelCache.get(task.url) === task.entry) modelCache.delete(task.url);
-      task.reject(error);
-    }).finally(() => { activeLoads--; pruneModelCache(); drainModelQueue(); });
-  }
-}
-
-function acquireModel(url: string): { promise: Promise<GLTF>; release(): void } {
-  let entry = modelCache.get(url);
-  if (!entry) {
-    const lastFailure = failedModels.get(url);
-    if (lastFailure !== undefined && performance.now() - lastFailure < 60_000) {
-      return { promise: Promise.reject(new Error('Model temporarily unavailable')), release() {} };
-    }
-    let resolve!: (value: GLTF) => void, reject!: (error: unknown) => void;
-    const promise = new Promise<GLTF>((yes, no) => { resolve = yes; reject = no; });
-    entry = { promise, refs: 0, lastUsed: performance.now() };
-    modelCache.set(url, entry);
-    loadQueue.push({ url, entry, resolve, reject });
-  }
-  entry.refs++;
-  entry.lastUsed = performance.now();
-  const acquired = entry;
-  queueMicrotask(drainModelQueue);
-  let released = false;
-  return { promise: entry.promise, release() {
-    if (released) return; released = true;
-    acquired.refs = Math.max(0, acquired.refs - 1);
-    acquired.lastUsed = performance.now();
-    pruneModelCache();
-  } };
-}
 
 function useModelStatus(url: string): { url: string; gltf: GLTF | null; failed: boolean } {
   const [state, setState] = useState({ url, gltf: null as GLTF | null, failed: false });
@@ -549,7 +466,7 @@ function PokemonModel({ creature, url }: { creature: WorldCreature; url: string 
         object.receiveShadow = true;
       }
     });
-    return normalizePokemonModel(scene, gltf.animations, creature.displayHeight ?? 1.2, { speciesId: creature.speciesId, types: getSpecies(creature.speciesId).types });
+    return normalizePokemonModel(scene, gltf.animations, creature.displayHeight ?? 1.2, { speciesId: creature.speciesId, types: getSpecies(creature.speciesId).types }, gltf.scene);
   }, [creature.displayHeight, creature.speciesId, gltf]);
   useFrame(({ clock }, delta) => {
     mixer.current?.update(Math.min(delta, .05) * (creature.action === 'walk' ? MathUtils.clamp((creature.movementSpeed ?? 2.4) / 2.4, .65, 1.8) : 1));
@@ -560,12 +477,18 @@ function PokemonModel({ creature, url }: { creature: WorldCreature; url: string 
     const pulse = creature.action === 'attack' ? 1 + Math.max(0, Math.sin(phase * 1.8)) * .12 : 1;
     root.current.scale.set(pulse, creature.action === 'hurt' ? .88 : 1, pulse);
     root.current.rotation.z = creature.action === 'fainted' ? Math.PI / 2 : !gltf?.animations.length && creature.action === 'walk' ? Math.sin(phase) * .045 : 0;
-    if (!ground.current && normalized) ground.current = createGrounding(normalized.visual, root.current);
+    if (!ground.current && normalized) ground.current = createGrounding(normalized.visual, root.current, normalized.grounding);
     root.current.parent?.getWorldPosition(worldPosition.current);
     ground.current?.(worldPosition.current.y);
     if (!gltf?.animations.length && creature.action === 'walk') root.current.position.y += Math.abs(Math.sin(phase)) * .07;
   }, -1);
   useEffect(() => { ground.current = undefined; }, [normalized]);
+  useEffect(() => () => {
+    if (!normalized) return;
+    const skeletons = new Set<SkinnedMesh['skeleton']>();
+    normalized.animatedRoot.traverse(object => { if (object instanceof SkinnedMesh) skeletons.add(object.skeleton); });
+    skeletons.forEach(skeleton => skeleton.dispose());
+  }, [normalized]);
 
   useEffect(() => {
     if (!normalized || !gltf?.animations.length) return;
@@ -967,7 +890,7 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
     return () => { scene.background = previousBackground; scene.fog = previousFog; };
   }, [scene, skyColor]);
   useFrame(() => { scene.userData.streaming = { region: atlas.id, sceneId, daylight, player: { x: snapshot.player.x, z: snapshot.player.z }, terrainChunks: cave ? 0 : chunks.length, terrainTotal: ((WORLD_MAX - WORLD_MIN) / TERRAIN_CHUNK_SIZE) ** 2, highDetailChunks: chunks.filter(c => c.segments === 12).length,
-    visibleCreatures: visible.length, detailedCreatures: visible.filter(v => v.model && hasPokemonModel(v.creature.speciesId)).length, cachedModels: modelCache.size, activeLoads, queuedLoads: loadQueue.length, modelLimit: windowState.mobile ? 4 : 8 }; });
+    visibleCreatures: visible.length, detailedCreatures: visible.filter(v => v.model && hasPokemonModel(v.creature.speciesId)).length, ...modelCacheStats(), modelLimit: windowState.mobile ? 4 : 8 }; });
   return (
     <>
       <hemisphereLight color={cave ? '#b9cbd1' : '#d9eeed'} groundColor="#434f3f" intensity={cave ? .85 : 1.1} />

@@ -69,7 +69,8 @@ export function sourceEvolutionDescriptions(from: number, to: number): string[] 
 export function nativeEvolutionReady(state: GameState, monster: Monster, rule: EvolutionSourceRule): boolean {
   const progress = monster.evolutionProgress ?? initialEvolutionProgress(monster), c = rule.conditions, context = state.evolutionContext;
   if (rule.from !== monster.speciesId) return false;
-  if (rule.trigger === 4) return monster.level >= 20 && state.player.team.includes(monster) && state.player.team.length < 6 && state.inventory['poke-ball'] > 0;
+  // This route creates a second individual in the party, so defer it until an active battle ends.
+  if (rule.trigger === 4) return !state.battle && monster.level >= 20 && state.player.team.length < 6 && state.inventory['poke-ball'] > 0;
   if (![1, 10, 13, 14].includes(rule.trigger)) return false;
   if (rule.trigger === 10 && rule.from !== 924) return false;
   if (rule.trigger === 13 && progress.recoilDamage < Number(c.minimum_damage_taken || 294)) return false;
