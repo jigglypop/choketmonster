@@ -35,6 +35,7 @@ type Options = { game: GameState; graph: Graph; policy: FieldPolicy; checkpoint?
 export class OpenWorldPanel {
   readonly simulation: OpenWorldSimulation;
   private renderer?: OpenWorldView;
+  private layoutObserver?: ResizeObserver;
   private host?: HTMLElement;
   private ready = false;
   private attacks = new Map<string, { start: number; end: number; type: string }>();
@@ -49,7 +50,7 @@ export class OpenWorldPanel {
   private lastChatId?: string;
   private unreadChats = 0;
   private lastMovementRefresh = -Infinity;
-  private readonly compactViewport = window.matchMedia('(max-width: 720px), (max-height: 600px) and (pointer: coarse)');
+  private readonly compactViewport = window.matchMedia('(max-width: 900px), (max-height: 600px)');
   private readonly onViewportChange = () => {
     this.setChatCollapsed(this.compactViewport.matches);
     if (this.compactViewport.matches) this.host?.querySelector<HTMLDetailsElement>('.world-battle-hud')?.removeAttribute('open');
@@ -127,6 +128,14 @@ export class OpenWorldPanel {
       <div class="world-respawn" id="world-respawn"></div>
       <details class="world-method"><summary>회로와 게임 규칙</summary><p>브라우저 MaleCNS 실측 부분 회로 ${this.options.graph.nodes.length} 뉴런 · ${this.options.graph.edges.length.toLocaleString()} 연결. 전체 회로가 연결된 배틀은 서버에서 계산하고 반환된 개체 기억은 이 기기에 저장합니다. 감각 입력·행동 대응·학습 보상·월드 속도는 게임을 위해 설계했습니다. 자동 모드에서 추적 대상이 없으면 통행 가능한 탐험 목적지를 게임 규칙으로 정하고, 회로가 이동 방향을 선택합니다.</p></details>
     </section>`;
+    const layoutSizes: Array<[string, string]> = [['.world-radar', '--world-radar-height'], ['#world-next-guide', '--world-guide-height'], ['.world-battle-hud', '--world-partner-height'], ['.world-explore-toggle', '--world-explore-toggle-height'], ['.social-dock', '--world-chat-height']];
+    this.layoutObserver = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        const variable = layoutSizes.find(([selector]) => entry.target.matches(selector))?.[1];
+        if (variable) host.style.setProperty(variable, `${Math.ceil(entry.target.getBoundingClientRect().height)}px`);
+      }
+    });
+    for (const [selector] of layoutSizes) this.layoutObserver.observe(host.querySelector(selector)!, { box: 'border-box' });
     this.renderer = mountOpenWorld(host.querySelector('#ow-host')!, {
       getSnapshot: () => this.renderSnapshot(), sampleWorld: (x, z) => this.simulation.sampleWorld(x, z), modelUrl: pokemonModelUrl, spriteUrl: pokemonSpriteUrl,
       onReady: () => { this.ready = true; const canvasHost = this.host?.querySelector<HTMLElement>('#ow-host'); if (canvasHost) canvasHost.dataset.ready = 'true'; },
@@ -789,5 +798,5 @@ export class OpenWorldPanel {
   private html(selector: string, value: string): void { const node = this.host?.querySelector(selector); if (node && this.htmlCache.get(node) !== value) { node.innerHTML = value; this.htmlCache.set(node, value); } }
   private button(selector: string): HTMLButtonElement { return this.host!.querySelector(selector)!; }
   private input(selector: string): HTMLInputElement { return this.host!.querySelector(selector)!; }
-  unmount(): void { this.manualMovementActive = false; window.removeEventListener('keydown', this.hotkeys); this.compactViewport.removeEventListener('change', this.onViewportChange); this.multiplayer?.close(); this.multiplayer = undefined; this.renderer?.destroy(); this.renderer = undefined; this.host = undefined; this.ready = false; }
+  unmount(): void { this.manualMovementActive = false; this.layoutObserver?.disconnect(); this.layoutObserver = undefined; window.removeEventListener('keydown', this.hotkeys); this.compactViewport.removeEventListener('change', this.onViewportChange); this.multiplayer?.close(); this.multiplayer = undefined; this.renderer?.destroy(); this.renderer = undefined; this.host = undefined; this.ready = false; }
 }

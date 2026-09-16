@@ -19,25 +19,27 @@
 
 .ow-creature-label {
   min-width: 7.5rem;
+  max-width: 11rem;
   padding: .42rem .55rem;
-  color: #f8f3d7;
-  font: 700 14px/1.2 system-ui, sans-serif;
+  color: var(--ui-hud-text, #eff7f2);
+  font: 700 14px/1.2 var(--ui-font-family, system-ui, sans-serif);
   text-align: center;
   text-shadow: none;
-  background: color-mix(in srgb, #163c33 88%, transparent);
-  border: 1px solid rgba(240, 227, 164, .55);
+  background: var(--ui-hud, #1d342cf5);
+  border: 1px solid var(--ui-hud-line, #ffffff26);
   border-radius: .7rem;
   box-shadow: 0 .3rem .8rem rgba(14, 36, 29, .28);
   pointer-events: none;
   user-select: none;
   white-space: nowrap;
+  contain: layout paint style;
 }
 
 .ow-creature-label strong,
-.ow-creature-label span { display: block; }
+.ow-creature-label span { display: block; overflow: hidden; text-overflow: ellipsis; }
 
 .ow-creature-label span { margin-top: .14rem; font-size: 12px; opacity: .95; }
-.ow-creature-label-selected { border-color: #ffe27a; }
+.ow-creature-label-selected { border-color: var(--ui-focus, #5aa584); }
 
 .ow-hp-track {
   height: .28rem;

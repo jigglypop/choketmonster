@@ -1,0 +1,67 @@
+/* Shared palette, type, and control dimensions for pages, dialogs, and the HUD. */
+:root {
+  --ui-font-scale: 1;
+  --ui-bg: #f3f6f4;
+  --ui-surface: #fff;
+  --ui-surface-soft: #eaf1ed;
+  --ui-tint: var(--ui-surface-soft);
+  --ui-text: #20352c;
+  --ui-muted: #62746b;
+  --ui-border: #d6e1da;
+  --ui-accent: #28735a;
+  --ui-accent-hover: #205e49;
+  --ui-accent-soft: #dfefe6;
+  --ui-focus: #5aa584;
+  --ui-danger: #b44747;
+  --ui-danger-soft: #fff2f1;
+  --ui-hud: #1d342cf5;
+  --ui-hud-text: #eff7f2;
+  --ui-hud-muted: #bed0c5;
+  --ui-hud-line: #ffffff26;
+  --ui-hud-control: #ffffff0c;
+  --ui-radius: 12px;
+  --ui-shadow: 0 6px 24px #183c2910;
+  --app-header-height: 66px;
+  --app-nav-height: 0px;
+  --forest: var(--ui-text);
+  --teal: var(--ui-accent);
+  --cream: var(--ui-surface);
+  --muted: var(--ui-muted);
+  --line: var(--ui-border);
+  --shadow: var(--ui-shadow);
+  font-size: calc(14px * var(--ui-font-scale));
+  color: var(--ui-text);
+  background: var(--ui-bg);
+  font-synthesis: none;
+}
+
+body { background: var(--ui-bg); color: var(--ui-text); }
+button, input, select, textarea { font-family: inherit; }
+h1, h2, h3, h4 { font-family: inherit; text-wrap: pretty; }
+:where(button, summary, input, select, textarea) { max-width: 100%; }
+:where(button, summary) { line-height: 1.4; }
+:where(input, select, textarea) { min-width: 0; }
+:where(p, h1, h2, h3, strong, small, label) { overflow-wrap: anywhere; }
+:where(dialog) { box-sizing: border-box; }
+:where(dialog)::backdrop { background: #11271fc2; }
+:where(dialog) header > div { min-width: 0; }
+:where(dialog) header > button { flex-shrink: 0; }
+:where(button, a, summary, input, select, textarea):focus-visible {
+  outline: 3px solid var(--ui-focus);
+  outline-offset: 3px;
+}
+::selection { background: var(--ui-accent-soft); color: var(--ui-text); }
+
+[data-ui-contrast=high] {
+  --ui-hud: #10271d;
+  --ui-hud-line: #759887;
+  --ui-muted: #40574a;
+  --ui-border: #93af9e;
+}
+
+@media (max-width: 720px) {
+  :root { --app-header-height: 60px; --app-nav-height: calc(62px + env(safe-area-inset-bottom)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto; }
+}

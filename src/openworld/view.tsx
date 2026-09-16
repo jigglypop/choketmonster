@@ -184,10 +184,55 @@ class SnapshotStore {
     return () => this.listeners.delete(listener);
   };
   set(snapshot: OpenWorldRenderSnapshot): void {
-    if (snapshot === this.snapshot) return;
+    if (sameRenderSnapshot(snapshot, this.snapshot)) return;
     this.snapshot = snapshot;
     for (const listener of this.listeners) listener();
   }
+}
+
+function samePoints(left?: readonly WorldPoint[], right?: readonly WorldPoint[]): boolean {
+  if (left === right) return true;
+  if (!left || !right || left.length !== right.length) return false;
+  return left.every((item, index) => item.x === right[index].x && item.y === right[index].y && item.z === right[index].z);
+}
+
+function sameGuide(left?: OpenWorldRenderSnapshot['guide'], right?: OpenWorldRenderSnapshot['guide']): boolean {
+  return left === right || Boolean(left && right && left.title === right.title && left.detail === right.detail
+    && left.destinationId === right.destinationId && left.destinationName === right.destinationName && left.nextName === right.nextName
+    && left.recommendedLevel === right.recommendedLevel && left.status === right.status && samePoints(left.points, right.points));
+}
+
+function sameGyms(left?: OpenWorldRenderSnapshot['gyms'], right?: OpenWorldRenderSnapshot['gyms']): boolean {
+  return left === right || Boolean(left && right && left.length === right.length && left.every((gym, index) => {
+    const other = right[index];
+    return gym.locationId === other.locationId && gym.badge === other.badge && gym.badgeName === other.badgeName
+      && gym.name === other.name && gym.speciesId === other.speciesId && gym.level === other.level;
+  }));
+}
+
+export function sameRenderSnapshot(left: OpenWorldRenderSnapshot, right: OpenWorldRenderSnapshot): boolean {
+  if (left === right) return true;
+  if (left.regionId !== right.regionId || left.sceneId !== right.sceneId || left.tick !== right.tick || left.selectedWildId !== right.selectedWildId
+    || left.badges !== right.badges || !sameGuide(left.guide, right.guide) || !sameGyms(left.gyms, right.gyms)
+    || left.player.x !== right.player.x || left.player.y !== right.player.y || left.player.z !== right.player.z || left.player.heading !== right.player.heading) return false;
+  if (left.entities.length !== right.entities.length) return false;
+  for (let index = 0; index < left.entities.length; index++) {
+    const a = left.entities[index], b = right.entities[index];
+    if (a.id !== b.id || a.name !== b.name || a.x !== b.x || a.y !== b.y || a.z !== b.z || a.heading !== b.heading || a.hp !== b.hp || a.maxHp !== b.maxHp
+      || a.level !== b.level || a.speciesId !== b.speciesId || a.action !== b.action || a.moveType !== b.moveType || a.inBattle !== b.inBattle
+      || a.displayHeight !== b.displayHeight || a.movementSpeed !== b.movementSpeed || a.lookAt?.x !== b.lookAt?.x || a.lookAt?.z !== b.lookAt?.z
+      || a.remotePlayer?.name !== b.remotePlayer?.name || a.remotePlayer?.activity !== b.remotePlayer?.activity) return false;
+  }
+  const simple = <T extends WorldPoint & { id: string }>(a?: readonly T[], b?: readonly T[]) => {
+    if (a === b) return true;
+    if (!a || !b || a.length !== b.length) return false;
+    return a.every((item, index) => item.id === b[index].id && item.x === b[index].x && item.y === b[index].y && item.z === b[index].z);
+  };
+  return simple(left.foods, right.foods) && simple(left.trainers, right.trainers) && simple(left.portals, right.portals)
+    && (left.foods ?? []).every((food, index) => food.kind === right.foods?.[index].kind)
+    && (left.trainers ?? []).every((trainer, index) => trainer.name === right.trainers?.[index].name
+      && trainer.trainerClass === right.trainers?.[index].trainerClass && trainer.locationId === right.trainers?.[index].locationId)
+    && (left.portals ?? []).every((portal, index) => portal.label === right.portals?.[index].label && portal.targetSceneId === right.portals?.[index].targetSceneId);
 }
 
 function fallbackSample(x: number, z: number): WorldSample {
@@ -685,7 +730,7 @@ function Creature({ creature, selected, distance, options, showLabels, model }: 
         : <ModelStatus name="3D 미지원 · 저장 기록 유지" />}
       {(selected || creature.inBattle) && <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, .04, 0]}><ringGeometry args={[1.1, 1.34, 40]} /><meshBasicMaterial color={creature.inBattle ? '#f09155' : '#f6dd67'} transparent opacity={.86} /></mesh>}
       <AttackEffect active={creature.action === 'attack'} moveType={creature.moveType} />
-      {(showLabels || creature.remotePlayer) && (distance <= 28 || selected || creature.inBattle) && <CreatureBillboard creature={creature} hp={hp} distance={distance} emphasized={selected || !!creature.inBattle || !!creature.remotePlayer} />}
+      {showLabels && (distance <= 28 || selected || creature.inBattle || creature.remotePlayer) && <CreatureBillboard creature={creature} hp={hp} distance={distance} emphasized={selected || !!creature.inBattle || !!creature.remotePlayer} />}
     </group>
   );
 }
@@ -941,6 +986,13 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
   const windowState = useViewWindow();
   const chunks = useMemo(() => terrainChunks(snapshot.player, windowState.visible), [snapshot.player.x, snapshot.player.z, windowState.visible]);
   const visible = useMemo(() => creatureLods(snapshot.entities, snapshot.player, windowState.visible, windowState.mobile, snapshot.selectedWildId), [snapshot, windowState]);
+  const labelIds = useMemo(() => {
+    if (!showLabels) return new Set<string>();
+    const priority = (item: typeof visible[number]) => item.creature.id === snapshot.selectedWildId ? 0
+      : item.creature.id.startsWith('companion:') ? 1 : item.creature.inBattle ? 2 : item.creature.remotePlayer ? 3 : 4;
+    return new Set([...visible].sort((a, b) => priority(a) - priority(b) || a.distance - b.distance)
+      .slice(0, windowState.mobile ? 3 : 6).map(item => item.creature.id));
+  }, [showLabels, snapshot.selectedWildId, visible, windowState.mobile]);
   const { scene } = useThree();
   useLayoutEffect(() => {
     // Scene is rendered inside a group. JSX attach="background"/"fog" there
@@ -979,7 +1031,7 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
       {snapshot.guide && <DestinationPointer guide={snapshot.guide} sample={sample} />}
       <TargetRoute snapshot={snapshot} destination={destination} sample={sample} />
       <ScenePortals sceneId={sceneId} regionId={atlas.id} player={snapshot.player} sample={sample} onNavigate={onNavigate} onPortal={() => options.onPortal?.('nearest')} />
-      {visible.map(({ creature, distance, model }) => <Creature key={creature.id} creature={creature} selected={creature.id === snapshot.selectedWildId} showLabels={showLabels} distance={distance} model={model} options={worldOptions} />)}
+      {visible.map(({ creature, distance, model }) => <Creature key={creature.id} creature={creature} selected={creature.id === snapshot.selectedWildId} showLabels={labelIds.has(creature.id)} distance={distance} model={model} options={worldOptions} />)}
       {destination && <group position={[destination.x, terrainSurfaceHeight(sample, destination.x, destination.z) + .08, destination.z]}>
         <mesh rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[.42, .62, 28]} /><meshBasicMaterial color="#ffe27a" transparent opacity={.9} /></mesh>
         <mesh position={[0, .08, 0]} rotation={[-Math.PI / 2, 0, 0]}><circleGeometry args={[.13, 20]} /><meshBasicMaterial color="#fff4b8" /></mesh>

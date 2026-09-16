@@ -1,0 +1,58 @@
+/* Non-world collection pages. Import after appearance.css so layout has one owner. */
+.team-page,.dex-page,.shop-page{color:var(--ui-text)}
+.team-page .panel,.box-panel,.dex-card,.shop-card,.center-banner,.collection-note{border-color:var(--ui-border);background:var(--ui-surface);box-shadow:none}
+.team-heading,.dex-page .section-heading,.shop-page .section-heading{gap:20px}
+.team-heading>div,.dex-page .section-heading>div,.shop-page .section-heading>div{min-width:0}
+.count-chip,.wallet{flex:0 0 auto;color:var(--ui-text);background:var(--ui-accent-soft);border:1px solid var(--ui-border)}
+.team-rack{padding:18px;background:var(--ui-surface)}
+.team-rack .subheading,.box-panel .subheading{align-items:center;gap:14px}
+.team-rack .subheading>small{max-width:42ch;color:var(--ui-muted);text-align:right;line-height:1.5}
+.team-slots{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.team-slots .monster-card,.box-grid .monster-card{border-color:var(--ui-border);background:var(--ui-surface);box-shadow:none}
+.team-slots .monster-card{min-height:108px;padding:12px}
+.team-slot-empty{min-height:72px;border-color:var(--ui-border);color:var(--ui-muted);background:var(--ui-surface-soft)}
+.team-slot-empty-summary{grid-column:1/-1}
+.team-page .monster-card.selected{border-color:var(--ui-accent);background:var(--ui-accent-soft);box-shadow:0 0 0 1px var(--ui-accent)}
+.team-page .card-action,.box-pagination button,.item-use button,.move-layout-controls button,.move-slot-editor button{color:var(--ui-text);border-color:var(--ui-border);background:var(--ui-surface-soft)}
+.team-page .card-action:not(:disabled):hover,.box-pagination button:not(:disabled):hover{border-color:var(--ui-accent);color:var(--ui-accent)}
+.breeding-panel,.box-panel{padding:18px}
+.team-layout{grid-template-columns:minmax(0,1fr) minmax(370px,420px);gap:18px}
+.box-tools{grid-template-columns:minmax(180px,1fr) minmax(110px,140px) minmax(120px,150px);gap:10px}
+.box-tools label{color:var(--ui-muted)}
+.box-tools input,.box-tools select{color:var(--ui-text);border-color:var(--ui-border);background:var(--ui-surface)}
+.box-grid{grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;min-height:220px}
+.box-grid .monster-card{min-height:132px;padding:11px}
+.box-result-line,.box-pagination small{color:var(--ui-muted)}
+.box-pagination{flex-wrap:wrap}.box-pagination button{min-width:66px}
+.team-page .detail-card{padding:18px;background:var(--ui-surface)}
+.detail-navigator{margin:-18px -18px 14px;border-color:var(--ui-border);background:color-mix(in srgb,var(--ui-surface) 96%,transparent);backdrop-filter:none}
+.detail-navigator button{color:var(--ui-text);border-color:var(--ui-border);background:var(--ui-surface-soft)}
+.detail-portrait,.detail-portrait.has-webgl{height:190px;min-height:190px;background:var(--ui-surface-soft)}
+.detail-title code,.detail-title p,.detail-navigator>span,.quick-action-heading small,.no-duplicates,.ability-summary>span,.ability-summary small,.iv-grid small{color:var(--ui-muted)}
+.brain-memory{color:var(--ui-accent);background:var(--ui-accent-soft)}
+.detail-quick-actions,.individual-traits{border-color:var(--ui-border);background:var(--ui-surface-soft)}
+.detail-quick-actions input,.detail-quick-actions select,.detail-quick-actions button{color:var(--ui-text);border-color:var(--ui-border);background:var(--ui-surface)}
+.detail-quick-actions #use-candy,.detail-quick-actions #merge-duplicate{color:#fff;border-color:var(--ui-accent);background:var(--ui-accent)}
+.ability-summary em{color:var(--ui-accent);background:var(--ui-accent-soft)}
+.ability-summary em[data-effect=partial]{color:#765b24;background:#f4ead2}
+.ability-summary em[data-effect=display-only]{color:var(--ui-muted);background:var(--ui-border)}
+.iv-grid>span,.move-layout-entry,.move-list span{background:var(--ui-surface);border-color:var(--ui-border)}
+.move-layout-number{color:var(--ui-accent);background:var(--ui-accent-soft)}
+.collection-actions .danger{color:var(--ui-danger);border-color:color-mix(in srgb,var(--ui-danger) 28%,var(--ui-border));background:color-mix(in srgb,var(--ui-danger) 7%,var(--ui-surface))}
+.dex-tools{display:grid;grid-template-columns:minmax(220px,340px) auto;justify-content:end;gap:10px}
+.dex-tools input{width:100%;min-height:44px;color:var(--ui-text);border-color:var(--ui-border);background:var(--ui-surface)}
+.dex-tools>div{display:flex;gap:4px}.dex-tools button{min-height:44px;padding-inline:14px;color:var(--ui-muted);border:1px solid var(--ui-border);border-radius:9px;background:var(--ui-surface)}
+.dex-tools button.active{color:#fff;border-color:var(--ui-accent);background:var(--ui-accent)}
+.collection-note{padding:14px 18px;color:var(--ui-text);background:var(--ui-surface-soft)}.collection-note p{color:var(--ui-muted)}
+.dex-grid{grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px}
+.dex-card{min-height:238px;padding:14px;gap:5px}.dex-card:hover{border-color:var(--ui-accent);box-shadow:0 7px 18px rgba(32,53,44,.08);transform:none}
+.dex-card>span,.dex-card p{color:var(--ui-muted)}.dex-card p{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3}.dex-card small{color:var(--ui-accent)}
+.dex-pagination>span{flex:1 1 160px}
+.shop-grid{grid-template-columns:repeat(auto-fill,minmax(245px,1fr));gap:12px}
+.shop-card{grid-template-columns:44px minmax(0,1fr) auto;gap:8px 10px;padding:16px}.shop-card .item-icon{grid-row:1/3;color:var(--ui-accent);background:var(--ui-accent-soft)}
+.shop-card>div{min-width:0}.shop-card>div strong,.shop-card>div small{overflow-wrap:anywhere}.shop-card>b{grid-column:3;grid-row:1/3;align-self:center;white-space:nowrap}
+.shop-card button{grid-column:1/-1;min-height:44px;color:#fff;border-color:var(--ui-accent);background:var(--ui-accent)}
+.center-banner{gap:20px;padding:22px 26px;background:var(--ui-surface-soft)}.center-banner p{color:var(--ui-muted)}.center-banner button{flex:0 0 auto}
+@media(max-width:1000px){.team-layout{display:flex;flex-direction:column}.team-layout>*{width:100%}.team-page .detail-card{order:-1;position:static;max-height:none}.box-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:720px){.team-heading,.dex-page .section-heading,.shop-page .section-heading{align-items:stretch}.count-chip,.wallet{align-self:flex-start}.team-rack,.breeding-panel,.box-panel,.team-page .detail-card{padding:14px}.team-rack .subheading,.box-panel .subheading{align-items:flex-start}.team-rack .subheading>small{text-align:left}.detail-navigator{margin:-14px -14px 12px}.box-tools{grid-template-columns:repeat(2,minmax(0,1fr))}.box-search{grid-column:1/-1}.box-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.box-grid .monster-card{min-height:126px;padding:10px}.dex-tools{width:100%;grid-template-columns:1fr;justify-content:stretch}.dex-tools>div{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.dex-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.dex-card{min-height:224px;padding:12px 9px}.dex-card img{width:72px;height:72px}.shop-grid{grid-template-columns:1fr}.center-banner{align-items:stretch;padding:18px}.center-banner button{width:100%}}
+@media(max-width:440px){.team-slots{grid-template-columns:1fr}.team-slots .monster-card{display:grid;grid-template-columns:64px minmax(0,1fr);align-items:center;gap:4px 10px}.team-slots .monster-card img{grid-row:1}.team-slots .card-actions{grid-column:1/-1}.team-slot-empty-summary{min-height:52px}.detail-navigator>div{gap:3px}.detail-navigator button{padding-inline:4px}.ability-summary{grid-template-columns:auto minmax(0,1fr)}.ability-summary em{grid-column:1/-1;justify-self:start}.detail-quick-actions .candy-use,.detail-quick-actions .merge-use{grid-template-columns:1fr}.detail-quick-actions .candy-use>*,.detail-quick-actions .merge-use>*,.detail-quick-actions .candy-use button{grid-column:1;grid-row:auto}.iv-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.box-pagination{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}.box-pagination>span{grid-column:1/-1;grid-row:1}.box-pagination button{min-width:0;padding-inline:4px}.dex-pagination{grid-template-columns:repeat(4,minmax(0,1fr))}.dex-card>span,.dex-card p{overflow-wrap:anywhere}.shop-card{grid-template-columns:42px minmax(0,1fr)}.shop-card>b{grid-column:2;grid-row:auto;justify-self:start}}

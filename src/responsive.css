@@ -6,7 +6,7 @@ button, summary, select { touch-action: manipulation; }
 button:disabled { cursor: default; opacity: .5; }
 [hidden] { display: none !important; }
 .topbar { gap: 12px; }
-.topbar.map-overlay { position: fixed; inset: 0 0 auto; color: #fff8e8; background: linear-gradient(180deg, #123c35b3, #123c3524); border: 0; box-shadow: none; backdrop-filter: blur(10px); }
+.topbar.map-overlay { position: fixed; inset: 0 0 auto; color: #fff8e8; background: linear-gradient(180deg, #123c35b3, #123c3524); border: 0; box-shadow: none; backdrop-filter:none; }
 .topbar.map-overlay .brand { color: inherit; }
 .topbar.map-overlay nav { background: #123c352e; border-color: #ffffff38; }
 .topbar.map-overlay nav button { color: inherit; }
@@ -17,7 +17,7 @@ button:disabled { cursor: default; opacity: .5; }
 .account-panel { display: flex; align-items: center; gap: 5px; }
 .account-name { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .account-dialog { width: min(430px, calc(100vw - 28px)); max-height: calc(100dvh - 28px); overflow: auto; padding: 24px; color: #173f39; background: #f7f8ee; border: 1px solid #fff; border-radius: 18px; }
-.account-dialog::backdrop { background: #102d36a6; backdrop-filter: blur(8px); }
+.account-dialog::backdrop { background: #102d36a6; backdrop-filter:none; }
 .account-dialog-card { display: grid; gap: 15px; position: relative; }
 .account-dialog h2, .account-dialog p { margin: 0; }
 .account-dialog p { line-height: 1.6; font-size:calc(13px * var(--ui-font-scale, 1)); }
@@ -50,7 +50,7 @@ button:disabled { cursor: default; opacity: .5; }
 .dex-card img { width: 96px; height: 96px; object-fit: contain; }
 .dex-pagination { grid-template-columns: auto auto minmax(150px, 1fr) auto auto; }
 .model-dialog { width: min(860px, calc(100vw - 28px)); max-height: 92dvh; overflow: auto; }
-.dex-detail-nav { position: sticky; top: -1px; z-index: 2; display: grid; grid-template-columns: auto auto 1fr auto auto; align-items: center; gap: 7px; margin: 12px 0 16px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: #faf8eff2; backdrop-filter: blur(12px); }
+.dex-detail-nav { position: sticky; top: -1px; z-index: 2; display: grid; grid-template-columns: auto auto 1fr auto auto; align-items: center; gap: 7px; margin: 12px 0 16px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: #faf8eff2; backdrop-filter:none; }
 .dex-detail-nav span { text-align: center; font-size: calc(12px * var(--ui-font-scale, 1)); font-weight: 800; color: var(--muted); }
 .dex-detail-nav button { min-height: 38px; border: 1px solid var(--line); border-radius: 7px; background: white; font-weight: 700; }
 .dex-detail-layout { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(260px, .75fr); gap: 18px; }
@@ -112,9 +112,9 @@ button:disabled { cursor: default; opacity: .5; }
 #toast::backdrop { background: transparent; pointer-events: none; }
 @media (max-width: 1000px) { .trainer-summary .device-storage { display: none; } }
 @media (max-width: 720px) {
-  .topbar, .topbar.map-overlay { height: 52px; min-height: 52px; padding: 5px 10px; flex-wrap: nowrap; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .topbar, .topbar.map-overlay { height: 52px; min-height: 52px; padding: 5px 10px; flex-wrap: nowrap; backdrop-filter:none; -webkit-backdrop-filter:none; }
   .topbar .brand { font-size:calc(12px * var(--ui-font-scale, 1)); flex-shrink: 0; }
-  .topbar nav { position: fixed; inset: auto 0 0; z-index: 50; height: calc(60px + env(safe-area-inset-bottom)); width: 100%; padding: 5px 5px calc(5px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; margin: 0; border: 1px solid #ffffff66; border-radius: 16px 16px 0 0; background: #f5f8eef0; box-shadow: 0 -4px 25px #183d3224; backdrop-filter: blur(18px); }
+  .topbar nav { position: fixed; inset: auto 0 0; z-index: 50; height: calc(60px + env(safe-area-inset-bottom)); width: 100%; padding: 5px 5px calc(5px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; margin: 0; border: 1px solid #ffffff66; border-radius: 16px 16px 0 0; background: #f5f8eef0; box-shadow: 0 -4px 25px #183d3224; backdrop-filter:none; }
   .topbar nav { grid-template-columns: repeat(4, 1fr); }
   .topbar.map-overlay nav { background: #153f35e8; border-color: #ffffff40; }
   .topbar nav button { font-size:calc(12px * var(--ui-font-scale, 1)); min-height: 44px; padding: 5px 1px; }

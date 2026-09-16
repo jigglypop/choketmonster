@@ -42,6 +42,8 @@ export function RenderProbe() {
           .filter(object => object.name.startsWith('creature:'))
           .map(object => ({ id: object.name.slice('creature:'.length), position: object.position.toArray(), yaw: object.rotation.y })),
         nameplates: scene.getObjectsByProperty('name', 'creature-nameplate').length,
+        domNameplates: gl.domElement.parentElement?.querySelectorAll('.ow-creature-label').length ?? 0,
+        labelMechanism: 'drei-html-dom',
         targetRoutes: scene.getObjectsByProperty('name', 'world-target-route').length,
         loadedPokemon: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('pokemon-model:')).map(object => Number(object.name.slice('pokemon-model:'.length))),
         modelStatuses: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('pokemon-model-status:')).map(object => object.name.slice('pokemon-model-status:'.length)),

@@ -1,0 +1,131 @@
+/* One set of anchors follows measured header/label heights and text scaling. */
+.topbar, .topbar.map-overlay {
+  display: flex;
+  flex-wrap: wrap;
+  height: auto;
+  min-height: 66px;
+  gap: 8px 16px;
+  padding: 10px 20px;
+  align-items: center;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.topbar .brand { flex: 0 0 auto; }
+.topbar nav { flex-shrink: 0; }
+.topbar .trainer-summary { flex: 1 1 auto; justify-content: flex-end; flex-wrap: wrap; min-width: 0; max-width: 100%; }
+.topbar .trainer-summary > * { flex-shrink: 0; }
+.topbar .trainer-summary > #account-controls { max-width: 100%; }
+.topbar .account-panel { flex-wrap: wrap; }
+.topbar nav button { line-height: 1.4; }
+.topbar.map-overlay { background: var(--ui-hud); }
+.topbar.map-overlay nav button { color: var(--ui-hud-muted); }
+.topbar.map-overlay nav button.active { color: var(--ui-hud-text); background: #ffffff16; }
+.topbar #game-sound-toggle { background: var(--ui-accent-soft); color: var(--ui-accent-hover); border-color: var(--ui-border); }
+.topbar .brand-ball { flex-shrink: 0; }
+.adventure { min-height: 0; height: calc(100dvh - var(--app-nav-height)); }
+.adventure .world-explore-panel { top: calc(var(--app-header-height) + 16px); left: 20px; width: 300px; background: var(--ui-hud); }
+.adventure .world-next-guide {
+  top: calc(var(--app-header-height) + 16px); left: 336px; right: 180px;
+  width: auto; max-width: 460px; transform: none;
+  background: var(--ui-hud); border-color: var(--ui-hud-line); color: var(--ui-hud-text);
+  box-shadow: var(--ui-shadow); padding: 10px 12px; gap: 10px;
+}
+.world-next-guide > span:nth-child(2) { min-width: 0; }
+.adventure .world-next-guide :is(strong, small, span) { white-space: normal; text-overflow: clip; }
+.adventure .world-next-guide strong { font-size: calc(13px * var(--ui-font-scale)); }
+.adventure .world-next-guide small, .adventure .world-next-guide > span > span { font-size: calc(11px * var(--ui-font-scale)); color: var(--ui-hud-muted); }
+.adventure .world-next-guide > b { font-size: calc(11px * var(--ui-font-scale)); color: var(--ui-hud-muted); }
+.adventure .world-guide-symbol { background: var(--ui-hud-control); border-color: var(--ui-hud-line); color: var(--ui-hud-text); flex-shrink: 0; }
+.adventure .world-radar { top: calc(var(--app-header-height) + 16px); right: 20px; width: 144px; }
+.adventure .world-radar canvas { width: 124px; height: 124px; }
+.adventure .world-radar :is(span, small) { overflow-wrap: anywhere; line-height: 1.4; font-size: calc(11px * var(--ui-font-scale)); }
+.adventure .ow-camera-controls { top: calc(var(--app-header-height) + 24px + var(--world-radar-height, 180px)); right: 20px; left: auto; transform: none; width: 144px; }
+.adventure .ow-camera-controls button { background: var(--ui-hud); color: var(--ui-hud-text); border-color: var(--ui-hud-line); }
+.adventure #world-nameplates[aria-pressed=true] { background: var(--ui-accent); color: var(--ui-hud-text); border-color: var(--ui-focus); }
+.adventure .world-radar { background: var(--ui-hud); }
+.adventure .world-explore-scroll { max-height: max(90px, calc(100dvh - var(--app-header-height) - 340px)); }
+.adventure .world-explore-toggle :is(strong, small) { white-space: normal; }
+.adventure .world-explore-toggle strong { font-size: calc(14px * var(--ui-font-scale)); }
+.adventure .world-explore-panel :is(.world-objective, .world-shop, .world-gym):not([hidden]) { display: block; }
+.adventure .world-explore-toggle small { font-size: calc(11px * var(--ui-font-scale)); color: var(--ui-hud-muted); }
+.adventure .world-tools button, .adventure .world-trainer-open { min-height: 42px; }
+.adventure .world-trainer-open { margin: 0; border: 1px solid var(--ui-hud-line); background: #3b795d; color: white; border-radius: 8px; }
+.adventure .world-battle-hud > summary { min-height: 44px; }
+.adventure .world-battle-hud > summary .world-summary-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.adventure .world-battle-hud > summary .world-summary-hp { white-space: nowrap; }
+.adventure .world-lower-hud > .world-target { left: auto; right: 20px; bottom: calc(32px + var(--world-partner-height, 48px)); width: 320px; }
+.adventure .world-lower-hud > .world-battle-hud { bottom: 20px; }
+.adventure .social-dock { background: var(--ui-hud); color: var(--ui-hud-text); border-color: var(--ui-hud-line); box-shadow: var(--ui-shadow); }
+.adventure .social-toolbar { height: auto; min-height: 36px; flex-wrap: wrap; gap: 6px; }
+.social-channel { flex: 1 1 100px; min-width: 0; overflow: hidden; }
+.social-channel b { overflow: hidden; text-overflow: ellipsis; }
+.social-channel small { overflow: hidden; text-overflow: ellipsis; }
+.social-toolbar > button, .social-players > summary { min-height: 36px; font-size: calc(11px * var(--ui-font-scale)); }
+.social-dock #world-chat-form { background: var(--ui-hud-control); border-color: var(--ui-hud-line); }
+.social-dock #world-chat-form button { height: auto; min-height: 36px; white-space: normal; }
+.social-dock #world-chat-form #world-chat-login { font-size: calc(11px * var(--ui-font-scale)); }
+.social-dock #world-chat-input { width: 100%; }
+.social-player-popover { background: var(--ui-hud); border-color: var(--ui-hud-line); }
+.adventure .world-capture-offer { max-width: calc(100% - 24px); }
+.adventure .world-method { bottom: 2px; }
+.kanto-map-dialog, .world-box-dialog, .world-trainer-dialog { background: var(--ui-surface); color: var(--ui-text); border: 1px solid var(--ui-border); border-radius: 16px; max-height: calc(100dvh - 24px); max-width: calc(100vw - 24px); }
+.kanto-map-dialog header, .world-box-dialog header, .world-trainer-dialog header { gap: 12px; flex-wrap: wrap; }
+.world-map-toolbar, #world-map-orientation { flex-wrap: wrap; min-width: 0; }
+.world-map-toolbar select { max-width: 100%; }
+.world-trainer-card { background: var(--ui-surface); border-color: var(--ui-border); }
+.world-trainer-card :is(small, p), .world-trainer-dialog > p { color: var(--ui-muted); }
+
+@media (min-width: 901px) {
+  [data-battle-position=left] .adventure .world-explore-panel { left: auto; right: 20px; }
+  [data-battle-position=left] .adventure .world-next-guide { left: 180px; right: 336px; }
+  [data-battle-position=left] .adventure .world-radar { left: 20px; right: auto; }
+  [data-battle-position=left] .adventure .ow-camera-controls { left: 20px; right: auto; }
+  [data-battle-position=left] .adventure .world-lower-hud > .world-battle-hud { left: 20px; right: auto; bottom: 20px; }
+  [data-battle-position=left] .adventure .world-battle-deck { max-height: min(320px, calc(100dvh - var(--app-header-height) - var(--world-radar-height, 180px) - 150px)); }
+  [data-battle-position=left] .adventure .social-dock { left: auto; right: 20px; }
+  [data-battle-position=left] .adventure .world-lower-hud > .world-target { left: auto; right: 20px; bottom: calc(32px + var(--world-chat-height, 230px)); }
+}
+@media (max-width: 900px) {
+  :root { --app-nav-height: calc(62px + env(safe-area-inset-bottom)); }
+  .topbar, .topbar.map-overlay { min-height: 60px; padding: 8px 12px; gap: 6px 10px; }
+  .topbar .brand { font-size: calc(13px * var(--ui-font-scale)); }
+  .topbar .trainer-summary { gap: 5px; }
+  .topbar nav, .topbar.map-overlay nav { position: fixed; inset: auto 0 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); width: 100%; height: var(--app-nav-height); padding: 5px 5px calc(5px + env(safe-area-inset-bottom)); margin: 0; background: var(--ui-surface); color: var(--ui-text); border-radius: 0; border-top: 1px solid var(--ui-border); z-index: 50; }
+  .topbar nav button, .topbar.map-overlay nav button { min-height: 44px; padding: 6px 2px; font-size: calc(12px * var(--ui-font-scale)); color: var(--ui-muted); }
+  .topbar nav button.active, .topbar.map-overlay nav button.active { background: var(--ui-accent-soft); color: var(--ui-accent); }
+  .topbar :is(#badges, #money, #save-state, .account-name), .interface-settings-trigger > span { display: none; }
+  .topbar #save-now { display: inline-flex; }
+  .page { padding-bottom: calc(var(--app-nav-height) + 24px); }
+  .adventure .world-next-guide { top: calc(var(--app-header-height) + 12px); left: 12px; right: 110px; max-width: none; }
+  .adventure .world-explore-panel { top: calc(var(--app-header-height) + 20px + var(--world-guide-height, 80px)); left: 12px; right: 110px; width: auto; }
+  .adventure:has(.world-explore-panel[open]) .world-next-guide { display: none; }
+  .adventure .world-explore-scroll { max-height: max(70px, calc(100dvh - var(--app-header-height) - var(--app-nav-height) - var(--world-guide-height, 80px) - 245px)); }
+  .adventure .world-radar { top: calc(var(--app-header-height) + 12px); right: 12px; left: auto; width: 86px; padding: 5px; }
+  .adventure .world-radar canvas { width: 74px; height: 74px; }
+  .adventure .world-radar :is(span, small) { font-size: calc(10px * var(--ui-font-scale)); }
+  .adventure .ow-camera-controls { top: calc(var(--app-header-height) + 20px + var(--world-radar-height, 125px)); right: 12px; left: auto; width: 86px; }
+  .adventure .ow-camera-controls button { white-space: normal; min-height: 34px; font-size: calc(11px * var(--ui-font-scale)); }
+  .adventure .world-lower-hud { inset: auto 10px 10px; display: flex; flex-direction: column; gap: 6px; }
+  .adventure .world-lower-hud > :is(.world-target, .world-battle-hud, .social-dock) { position: relative; inset: auto; width: 100%; max-width: none; transform: none; margin: 0; box-sizing: border-box; }
+  .adventure .world-lower-hud > .world-target { order: 0; }
+  .adventure .world-lower-hud > .world-battle-hud { order: 1; max-height: none; }
+  .adventure .world-lower-hud > .social-dock { order: 2; padding: 4px 8px; }
+  .adventure .world-lower-hud > .world-battle-hud[open] .world-battle-deck { max-height: min(32dvh, max(50px, calc(100dvh - var(--app-nav-height) - var(--app-header-height) - var(--world-guide-height, 80px) - var(--world-explore-toggle-height, 60px) - var(--world-chat-height, 50px) - 100px))); overflow: auto; }
+  .adventure:has(.world-battle-hud[open]) .world-next-guide > span > span { display: none; }
+  .adventure .social-dock.chat-collapsed :is(#world-chat-form, #world-chat-error, #world-chat-latest, #world-trainer-track) { display: none; }
+  .adventure .social-channel small { display: none; }
+  .adventure .world-battle-hud > summary .world-summary-name { font-size: calc(13px * var(--ui-font-scale)); }
+  .adventure .world-battle-hud > summary .world-summary-hp { font-size: calc(12px * var(--ui-font-scale)); }
+  .adventure .world-method { display: none; }
+}
+@media (max-height: 600px) and (min-width: 601px) and (max-width: 900px) {
+  .adventure .world-next-guide { width: 245px; right: auto; padding: 8px 10px; }
+  .adventure .world-explore-panel { width: 245px; right: auto; }
+  .adventure .world-explore-scroll { max-height: max(35px, calc(100dvh - var(--app-header-height) - var(--app-nav-height) - var(--world-guide-height, 80px) - var(--world-explore-toggle-height, 60px) - 34px)); }
+  .adventure .world-radar { left: 269px; right: auto; }
+  .adventure .world-radar #world-position { display: none; }
+  .adventure .ow-camera-controls { left: 269px; right: auto; }
+  .adventure .world-lower-hud { left: 367px; right: 10px; }
+  .adventure .world-lower-hud > .world-battle-hud[open] .world-battle-deck { max-height: max(65px, calc(100dvh - var(--app-header-height) - var(--app-nav-height) - 125px)); }
+}
