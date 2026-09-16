@@ -25,10 +25,12 @@ async function chooseFixture(page: Page, name: string, frequency = 440) {
   await page.locator('.settings-done').click();
 }
 
-test('bundled bgm.mp3 starts after game input and a video/mp4 selection survives reload', async ({ page }) => {
+test('scene music starts after game input and a video/mp4 selection survives reload', async ({ page }) => {
   await isolateApp(page); await page.goto('/');
   await expect(page.locator('#game-sound-toggle')).toHaveAttribute('data-music', /ready|playing/);
+  await expect(page.locator('#game-music-audio')).toHaveAttribute('data-cue', 'opening');
   await page.locator('[data-starter="152"]').click(); await expectPlaying(page);
+  await expect(page.locator('#game-music-audio')).toHaveAttribute('data-cue', 'pallet');
   const media = await page.locator('#game-music-audio').evaluate(element => {
     const audio = element as HTMLAudioElement;
     return { duration: audio.duration, loop: audio.loop, error: audio.error?.message };
@@ -36,7 +38,8 @@ test('bundled bgm.mp3 starts after game input and a video/mp4 selection survives
   expect(media.duration).toBeGreaterThan(0); expect(Number.isFinite(media.duration)).toBe(true);
   expect(media.loop).toBe(true); expect(media.error).toBeUndefined();
   await page.locator('#open-interface-settings').click();
-  await expect(page.locator('#audio-music-file-status')).toContainText('bgm.mp3');
+  await expect(page.locator('#audio-music-file-status')).toContainText('레드·그린');
+  await expect(page.locator('#audio-music-remove')).toBeDisabled();
   const chooser = page.waitForEvent('filechooser'); await page.locator('#audio-music-change').click();
   await (await chooser).setFiles({ name: 'local-loop.mp4', mimeType: 'video/mp4', buffer: readFileSync('public/audio/other-center.mp4') });
   await expect(page.locator('#audio-music-file-status')).toContainText('local-loop.mp4');
@@ -119,7 +122,7 @@ test('selected WAV fixture plays, toggles explicitly, replaces, and restores fro
   await expect(page.locator('#audio-music-file-status')).toContainText('replacement-bgm-fixture.wav');
   await expect.poll(() => page.evaluate(async url => { try { await fetch(url); return false; } catch { return true; } }, oldUrl)).toBe(true);
   await page.locator('.settings-done').click(); await page.reload();
-  await expect(page.locator('#game-sound-toggle')).toHaveAttribute('aria-label', 'BGM 재생');
+  await expect(page.locator('#game-sound-toggle')).toHaveAttribute('data-music', /ready|playing/);
   await page.locator('[data-tab="map"]').click(); await expectPlaying(page);
   const stored = await page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => { const request = indexedDB.open('choketmon-local-music-v1', 1); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
@@ -128,8 +131,10 @@ test('selected WAV fixture plays, toggles explicitly, replaces, and restores fro
   });
   expect(stored.name).toBe('replacement-bgm-fixture.wav'); expect(stored.size).toBeGreaterThan(44);
   await page.locator('#open-interface-settings').click(); await page.locator('#audio-music-remove').click();
-  await expect(page.locator('#game-sound-toggle')).toHaveAttribute('data-music', 'empty');
+  await expect(page.locator('#game-sound-toggle')).toHaveAttribute('data-music', /ready|playing/);
   await expect(page.locator('#audio-music-file-status')).toContainText('제거');
+  await expect(page.locator('#game-music-audio')).toHaveAttribute('src', /\/audio\/pokemon-rg\/.+\.mp3$/);
+  await expect(page.locator('#audio-music-remove')).toBeDisabled();
 });
 
 test('mobile restores a local WAV and starts unmuted from the first world touch without an overlay', async ({ browser }, testInfo) => {
@@ -137,10 +142,11 @@ test('mobile restores a local WAV and starts unmuted from the first world touch 
   let page = await context.newPage(); await isolateApp(page); await page.goto('/');
   await page.locator('[data-starter="152"]').tap();
   await chooseFixture(page, 'generated-mobile-bgm-fixture.wav', 330);
+  await page.locator('#save-now').click();
+  await expect(page.locator('#save-state')).toHaveAttribute('data-state', 'local');
   await page.close();
   page = await context.newPage(); await isolateApp(page);
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await page.locator('[data-starter="152"]').tap();
   await expect(page.locator('.world-battle-hud')).toBeVisible();
   await page.locator('#ow-host').tap({ position: { x: 340, y: 430 } });
   await expectPlaying(page);

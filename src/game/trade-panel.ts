@@ -69,7 +69,7 @@ export function mountTradePanel(options: TradePanelOptions) {
   const error = dialog.querySelector<HTMLElement>('.trade-error')!, stateText = dialog.querySelector<HTMLElement>('.trade-state')!, codeBox = dialog.querySelector<HTMLElement>('.trade-code')!, codeText = dialog.querySelector<HTMLElement>('[data-code]')!;
   const offerForm = dialog.querySelector<HTMLFormElement>('.trade-offer')!, monsterSelect = offerForm.elements.namedItem('monster') as HTMLSelectElement, moneyInput = offerForm.elements.namedItem('money') as HTMLInputElement;
   const confirmButton = dialog.querySelector<HTMLButtonElement>('[data-confirm]')!, cancelButton = dialog.querySelector<HTMLButtonElement>('[data-cancel]')!, retryButton = dialog.querySelector<HTMLButtonElement>('[data-retry]')!;
-  let trade: TradeRoom | undefined, checkpoint: TradeCheckpoint | undefined, ignoredTerminalId: string | undefined,
+  let trade: TradeRoom | undefined, checkpoint: TradeCheckpoint | undefined, ignoredTerminalId: string | undefined, pendingGameApplicationId: string | undefined,
     pollTimer = 0, reconnectTimer = 0, reconnectDelay = 1_000, socket: WebSocket | undefined,
     disposed = false, busy = false, applyingResult = false, polling = false, pollAgain = false, sessionId = 0;
   const account = () => options.currentAccount();
@@ -82,7 +82,7 @@ export function mountTradePanel(options: TradePanelOptions) {
     trade = next; return trade;
   };
   const finish = (outcome: 'no-trade' | 'cancelled' | 'completed') => {
-    sessionId++; trade = undefined; checkpoint = undefined; stopLive(); dialog.close(); options.closed?.(outcome);
+    sessionId++; trade = undefined; checkpoint = undefined; pendingGameApplicationId = undefined; stopLive(); dialog.close(); options.closed?.(outcome);
   };
   const participantCard = (element: HTMLElement, title: string, participant?: Participant) => {
     element.replaceChildren(); const heading = document.createElement('h3'); heading.textContent = title; element.append(heading);
@@ -119,9 +119,14 @@ export function mountTradePanel(options: TradePanelOptions) {
       const decoded = unpackSave(result.save, options.graph(), { allowTradeEpochAdvance: true });
       if (result.incomingNeural && ![...decoded.game.player.team, ...decoded.game.player.box].some(monster => monster.instanceId === result.incomingNeural!.instanceId)) throw new Error('받은 회로 기억에 대응하는 포켓몬이 거래 결과에 없습니다.');
       const adoption = await adoptTradeResult(result, checkpoint, room.id);
+      // The save and neural cache use separate IndexedDB databases. A failed
+      // import or screen update must resume the in-memory game application even
+      // after the durable save receipt makes the next adoption idempotent.
+      if (adoption.newlyApplied) pendingGameApplicationId = room.id;
       if (result.incomingNeural) await importTransferableServerBrain(result.incomingNeural.instanceId, result.incomingNeural.neural, room.id);
-      if (adoption.newlyApplied) {
-        await options.applied(adoption.save); options.notify?.('거래가 완료되어 새 포켓몬과 용돈을 적용했습니다.'); finish('completed');
+      if (pendingGameApplicationId === room.id) {
+        await options.applied(adoption.save); pendingGameApplicationId = undefined;
+        options.notify?.('거래가 완료되어 새 포켓몬과 용돈을 적용했습니다.'); finish('completed');
       } else {
         ignoredTerminalId = room.id; trade = undefined; setError(); render();
       }
@@ -221,7 +226,7 @@ export function mountTradePanel(options: TradePanelOptions) {
   return {
     async open() {
       if (disposed || busy || dialog.open) return;
-      sessionId++; trade = undefined; checkpoint = undefined; ignoredTerminalId = undefined; reconnectDelay = 1_000; setError(); dialog.showModal(); render(); setBusy(true);
+      sessionId++; trade = undefined; checkpoint = undefined; ignoredTerminalId = undefined; pendingGameApplicationId = undefined; reconnectDelay = 1_000; setError(); dialog.showModal(); render(); setBusy(true);
       try {
         await options.prepare();
         if (!account()) { render(); return; }

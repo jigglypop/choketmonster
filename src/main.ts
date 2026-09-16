@@ -90,6 +90,13 @@ if (import.meta.hot) import.meta.hot.dispose(detachAudio);
 const soundButton = document.createElement('button'); soundButton.id = 'game-sound-toggle'; soundButton.className = 'quiet';
 $('#open-interface-settings').before(soundButton);
 const originalMusic = mountOriginalMusic(soundButton);
+function syncMusicScene() {
+  const world = worldPanel?.simulation;
+  const trainer = game?.battle?.trainerId ? CAMPAIGN_TRAINERS.find(item => item.id === game!.battle!.trainerId) : undefined;
+  originalMusic.setScene({ started: Boolean(game), battle: game?.battle, captureOffer: Boolean(game?.captureOffer),
+    champion: trainer?.kind === 'champion' || trainer?.kind === 'red', sceneId: world?.sceneId,
+    location: world?.locationAt(world.player.x, world.player.z) });
+}
 if (import.meta.hot) import.meta.hot.dispose(originalMusic.destroy);
 const tradePanel = mountTradePanel({ container: document.body, game: () => game!, graph: () => controller.graph, currentAccount,
   prepare: async () => {
@@ -186,12 +193,14 @@ function prepareWorld() {
     }
   }
   worldPanel = new OpenWorldPanel({ game, graph: controller.graph, policy: fieldPolicy, checkpoint: view.openWorld,
+    musicChanged: syncMusicScene,
     learning: () => view.learning, setLearning: value => { view.learning = value; }, notify, trade: () => void tradePanel.open(), openAccount: () => accountPanel?.open(),
     editMoves: instanceId => { selectedMonsterId = instanceId; tab = 'team'; render(); $('#team-detail').scrollIntoView({ block: 'start', behavior: 'smooth' }); },
     changed: immediate => { shellStats(); if (immediate) return saveNow(false, true); queueSave(); } });
   worldPanel.paused = view.openWorldPaused ?? false;
 }
 function render() {
+  syncMusicScene();
   shellStats(); if (!game) return;
   if (game.battle && !worldPanel && tab !== 'team' && tab !== 'shop') { renderBattle(); return; }
   if (tab === 'map') renderMap();

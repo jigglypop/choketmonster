@@ -28,7 +28,7 @@ const types: Record<string, string> = { normal: '노말', fire: '불꽃', water:
 const escape = (text: unknown) => String(text).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const pokemonDisplayHeight = (speciesId: number) => pokemonWorldDisplayHeight(getSpecies(speciesId).heightMeters);
 const MANUAL_IDLE_SECONDS = .25;
-type Options = { game: GameState; graph: Graph; policy: FieldPolicy; checkpoint?: OpenWorldSnapshot; learning(): boolean; setLearning(value: boolean): void; editMoves?(instanceId: string): void; trade?(): void; openAccount?(): void; notify(message: string, error?: boolean): void; changed(immediate?: boolean): void | Promise<void> };
+type Options = { game: GameState; graph: Graph; policy: FieldPolicy; checkpoint?: OpenWorldSnapshot; learning(): boolean; setLearning(value: boolean): void; musicChanged?(): void; editMoves?(instanceId: string): void; trade?(): void; openAccount?(): void; notify(message: string, error?: boolean): void; changed(immediate?: boolean): void | Promise<void> };
 
 export class OpenWorldPanel {
   readonly simulation: OpenWorldSimulation;
@@ -544,6 +544,7 @@ export class OpenWorldPanel {
   }
 
   refresh(): void {
+    this.options.musicChanged?.();
     if (!this.host?.querySelector('#ow-host')) return;
     const game = this.options.game, world = this.simulation, battle = game.battle;
     if (battle && battle !== this.previousBattle) {

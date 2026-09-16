@@ -43,7 +43,9 @@ pnpm dev --port 5173 --strictPort
 
 ## 음악과 모델
 
-기본 음악은 사용자가 제공한 `public/audio/bgm.mp3`이며 첫 게임 입력 후 반복 재생한다. 설정에서 직접 선택한 파일을 우선하고, 음량·음소거·파일 교체를 지원한다. 선택한 음악은 기기에 보관하며 서버에 업로드하지 않는다. 제공 파일의 출처 기록·체크섬은 `public/audio/music-sources.json`에 있다. 기존 CC0 음악 [Other Center](https://opengameart.org/content/other-center)(Chris Murphy / zesona)는 별도 파일로 보존하며 해당 출처·변환 기록은 `public/audio/other-center-sources.json`에 있다.
+기본 음악은 사용자가 지정한 `public/audio/pokemon-rg/`의 레드·그린 음원이다. 오프닝, 마을·도로·숲·동굴·수로, 야생·체육관·챔피언 전투에 맞춰 자동 선택하고 반복 재생한다. 다른 지방에도 이 음원을 게임용으로 선정했다. 접속 시 자동 재생을 시도하며 브라우저가 막으면 첫 클릭·터치·키 입력에서 시작한다. 정지 버튼으로 멈춘 상태는 장면이 바뀌어도 유지된다. 설정에서 개인 파일을 고르면 장면 음악보다 우선하고, `기본 음악으로`를 누르면 장면별 음악으로 돌아간다. 음량·음소거를 지원하고 개인 파일은 이 기기에만 보관한다.
+
+33곡의 원본 URL·체크섬은 `public/audio/pokemon-rg/sources.json`에 있다. 사용자가 제공한 음원이며 공개 재배포 라이선스가 확인되었다는 주장은 하지 않는다. 이전 `bgm.mp3`의 출처 기록은 `public/audio/music-sources.json`에 남겨 둔다. 기존 CC0 음악 [Other Center](https://opengameart.org/content/other-center)(Chris Murphy / zesona)와 해당 출처·변환 기록은 `public/audio/other-center.mp4`, `public/audio/other-center-sources.json`에 보존한다.
 
 포켓몬 모델 원본은 고정한 공개 GitHub URL에서 읽는다. 골격·동작이 부족한 기하 모델에는 자체 골격·스킨 가중치·동작을 추가하며 원본 애니메이션과 구분한다. 이미지나 임시 도형을 검증된 포켓몬 모델로 세지 않는다. [모델·리깅 검증 범위](docs/expansion-delivery-2026-09-16.md).
 

@@ -20,9 +20,12 @@ describe('visible world streaming budgets', () => {
   it('only admits nearby 3D models and keeps unavailable saved companions as status markers', () => {
     const visible = creatureLods([creature('near', 10, 0), creature('middle', 45, 0), creature('far', 100, 0)], { x: 0, z: 0 }, () => true, false);
     expect(visible.map(item => [item.creature.id, item.model])).toEqual([['near', true]]);
+    const fallbackSupported = [{ ...creature('wild-fallback-supported', 1, 0), speciesId: 1024 }];
+    expect(creatureLods(fallbackSupported, { x: 0, z: 0 }, () => true, true).map(item => [item.creature.id, item.model]))
+      .toEqual([['wild-fallback-supported', true]]);
     const unsupported = [
-      { ...creature('wild-unavailable', 1, 0), speciesId: 1024 },
-      { ...creature('companion:saved-mon', 0, 0), speciesId: 1024 },
+      { ...creature('wild-unavailable', 1, 0), speciesId: 1026 },
+      { ...creature('companion:saved-mon', 0, 0), speciesId: 1026 },
     ];
     expect(creatureLods(unsupported, { x: 0, z: 0 }, () => true, true).map(item => [item.creature.id, item.model]))
       .toEqual([['companion:saved-mon', false]]);
