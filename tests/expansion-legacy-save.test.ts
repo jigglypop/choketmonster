@@ -70,6 +70,8 @@ describe('legacy expansion atlas saves', () => {
   it('validates a locked Sinnoh atlas-v2 save, then returns it to Johto without losing its active battle or records', () => {
     const game = createGame(1, 'legacy-sinnoh-v2');
     game.campaign = { startRegion: 'johto', johtoBadges: [], johtoLeague: 0, kantoLeague: 0, redDefeated: false };
+    delete game.claimedRegionalStarters;
+    for (const monster of [...game.player.team, ...game.player.box]) delete monster.originRegion;
     const owned = createMonster(game, 393, 20); game.player.box.push(owned);
     game.dex.seen = [...new Set([...game.dex.seen, 393])]; game.dex.caught = [...new Set([...game.dex.caught, 393])];
     game.versionCaught ??= {}; game.versionCaught.platinum = [393];

@@ -4,7 +4,7 @@ import { advanceEggProgress } from '../game/breeding';
 import { Random, clamp } from '../core/random';
 import { POKEMON, getMove, getSpecies } from '../data/pokemon';
 import { getVersionSpeciesIds } from '../data/pokemon-versions';
-import { replenishBalls, challengeCampaignGym, challengeCampaignTrainer, challengeFieldTrainer } from '../game/engine';
+import { replenishBalls, challengeCampaignGym, challengeCampaignTrainer, challengeFieldTrainer, claimRegionalStarter as claimStarter } from '../game/engine';
 import { CAMPAIGN_REGIONS, getRegionalBadges, getCampaignGyms, getNextCampaignTrainer, campaignTravelReason, regionalWildLevels, type CampaignRegion } from '../game/campaign';
 import { availableFieldTrainer, fieldTrainersAt, type FieldTrainer } from '../data/field-trainers';
 import { chooseRegionalEncounter, encounterPeriodAt, regionalRuntimePools, supplementalEncounterRules, type EncounterPeriod } from '../data/regional-encounters';
@@ -12,20 +12,22 @@ import { chooseExpansionEncounter, expansionEncounterSpecies, isExpansionRegion 
 import { gameplayHabitat } from '../game/habitat';
 import { ConnectomeController, type NeuralMonster } from '../game/connectome';
 import { chooseServerBrains, usesServerBrain, type ServerDecision } from '../game/server-brain';
-import { actBattle, availableEvolutions, captureDefeatedWild, createMonster, evolve, evolutionRoute, validateGame, type BallItem, type BattleAction, type BattleTurnResult, type GameState, type Monster } from '../game/engine';
+import { actBattle, availableEvolutions, captureDefeatedWild, createMonster, evolve, evolutionRoute, firstUsableRegionalTeamIndex, validateGame, type BallItem, type BattleAction, type BattleTurnResult, type GameState, type Monster } from '../game/engine';
+import { monsterRegionalUseReason, needsRegionalStarter } from '../game/regional-policy';
 import { KANTO_START, KANTO_MAP_VERSION } from './kanto';
 import { WORLD_MIN, WORLD_MAX, WORLD_SCALE, migrateSurfaceSnapshotCoordinates, surfaceSceneId } from './world-space';
-import { CAVE_SCENES, caveLocation, cavePortalAtInterior, cavePortalAtSurface, getCaveScene, nearestCaveWalkable } from './caves';
+import { CAVE_SCENES, caveLocation, cavePortalAtInterior, cavePortalAtSurface, getCaveScene } from './caves';
 import { getWorldAtlas, getLegacyJohtoAtlas, getLegacyExpansionAtlas, migrateLegacyExpansionLocationId, type WorldAtlas, type WorldRegionId } from './atlas';
-import { getPlayableSpeciesIds, isPlayableAdventureVersion, isPlayableSpecies, isPlayableWorldRegion, playableWorldRegionForVersion } from './availability';
+import { getPlayableSpeciesIds, isPlayableAdventureVersion, isPlayableWorldRegion, playableWorldRegionForVersion } from './availability';
 import type { FieldPolicy } from '../game/field';
+import type { WorldSample } from './types';
+export type { WorldSample } from './types';
 import { appendReward, emptyRewardLedger, rewardEncounter, rewardBattleTurn, validateRewardLedger, type EngineeredReward, type RewardLedger, type RewardDecisionSource } from '../game/rewards';
 
 export const OPEN_WORLD_MODEL = 'pokemon-open-world-recurrent-v1' as const;
 export { WORLD_MIN, WORLD_MAX };
 export const DEFAULT_WILD_COUNT = 15;
 export type WorldBiome = 'meadow' | 'forest' | 'lake' | 'rock';
-export type WorldSample = { height: number; biome: WorldBiome; blocked: boolean };
 export type WorldPosition = { x: number; z: number; heading: number };
 export type WorldFood = { id: number; x: number; z: number };
 export type WorldRespawn = { id: string; speciesId: number; level: number; biome: WorldBiome; originX: number; originZ: number; remainingSeconds: number };
@@ -191,6 +193,8 @@ export class OpenWorldSimulation {
   private readonly companionMemories = new Map<string, OpenWorldEntity>();
   private readonly battleController: ConnectomeController;
   private readonly policy?: FieldPolicy;
+  private requireModels = false;
+  private readonly modelStatuses = new Map<string, { speciesId: number; status: 'loading' | 'ready' | 'failed' }>();
   private serverTurn?: { battle: NonNullable<GameState['battle']>; turn: number; decisions: Map<string, ServerDecision> };
   private serverFinalizations: ServerFinalization[] = [];
   private restoringAtlas?: WorldAtlas;
@@ -201,6 +205,31 @@ export class OpenWorldSimulation {
   sampleWorld(x: number, z: number): WorldSample { return getCaveScene(this.sceneId)?.sample(x, z) ?? this.atlas.sample(x, z); }
   locationAt(x: number, z: number) { return caveLocation(this.sceneId) ?? this.atlas.locationAt(x, z); }
   isSafeTown(x: number, z: number): boolean { return !getCaveScene(this.sceneId) && this.atlas.locationAt(x, z).kind === 'town'; }
+  /** Headless simulations need no renderer; the playable panel opts into this gate. */
+  requireReadyModels(): void { this.requireModels = true; this.modelStatuses.clear(); }
+  private modelSpecies(entityId: string): number | undefined {
+    const entity = this.entities.find(item => item.id === entityId), battle = this.game.battle;
+    const monster = entity?.kind === 'companion'
+      ? battle?.player.team[battle.player.activeIndex] ?? this.game.player.team[firstUsableRegionalTeamIndex(this.game, this.regionId)]
+      : battle && entityId === this.battleWildId ? battle.enemy.team[battle.enemy.activeIndex] : undefined;
+    return (monster && battle?.transformations?.[monster.instanceId]?.speciesId) ?? monster?.speciesId ?? entity?.speciesId;
+  }
+  setModelStatus(entityId: string, status: 'loading' | 'ready' | 'failed' | 'untracked', speciesId = this.modelSpecies(entityId)): void {
+    if (speciesId === undefined || speciesId !== this.modelSpecies(entityId)) return;
+    // Leaving the frustum is not a successful load. Never release a failed model's gate.
+    if (status === 'untracked') {
+      if (this.modelStatuses.get(entityId)?.status !== 'failed') this.modelStatuses.delete(entityId);
+    } else this.modelStatuses.set(entityId, { speciesId, status });
+  }
+  modelStatus(entityId: string): 'loading' | 'failed' | undefined {
+    const entry = this.modelStatuses.get(entityId);
+    if (!entry || entry.speciesId !== this.modelSpecies(entityId)) return this.requireModels ? 'loading' : undefined;
+    return entry.status === 'ready' ? undefined : entry.status;
+  }
+  get modelsReady(): boolean {
+    const companion = this.entities.find(entity => entity.kind === 'companion');
+    return !!companion && !this.modelStatus(companion.id) && (!this.game.battle || !!this.battleWildId && !this.modelStatus(this.battleWildId));
+  }
   get dayPeriod(): EncounterPeriod { return encounterPeriodAt(this.worldClockSeconds); }
   get timeOfDay(): EncounterPeriod { return this.dayPeriod; }
   get worldHour(): number { return this.worldClockSeconds / (20 * 60) * 24; }
@@ -250,7 +279,7 @@ export class OpenWorldSimulation {
       this.serverFinalizations.splice(0, tasks.length);
     }
     const battle = this.game.battle;
-    if (!battle || (this.controlMode === 'manual' && !this.pendingAction && !this.pendingCapture)) return;
+    if (!battle || !this.modelsReady || (this.controlMode === 'manual' && !this.pendingAction && !this.pendingCapture)) return;
     const player = battle.player.team[battle.player.activeIndex], enemy = battle.enemy.team[battle.enemy.activeIndex];
     const frame = this.serverTurn?.battle === battle && this.serverTurn.turn === battle.turn
       ? this.serverTurn : { battle, turn: battle.turn, decisions: new Map<string, ServerDecision>() };
@@ -344,6 +373,7 @@ export class OpenWorldSimulation {
   }
 
   movePartner(position: WorldPosition): boolean {
+    if (!this.modelsReady) return false;
     if (this.game.battle?.kind === 'wild' && this.game.battle.canRun && this.controlMode === 'manual') {
       this.requestAction({ type: 'run' }); return false;
     }
@@ -409,7 +439,8 @@ export class OpenWorldSimulation {
 
   canEngageWild(id: string): boolean {
     const companion = this.entities.find(entity => entity.kind === 'companion'), wild = this.entities.find(entity => entity.id === id && entity.kind === 'wild');
-    return !!companion && !!wild && !this.isSafeTown(this.player.x, this.player.z) && !this.isSafeTown(wild.x, wild.z) && distance(companion, wild) <= 4 && !this.pathBlocked(companion, wild.x, wild.z, []);
+    return !!companion && !!wild && !this.modelStatus(id) && !this.modelStatus(companion.id)
+      && !this.isSafeTown(this.player.x, this.player.z) && !this.isSafeTown(wild.x, wild.z) && distance(companion, wild) <= 4 && !this.pathBlocked(companion, wild.x, wild.z, []);
   }
 
   setAutoCapture(enabled: boolean): void { if (typeof enabled !== 'boolean') throw new Error('Auto-capture flag must be boolean'); this.autoCapture = enabled; }
@@ -435,6 +466,14 @@ export class OpenWorldSimulation {
 
   reconcileTeamChange(): void {
     this.pendingAction = undefined; this.syncCompanion(); this.syncPlayerToCompanion();
+  }
+
+  get regionalStarterRequired(): boolean { return needsRegionalStarter(this.game, this.regionId); }
+
+  claimRegionalStarter(speciesId: number): Monster {
+    const monster = claimStarter(this.game, this.regionId, speciesId);
+    this.reconcileTeamChange();
+    return monster;
   }
 
   challengeLocalGym(): boolean {
@@ -484,6 +523,31 @@ export class OpenWorldSimulation {
     this.resetScenePopulation(entrance.portal.interiorArrival); return true;
   }
 
+  caveExits(): Array<{ id: string; label: string; surfaceLocationId: string; distance: number }> {
+    const cave = getCaveScene(this.sceneId);
+    if (!cave) return [];
+    return cave.portals.map(portal => ({
+      id: portal.id,
+      label: this.atlas.locations.find(location => location.id === portal.surfaceLocationId)?.name ?? portal.surfaceLocationId,
+      surfaceLocationId: portal.surfaceLocationId,
+      distance: distance(portal.interior, this.player),
+    })).sort((a, b) => a.distance - b.distance || a.id.localeCompare(b.id));
+  }
+
+  /** Immediately leaves the current cave through a selected, or nearest, real portal. */
+  exitCave(portalId?: string): boolean {
+    if (this.game.battle || this.game.captureOffer) return false;
+    const cave = getCaveScene(this.sceneId);
+    if (!cave) return false;
+    const portal = portalId
+      ? cave.portals.find(candidate => candidate.id === portalId)
+      : [...cave.portals].sort((a, b) => distance(a.interior, this.player) - distance(b.interior, this.player))[0];
+    if (!portal) return false;
+    this.sceneId = portal.surfaceSceneId; this.surfaceReturn = undefined;
+    this.resetScenePopulation(portal.surfaceArrival);
+    return true;
+  }
+
   private resetScenePopulation(arrival: { x: number; z: number }): void {
     this.relocatePartner(arrival);
   }
@@ -511,6 +575,7 @@ export class OpenWorldSimulation {
     if (battle.awaitingSwitch && action.type !== 'switch') return false;
     if (action.type === 'run' && !battle.canRun) return false;
     if (action.type === 'switch' && (action.index === battle.player.activeIndex || !battle.player.team[action.index]?.hp)) return false;
+    if (action.type === 'switch' && battle.policyRegion && monsterRegionalUseReason(this.game, battle.policyRegion, battle.player.team[action.index])) return false;
     if (action.type === 'item') {
       const target = action.targetInstanceId ? battle.player.team.find(monster => monster.instanceId === action.targetInstanceId) : battle.player.team[battle.player.activeIndex];
       if (!target || target.hp <= 0 || target.hp >= target.stats.hp || this.game.inventory[action.item] <= 0) return false;
@@ -522,13 +587,13 @@ export class OpenWorldSimulation {
   startEncounter(id: string): boolean {
     if (this.game.battle || this.game.captureOffer || this.isSafeTown(this.player.x, this.player.z)) return false;
     const entity = this.entities.find(item => item.kind === 'wild' && item.id === id); if (!entity) return false;
+    if (this.modelStatus(id) || !this.modelsReady) return false;
     if (this.isSafeTown(entity.x, entity.z)) return false;
-    const healthy = Array.from({ length: this.game.player.team.length }, (_, offset) => (this.nextBattleTeamIndex + offset) % this.game.player.team.length)
-      .find(index => this.game.player.team[index].hp > 0);
-    if (healthy === undefined) return false;
-    const wild = createMonster(this.game, entity.speciesId, entity.level);
+    const healthy = firstUsableRegionalTeamIndex(this.game, this.regionId, this.nextBattleTeamIndex);
+    if (healthy < 0) return false;
+    const wild = createMonster(this.game, entity.speciesId, entity.level, this.regionId);
     this.game.dex.seen = [...new Set([...this.game.dex.seen, entity.speciesId])].sort((a, b) => a - b);
-    this.game.battle = { kind: 'wild', regionId: this.game.regionId, player: { team: this.game.player.team, activeIndex: healthy }, enemy: { team: [wild], activeIndex: 0 }, turn: 1, canRun: true };
+    this.game.battle = { kind: 'wild', regionId: this.game.regionId, policyRegion: this.regionId, player: { team: this.game.player.team, activeIndex: healthy }, enemy: { team: [wild], activeIndex: 0 }, turn: 1, canRun: true };
     this.nextBattleTeamIndex = (healthy + 1) % this.game.player.team.length;
     this.game.logs.push(`오픈월드에서 ${getSpecies(entity.speciesId).name}을(를) 만났다.`); if (this.game.logs.length > 200) this.game.logs.shift();
     this.battleWildId = id; this.battleElapsed = 0; this.pendingCapture = false; this.pendingBall = undefined; this.pendingAction = undefined; this.lastPlayerReward = null; this.lastEnemyReward = null;
@@ -543,9 +608,14 @@ export class OpenWorldSimulation {
     const events: OpenWorldEvent[] = [];
     const manualControlActive = this.manualControlRemaining > 0; this.manualControlRemaining = Math.max(0, this.manualControlRemaining - deltaSeconds);
     this.syncCompanion();
+    for (const id of this.modelStatuses.keys()) if (this.modelSpecies(id) === undefined) this.modelStatuses.delete(id);
+    if (!this.modelsReady) return { tick: this.tick, events, battleActive: !!this.game.battle };
     if (this.game.captureOffer) {
       if (!this.hasBalls) this.releaseVictory();
       else { this.tick++; return { tick: this.tick, events, battleActive: false }; }
+    }
+    if (!this.game.battle && needsRegionalStarter(this.game, this.regionId)) {
+      this.tick++; return { tick: this.tick, events, battleActive: false };
     }
     if (!this.game.battle) {
       this.streamTravelEncounters();
@@ -574,7 +644,7 @@ export class OpenWorldSimulation {
       if (this.controlMode === 'manual' && !this.pendingAction && !this.pendingCapture) { this.battleElapsed = 0; this.tick++; return { tick: this.tick, events, battleActive: true }; }
       this.battleElapsed += deltaSeconds;
       while (this.game.battle && this.battleElapsed >= BATTLE_INTERVAL) {
-        if (usesServerBrain() && !this.serverBattleReady()) {
+        if (!this.modelsReady || (usesServerBrain() && !this.serverBattleReady())) {
           this.battleElapsed = BATTLE_INTERVAL - 0.001; break;
         }
         this.battleElapsed -= BATTLE_INTERVAL;
@@ -614,6 +684,10 @@ export class OpenWorldSimulation {
     for (const entity of this.entities) {
       const target = this.targetFor(entity); entity.target = target;
       const before = target ? distance(entity, target) : 0; entity.observation = this.observe(entity, target, occupied, deltaSeconds);
+      if (this.modelStatus(entity.id)) {
+        entity.action = 4; entity.reward = 0; occupied.push({ x: entity.x, z: entity.z });
+        events.push({ type: 'wait', entityId: entity.id, x: entity.x, z: entity.z, reward: 0 }); continue;
+      }
       if (entity.kind === 'companion' && (manualControlActive || this.controlMode === 'manual')) {
         entity.action = 4;
         entity.reward = 0; occupied.push({ x: entity.x, z: entity.z }); events.push({ type: 'wait', entityId: entity.id, x: entity.x, z: entity.z, reward: 0 }); continue;
@@ -648,7 +722,9 @@ export class OpenWorldSimulation {
     let action: BattleAction, learnedPlayerAction = false, source: RewardDecisionSource = 'manual';
     if (battle.awaitingSwitch) {
       const requested = this.pendingAction; this.pendingAction = undefined;
-      const index = requested?.type === 'switch' ? requested.index : battle.player.team.findIndex(monster => monster.hp > 0);
+      const index = requested?.type === 'switch' ? requested.index : battle.policyRegion
+        ? firstUsableRegionalTeamIndex(this.game, battle.policyRegion)
+        : battle.player.team.findIndex(monster => monster.hp > 0);
       action = { type: 'switch', index };
     } else if (this.pendingAction) {
       action = this.pendingAction; this.pendingAction = undefined;
@@ -762,11 +838,6 @@ export class OpenWorldSimulation {
     return damaging[0]?.index ?? 0;
   }
 
-  private isDamagingAttack(monster: Monster, battle: NonNullable<GameState['battle']>, index: number): boolean {
-    const slot = (battle.transformations?.[monster.instanceId]?.moves ?? monster.moves)[index]; if (!slot) return false;
-    const move = getMove(slot.moveId); return move.power > 0 || [12, 32, 49, 69, 82, 90, 101, 149, 162].includes(move.id);
-  }
-
   private autoEvolve(events: OpenWorldEvent[]): void {
     for (const monster of this.game.player.team) {
       for (;;) {
@@ -787,7 +858,8 @@ export class OpenWorldSimulation {
   private syncCompanion(): void {
     const ownedIds = new Set([...this.game.player.team, ...this.game.player.box].map(monster => `companion:${monster.instanceId}`));
     for (const id of this.companionMemories.keys()) if (!ownedIds.has(id)) { this.companionMemories.delete(id); this.brains.delete(id); }
-    const lead = this.game.player.team.find(monster => monster.hp > 0) ?? this.game.player.team[0];
+    const usable = firstUsableRegionalTeamIndex(this.game, this.regionId);
+    const lead = this.game.player.team[usable >= 0 ? usable : 0];
     let companion = this.entities.find(entity => entity.kind === 'companion');
     const expectedId = `companion:${lead.instanceId}`;
     if (!companion || companion.id !== expectedId) {
@@ -1008,36 +1080,6 @@ export class OpenWorldSimulation {
       if (!sample.blocked && sample.biome === biome && Math.hypot(x - this.player.x, z - this.player.z) >= awayFromPlayer && !this.entities.some(entity => Math.hypot(entity.x - x, entity.z - z) < 3) && !this.foods.some(food => Math.hypot(food.x - x, food.z - z) < 2)) return { x, z };
     }
     throw new Error(`No open ${biome} position`);
-  }
-
-  private openBeginnerPosition(): { x: number; z: number } {
-    for (let attempt = 0; attempt < 1000; attempt++) {
-      const angle = this.rng.next() * Math.PI * 2, radius = 8 + this.rng.next() * 7;
-      const x = this.player.x + Math.cos(angle) * radius, z = this.player.z + Math.sin(angle) * radius;
-      if (!this.sampleWorld(x, z).blocked && !this.entities.some(entity => Math.hypot(entity.x - x, entity.z - z) < 3)) return { x, z };
-    }
-    throw new Error('No open beginner position');
-  }
-
-  private openNearbyPosition(biome: WorldBiome, minimum: number, maximum: number): { x: number; z: number } {
-    for (let attempt = 0; attempt < 2000; attempt++) {
-      const angle = this.rng.next() * Math.PI * 2, radius = minimum + this.rng.next() * (maximum - minimum);
-      const x = this.player.x + Math.cos(angle) * radius, z = this.player.z + Math.sin(angle) * radius;
-      const sample = this.sampleWorld(x, z);
-      if (!sample.blocked && sample.biome === biome && !this.entities.some(entity => distance(entity, { x, z }) < 3) && !this.foods.some(food => distance(food, { x, z }) < 2)) return { x, z };
-    }
-    return this.openPosition(biome, minimum);
-  }
-
-  private openRespawnPosition(pending: WorldRespawn): { x: number; z: number } {
-    for (let attempt = 0; attempt < 2000; attempt++) {
-      const nearPlayer = attempt < 300, center = nearPlayer ? this.player : { x: pending.originX, z: pending.originZ };
-      const minimum = nearPlayer ? 6 : 5, maximum = nearPlayer ? 14 : 18, radius = minimum + this.rng.next() * (maximum - minimum), angle = this.rng.next() * Math.PI * 2;
-      const x = clamp(center.x + Math.cos(angle) * radius, WORLD_MIN + 2, WORLD_MAX - 2), z = clamp(center.z + Math.sin(angle) * radius, WORLD_MIN + 2, WORLD_MAX - 2);
-      const sample = this.sampleWorld(x, z);
-      if (!sample.blocked && sample.biome === pending.biome && distance({ x, z }, this.player) >= 6 && !this.entities.some(entity => distance(entity, { x, z }) < 3) && !this.foods.some(food => distance(food, { x, z }) < 2)) return { x, z };
-    }
-    return this.openPosition(pending.biome, 8);
   }
 
   private companionPosition(): { x: number; z: number } {

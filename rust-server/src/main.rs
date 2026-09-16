@@ -1,6 +1,7 @@
 mod api;
 mod connectome;
 mod local;
+mod ranked;
 mod realtime;
 mod save_validation;
 mod trades;

@@ -37,8 +37,8 @@ describe('authored cave relief', () => {
       expect(formations.stalactites.length).toBe(cave.relief.theme === 'industrial' ? 0 : formations.ledges.length / 2);
       if (cave.relief.theme === 'industrial') expect(formations.stalagmites).toHaveLength(0);
       else expect(formations.stalagmites.length).toBeGreaterThanOrEqual(Math.floor(formations.stalactites.length / 2));
-      expect([...formations.stalactites, ...formations.stalagmites].every(item =>
-        Math.abs(item.x) > cave.width / 2 - 2.1 || Math.abs(item.z) > cave.depth / 2 - 2.1)).toBe(true);
+      expect([...formations.ledges, ...formations.stalactites, ...formations.stalagmites].every(item =>
+        cave.sample(item.x, item.z).blocked)).toBe(true);
     }
   });
 });

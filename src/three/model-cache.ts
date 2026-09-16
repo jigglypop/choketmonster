@@ -4,6 +4,7 @@ import { createGLTFLoader } from './gltf-loader';
 
 // One reference-counted cache serves field, team, box and dex viewers.
 const MODEL_CACHE_LIMIT = 24;
+const MODEL_LOAD_TIMEOUT_MS = 45_000;
 const loader = createGLTFLoader();
 
 type CachedModel = {
@@ -48,6 +49,8 @@ type LoadTask = { url: string; entry: CachedModel; resolve(value: GLTF): void; r
 const loadQueue: LoadTask[] = [];
 let activeLoads = 0;
 const failedModels = new Map<string, number>();
+/** Explicit retries bypass the cooldown, without evicting live geometry or in-flight work. */
+export function retryFailedModels(): void { failedModels.clear(); }
 function drainModelQueue(): void {
   loadQueue.sort((a, b) => Number(/raw\.githubusercontent\.com/.test(b.url)) - Number(/raw\.githubusercontent\.com/.test(a.url)));
   while (activeLoads < 3 && loadQueue.length) {
@@ -57,11 +60,20 @@ function drainModelQueue(): void {
       task.reject(new Error('Model left the visible area before loading')); continue;
     }
     activeLoads++;
-    loader.loadAsync(task.url).then(gltf => { task.entry.gltf = gltf; task.resolve(gltf); }, error => {
+    let expired = false;
+    let timeout: ReturnType<typeof setTimeout>;
+    const pending = loader.loadAsync(task.url).then(gltf => {
+      if (expired) { disposeTree(gltf.scene); throw new Error('Expired model load'); }
+      return gltf;
+    });
+    const deadline = new Promise<never>((_, reject) => {
+      timeout = setTimeout(() => { expired = true; reject(new Error('Model load timed out')); }, MODEL_LOAD_TIMEOUT_MS);
+    });
+    Promise.race([pending, deadline]).then(gltf => { failedModels.delete(task.url); task.entry.gltf = gltf; task.resolve(gltf); }, error => {
       failedModels.set(task.url, performance.now());
       if (modelCache.get(task.url) === task.entry) modelCache.delete(task.url);
       task.reject(error);
-    }).finally(() => { activeLoads--; pruneModelCache(); drainModelQueue(); });
+    }).finally(() => { clearTimeout(timeout); activeLoads--; pruneModelCache(); drainModelQueue(); });
   }
 }
 

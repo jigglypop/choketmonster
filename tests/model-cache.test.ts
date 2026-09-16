@@ -3,9 +3,35 @@ import { BoxGeometry, Group, Mesh, MeshStandardMaterial } from 'three';
 
 const loading = vi.hoisted(() => ({ load: vi.fn() }));
 vi.mock('../src/three/gltf-loader', () => ({ createGLTFLoader: () => ({ loadAsync: loading.load }) }));
-import { acquireModel, modelCacheStats } from '../src/three/model-cache';
+import { acquireModel, modelCacheStats, retryFailedModels } from '../src/three/model-cache';
 
 describe('shared model cache ownership', () => {
+  it('allows an explicit retry immediately after a failed request', async () => {
+    loading.load.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({ scene: new Group(), animations: [] });
+    const first = acquireModel('/test/retry.glb');
+    await expect(first.promise).rejects.toThrow('offline'); first.release();
+    const blocked = acquireModel('/test/retry.glb');
+    await expect(blocked.promise).rejects.toThrow('temporarily unavailable'); blocked.release();
+    retryFailedModels();
+    const retry = acquireModel('/test/retry.glb');
+    await expect(retry.promise).resolves.toHaveProperty('scene'); retry.release();
+    loading.load.mockClear();
+  });
+
+  it('times out a stalled load and disposes its late result without accepting it', async () => {
+    vi.useFakeTimers();
+    let finish!: (asset: unknown) => void;
+    loading.load.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const lease = acquireModel('/test/stalled.glb');
+    const rejected = expect(lease.promise).rejects.toThrow('timed out');
+    try {
+      await vi.advanceTimersByTimeAsync(45_001); await rejected;
+      const geometry = new BoxGeometry(), disposed = vi.fn(); geometry.addEventListener('dispose', disposed);
+      const scene = new Group(); scene.add(new Mesh(geometry, new MeshStandardMaterial()));
+      finish({ scene, animations: [] }); await vi.advanceTimersByTimeAsync(0);
+      expect(disposed).toHaveBeenCalledTimes(1);
+    } finally { lease.release(); vi.useRealTimers(); loading.load.mockClear(); }
+  });
   it('deduplicates simultaneous viewers, retains active geometry, and evicts only released models', async () => {
     loading.load.mockImplementation(async () => {
       const scene = new Group(); scene.add(new Mesh(new BoxGeometry(), new MeshStandardMaterial()));

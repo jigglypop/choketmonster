@@ -21,5 +21,8 @@ export const ALOLA_GYMS:readonly KantoGym[]=[
  {locationId:'mount-hokulani',badge:5,badgeName:'마마네의인증',name:'마마네',speciesId:777,level:36},{locationId:'tapu-village',badge:6,badgeName:'아세로라의인증',name:'아세로라',speciesId:778,level:40},
  {locationId:'poni-wilds',badge:7,badgeName:'포니의인증',name:'하푸우',speciesId:750,level:47},{locationId:'vast-poni-canyon',badge:8,badgeName:'섬순례완주',name:'대협곡시련',speciesId:784,level:55},
 ];
-const runtime=createAuthoredRegionSampler({id:'alola',locations:ALOLA_LOCATIONS,connections:ALOLA_CONNECTIONS});
+const runtime=createAuthoredRegionSampler({id:'alola',locations:ALOLA_LOCATIONS,connections:ALOLA_CONNECTIONS,terrainFeatures:[
+ {locationId:'vast-poni-canyon',surface:'mountain',radius:12,elevation:2.1},
+ {locationId:'mount-lanakila',surface:'snow',radius:12,elevation:2.5},
+]});
 export const alolaLocationAt=runtime.locationAt,distanceToAlolaPath=runtime.distanceToPath,sampleAlolaWorld=runtime.sample,evaluateAlolaTraversal=runtime.evaluate,safeAlolaArrival=runtime.safeArrival,nearestAlolaWalkable=runtime.nearestWalkable,alolaBuildingOffsets=runtime.buildingOffsets;

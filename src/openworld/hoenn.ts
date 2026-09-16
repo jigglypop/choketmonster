@@ -57,5 +57,6 @@ export const HOENN_GYMS: readonly KantoGym[] = [
   {locationId:'mossdeep-city',badge:7,badgeName:'마인드배지',name:'풍&란',speciesId:338,level:42},
   {locationId:'sootopolis-city',badge:8,badgeName:'레인배지',name:'아단',speciesId:230,level:46},
 ];
-const runtime = createAuthoredRegionSampler({ id: 'hoenn', locations: HOENN_LOCATIONS, connections: HOENN_CONNECTIONS });
+const runtime = createAuthoredRegionSampler({ id: 'hoenn', locations: HOENN_LOCATIONS, connections: HOENN_CONNECTIONS,
+  terrainFeatures: [{ locationId: 'hoenn-route-111', surface: 'desert', radius: 11, elevation: .42 }] });
 export const hoennLocationAt = runtime.locationAt, distanceToHoennPath = runtime.distanceToPath, sampleHoennWorld = runtime.sample, evaluateHoennTraversal = runtime.evaluate, safeHoennArrival = runtime.safeArrival, nearestHoennWalkable=runtime.nearestWalkable, hoennBuildingOffsets=runtime.buildingOffsets;

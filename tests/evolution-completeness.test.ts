@@ -4,7 +4,7 @@ import { EVOLUTION_CONDITION_NAMES, EVOLUTION_SOURCE_RULES } from '../src/data/e
 import { getMove, getSpecies, POKEMON } from '../src/data/pokemon';
 import {
   actBattle, createGame, createMonster, evolve, evolutionItemsFor, evolutionRoute,
-  restoreGame, serializeGame, statsFor, useItem, type GameState, type InventoryItem,
+  restoreGame, serializeGame, SHOP_ITEMS, statsFor, useItem, type GameState, type InventoryItem,
 } from '../src/game/engine';
 import {
   nativeEvolutionReady, naturalEvolution, needsSpecialEvolution, sourceEvolutionRules,
@@ -69,16 +69,18 @@ describe('complete source-backed evolution reachability', () => {
     }
   });
 
-  it('uses friendship treats to unlock a native friendship evolution', () => {
+  it('keeps friendship values compatible but removes friendship evolution from play', () => {
     const game = ownedFixture(172, 20), monster = game.player.team[0], evolution = evolutionOf(172, 25);
     game.inventory['friendship-treat'] = 8;
     expect(naturalEvolution(game, monster, evolution)).toBeUndefined();
     useItem(game, 'friendship-treat', monster.instanceId, 8);
     expect(evolutionProgress(monster).friendship).toBeGreaterThanOrEqual(220);
-    expect(naturalEvolution(game, monster, evolution)).toBeDefined();
-    evolve(game, monster.instanceId, { targetId: 25 });
+    expect(naturalEvolution(game, monster, evolution)).toBeUndefined();
+    expect(SHOP_ITEMS).not.toContain('friendship-treat');
+    game.inventory['evolution-catalyst'] = 1;
+    evolve(game, monster.instanceId, { targetId: 25, item: 'evolution-catalyst' });
     expect(monster.speciesId).toBe(25);
-    expect(game.inventory['friendship-treat']).toBe(0);
+    expect(game.inventory['friendship-treat']).toBe(0); // legacy stock remains readable/consumable.
   });
 
   it('normalizes fixed-gender evolution species while preserving individual identity and brain', () => {

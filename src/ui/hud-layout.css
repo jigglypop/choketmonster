@@ -23,6 +23,10 @@
 .topbar.map-overlay nav button.active { color: var(--ui-hud-text); background: #ffffff16; }
 .topbar #game-sound-toggle { background: var(--ui-accent-soft); color: var(--ui-accent-hover); border-color: var(--ui-border); }
 .topbar .brand-ball { flex-shrink: 0; }
+.world-cave-exits { position: fixed; z-index: 25; top: calc(var(--app-header-height) + 92px); left: 20px; display: flex; flex-wrap: wrap; gap: 6px; max-width: min(300px, calc(100vw - 160px)); }
+.world-cave-exits[hidden] { display: none; }
+.world-cave-exits button, .world-cave-exits select { min-height: 42px; max-width: 100%; padding: 8px 12px; background: var(--ui-hud); color: var(--ui-hud-text); border: 1px solid var(--ui-hud-line); border-radius: 9px; }
+.world-cave-exits button { background: var(--ui-accent); }
 .adventure { min-height: 0; height: calc(100dvh - var(--app-nav-height)); }
 .adventure .world-explore-panel { top: calc(var(--app-header-height) + 16px); left: 20px; width: 300px; background: var(--ui-hud); }
 .adventure .world-next-guide {

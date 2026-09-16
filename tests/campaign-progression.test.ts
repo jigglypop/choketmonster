@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Graph } from '../src/core/brain';
 import { getMove, getSpecies } from '../src/data/pokemon';
 import { hasPokemonModel } from '../src/data/pokemon-models';
-import { actBattle, buyItem, challengeCampaignGym, challengeCampaignTrainer, createGame, createMonster, depositMonster, duplicateMergeValue, experienceAtLevel, heal, restoreGame, serializeGame, validateGame, withdrawMonster, type GameState } from '../src/game/engine';
+import { actBattle, buyItem, challengeCampaignGym, challengeCampaignTrainer, claimRegionalStarter, createGame, createMonster, depositMonster, duplicateMergeValue, experienceAtLevel, heal, restoreGame, serializeGame, validateGame, withdrawMonster, type GameState } from '../src/game/engine';
 import { CAMPAIGN_TRAINERS, campaignProgress, campaignTravelReason, getCampaignGyms, getNextCampaignTrainer, getRegionalBadges, regionalWildLevels } from '../src/game/campaign';
 import { calculateDamage } from '../src/game/battle';
 import { getWorldAtlas } from '../src/openworld/atlas';
@@ -14,8 +14,8 @@ function badges(game: GameState, region: 'johto' | 'kanto') {
   if (region === 'johto') game.campaign!.johtoBadges = [1,2,3,4,5,6,7,8];
   else { game.player.badges = 8; game.defeatedGyms = [1,2,3,4,5,6,7,8]; }
 }
-function trainedTeam(game: GameState) {
-  game.player.team = [150,149,130,6,3,9].map(id => createMonster(game, id, 100));
+function trainedTeam(game: GameState, origin: 'johto' | 'kanto', level: number) {
+  game.player.team = [150,149,130,6,3,9].map(id => createMonster(game, id, level, origin));
   game.dex.caught = [...new Set([...game.dex.caught, ...game.player.team.map(mon => mon.speciesId)])].sort((a,b) => a-b);
   game.dex.seen = [...new Set([...game.dex.seen, ...game.dex.caught])].sort((a,b) => a-b);
 }
@@ -51,14 +51,17 @@ describe('regional campaign and growth', () => {
   });
 
   it('plays both sets of eight gyms, both ordered leagues and Red using real battle turns', () => {
-    let game = createGame(155, 'campaign-real-turns'); trainedTeam(game);
+    let game = createGame(155, 'campaign-real-turns');
     expect(() => challengeCampaignTrainer(game, 'johto')).toThrow(/8/);
     for (const region of ['johto', 'kanto'] as const) {
+      if (region === 'kanto') claimRegionalStarter(game, region, 1);
       for (const gym of getCampaignGyms(game, region)) {
+        trainedTeam(game, region, 20 + (gym.badge - 1) * 10);
         heal(game); challengeCampaignGym(game, region, gym.locationId); finishWithRealTurns(game);
         expect(getRegionalBadges(game, region)).toBe(gym.badge);
         game = restoreGame(serializeGame(game));
       }
+      trainedTeam(game, region, 100);
       for (let stage = 0; stage < 5; stage++) {
         heal(game); challengeCampaignTrainer(game, region);
         const saved = serializeGame(game), duplicate = restoreGame(saved);
@@ -136,7 +139,7 @@ describe('regional campaign and growth', () => {
     expect(campaignTravelReason(legacy,'kanto')).toBeUndefined();
     const game = createGame(152, 'level-bands'), location = getWorldAtlas('kanto').locations.find(item=>item.id==='route-1')!;
     expect(regionalWildLevels(legacy,'kanto',location)).toEqual({minLevel:2,maxLevel:4});
-    expect(regionalWildLevels(game,'kanto',location).minLevel).toBeGreaterThanOrEqual(46);
+    expect(regionalWildLevels(game,'kanto',location)).toEqual({minLevel:2,maxLevel:4});
     for (const trainer of CAMPAIGN_TRAINERS) for (const [id, level] of trainer.team) { expect(hasPokemonModel(id),`${trainer.id}: ${id}`).toBe(true); expect(level).toBeLessThanOrEqual(100); }
     expect(experienceAtLevel(100,'medium')).toBe(1000000);
   });

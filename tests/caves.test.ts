@@ -38,16 +38,17 @@ describe('expanded world space', () => {
 });
 
 describe('open cave chambers', () => {
-  it('keeps stable scenes and portals behind four merged perimeter walls', () => {
+  it('keeps stable scenes and portals inside varied continuous chamber outlines', () => {
     expect(CAVE_SCENES).toHaveLength(16);
     expect(new Set(CAVE_SCENES.map(scene => scene.sceneId)).size).toBe(CAVE_SCENES.length);
     for (const scene of CAVE_SCENES) {
       expect(scene.sceneId).toBe(`cave:${scene.regionId}:${scene.id}`);
       expect(scene.label).toMatch(/^[\x20-\x7e]+$/);
       expect(scene.portals.length).toBeGreaterThan(0);
-      expect(scene.wallSegments).toHaveLength(4);
-      expect(scene.wallSegments.filter(wall => wall.width === scene.width)).toHaveLength(2);
-      expect(scene.wallSegments.filter(wall => wall.depth === scene.depth - scene.tileSize * 2)).toHaveLength(2);
+      expect(scene.wallSegments).toHaveLength(48);
+      expect(scene.outline).toHaveLength(scene.wallSegments.length);
+      expect(scene.width).toBeGreaterThan(scene.legacyWidth);
+      expect(scene.depth).toBeGreaterThan(scene.legacyDepth);
       expect(getCaveScene(scene.sceneId)).toBe(scene);
       for (const portal of scene.portals) {
         expect(scene.sample(portal.interior.x, portal.interior.z).blocked).toBe(false);
@@ -60,8 +61,8 @@ describe('open cave chambers', () => {
 
   it('makes every interior tile directly traversable and recovers old blocked positions', () => {
     for (const scene of CAVE_SCENES) {
-      for (let z = -scene.depth / 2 + scene.tileSize * 1.5; z <= scene.depth / 2 - scene.tileSize * 1.5; z += scene.tileSize)
-        for (let x = -scene.width / 2 + scene.tileSize * 1.5; x <= scene.width / 2 - scene.tileSize * 1.5; x += scene.tileSize)
+      for (let z = -scene.legacyDepth / 2 + scene.tileSize * 1.5; z <= scene.legacyDepth / 2 - scene.tileSize * 1.5; z += scene.tileSize)
+        for (let x = -scene.legacyWidth / 2 + scene.tileSize * 1.5; x <= scene.legacyWidth / 2 - scene.tileSize * 1.5; x += scene.tileSize)
           expect(scene.sample(x, z).blocked, `${scene.sceneId} at ${x},${z}`).toBe(false);
       for (const from of scene.portals) for (const to of scene.portals) {
         const steps = Math.max(1, Math.ceil(Math.hypot(to.interior.x - from.interior.x, to.interior.z - from.interior.z) / .5));
@@ -73,6 +74,17 @@ describe('open cave chambers', () => {
       const recovered = nearestCaveWalkable(scene.sceneId, scene.width, scene.depth);
       expect(recovered).toBeDefined();
       expect(scene.sample(recovered!.x, recovered!.z).blocked).toBe(false);
+    }
+  });
+
+  it('uses every requested silhouette without splitting a chamber into a maze', () => {
+    expect(new Set(CAVE_SCENES.map(scene => scene.silhouette))).toEqual(new Set(['rounded', 'oval', 'long', 'hall', 'bend']));
+    for (const scene of CAVE_SCENES) {
+      for (let index = 0; index < scene.outline.length; index += 4) {
+        const point = scene.outline[index];
+        const inside = { x: point.x * .75, z: point.z * .75 };
+        expect(scene.sample(inside.x, inside.z).blocked, `${scene.id} radial ${index}`).toBe(false);
+      }
     }
   });
 });

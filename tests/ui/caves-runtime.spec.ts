@@ -72,20 +72,13 @@ test('localized portal enters, persists through reload, and exits the isolated c
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 45_000 });
   await expect.poll(() => sceneId(page), { timeout: 45_000 }).toBe(cave.sceneId);
   await openExplorePanel(page);
-  const exit = page.locator(`[data-portal="${portal.id}"]`);
-  await expect(exit).toContainText('밖으로 나가기');
-  // Restoring the renderer initially places Html labels at (0, 0). Wait for
-  // projection before resuming so idle auto mode cannot start during the wait.
-  await expect.poll(() => exit.evaluate(element => {
-    const box = element.getBoundingClientRect();
-    return element.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2));
-  }), { timeout: 45_000 }).toBe(true);
-  await page.locator('#world-pause').click();
+  const exit = page.locator('#world-cave-exit');
+  await expect(exit).toBeVisible();
+  await expect(exit).toHaveText('동굴 밖으로 나가기');
   await exit.click();
-  await expect(page.locator('#world-cave-enter')).toHaveCount(1, { timeout: 45_000 });
-  await expect(page.locator('#world-cave-enter')).toBeVisible({ timeout: 45_000 });
-  await page.locator('#world-cave-enter').click();
   await expect.poll(() => sceneId(page), { timeout: 45_000 }).toBe('surface:johto');
+  await expect(page.locator('#world-cave-exits')).toBeHidden();
+  await expect(page.locator('#world-mode-manual')).toHaveAttribute('aria-pressed', 'true');
   writeFileSync(`${output}/portal-evidence.json`, JSON.stringify({ cave: cave.sceneId, portal: portal.id, label: cave.name, errors }, null, 2));
   expect(errors).toEqual([]);
 });
@@ -118,7 +111,7 @@ test('cave renders Pokemon and its environment without human field NPCs', async 
   expect(composition.renderer).toMatchObject({ background: '182326', fog: null, clearAlpha: 1 });
   expect(composition.renderer).toMatchObject({ trainers: [] });
   const surfaces = composition.renderer!.caveSurfaces;
-  expect(surfaces.map(surface => surface.name).sort()).toEqual(['cave-floor', 'cave-wall:0', 'cave-wall:1', 'cave-wall:2', 'cave-wall:3']);
+  expect(surfaces.map(surface => surface.name).sort()).toEqual(['cave-floor', 'cave-wall:outline']);
   expect(new Set(surfaces.map(surface => surface.material)).size).toBe(1);
   expect(surfaces.every(surface => surface.albedoLoaded && surface.normalLoaded && surface.roughnessLoaded && surface.tiled)).toBe(true);
   expect(composition.renderer!.caveGeology).toEqual(expect.arrayContaining([

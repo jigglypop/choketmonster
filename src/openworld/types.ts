@@ -5,6 +5,7 @@ export type WorldHeading = 0 | 1 | 2 | 3 | 4;
 export type WorldPlayer = WorldPoint & { heading: WorldHeading };
 
 export type WorldCreatureAction = 'idle' | 'walk' | 'attack' | 'hurt' | 'fainted';
+export type WorldModelStatus = 'loading' | 'ready' | 'failed' | 'untracked';
 
 export type WorldCreature = WorldPoint & {
   id: string;
@@ -57,6 +58,8 @@ export type WorldSample = {
   /** The sampler already interpolates the local rendered triangle grid. */
   exactHeight?: boolean;
   biome: 'meadow' | 'forest' | 'lake' | 'rock';
+  /** Visual landform layered over the encounter biome without changing spawn tables. */
+  surface?: 'mountain' | 'snow' | 'desert';
   blocked: boolean;
 };
 
@@ -85,6 +88,8 @@ export type OpenWorldViewOptions = {
   onInteract?: (instanceId: string) => void;
   onTrainer?: (trainerId: string) => void;
   onPortal?: (portalId: string) => void;
+  /** Lets the simulation quarantine a visible creature until its real model is usable. */
+  onModelStatus?: (creatureId: string, status: WorldModelStatus, speciesId: number) => void;
   modelUrl?: (speciesId: number) => string;
   spriteUrl?: (speciesId: number) => string;
   sampleWorld?: (x: number, z: number) => WorldSample;
@@ -96,6 +101,7 @@ export type OpenWorldViewOptions = {
 };
 
 export type OpenWorldView = {
+  retryModels(): void;
   update(snapshot?: OpenWorldRenderSnapshot): void;
   navigateTo(point: WorldPoint): boolean;
   setCameraHeading(radians: number): void;

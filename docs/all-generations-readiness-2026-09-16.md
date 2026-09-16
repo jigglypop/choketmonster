@@ -2,6 +2,8 @@
 
 This receipt separates locally inspected bytes, deformation-tested runtime models, and regions that are safe to expose. A repository URL or a syntactically valid GLB does not count as a playable species.
 
+Update 2026-09-17: the Galar, Hisui, and Paldea local browser gates (representative exact GLB, map walking, and paused save/reload) now pass and their region selectors are enabled. See [runtime recovery receipt](runtime-recovery-2026-09-17.md). The source/rights boundaries below remain unchanged; the region-exposure section records the earlier September 16 checkpoint, not a deployed release claim.
+
 ## Model sources and integrity
 
 The primary source is `Pokemon-3D-api/assets` at commit `429de1288cea0d43f5b4f56305d2276e94239d65`. The repository's current `main` head was rechecked on 2026-09-16 and is still that commit. The fixed tree contains usable regular models for 971 of 1,025 National Dex species: the existing 151 Kanto models and 820 inspected post-Kanto GLBs totaling 305,962,400 bytes. Every inspected file has a local SHA-256 in `src/data/pokemon-models-manifest.json`.

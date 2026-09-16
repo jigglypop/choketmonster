@@ -39,6 +39,7 @@ describe('Hoenn through Alola runtime progression', () => {
     for (const region of ['hoenn', 'sinnoh', 'unova', 'kalos', 'alola'] as const) {
       let world = new OpenWorldSimulation(graph, game, 917);
       world.changeRegion(region); world.setControlMode('manual');
+      world.claimRegionalStarter(({hoenn:252,sinnoh:387,unova:495,kalos:650,alola:722} as const)[region]);
       expect(world.rosterStatus().total).toBe(15);
       expect(nextDestinationGuide(game, world.atlas, world.sceneId, world.player).destinationId).toBe(getCampaignGyms(game, region)[0].locationId);
       for (let step = 0; step < 8; step++) world.step({ deltaSeconds: .1, learning: false });
@@ -47,10 +48,14 @@ describe('Hoenn through Alola runtime progression', () => {
       expect(restore.simulation.rosterStatus()).toEqual(world.rosterStatus());
       game = restore.game; world = restore.simulation;
       for (const gym of getCampaignGyms(game, region)) {
+        game.player.team = [150,149,130,6,3,9].map(id => createMonster(game, id, 20 + (gym.badge - 1) * 10, region));
+        game.dex.caught = [...new Set([...game.dex.caught, ...game.player.team.map(mon => mon.speciesId)])].sort((a,b) => a-b); game.dex.seen = [...game.dex.caught];
         heal(game); challengeCampaignGym(game, region, gym.locationId); winRealBattle(game);
         expect(getRegionalBadges(game, region)).toBe(gym.badge);
         game = restoreGame(serializeGame(game));
       }
+      game.player.team = [150,149,130,6,3,9].map(id => createMonster(game, id, 100, region));
+      game.dex.caught = [...new Set([...game.dex.caught, ...game.player.team.map(mon => mon.speciesId)])].sort((a,b) => a-b); game.dex.seen = [...game.dex.caught];
       for (let stage = 0; stage < 5; stage++) {
         heal(game); challengeCampaignTrainer(game, region);
         game = restoreGame(serializeGame(game)); winRealBattle(game);

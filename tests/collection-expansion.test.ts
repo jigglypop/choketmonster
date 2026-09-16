@@ -23,7 +23,7 @@ describe('expanded collection and individual lifecycle', () => {
       expect([...encounters].sort((a, b) => a - b), version.id).toEqual([...version.speciesIds].sort((a, b) => a - b));
     }
     expect(versionEncounters('pallet', 'gold', 8)).toEqual(versionEncounters('pallet', 'red', 8));
-    expect(getPlayableSpeciesIds('national')).toHaveLength(809);
+    expect(getPlayableSpeciesIds('national')).toHaveLength(1025);
   });
 
   it('limits playable collection changes while retaining the partner and separate collection records', () => {
@@ -31,7 +31,8 @@ describe('expanded collection and individual lifecycle', () => {
     const world = new OpenWorldSimulation(graph, game, 818);
     const partner = world.entities.find(entity => entity.kind === 'companion')!;
     const memory = structuredClone(partner.brain);
-    expect(() => world.changeVersion('scarlet')).toThrow(/3D 지역 지도/);
+    world.changeVersion('scarlet');
+    expect(game.adventureVersion).toBe('scarlet');
     world.changeVersion('national');
     expect(world.entities.find(entity => entity.kind === 'companion')!.brain).toEqual(memory);
     expect(world.entities.filter(entity => entity.kind === 'wild').every(entity => getPlayableSpeciesIds('national').includes(entity.speciesId) && hasPokemonModel(entity.speciesId))).toBe(true);

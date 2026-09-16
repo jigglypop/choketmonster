@@ -110,8 +110,7 @@ export function getCampaignGyms(game: GameState, region: string): readonly Kanto
   if (region === 'paldea') return PALDEA_GYMS;
   if (region === 'johto') return JOHTO_CAMPAIGN_GYMS;
   if (region !== 'kanto') return [];
-  return campaignProgress(game).startRegion === 'johto'
-    ? KANTO_GYMS.map((gym, index) => ({ ...gym, level: 54 + index * 2 })) : KANTO_GYMS;
+  return KANTO_GYMS;
 }
 export function campaignTravelReason(game: GameState, region: string): string | undefined {
   const progress = campaignProgress(game);
@@ -185,9 +184,6 @@ export function regionalWildLevels(game: GameState, region: string, location: Ka
   if (region === 'johto' && location.id === 'mt-silver' && canChallengeRed(game)) return { minLevel: 72, maxLevel: 80 };
   if (region === 'johto' && johtoBands[location.id]) {
     const [minLevel, maxLevel] = johtoBands[location.id]; return { minLevel, maxLevel };
-  }
-  if (region === 'kanto' && campaignProgress(game).startRegion === 'johto') {
-    return { minLevel: Math.min(72, 46 + Math.floor(location.minLevel * .4)), maxLevel: Math.min(76, 50 + Math.floor(location.maxLevel * .4)) };
   }
   return { minLevel: location.minLevel, maxLevel: location.maxLevel };
 }

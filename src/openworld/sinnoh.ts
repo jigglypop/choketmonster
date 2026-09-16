@@ -40,5 +40,9 @@ export const SINNOH_GATES: readonly KantoGate[] = []; export const SINNOH_GYMS: 
   {locationId:'snowpoint-city',badge:7,badgeName:'글레이셔배지',name:'무청',speciesId:478,level:44},
   {locationId:'sunyshore-city',badge:8,badgeName:'비컨배지',name:'전진',speciesId:405,level:50},
 ];
-const runtime = createAuthoredRegionSampler({ id:'sinnoh', locations:SINNOH_LOCATIONS, connections:SINNOH_CONNECTIONS });
+const runtime = createAuthoredRegionSampler({ id:'sinnoh', locations:SINNOH_LOCATIONS, connections:SINNOH_CONNECTIONS, terrainFeatures: [
+  { locationId: 'mt-coronet', surface: 'mountain', radius: 14, elevation: .9 },
+  { locationId: 'sinnoh-route-216', surface: 'snow', radius: 10, elevation: .75 },
+  { locationId: 'sinnoh-route-217', surface: 'snow', radius: 12, elevation: 1.15 },
+] });
 export const sinnohLocationAt=runtime.locationAt, distanceToSinnohPath=runtime.distanceToPath, sampleSinnohWorld=runtime.sample, evaluateSinnohTraversal=runtime.evaluate, safeSinnohArrival=runtime.safeArrival,nearestSinnohWalkable=runtime.nearestWalkable,sinnohBuildingOffsets=runtime.buildingOffsets;

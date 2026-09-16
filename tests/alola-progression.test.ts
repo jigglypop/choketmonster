@@ -23,6 +23,7 @@ function gameBeforeFinalAlolaTrial() {
       alola: { badges: badges.slice(0, 7), league: 0 },
     },
   };
+  game.claimedRegionalStarters = ['kanto', 'johto', 'hoenn', 'sinnoh', 'unova', 'kalos', 'alola'];
   return game;
 }
 

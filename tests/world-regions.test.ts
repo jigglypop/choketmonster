@@ -7,7 +7,7 @@ import { VERSIONS } from '../src/data/pokemon-versions';
 import { KANTO_LOCATIONS, encountersForLocation } from '../src/openworld/kanto';
 import { getWorldAtlas } from '../src/openworld/atlas';
 import { OpenWorldSimulation, biomeForSpecies, restoreOpenWorld, serializeOpenWorld, versionEncounters, redEncounters, regionalEncounters, RED_ENCOUNTER_LAYOUT } from '../src/openworld/simulation';
-import { getPlayableSpeciesIds, isPlayableSpecies } from '../src/openworld/availability';
+import { getPlayableSpeciesIds, getRegionalNativeSpeciesIds, isPlayableSpecies } from '../src/openworld/availability';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
 
@@ -26,6 +26,7 @@ function moveCheckpointToRegion(world: OpenWorldSimulation, regionId: 'paldea') 
   }
   if (points.length < checkpoint.entities.length + checkpoint.foods.length) throw new Error('Regional fixture has too few walkable points');
   checkpoint.regionId = regionId; checkpoint.mapVersion = atlas.mapVersion;
+  checkpoint.encounterLayout = 'expansion-v1';
   delete checkpoint.sceneId;
   checkpoint.player = { ...atlas.start, heading: 0 };
   checkpoint.spawnAnchor = { ...atlas.start };
@@ -36,17 +37,25 @@ function moveCheckpointToRegion(world: OpenWorldSimulation, regionId: 'paldea') 
   return checkpoint;
 }
 
+function unlockPaldea(game: ReturnType<typeof createGame>) {
+  game.defeatedGyms = [1,2,3,4,5,6,7,8]; game.player.badges = 8; game.championDefeated = true;
+  const complete = { badges: [1,2,3,4,5,6,7,8], league: 5 };
+  game.campaign = { startRegion: 'kanto', johtoBadges: [], kantoLeague: 5, johtoLeague: 0, redDefeated: false,
+    expansion: { hoenn: structuredClone(complete), sinnoh: structuredClone(complete), unova: structuredClone(complete),
+      kalos: structuredClone(complete), alola: structuredClone(complete), galar: structuredClone(complete), hisui: structuredClone(complete) } };
+}
+
 describe('regional open worlds', () => {
-  it('normalizes an unsupported new-game version and spawns only species with real models', () => {
+  it('keeps collection versions separate and admits late regions only after campaign travel gates', () => {
     const game = createGame(1, 'regional-version');
-    game.adventureVersion = 'scarlet'; game.versionCaught ??= {}; game.versionCaught.scarlet ??= [];
     const world = new OpenWorldSimulation(graph, game, 73_001);
     expect(world.regionId).toBe('kanto');
-    expect(game.adventureVersion).toBe('national');
+    expect(game.adventureVersion).toBe('red');
     expect(world.entities.filter(entity => entity.kind === 'wild').every(entity => hasPokemonModel(entity.speciesId) && isPlayableSpecies(entity.speciesId))).toBe(true);
     expect(world.spawnCatalog().map(entry => entry.speciesId)).toEqual(getPlayableSpeciesIds('national'));
-    expect(() => world.changeVersion('scarlet')).toThrow(/3D 지역 지도/);
-    expect(() => world.changeRegion('paldea')).toThrow(/3D 지역 지도/);
+    world.changeVersion('scarlet'); expect(game.adventureVersion).toBe('scarlet');
+    expect(() => world.changeRegion('paldea')).toThrow(/히스이/);
+    unlockPaldea(game); world.changeRegion('paldea'); expect(world.regionId).toBe('paldea');
     world.changeVersion('yellow');
     expect(game.adventureVersion).toBe('yellow');
   });
@@ -99,6 +108,7 @@ describe('regional open worlds', () => {
 
   it('rejects unknown regions and mismatched legacy map heads', () => {
     const game = createGame(1, 'regional-validation');
+    unlockPaldea(game);
     const world = new OpenWorldSimulation(graph, game, 73_003);
     const checkpoint = world.snapshot();
     expect(() => new OpenWorldSimulation(graph, game, world.seed, { ...checkpoint, regionId: 'missing' as never })).toThrow(/Unknown world region/);
@@ -106,14 +116,16 @@ describe('regional open worlds', () => {
     expect(() => new OpenWorldSimulation(graph, game, world.seed, { ...paldea, mapVersion: 'kanto-v2' })).toThrow(/map version/);
   });
 
-  it('does not expose encounters for a region whose map is not shipped', () => {
+  it('exposes Paldea encounters and the complete admitted National Dex', () => {
     const atlas = getWorldAtlas('paldea');
     const encountered = new Set(atlas.locations.flatMap(location => versionEncounters(location.id, 'scarlet', 8, 'paldea')));
-    expect([...encountered]).toEqual([]);
-    expect(getPlayableSpeciesIds('national')).toEqual(Array.from({ length: 809 }, (_, index) => index + 1));
+    expect(encountered.size).toBeGreaterThan(0);
+    expect(getPlayableSpeciesIds('national')).toEqual(Array.from({ length: 1025 }, (_, index) => index + 1));
     expect(getPlayableSpeciesIds('red')).toEqual(Array.from({ length: 151 }, (_, index) => index + 1));
     expect(getPlayableSpeciesIds('gold')).toEqual(Array.from({ length: 251 }, (_, index) => index + 1));
     expect(getPlayableSpeciesIds('missing')).toEqual([]);
+    expect(getRegionalNativeSpeciesIds('alola')).toEqual(Array.from({ length: 88 }, (_, index) => 722 + index));
+    expect(getRegionalNativeSpeciesIds('paldea')).toEqual(Array.from({ length: 120 }, (_, index) => 906 + index));
   });
 
   it('replaces obsolete non-battle wild snapshots while preserving owned species and collection history', () => {
@@ -139,8 +151,9 @@ describe('regional open worlds', () => {
     expect(game.logs.at(-1)).toMatch(/저장된 야생 포켓몬을 다시 배치/);
   });
 
-  it('moves a removed-region battle to Kanto without deleting entities, brains, or history', () => {
+  it('restores an admitted Paldea battle without deleting entities, brains, or history', () => {
     const game = createGame(1, 'removed-region-battle');
+    unlockPaldea(game);
     const world = new OpenWorldSimulation(graph, game, 73_002);
     const target = world.entities.find(entity => entity.kind === 'wild')!;
     enterWildRoute(world);
@@ -151,9 +164,9 @@ describe('regional open worlds', () => {
 
     const restored = new OpenWorldSimulation(graph, game, world.seed, checkpoint);
     const saved = restored.snapshot();
-    expect(restored.regionId).toBe('kanto');
-    expect(game.adventureVersion).toBe('national');
-    expect(restored.player).toEqual({ ...getWorldAtlas('kanto').start, heading: 0 });
+    expect(restored.regionId).toBe('paldea');
+    expect(game.adventureVersion).toBe('scarlet');
+    expect(restored.player).toEqual({ ...getWorldAtlas('paldea').start, heading: 0 });
     expect(restored.battleWildId).toBe(target.id);
     expect(saved.entities.map(entity => entity.id)).toEqual(checkpoint.entities.map(entity => entity.id));
     for (const entity of saved.entities) expect(entity.brain, entity.id).toEqual(entityMemories.get(entity.id));
@@ -161,8 +174,9 @@ describe('regional open worlds', () => {
     expect(game.versionCaught?.scarlet).toEqual([1]);
   });
 
-  it('preserves a capture decision while migrating a removed region', () => {
+  it('preserves a capture decision while restoring Paldea', () => {
     const game = createGame(1, 'removed-region-capture');
+    unlockPaldea(game);
     const world = new OpenWorldSimulation(graph, game, 73_006);
     const offer = createMonster(game, 25, 4); offer.hp = 0;
     game.captureOffer = offer; game.dex.seen = [...new Set([...game.dex.seen, 25])].sort((a, b) => a - b);
@@ -170,7 +184,7 @@ describe('regional open worlds', () => {
     const checkpoint = moveCheckpointToRegion(world, 'paldea');
 
     const restored = new OpenWorldSimulation(graph, game, world.seed, checkpoint);
-    expect(restored.regionId).toBe('kanto');
+    expect(restored.regionId).toBe('paldea');
     expect(game.captureOffer?.instanceId).toBe(offer.instanceId);
     expect(game.captureOffer?.hp).toBe(0);
   });
@@ -192,7 +206,7 @@ describe('regional open worlds', () => {
 
     const restored = new OpenWorldSimulation(graph, game, world.seed, checkpoint);
     expect(restored.regionId).toBe('kanto');
-    expect(game.adventureVersion).toBe('national');
+    expect(game.adventureVersion).toBe('scarlet');
     expect(game.versionCaught?.scarlet).toEqual([]);
     expect(restored.battleWildId).toBe(target.id);
     expect(restored.visitedTownIds).toEqual(['pallet', 'viridian']);

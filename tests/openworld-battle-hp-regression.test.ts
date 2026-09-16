@@ -14,7 +14,7 @@ describe('open-world battle HP persistence', () => {
   it('keeps automatic attack damage on the active enemy through save packing and restore', async () => {
     const graph = await loadGraph(), policy = await loadPolicy();
     const game = createGame(1, 'open-world-enemy-hp-regression');
-    const lead = createMonster(game, 54, 39);
+    const lead = createMonster(game, 54, 20, 'kanto');
     lead.moves = [{ moveId: 401, pp: getMove(401).pp }]; // One slot makes the automatic choice deterministic.
     game.player.team = [lead];
 

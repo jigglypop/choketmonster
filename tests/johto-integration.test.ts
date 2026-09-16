@@ -59,8 +59,8 @@ describe('reconstructed Johto adventure', () => {
     expect(world.challengeLocalGym()).toBe(false);
   });
 
-  it('exposes all seven reconstructed regions and retains the Kanto route 1 layout', () => {
-    expect(PLAYABLE_WORLDS.map(world => world.id)).toEqual(['kanto', 'johto', 'hoenn', 'sinnoh', 'unova', 'kalos', 'alola']);
+  it('exposes all ten reconstructed regions and retains the Kanto route 1 layout', () => {
+    expect(PLAYABLE_WORLDS.map(world => world.id)).toEqual(['kanto', 'johto', 'hoenn', 'sinnoh', 'unova', 'kalos', 'alola', 'galar', 'hisui', 'paldea']);
     expect(regionalEncounters('route-1', 0, 'kanto')).toEqual(expect.arrayContaining([16, 19]));
     expect(regionalEncounters('route-1', 0, 'kanto')).not.toContain(151);
     expect(regionalEncounters('route-29', 0, 'johto')).not.toContain(250);

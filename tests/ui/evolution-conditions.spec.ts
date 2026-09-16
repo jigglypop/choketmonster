@@ -9,11 +9,11 @@ import { defaultView, packSave } from '../../src/game/storage';
 const output = 'artifacts/evolution-completeness/ui';
 
 async function selectMonster(page: Page, instanceId: string) {
-  await page.locator(`[data-monster="${instanceId}"]`).click();
+  await page.locator(`.monster-card[data-monster="${instanceId}"]`).click();
   await expect(page.locator('.monster-card.selected')).toHaveAttribute('data-monster', instanceId);
 }
 
-test('uses native conditions, growth treats, and the explicit capsule substitute, then restores exact progress', async ({ page }) => {
+test('removes friendship evolution UI and uses the explicit capsule substitute, then restores exact progress', async ({ page }) => {
   test.setTimeout(150_000);
   mkdirSync(output, { recursive: true });
   const errors: string[] = [];
@@ -45,26 +45,22 @@ test('uses native conditions, growth treats, and the explicit capsule substitute
   await expect(page.locator('#toast')).toContainText('불러왔습니다');
 
   await page.locator('[data-tab="shop"]').click();
-  const friendshipCard = page.locator('.shop-card').filter({ has: page.locator('[data-buy="friendship-treat"]') });
-  for (let count = 1; count <= 8; count++) {
-    await page.locator('[data-buy="friendship-treat"]').click();
-    await expect(friendshipCard).toContainText(`보유 ${count}개`);
-  }
+  await expect(page.locator('[data-buy="friendship-treat"]')).toHaveCount(0);
   await page.locator('[data-buy="evolution-catalyst"]').click();
-  await expect(page.locator('.shop-card').filter({ has: page.locator('[data-buy="evolution-catalyst"]') })).toContainText('보유 1개');
+  await page.locator('[data-buy="evolution-catalyst"]').click();
+  await expect(page.locator('.shop-card').filter({ has: page.locator('[data-buy="evolution-catalyst"]') })).toContainText('보유 2개');
 
   await page.locator('[data-tab="team"]').click();
-  await expect(page.locator('.evolution-growth')).toContainText('친밀도 70/255');
-  await page.locator('[data-treat-quantity="friendship-treat"]').fill('8');
-  await page.locator('[data-use-treat="friendship-treat"]').click();
-  await expect(page.locator('.evolution-growth')).toContainText('친밀도 230/255');
-  await expect(page.locator('[data-evolve="25"]')).toBeEnabled();
-  await expect(page.locator('[data-evolve="25"]')).toContainText('준비 완료');
-  await page.locator('.evolution-panel').screenshot({ path: `${output}/pichu-growth-ready.png` });
-  await page.locator('[data-evolve="25"]').click();
+  await page.locator('.evolution-panel > summary').click();
+  await expect(page.locator('.evolution-growth')).toHaveCount(0);
+  await expect(page.locator('[data-evolve="25"]')).toBeDisabled();
+  await expect(page.locator('[data-capsule-evolve="25"]')).toBeEnabled();
+  await page.locator('.evolution-panel').screenshot({ path: `${output}/pichu-capsule-ready.png` });
+  await page.locator('[data-capsule-evolve="25"]').click();
   await expect(page.locator('.detail-title h2')).toHaveText('피카츄');
 
   await selectMonster(page, combee.instanceId);
+  await page.locator('.evolution-panel > summary').click();
   await expect(page.locator('[data-evolve="416"]')).toBeDisabled();
   const combeeRoute = page.locator('[data-capsule-evolve="416"]').locator('..');
   await expect(page.locator('[data-capsule-evolve="416"]')).toBeEnabled();
@@ -78,6 +74,7 @@ test('uses native conditions, growth treats, and the explicit capsule substitute
   await expect(page.locator('.detail-title h2')).toHaveText('비퀸');
 
   await selectMonster(page, bonsly.instanceId);
+  await page.locator('.evolution-panel > summary').click();
   await expect(page.locator('#pokemon-canvas')).toHaveAttribute('data-species', '438', { timeout: 45_000 });
   await expect(page.locator('#pokemon-canvas')).toHaveAttribute('data-ready', 'true', { timeout: 45_000 });
   await expect(page.locator('[data-evolve="185"]')).toBeEnabled();
@@ -101,10 +98,10 @@ test('uses native conditions, growth treats, and the explicit capsule substitute
   await expect(page.locator('#starter-dialog')).toBeHidden();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 45_000 });
   await page.locator('[data-tab="team"]').click();
-  await expect(page.locator(`[data-monster="${pichu.instanceId}"]`)).toContainText('피카츄');
-  await expect(page.locator(`[data-monster="${combee.instanceId}"]`)).toContainText('비퀸');
+  await expect(page.locator(`.monster-card[data-monster="${pichu.instanceId}"]`)).toContainText('피카츄');
+  await expect(page.locator(`.monster-card[data-monster="${combee.instanceId}"]`)).toContainText('비퀸');
   await selectMonster(page, pichu.instanceId);
-  await expect(page.locator('.evolution-growth')).toContainText('친밀도 230/255');
+  await expect(page.locator('.evolution-growth')).toHaveCount(0);
 
   const restored = await page.evaluate(async () => {
     const modulePath = '/src/game/storage.ts';
@@ -118,6 +115,6 @@ test('uses native conditions, growth treats, and the explicit capsule substitute
     [combee.instanceId, 416, brainSeeds[combee.instanceId]],
     [bonsly.instanceId, 438, brainSeeds[bonsly.instanceId]],
   ]);
-  expect(restored.game.player.team[0].evolutionProgress.friendship).toBe(230);
+  expect(restored.game.player.team[0].evolutionProgress.friendship).toBe(70);
   expect(errors).toEqual([]);
 });

@@ -111,6 +111,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/connectome", get(graph_info))
         .route("/api/saves", get(list_saves))
         .route("/api/saves/{slot}", get(load_save).put(save))
+        .merge(crate::ranked::router())
         .merge(crate::trades::router())
         .route("/api/brains/{creature}/step", post(retired_neural_step))
         .route("/api/brains/step-batch", post(retired_neural_batch))
@@ -327,7 +328,7 @@ pub(crate) async fn profile_user(state: &AppState, headers: &HeaderMap) -> ApiRe
     }
     Ok(account)
 }
-fn rate_limit(state: &AppState, key: String, max: u32) -> ApiResult<()> {
+pub(crate) fn rate_limit(state: &AppState, key: String, max: u32) -> ApiResult<()> {
     let mut attempts = state.attempts.lock().map_err(internal)?;
     attempts.retain(|_, (time, _)| time.elapsed() < Duration::from_secs(600));
     if attempts.len() >= 10000 {

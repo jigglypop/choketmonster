@@ -1,6 +1,6 @@
 import { useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
-import { Color, DataTexture, EquirectangularReflectionMapping, FloatType, LinearSRGBColorSpace, MeshStandardMaterial, PMREMGenerator, RepeatWrapping, RGBAFormat, SRGBColorSpace, Texture, TextureLoader } from 'three';
+import { Color, DataTexture, EquirectangularReflectionMapping, FloatType, LinearFilter, LinearSRGBColorSpace, MeshStandardMaterial, PMREMGenerator, RepeatWrapping, RGBAFormat, SRGBColorSpace, Texture, TextureLoader } from 'three';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
 import {
   abs, attribute, color, cos, dot, float, instanceIndex, length, materialColor, materialRoughness, max, min, mix, normalMap, normalView, normalize,
@@ -9,7 +9,8 @@ import {
 import { distanceToWaterSurface, selectWaterLod, type WaterLod, type WaterLodPlayer } from './water-lod';
 import type { WorldAtlas } from './atlas';
 import type { WorldSample } from './types';
-import { WORLD_SCALE } from './world-space';
+import { WORLD_MIN, WORLD_MAX, WORLD_SCALE } from './world-space';
+import { prepareShorelinePixels, SHORELINE_RESOLUTION } from './shoreline-texture';
 
 type Surface = 'ground' | 'rock' | 'path';
 export type SurfaceTextures = { diffuse: Texture; normal: Texture; arm: Texture };
@@ -23,6 +24,9 @@ const BIOME_COLORS: Record<Exclude<WorldSample['biome'], 'meadow' | 'lake'>, str
  * the shared grass/dirt PBR textures remain visible through the material. */
 export function worldSurfaceColor(atlas: WorldAtlas, sample: WorldSample, x: number, z: number): Color {
   if (sample.biome === 'lake') return new Color(atlas.palette.water);
+  if (sample.surface === 'snow') return new Color('#dce7e7').lerp(new Color('#aab8b8'), .18);
+  if (sample.surface === 'desert') return new Color('#c89d5d').lerp(new Color(atlas.palette.ground), .12);
+  if (sample.surface === 'mountain') return new Color('#74756c').lerp(new Color(atlas.palette.ground), .1);
   if (sample.biome === 'rock') return new Color(atlas.id === 'sinnoh' || atlas.id === 'hisui' ? '#acb1ab' : BIOME_COLORS.rock);
   if (sample.biome === 'forest') return new Color(BIOME_COLORS.forest).lerp(new Color(atlas.palette.ground), .16);
   const nearest = atlas.locationAt(x, z);
@@ -262,15 +266,16 @@ export function SurfaceMaterial(options: SurfaceMaterialOptions) {
 }
 
 /** A continuous shore field replaces per-triangle water/land material switches. */
-export function createTerrainMaterial(textures: SurfaceTextures, waterNormals: Texture, waterColor: string, detailed = true) {
+export function createTerrainMaterial(textures: SurfaceTextures, waterNormals: Texture, waterColor: string, detailed = true, shoreline?: Texture) {
   const material = new MeshStandardNodeMaterial({ roughness: .94, metalness: 0, envMapIntensity: .4 });
   applySurfaceNodes(material, textures, 'ground');
   const groundColor = vec3(material.colorNode!).mul(attribute('color', 'vec3'));
   const groundRoughness = material.roughnessNode!;
   const groundNormal = material.normalNode!;
-  const coverage = attribute('waterCoverage', 'float');
-  const irregular = sin(positionWorld.x.mul(1.7).add(sin(positionWorld.z.mul(1.13))))
-    .mul(cos(positionWorld.z.mul(1.43))).mul(.055);
+  const coast = shoreline ? texture(shoreline, positionWorld.xz.sub(WORLD_MIN).div(WORLD_MAX - WORLD_MIN)) : undefined;
+  const coverage = coast ? mix(attribute('waterCoverage', 'float'), coast.r, coast.a) : attribute('waterCoverage', 'float');
+  const irregular = sin(positionWorld.x.mul(.35).add(sin(positionWorld.z.mul(.23))))
+    .mul(cos(positionWorld.z.mul(.31))).mul(.012);
   const edge = coverage.add(irregular);
   const wet = smoothstep(.28, .74, edge);
   const shallows = float(1).sub(smoothstep(.62, .98, coverage));
@@ -301,8 +306,25 @@ export function createTerrainMaterial(textures: SurfaceTextures, waterNormals: T
 }
 
 /** All chunks share three materials and one texture set; no per-frame allocations. */
-export function useTerrainMaterials(waterColor: string) {
+export function useTerrainMaterials(waterColor: string, sample?: (x: number, z: number) => WorldSample) {
   const textures = useSurfaceTextures('ground');
+  const shoreline = useMemo(() => {
+    // Alpha selects the existing vertex fallback until the asynchronously prepared coast is ready.
+    const map = new DataTexture(new Uint8Array(SHORELINE_RESOLUTION * SHORELINE_RESOLUTION * 4), SHORELINE_RESOLUTION, SHORELINE_RESOLUTION, RGBAFormat);
+    map.minFilter = map.magFilter = LinearFilter;
+    map.needsUpdate = true;
+    return map;
+  }, [sample]);
+  useEffect(() => {
+    let active = true;
+    if (sample) void prepareShorelinePixels(sample).then(data => {
+      if (!active) return;
+      shoreline.image.data = data;
+      shoreline.needsUpdate = true;
+      shoreline.userData.ready = true;
+    });
+    return () => { active = false; shoreline.dispose(); };
+  }, [sample, shoreline]);
   const waterNormals = useMemo(() => {
     const texture = new TextureLoader().load('/textures/water/three-waternormals.jpg');
     texture.wrapS = texture.wrapT = RepeatWrapping;
@@ -311,8 +333,8 @@ export function useTerrainMaterials(waterColor: string) {
   const materials = useMemo(() => {
     const ground = new MeshStandardNodeMaterial({ vertexColors: true, roughness: .94, metalness: 0, envMapIntensity: .35 });
     applySurfaceNodes(ground, textures, 'ground');
-    return { ground, detailed: createTerrainMaterial(textures, waterNormals, waterColor), simple: createTerrainMaterial(textures, waterNormals, waterColor, false) };
-  }, [textures, waterNormals, waterColor]);
+    return { ground, detailed: createTerrainMaterial(textures, waterNormals, waterColor, true, shoreline), simple: createTerrainMaterial(textures, waterNormals, waterColor, false, shoreline) };
+  }, [textures, waterNormals, waterColor, shoreline]);
   useEffect(() => () => { Object.values(materials).forEach(material => material.dispose()); }, [materials]);
   useEffect(() => () => waterNormals.dispose(), [waterNormals]);
   return materials;

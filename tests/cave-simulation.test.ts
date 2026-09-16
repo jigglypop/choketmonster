@@ -42,7 +42,27 @@ describe('cave simulation scenes', () => {
     const restored = new OpenWorldSimulation(graph, game, world.seed, world.snapshot(), policy);
     expect(restored.sceneId).toBe(cave.sceneId);
     expect(restored.player).toMatchObject({ x: 0, z: 0 });
-    expect(restored.movePlayer({ x: cave.width / 2 - cave.tileSize * 1.5, z: cave.depth / 2 - cave.tileSize * 1.5, heading: 0 })).toBe(true);
+    expect(restored.movePlayer({ x: cave.legacyWidth / 2 - cave.tileSize * 1.5, z: cave.legacyDepth / 2 - cave.tileSize * 1.5, heading: 0 })).toBe(true);
+  });
+
+  it('lists every exit and immediately leaves through the nearest or selected real portal', () => {
+    const game = createGame(1, 'cave-quick-exit'), cave = getCaveScene('cave:kanto:mt-moon')!;
+    const world = new OpenWorldSimulation(graph, game, 7184, undefined, policy);
+    world.sceneId = cave.sceneId; world.player = { ...cave.portals[1].interiorArrival, heading: 0 };
+    expect(world.caveExits().map(exit => exit.id)).toEqual([cave.portals[1].id, cave.portals[0].id]);
+    expect(world.exitCave()).toBe(true);
+    expect(world.sceneId).toBe(cave.portals[1].surfaceSceneId);
+    expect(world.player).toMatchObject(cave.portals[1].surfaceArrival);
+
+    world.sceneId = cave.sceneId; world.player = { x: 0, z: 0, heading: 0 };
+    expect(world.exitCave(cave.portals[0].id)).toBe(true);
+    expect(world.player).toMatchObject(cave.portals[0].surfaceArrival);
+    expect(world.exitCave()).toBe(false);
+
+    world.sceneId = cave.sceneId;
+    game.captureOffer = { ...game.player.team[0], hp: 0 };
+    expect(world.exitCave()).toBe(false);
+    expect(world.sceneId).toBe(cave.sceneId);
   });
 
   it('populates, restores and exits every shipped cave at the completed-region gate', () => {

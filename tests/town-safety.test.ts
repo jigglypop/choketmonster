@@ -15,6 +15,7 @@ function fullyUnlockedGame(region: string): GameState {
     hoenn:{badges:[...badges],league:5},sinnoh:{badges:[...badges],league:5},unova:{badges:[...badges],league:5},kalos:{badges:[...badges],league:5},alola:{badges:[...badges],league:5},
     galar:{badges:[...badges],league:5},hisui:{badges:[...badges],league:5},paldea:{badges:[...badges],league:5},
   }};
+  game.claimedRegionalStarters=PLAYABLE_WORLDS.map(world=>world.id);
   return game;
 }
 

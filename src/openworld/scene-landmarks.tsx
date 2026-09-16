@@ -1,13 +1,15 @@
 import { Html } from '@react-three/drei';
 import { RigidBody } from '@react-three/rapier';
 import { useEffect, useMemo } from 'react';
-import { BoxGeometry, MeshStandardMaterial, PlaneGeometry, Vector3, type Camera, type Object3D } from 'three';
-import { CAVE_SCENES, getCaveScene, type CaveScene } from './caves';
+import { BoxGeometry, BufferGeometry, Float32BufferAttribute, Matrix4, MeshStandardMaterial, Vector3, type Camera, type Object3D } from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { CAVE_SCENES, caveContains, getCaveScene, type CaveScene } from './caves';
 import { useSurfaceTextures } from './materials';
 import type { WorldPoint, WorldSample } from './types';
 import { caveVertexHeight } from './cave-relief';
 import { CaveDetails } from './cave-details';
 import type { KantoGate, KantoGym, KantoLocation } from './kanto';
+import { LeagueStadium } from './league-stadium';
 
 const CAVE_TEXTURE_TILE = 2.5;
 const portalProjection = new Vector3();
@@ -74,36 +76,17 @@ export function ProgressGate({ gate, from, to, y, halfWidth, badges, showLabel }
 export const LEAGUE_LOCATION_IDS: Readonly<Partial<Record<string, string>>> = Object.freeze({
   johto: 'tohjo-falls', kanto: 'indigo-plateau', hoenn: 'ever-grande-city',
   sinnoh: 'sinnoh-pokemon-league', unova: 'unova-pokemon-league',
+  kalos: 'kalos-pokemon-league', alola: 'alola-pokemon-league',
+  galar: 'galar-pokemon-league', hisui: 'temple-of-sinnoh', paldea: 'paldea-pokemon-league',
 });
 
 export function isRegionalLeagueLocation(region: string, locationId: string): boolean {
   return LEAGUE_LOCATION_IDS[region] === locationId;
 }
 
-/** A recognizable regional league hall with a ceremonial stair, four challenge
- * towers and a central champion rotunda. Colors distinguish each league. */
 export function RegionalLeagueLandmark({ region, x, y, z }: WorldPoint & { region: string; y: number }) {
-  const palette = ({
-    johto: ['#dfd0b2', '#46546b', '#9e624a', '#76516b'],
-    kanto: ['#d9d5ca', '#415d75', '#bd754c', '#6c4563'],
-    hoenn: ['#e5e2d4', '#397995', '#d06b4d', '#3c7790'],
-    sinnoh: ['#d6dce0', '#54677a', '#879bb0', '#45546c'],
-    unova: ['#c9c3b5', '#3b3c4d', '#8c554d', '#292e43'],
-  } as Record<string, [string, string, string, string]>)[region] ?? ['#d9d5ca', '#415d75', '#bd754c', '#6c4563'];
-  const roofSides = region === 'sinnoh' ? 6 : region === 'unova' ? 4 : 8;
   return <group name={`landmark:league:${region}`} position={[x, y, z]}>
-    {[0, 1, 2, 3].map(step => <mesh key={step} position={[0, .12 + step * .16, 4.5 - step * .75]} receiveShadow>
-      <boxGeometry args={[7.8 - step * .8, .24, 1.35]} /><meshStandardMaterial color={step % 2 ? '#d7d1bf' : '#b8b2a3'} roughness={.92} />
-    </mesh>)}
-    <mesh position={[0, 2.1, 0]} castShadow receiveShadow><boxGeometry args={[9.5, 3.5, 7.4]} /><meshStandardMaterial color={palette[0]} roughness={.86} /></mesh>
-    <mesh position={[0, 4.1, 0]} castShadow><cylinderGeometry args={[4.1, 4.8, 1.6, roofSides]} /><meshStandardMaterial color={palette[1]} roughness={.72} /></mesh>
-    <mesh position={[0, 5.15, 0]} castShadow><coneGeometry args={[3.8, 1.4, roofSides]} /><meshStandardMaterial color={palette[2]} roughness={.74} /></mesh>
-    {[-3.9, 3.9].flatMap((tx, row) => [-2.6, 2.6].map((tz, col) => <group key={`${row}:${col}`} position={[tx, 0, tz]}>
-      <mesh position={[0, 2.65, 0]} castShadow><cylinderGeometry args={[.68, .82, 4.8, 8]} /><meshStandardMaterial color="#c9c5bb" roughness={.88} /></mesh>
-      <mesh position={[0, 5.05, 0]} castShadow><coneGeometry args={[1.12, 1.7, roofSides]} /><meshStandardMaterial color={palette[3]} roughness={.74} /></mesh>
-    </group>))}
-    <mesh position={[0, 1.75, 3.74]}><boxGeometry args={[2.2, 2.8, .18]} /><meshStandardMaterial color="#263a48" metalness={.18} roughness={.52} /></mesh>
-    <mesh position={[0, 3.65, 3.86]} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[.72, .72, .12, 16]} /><meshStandardMaterial color="#e0bf57" emissive="#5f4308" emissiveIntensity={.25} /></mesh>
+    <LeagueStadium region={region} />
   </group>;
 }
 
@@ -118,7 +101,7 @@ function portalScreenPosition(object: Object3D, camera: Camera, size: { width: n
   return [(portalProjection.x + 1) * size.width / 2, (1 - portalProjection.y) * size.height / 2];
 }
 
-function tileUvs(geometry: PlaneGeometry | BoxGeometry) {
+function tileUvs(geometry: BoxGeometry) {
   const positions = geometry.attributes.position, normals = geometry.attributes.normal, uvs = geometry.attributes.uv;
   for (let index = 0; index < positions.count; index++) {
     const x = positions.getX(index), y = positions.getY(index), z = positions.getZ(index);
@@ -131,6 +114,50 @@ function tileUvs(geometry: PlaneGeometry | BoxGeometry) {
   return geometry;
 }
 
+function createCaveFloor(cave: CaveScene): BufferGeometry {
+  const positions: number[] = [], uvs: number[] = [], indices: number[] = [];
+  const vertices = new Map<string, number>();
+  const vertex = (x: number, z: number) => {
+    const key = `${x}:${z}`, existing = vertices.get(key);
+    if (existing !== undefined) return existing;
+    const index = positions.length / 3;
+    positions.push(x, caveVertexHeight(cave.relief, x, z), z);
+    uvs.push(x / CAVE_TEXTURE_TILE, z / CAVE_TEXTURE_TILE);
+    vertices.set(key, index);
+    return index;
+  };
+  for (let z = Math.floor(-cave.depth / 2); z < Math.ceil(cave.depth / 2); z++) {
+    for (let x = Math.floor(-cave.width / 2); x < Math.ceil(cave.width / 2); x++) {
+      if (!caveContains(cave.outline, x + .5, z + .5)) continue;
+      const a = vertex(x, z), b = vertex(x, z + 1), c = vertex(x + 1, z + 1), d = vertex(x + 1, z);
+      indices.push(a, b, d, b, c, d);
+    }
+  }
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
+  geometry.setIndex(indices); geometry.computeVertexNormals();
+  return geometry;
+}
+
+function createCaveWalls(cave: CaveScene): BufferGeometry {
+  const parts = cave.wallSegments.map(wall => {
+    const geometry = tileUvs(new BoxGeometry(wall.width, wall.height + 2, wall.depth, Math.max(1, Math.ceil(wall.width / 2)), 2, 1));
+    const positions = geometry.attributes.position;
+    for (let index = 0; index < positions.count; index++) {
+      const x = positions.getX(index), y = positions.getY(index), z = positions.getZ(index);
+      if (y > 0) positions.setY(index, y + .45 * Math.sin((x + wall.x) * .6 + (z + wall.z) * .4 + cave.relief.seed));
+    }
+    geometry.computeVertexNormals();
+    const transform = new Matrix4().makeRotationY(wall.rotationY).setPosition(wall.x, wall.height / 2, wall.z);
+    return geometry.applyMatrix4(transform);
+  });
+  const merged = mergeGeometries(parts, false);
+  parts.forEach(part => part.dispose());
+  if (!merged) throw new Error(`Could not merge cave walls: ${cave.id}`);
+  return merged;
+}
+
 export function CaveInterior({ cave, player, mobile, onNavigate }: { cave: CaveScene; player: WorldPoint; mobile: boolean; onNavigate(point: WorldPoint): void }) {
   const textures = useSurfaceTextures('rock');
   const material = useMemo(() => {
@@ -141,29 +168,13 @@ export function CaveInterior({ cave, player, mobile, onNavigate }: { cave: CaveS
     result.userData.openWorldSurface = 'cave-rock-uv';
     return result;
   }, [cave.id, textures]);
-  const floor = useMemo(() => {
-    const geometry = tileUvs(new PlaneGeometry(cave.width, cave.depth, cave.width, cave.depth));
-    const positions = geometry.attributes.position;
-    for (let index = 0; index < positions.count; index++) positions.setZ(index, caveVertexHeight(cave.relief, positions.getX(index), -positions.getY(index)));
-    geometry.computeVertexNormals();
-    return geometry;
-  }, [cave]);
-  const walls = useMemo(() => cave.wallSegments.map(wall => {
-    const geometry = tileUvs(new BoxGeometry(wall.width, wall.height + 2, wall.depth, Math.ceil(wall.width / 2), 2, Math.ceil(wall.depth / 2)));
-    const positions = geometry.attributes.position;
-    for (let index = 0; index < positions.count; index++) {
-      const x = positions.getX(index), y = positions.getY(index), z = positions.getZ(index);
-      if (y > 0) positions.setY(index, y + .45 * Math.sin((x + wall.x) * .6 + (z + wall.z) * .4 + cave.relief.seed));
-    }
-    geometry.computeVertexNormals();
-    return geometry;
-  }), [cave]);
-  useEffect(() => () => { material.dispose(); floor.dispose(); walls.forEach(wall => wall.dispose()); }, [floor, material, walls]);
+  const floor = useMemo(() => createCaveFloor(cave), [cave]);
+  const walls = useMemo(() => createCaveWalls(cave), [cave]);
+  useEffect(() => () => { material.dispose(); floor.dispose(); walls.dispose(); }, [floor, material, walls]);
   return <group name={`cave-interior:${cave.id}`} dispose={null}>
-    <mesh name="cave-floor" geometry={floor} material={material} rotation={[-Math.PI / 2, 0, 0]} receiveShadow onClick={event => { event.stopPropagation(); if (event.button === 0 && event.delta <= 5) onNavigate({ x: event.point.x, z: event.point.z }); }}>
+    <mesh name="cave-floor" geometry={floor} material={material} receiveShadow onClick={event => { event.stopPropagation(); if (event.button === 0 && event.delta <= 5) onNavigate({ x: event.point.x, z: event.point.z }); }}>
     </mesh>
-    <group name="cave-walls">{cave.wallSegments.map((wall, index) =>
-      <mesh key={index} name={`cave-wall:${index}`} geometry={walls[index]} material={material} position={[wall.x, wall.height / 2, wall.z]} receiveShadow castShadow />)}</group>
+    <mesh name="cave-wall:outline" geometry={walls} material={material} receiveShadow castShadow />
     <CaveDetails cave={cave} material={material} player={player} mobile={mobile} onNavigate={onNavigate} />
   </group>;
 }

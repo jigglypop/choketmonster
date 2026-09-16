@@ -18,8 +18,8 @@ describe('world progression landmarks', () => {
     }
   });
 
-  it('maps the five implemented regional leagues to their campaign destinations', () => {
-    expect(LEAGUE_LOCATION_IDS).toEqual({ johto: 'tohjo-falls', kanto: 'indigo-plateau', hoenn: 'ever-grande-city', sinnoh: 'sinnoh-pokemon-league', unova: 'unova-pokemon-league' });
+  it('maps every implemented regional league to its campaign destination', () => {
+    expect(LEAGUE_LOCATION_IDS).toEqual({ johto: 'tohjo-falls', kanto: 'indigo-plateau', hoenn: 'ever-grande-city', sinnoh: 'sinnoh-pokemon-league', unova: 'unova-pokemon-league', kalos: 'kalos-pokemon-league', alola: 'alola-pokemon-league', galar: 'galar-pokemon-league', hisui: 'temple-of-sinnoh', paldea: 'paldea-pokemon-league' });
     for (const [region, location] of Object.entries(LEAGUE_LOCATION_IDS)) expect(isRegionalLeagueLocation(region, location!)).toBe(true);
   });
 });

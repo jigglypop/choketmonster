@@ -69,6 +69,9 @@ export function sourceEvolutionDescriptions(from: number, to: number): string[] 
 export function nativeEvolutionReady(state: GameState, monster: Monster, rule: EvolutionSourceRule): boolean {
   const progress = monster.evolutionProgress ?? initialEvolutionProgress(monster), c = rule.conditions, context = state.evolutionContext;
   if (rule.from !== monster.speciesId) return false;
+  // Friendship values remain in old saves for compatibility, but friendship is
+  // no longer a playable evolution route. Special evolutions use the catalyst.
+  if ('minimum_happiness' in c) return false;
   // This route creates a second individual in the party, so defer it until an active battle ends.
   if (rule.trigger === 4) return !state.battle && monster.level >= 20 && state.player.team.length < 6 && state.inventory['poke-ball'] > 0;
   if (![1, 10, 13, 14].includes(rule.trigger)) return false;
@@ -80,7 +83,6 @@ export function nativeEvolutionReady(state: GameState, monster: Monster, rule: E
     switch (key) {
       case 'minimum_level': if (monster.level < n) return false; break;
       case 'gender_id': if (progress.gender !== ({ 1: 'female', 2: 'male', 3: 'genderless' } as Record<number, string>)[n]) return false; break;
-      case 'minimum_happiness': if (progress.friendship < n) return false; break;
       case 'minimum_beauty': if (progress.beauty < n) return false; break;
       case 'minimum_affection': if (progress.affection < n) return false; break;
       case 'known_move_id': if (!monster.moves.some(move => move.moveId === n)) return false; break;

@@ -77,6 +77,44 @@ describe('connectome open world', () => {
     expect(restoredAgain.simulation.snapshot()).toEqual(repaired.simulation.snapshot());
   });
 
+  it('requires the actual partner model before manual movement and ignores stale species callbacks', async () => {
+    const graph = await loadGraph(), game = createGame(1, 'required-model');
+    const world = new OpenWorldSimulation(graph, game, 731);
+    const companion = world.entities.find(entity => entity.kind === 'companion')!;
+    world.requireReadyModels();
+    expect(world.modelsReady).toBe(false);
+    const start = { ...world.player };
+    expect(world.movePartner({ ...start, x: start.x + .1 })).toBe(false);
+    world.step({ deltaSeconds: 1 }); expect(world.player).toEqual(start);
+    world.setModelStatus(companion.id, 'ready', 4);
+    expect(world.modelsReady).toBe(false);
+    world.setModelStatus(companion.id, 'failed');
+    world.setModelStatus(companion.id, 'untracked');
+    expect(world.modelStatus(companion.id)).toBe('failed');
+    world.setModelStatus(companion.id, 'ready');
+    expect(world.modelsReady).toBe(true);
+    world.setModelStatus(companion.id, 'untracked');
+    expect(world.modelsReady).toBe(false);
+  });
+
+  it('quarantines a creature whose visible 3D model is loading or failed', async () => {
+    const graph = await loadGraph(), policy = forceRight(await loadPolicy()), game = createGame(1, 'model-load-quarantine');
+    const world = new OpenWorldSimulation(graph, game, 51_804, undefined, policy);
+    const wild = world.entities.find(entity => entity.kind === 'wild')!;
+    const before = { x: wild.x, z: wild.z };
+    world.setModelStatus(wild.id, 'loading');
+    const loading = world.step({ deltaSeconds: .5 }).events.find(event => event.entityId === wild.id);
+    expect({ x: wild.x, z: wild.z }).toEqual(before);
+    expect(loading).toMatchObject({ type: 'wait', reward: 0 });
+    expect(engageWildAtLocation(world, wild.id)).toBe(false);
+    world.setModelStatus(wild.id, 'failed');
+    expect(world.modelStatus(wild.id)).toBe('failed');
+    expect(world.canEngageWild(wild.id)).toBe(false);
+    world.setModelStatus(wild.id, 'ready');
+    expect(world.modelStatus(wild.id)).toBeUndefined();
+    expect(world.startEncounter(wild.id)).toBe(true);
+  });
+
   it('rotates healthy team members into automatic wild battles and persists the next slot', async () => {
     const graph = await loadGraph(), policy = await loadPolicy(), game = createGame(1, 'automatic-team-rotation');
     game.player.team.push(createMonster(game, 4, 5), createMonster(game, 7, 5));
@@ -324,7 +362,7 @@ describe('connectome open world', () => {
 
   it('repeats autonomous hunts and rewards on a held-out seed with the deployed frozen policy', async () => {
     const graph = await loadGraph(), policy = forceRight(await loadOpenWorldPolicy()), game = createGame(1, 'open-world-heldout-6012044');
-    game.player.team = [createMonster(game, 150, 80)];
+    game.player.team = [createMonster(game, 150, 19, 'kanto')];
     const source = new OpenWorldSimulation(graph, game, 6_012_044, undefined, policy, 12), checkpoint = source.snapshot();
     checkpoint.player = { x: -92, z: -24, heading: 1 };
     checkpoint.spawnAnchor = { x: checkpoint.player.x, z: checkpoint.player.z };

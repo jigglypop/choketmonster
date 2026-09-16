@@ -4,10 +4,11 @@ import { fieldTrainersAt, getFieldTrainer } from '../data/field-trainers';
 import { pokemonModelUrl, pokemonSpriteUrl } from '../game/assets';
 import { getMoveLayout } from '../game/move-layout';
 import { evolutionItemUses } from '../game/engine';
-import { buyItem, depositMonster, experienceAtLevel, heal, ITEM_LABELS, ITEM_PRICES, SHOP_ITEMS, statsFor, withdrawMonster, type GameState, type InventoryItem, type Monster } from '../game/engine';
+import { buyItem, depositMonster, experienceAtLevel, firstUsableRegionalTeamIndex, heal, ITEM_LABELS, ITEM_PRICES, SHOP_ITEMS, statsFor, withdrawMonster, type GameState, type InventoryItem, type Monster } from '../game/engine';
+import { REGIONAL_STARTERS, regionalLevelCap } from '../game/regional-policy';
 import { CAMPAIGN_TRAINERS, campaignTravelReason, getCampaignGyms, getNextCampaignTrainer, getRegionalBadges, regionalWildLevels, type CampaignRegion } from '../game/campaign';
 import { getWorldAtlas } from './atlas';
-import { PLAYABLE_WORLDS, getPlayableSpeciesIds, isPlayableSpecies } from './availability';
+import { PLAYABLE_WORLDS, getRegionalNativeSpeciesIds, isPlayableSpecies } from './availability';
 import type { FieldPolicy } from '../game/field';
 import { movementSpeed, OpenWorldSimulation, regionalEncounters, type OpenWorldSnapshot } from './simulation';
 import { lastServerDecision } from '../game/server-brain';
@@ -15,17 +16,17 @@ import { mountOpenWorld } from './view';
 import type { OpenWorldRenderSnapshot, OpenWorldView, WorldCreature, WorldHeading } from './types';
 import './panel.css';
 import './trainer-battles.css';
+import './regional-starter.css';
 import { showGymVictory } from '../ui/gym-victory';
 import { pokemonWorldDisplayHeight } from './visual-scale';
 import { MultiplayerSession } from './multiplayer';
 import { playGameSound } from '../audio';
 import { currentAccount } from '../game/account';
-import { WORLD_MIN, WORLD_MAX, WORLD_SCALE } from './world-space';
+import { WORLD_MIN, WORLD_MAX } from './world-space';
 import { getCaveScene, cavePortalAtSurface, cavePortalAtInterior } from './caves';
 import { nextDestinationGuide, type DestinationGuide } from './next-destination';
 import { CARDINAL_CAMERA_HEADINGS, cameraMapRotation, compassLabel, mapKindLabel, mapKindSymbol, nearestMapOrientation, rotateMapPoint, type MapOrientation } from './map-presentation';
 
-const biomes = { meadow: '바람 초원', forest: '초록 숲', lake: '물빛 호수', rock: '돌바람 고원' };
 const types: Record<string, string> = { normal: '노말', fire: '불꽃', water: '물', grass: '풀', electric: '전기', ice: '얼음', fighting: '격투', poison: '독', ground: '땅', flying: '비행', psychic: '에스퍼', bug: '벌레', rock: '바위', ghost: '고스트', dragon: '드래곤', steel: '강철', dark: '악', fairy: '페어리' };
 const escape = (text: unknown) => String(text).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const pokemonDisplayHeight = (speciesId: number) => pokemonWorldDisplayHeight(getSpecies(speciesId).heightMeters);
@@ -43,6 +44,12 @@ export class OpenWorldPanel {
   private manualIdleSeconds = 0;
   private manualMovementActive = false;
   private serverRequest?: Promise<void>;
+  private recoveryError?: { message: string; source: 'server' | 'world' };
+  private recovering = false;
+  private readonly onConnectionRestored = () => {
+    if (this.recoveryError?.source === 'server') void this.resume();
+    this.renderer?.retryModels();
+  };
   private pausedBeforeBox = false;
   private multiplayer?: MultiplayerSession;
   private movingUntil = 0;
@@ -61,6 +68,7 @@ export class OpenWorldPanel {
   private previousBattle?: GameState['battle'];
   private guideCache?: { key: string; guide: DestinationGuide };
   private locationCopyCache?: { key: string; name: string; short: string; level: string };
+  private starterDialog?: HTMLDialogElement;
   private lastPresence = { x: Number.NaN, z: Number.NaN };
   private readonly htmlCache = new WeakMap<Element, string>();
   private readonly hotkeys = (event: KeyboardEvent) => {
@@ -90,10 +98,12 @@ export class OpenWorldPanel {
   mount(host: HTMLElement): void {
     if (this.host === host && this.renderer && host.querySelector('#ow-host')) { this.refresh(); return; }
     this.unmount(); this.host = host;
+    this.simulation.requireReadyModels();
     host.innerHTML = `<section class="adventure" aria-label="오픈월드 모험">
       <div id="ow-host"></div>
+      <section id="world-recovery" class="world-recovery" aria-label="탐험 상태" hidden><p id="world-recovery-message" aria-live="polite"></p><div><button id="world-resume">계속 탐험</button><button id="world-model-retry" hidden>모델 다시 불러오기</button></div></section>
       <details class="world-explore-panel"><summary class="world-explore-toggle"><div><strong id="world-location-short">성도</strong><small id="world-explore-short">탐험 설정 · 상점</small></div><i>⌄</i></summary><div class="world-explore-scroll">
-      <div class="world-heading"><span class="world-eyebrow" id="world-region-label">성도</span><span id="world-encounter-layout" class="world-encounter-layout">고정 야생 분포</span><h1 id="world-biome">연두마을</h1><p id="world-zone-level">다음 도로로 모험을 떠나세요</p></div>
+      <div class="world-heading"><span class="world-eyebrow" id="world-region-label">성도</span><span id="world-encounter-layout" class="world-encounter-layout">고정 야생 분포</span><h1 id="world-biome">연두마을</h1><p id="world-zone-level">다음 도로로 모험을 떠나세요</p><p id="world-regional-rule"></p></div>
       <div class="world-tools"><button id="world-pause">Ⅱ 일시 정지</button><button id="world-heal">캠프 회복</button></div>
       <button id="world-trainer-open" class="world-trainer-open">트레이너 배틀</button>
       <fieldset class="world-automation"><legend>자동 설정</legend><label><input id="world-auto-catch" type="checkbox" checked><span>자동 포획</span></label><label title="건강한 팀원 모두 같은 경험치"><input id="world-exp-share" type="checkbox" checked><span>팀 경험치 공유</span></label><label><input id="world-learning" type="checkbox" checked><span id="world-learning-label">기술 학습</span></label></fieldset>
@@ -104,6 +114,7 @@ export class OpenWorldPanel {
       </div></details>
       <aside class="world-radar"><button id="world-map-open" aria-label="지역 전체 지도 열기"><span class="world-minimap-frame"><canvas id="world-minimap" width="180" height="180" aria-label="카메라 방향으로 회전하는 월드 지도"></canvas><b id="world-minimap-heading" aria-hidden="true">북</b></span></button><span id="world-position"></span><small id="world-map-caption">지역 지도 ↗</small></aside>
       <button id="world-next-guide" class="world-next-guide" aria-label="길안내 · 다음 목적지 지도 열기"></button>
+      <div id="world-cave-exits" class="world-cave-exits" hidden></div>
       <div class="world-lower-hud">
       <section class="world-multiplayer social-dock" aria-label="지역 채팅">
         <div id="world-trainer-track" hidden></div>
@@ -139,7 +150,7 @@ export class OpenWorldPanel {
     for (const [selector] of layoutSizes) this.layoutObserver.observe(host.querySelector(selector)!, { box: 'border-box' });
     this.renderer = mountOpenWorld(host.querySelector('#ow-host')!, {
       getSnapshot: () => this.renderSnapshot(), sampleWorld: (x, z) => this.simulation.sampleWorld(x, z), modelUrl: pokemonModelUrl, spriteUrl: pokemonSpriteUrl,
-      onReady: () => { this.ready = true; const canvasHost = this.host?.querySelector<HTMLElement>('#ow-host'); if (canvasHost) canvasHost.dataset.ready = 'true'; },
+      onReady: () => { this.ready = true; this.refreshRecovery(); },
       onNavigationStart: () => this.noteManualInput(),
       onMovementInput: () => this.noteManualInput(),
       onMovementEnd: () => {
@@ -160,12 +171,20 @@ export class OpenWorldPanel {
       },
       onSelect: id => { if (id?.startsWith('companion:')) return; this.manualIdleSeconds = 0; this.simulation.selectWild(id, true); this.options.changed(); this.refresh(); },
       onInteract: id => this.encounter(id),
+      onModelStatus: (id, status, speciesId) => {
+        this.simulation.setModelStatus(id, status, speciesId);
+        this.refreshRecovery();
+        if (this.simulation.selectedWildId === id) this.refresh();
+      },
       onPortal: () => { if (this.simulation.traverseCavePortal()) { this.multiplayer?.join(this.presence()); this.options.changed(); this.refresh(); this.renderer?.update(); } },
       onCameraHeading: heading => { this.cameraHeading = heading; this.updateMapOrientation(); this.minimap(); },
     });
     this.multiplayer = new MultiplayerSession(() => { if (this.host === host) this.renderRealtime(); });
     this.multiplayer.join(this.presence());
     window.addEventListener('keydown', this.hotkeys);
+    window.addEventListener('online', this.onConnectionRestored);
+    this.button('#world-resume').onclick = () => void this.resume();
+    this.button('#world-model-retry').onclick = () => { this.renderer?.retryModels(); };
     const battleHud = this.host.querySelector<HTMLDetailsElement>('.world-battle-hud')!;
     battleHud.open = false;
     battleHud.addEventListener('toggle', () => {
@@ -175,12 +194,12 @@ export class OpenWorldPanel {
       }
     });
     this.compactViewport.addEventListener('change', this.onViewportChange);
-    this.button('#world-mode-auto').onclick = () => { this.paused = false; this.changeMode('auto'); };
+    this.button('#world-mode-auto').onclick = () => { this.changeMode('auto'); if (this.paused) void this.resume(); };
     this.button('#world-mode-manual').onclick = () => this.changeMode('manual');
     this.button('#world-edit-moves').onclick = () => {
       const game = this.options.game;
       if (game.battle || game.captureOffer) return;
-      const lead = game.player.team.find(monster => monster.hp > 0) ?? game.player.team[0];
+      const lead = game.player.team[firstUsableRegionalTeamIndex(game, this.simulation.regionId)] ?? game.player.team[0];
       this.options.editMoves?.(lead.instanceId);
     };
     this.button('#world-target-track').onclick = () => { this.simulation.trackSelected(); this.options.changed(); this.refresh(); };
@@ -248,7 +267,8 @@ export class OpenWorldPanel {
     chatInput.addEventListener('compositionstart', () => { composing = true; }); chatInput.addEventListener('compositionend', () => { composing = false; });
     chat.addEventListener('submit', event => { event.preventDefault(); if (composing) return; if (this.multiplayer?.sendChat(chatInput.value)) { chatInput.value = ''; this.html('#world-chat-error', ''); this.scrollChatToLatest(); } else this.html('#world-chat-error', this.multiplayer?.view.status === 'connected' ? '1~200자로 입력해 주세요.' : '연결을 복구하고 있습니다. 입력한 내용은 유지됩니다.'); });
     this.button('#world-pause').onclick = async () => {
-      this.paused = !this.paused; this.refresh();
+      if (this.paused) { await this.resume(); return; }
+      this.paused = true; this.refresh();
       const button = this.button('#world-pause'); button.disabled = true;
       try {
         // A request already in flight still owns a durable neural result. Finish
@@ -256,7 +276,7 @@ export class OpenWorldPanel {
         if (this.paused) await this.serverRequest;
         await this.options.changed(true);
       } catch (error) {
-        this.paused = true; this.options.notify(String(error), true);
+        this.pauseWithError(error, 'world');
       } finally { button.disabled = false; this.refresh(); }
     };
     this.button('#world-heal').onclick = () => {
@@ -285,10 +305,12 @@ export class OpenWorldPanel {
 
   private canAcceptMovement(): boolean {
     return !this.paused
+      && this.ready && this.simulation.modelsReady
+      && !this.simulation.regionalStarterRequired
       && !document.querySelector('dialog[open]')
       && !this.options.game.battle
       && !this.options.game.captureOffer
-      && this.options.game.player.team.some(monster => monster.hp > 0)
+      && firstUsableRegionalTeamIndex(this.options.game, this.simulation.regionId) >= 0
       && !this.host?.querySelector<HTMLDialogElement>('#world-map-dialog')?.open;
   }
 
@@ -298,6 +320,34 @@ export class OpenWorldPanel {
     this.manualIdleSeconds = 0;
     if (this.simulation.controlMode !== 'manual') this.changeMode('manual');
     return true;
+  }
+
+  private offerRegionalStarter(): void {
+    const world = this.simulation, game = this.options.game;
+    if (!this.host || this.starterDialog || !world.regionalStarterRequired || game.battle || game.captureOffer) return;
+    const dialog = document.createElement('dialog');
+    dialog.className = 'regional-starter-dialog'; dialog.id = 'regional-starter-dialog';
+    dialog.setAttribute('aria-labelledby', 'regional-starter-title');
+    dialog.innerHTML = `<header><small>${escape(world.atlas.name)}의 새 모험</small><h2 id="regional-starter-title">함께할 포켓몬을 선택하세요</h2><p>Lv.5 스타팅을 지방마다 한 번 받을 수 있습니다. 기존 포켓몬과 기록은 그대로 보관됩니다.</p></header><div class="regional-starter-options">${REGIONAL_STARTERS[world.regionId].map(id => {
+      const species = getSpecies(id);
+      return `<button data-regional-starter="${id}"><img src="${pokemonSpriteUrl(id)}" alt=""><strong>${escape(species.name)}</strong><span>${species.types.map(type => types[type]).join(' · ')} · Lv.5</span></button>`;
+    }).join('')}</div><p class="regional-starter-rule">배지 0개: 현지 출신 Lv.20까지 · 배지 1개부터 타지방 포켓몬 사용 가능<br>배지를 얻을 때마다 상한 +10레벨, 배지 8개면 Lv.100까지</p><p class="regional-starter-error" role="status"></p>`;
+    dialog.addEventListener('cancel', event => event.preventDefault());
+    this.starterDialog = dialog; document.body.append(dialog); dialog.showModal();
+    dialog.querySelectorAll<HTMLButtonElement>('[data-regional-starter]').forEach(button => button.onclick = async () => {
+      const buttons = dialog.querySelectorAll<HTMLButtonElement>('button'); buttons.forEach(item => { item.disabled = true; });
+      try {
+        const monster = world.claimRegionalStarter(Number(button.dataset.regionalStarter));
+        world.setControlMode('manual'); this.manualMovementActive = false;
+        dialog.close(); dialog.remove(); this.starterDialog = undefined;
+        this.refresh(); await this.options.changed(true);
+        this.options.notify(`${monster.nickname}와 ${world.atlas.name} 모험을 시작합니다.`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (dialog.isConnected) { dialog.querySelector<HTMLElement>('[role="status"]')!.textContent = message; buttons.forEach(item => { item.disabled = false; }); }
+        else this.options.notify(message, true);
+      }
+    });
   }
 
   private shouldResumeAutomaticControl(): boolean {
@@ -350,7 +400,7 @@ export class OpenWorldPanel {
     }).join('');
     const box = game.player.box.map((monster, index) => `<article><img src="${pokemonSpriteUrl(monster.speciesId)}" alt=""><div><strong>${escape(monster.nickname)}</strong><small>Lv.${monster.level} · HP ${monster.hp}/${monster.stats.hp}</small></div><button data-world-withdraw="${index}" ${game.player.team.length >= 6 ? 'disabled' : ''}>데려오기</button></article>`).join('');
     root.innerHTML = `<section><h3>팀 ${game.player.team.length}/6</h3><div>${team}</div></section><section><h3>박스 ${game.player.box.length}</h3><div>${box || '<p class="world-box-empty">보관 중인 포켓몬이 없습니다.</p>'}</div></section>`;
-    root.querySelectorAll<HTMLButtonElement>('[data-world-deposit]').forEach(button => button.onclick = () => void this.changeBox(() => depositMonster(game, Number(button.dataset.worldDeposit)), '박스에 맡겼습니다.'));
+    root.querySelectorAll<HTMLButtonElement>('[data-world-deposit]').forEach(button => button.onclick = () => void this.changeBox(() => depositMonster(game, Number(button.dataset.worldDeposit), this.simulation.regionId), '박스에 맡겼습니다.'));
     root.querySelectorAll<HTMLButtonElement>('[data-world-withdraw]').forEach(button => button.onclick = () => void this.changeBox(() => withdrawMonster(game, Number(button.dataset.worldWithdraw)), '팀으로 데려왔습니다.'));
   }
 
@@ -366,9 +416,15 @@ export class OpenWorldPanel {
   }
 
   private encounter(id: string): void {
+    if (this.recoveryError || this.recovering) return;
     const wild = this.simulation.entities.find(entity => entity.id === id);
     if (!wild || wild.kind !== 'wild') return;
     this.simulation.selectWild(id, true);
+    const modelStatus = this.simulation.modelStatus(id);
+    if (modelStatus) {
+      this.options.notify(modelStatus === 'failed' ? '3D 모델을 불러오지 못해 이 개체의 이동과 배틀을 중지했습니다.' : '3D 모델을 확인한 뒤 이동과 배틀을 시작합니다.', modelStatus === 'failed');
+      this.refresh(); return;
+    }
     if (!this.simulation.canEngageWild(id)) { this.simulation.trackSelected(); this.options.notify(`${getSpecies(wild.speciesId).name} 추적 중 · 길을 따라 4m 안에 도착하면 배틀합니다.`); this.options.changed(); }
     else if (this.simulation.startEncounter(id)) { this.paused = false; this.options.changed(); }
     this.refresh();
@@ -378,7 +434,8 @@ export class OpenWorldPanel {
     if (this.tickPending || !this.renderer || !this.ready) return;
     this.simulation.synchronizeWorldClock(Date.now());
     this.simulation.synchronizeEvolutionContext(this.multiplayer?.view.status === 'connected' && this.multiplayer.view.players.length > 0);
-    if (this.paused || document.hidden || document.querySelector('dialog[open]')) { this.manualIdleSeconds = 0; return; }
+    this.refreshRecovery();
+    if (this.paused || !this.simulation.modelsReady || document.hidden || document.querySelector('dialog[open]')) { this.manualIdleSeconds = 0; return; }
     this.tickPending = true;
     try {
     // A route or held key owns control until the renderer reports movement end.
@@ -393,9 +450,7 @@ export class OpenWorldPanel {
     if (!this.serverRequest) {
       this.serverRequest = this.simulation.prepareServerBattle(this.options.learning())
         .catch(error => {
-          this.paused = true;
-          this.options.notify(`${error instanceof Error ? error.message : String(error)} · 연결 후 재개해 주세요.`, true);
-          this.refresh();
+          this.pauseWithError(error, 'server');
         }).finally(() => { this.serverRequest = undefined; });
     }
     const result = this.simulation.step({ deltaSeconds: .25, learning: this.options.learning() });
@@ -421,10 +476,62 @@ export class OpenWorldPanel {
     if (result.tick % 20 === 0) this.options.changed();
     this.refresh();
     } catch (error) {
-      this.paused = true;
-      this.options.notify(`${error instanceof Error ? error.message : String(error)} · 월드를 일시 정지했습니다. 연결 후 재개해 주세요.`, true);
-      this.refresh();
+      this.pauseWithError(error, 'world');
     } finally { this.tickPending = false; }
+  }
+
+  private pauseWithError(error: unknown, source: 'server' | 'world'): void {
+    this.paused = true;
+    this.recoveryError = { message: error instanceof Error ? error.message : String(error), source };
+    this.options.notify(`${this.recoveryError.message} · 화면의 ‘다시 연결하고 재개’를 눌러 재시도할 수 있습니다.`, true);
+    this.refresh();
+  }
+
+  private async resume(): Promise<void> {
+    if (this.recovering) return;
+    this.recovering = true; this.paused = true;
+    const host = this.host;
+    let source: 'server' | 'world' = 'server';
+    this.refreshRecovery();
+    try {
+      // Preserve pending neural finalizations and retry the same idempotent turn.
+      // Never switch to a different circuit or discard a failed request's memory.
+      await this.serverRequest;
+      await this.simulation.prepareServerBattle(this.options.learning());
+      if (this.host !== host) return;
+      source = 'world';
+      this.recoveryError = undefined;
+      this.paused = false;
+      await this.options.changed(true);
+      this.options.notify('탐험을 재개했습니다.');
+    } catch (error) {
+      if (this.host === host) this.pauseWithError(error, source);
+    } finally { this.recovering = false; if (this.host === host) this.refresh(); }
+  }
+
+  private refreshRecovery(): void {
+    const host = this.host?.querySelector<HTMLElement>('#ow-host');
+    const banner = this.host?.querySelector<HTMLElement>('#world-recovery');
+    if (!host || !banner) return;
+    const world = this.simulation, blocked = !world.modelsReady;
+    const required = world.entities.filter(entity => entity.kind === 'companion' || entity.id === world.battleWildId || entity.id === world.selectedWildId).map(entity => entity.id);
+    if (world.battleWildId) required.push(world.battleWildId);
+    const failed = required.some(id => world.modelStatus(id) === 'failed');
+    host.dataset.rendererReady = String(this.ready);
+    host.dataset.ready = String(this.ready && !blocked);
+    host.dataset.paused = String(this.paused);
+    banner.hidden = !blocked && !failed && !this.paused && !this.recoveryError;
+    this.html('#world-recovery-message', escape(this.recovering ? '연결과 저장 상태를 확인하고 있습니다…'
+      : this.recoveryError ? `${this.recoveryError.message} · 진행 상황과 대기 중인 회로 기억은 유지됩니다.`
+      : failed ? '포켓몬 3D 모델을 불러오지 못했습니다. 해당 개체의 이동·배틀을 멈췄습니다.'
+      : blocked ? '포켓몬 3D 모델 준비 중 · 완료 전에는 이동·배틀을 시작하지 않습니다.'
+      : '탐험이 일시 정지되어 있습니다.'));
+    const resume = this.button('#world-resume');
+    resume.hidden = !this.paused && !this.recoveryError;
+    resume.disabled = this.recovering || blocked;
+    resume.textContent = this.recoveryError ? '다시 연결하고 재개' : '계속 탐험';
+    const retry = this.button('#world-model-retry');
+    retry.hidden = !failed; retry.disabled = this.recovering;
   }
 
   private destinationGuide(): DestinationGuide {
@@ -438,7 +545,7 @@ export class OpenWorldPanel {
     const game = this.options.game, battle = game.battle;
     const now = performance.now();
     const attacking = (id?: string) => { const attack = id ? this.attacks.get(id) : undefined; return attack && now >= attack.start && now < attack.end ? attack : undefined; };
-    const ally = battle ? battle.player.team[battle.player.activeIndex] : game.player.team.find(mon => mon.hp > 0) ?? game.player.team[0];
+    const ally = battle ? battle.player.team[battle.player.activeIndex] : game.player.team[firstUsableRegionalTeamIndex(game, this.simulation.regionId)] ?? game.player.team[0];
     const enemy = battle?.enemy.team[battle.enemy.activeIndex];
     return {
       guide: battle ? undefined : this.destinationGuide(),
@@ -473,7 +580,7 @@ export class OpenWorldPanel {
 
   private presence() {
     const game = this.options.game, battle = game.battle;
-    const lead = battle?.player.team[battle.player.activeIndex] ?? game.player.team.find(monster => monster.hp > 0) ?? game.player.team[0];
+    const lead = battle?.player.team[battle.player.activeIndex] ?? game.player.team[firstUsableRegionalTeamIndex(game, this.simulation.regionId)] ?? game.player.team[0];
     const player = this.simulation.player, now = performance.now();
     if (player.x !== this.lastPresence.x || player.z !== this.lastPresence.z) { this.lastPresence = { x: player.x, z: player.z }; this.movingUntil = now + 300; }
     return { region: this.simulation.regionId as CampaignRegion, sceneId: this.simulation.sceneId, speciesId: lead.speciesId, x: player.x, z: player.z, heading: player.heading,
@@ -620,7 +727,8 @@ export class OpenWorldPanel {
       select.disabled = Boolean(battle || game.captureOffer);
     }
     host.dataset.tick = String(world.tick); host.dataset.paused = String(this.paused);
-    const lead = battle ? battle.player.team[battle.player.activeIndex] : game.player.team.find(mon => mon.hp > 0) ?? game.player.team[0];
+    this.refreshRecovery();
+    const lead = battle ? battle.player.team[battle.player.activeIndex] : game.player.team[firstUsableRegionalTeamIndex(game, world.regionId)] ?? game.player.team[0];
     const serverReceipt = lastServerDecision(lead.instanceId);
     this.html('#world-learning-label', serverReceipt ? `기술 학습 · ${serverReceipt.updates}회` : '기술 학습');
     this.html('.world-battle-hud > summary strong', `<span class="world-summary-name">${escape(lead.nickname)} · Lv.${lead.level}</span><span class="world-summary-hp">HP ${lead.hp} / ${lead.stats.hp}</span>`);
@@ -642,6 +750,7 @@ export class OpenWorldPanel {
     const location = this.simulation.locationAt(world.player.x, world.player.z);
     const region = world.regionId as CampaignRegion;
     const badges = getRegionalBadges(game, region);
+    this.text('#world-regional-rule', `${world.atlas.name} 배지 ${badges}/8 · 사용 가능 Lv.${regionalLevelCap(game, region)}까지 · ${badges < 1 ? '현지 출신만 사용' : '타지방 출신 사용 가능'}`);
     const biome = world.sampleWorld(world.player.x, world.player.z).biome;
     const levels = regionalWildLevels(game, region, location);
     const locationCopyKey = `${region}:${location.id}:${badges}:${world.dayPeriod}:${biome}:${levels.minLevel}:${levels.maxLevel}`;
@@ -661,7 +770,7 @@ export class OpenWorldPanel {
     host.dataset.scene = world.sceneId;
     this.text('#world-zone-level', locationCopy.level);
     this.html('#world-position', `${world.player.x.toFixed(0)}, ${world.player.z.toFixed(0)}`);
-    const collectionSpecies = new Set(getPlayableSpeciesIds(world.atlas.defaultVersion));
+    const collectionSpecies = new Set(getRegionalNativeSpeciesIds(world.regionId));
     this.html('#world-objective', `${game.dex.caught.filter(id => collectionSpecies.has(id)).length} / ${collectionSpecies.size}종 · 전체 ${game.dex.caught.filter(isPlayableSpecies).length}종`);
     this.html('#world-feed', game.logs.slice(-3).map(log => `<p>${escape(log)}</p>`).join(''));
     this.html('#world-battle-state', game.captureOffer ? '승리! 포획 여부를 선택하세요' : battle ? `${battle.awaitingSwitch ? '다음 파트너로 자동 교대 중' : world.escaping ? '도망 시도 중' : world.controlMode === 'manual' ? (battle.canRun ? '기술 선택 · 이동키로 도주' : '기술 선택 대기') : '자동 배틀'} · 턴 ${battle.turn}` : this.paused ? '탐험 일시 정지' : world.controlMode === 'manual' ? '수동 탐험 · 배틀 버튼으로만 전투' : '가까운 포켓몬 추적 · 접근하면 배틀');
@@ -685,6 +794,15 @@ export class OpenWorldPanel {
     const trainer = getNextCampaignTrainer(game, region);
     const localTrainer = badges >= 8 && trainer?.locationId === location.id ? trainer : undefined;
     const cave = getCaveScene(world.sceneId), portal = cave ? cavePortalAtInterior(world.sceneId, world.player.x, world.player.z) : cavePortalAtSurface(region, world.player.x, world.player.z);
+    const exits = world.caveExits(), exitHost = this.host.querySelector<HTMLElement>('#world-cave-exits')!;
+    exitHost.hidden = !cave;
+    if (cave) {
+      this.html('#world-cave-exits', `<button id="world-cave-exit" ${battle || offer ? 'disabled' : ''}>동굴 밖으로 나가기</button>${exits.length > 1 ? `<select id="world-cave-exit-choice" aria-label="나갈 출구">${exits.map(exit => `<option value="${escape(exit.id)}">${escape(exit.label)}</option>`).join('')}</select>` : ''}`);
+      this.button('#world-cave-exit').onclick = () => {
+        const chosen = this.host?.querySelector<HTMLSelectElement>('#world-cave-exit-choice')?.value;
+        if (world.exitCave(chosen)) { world.setControlMode('manual'); this.manualMovementActive = false; this.multiplayer?.join(this.presence()); this.options.changed(); this.refresh(); this.options.notify('동굴 밖으로 나왔습니다.'); }
+      };
+    }
     const challenge = gym ? `<button id="world-gym-challenge" ${battle || offer || gym.badge !== badges + 1 ? 'disabled' : ''}>${gym.name} · Lv.${gym.level} ${badges >= gym.badge ? '클리어 ✓' : '도전'}</button><small>${world.atlas.name} 배지 ${badges}/8${gym.badge > badges + 1 ? ' · 앞 체육관부터 도전하세요' : ''}</small>` : localTrainer ? `<button id="world-trainer-challenge" ${battle || offer ? 'disabled' : ''}>${escape(localTrainer.name)} · 도전</button><small>${localTrainer.team.map(([id, level]) => `${getSpecies(id).name} Lv.${level}`).join(' · ')}</small>` : '';
     this.html('#world-gym', challenge + (portal ? `<button id="world-cave-enter" ${battle || offer ? 'disabled' : ''}>${cave ? `${escape(cave.name)} · 밖으로 나가기` : '동굴 들어가기'}</button>` : ''));
     if (gym) this.button('#world-gym-challenge').onclick = () => { if (world.challengeLocalGym()) { this.options.changed(); this.refresh(); } };
@@ -709,9 +827,12 @@ export class OpenWorldPanel {
     targetNode.hidden = !target || !world.selectionPinned || Boolean(battle || offer);
     if (target && !targetNode.hidden) {
       const info = getSpecies(target.speciesId), distance = Math.hypot(target.x - world.player.x, target.z - world.player.z), targetHp = statsFor(info, target.level).hp;
-      this.html('#world-target-info', `<strong>${escape(info.name)} · Lv.${target.level}</strong><small><b>${world.trackingSelected ? '추적 중' : '선택됨'}</b> · ${distance.toFixed(1)}m · HP ${targetHp} / ${targetHp}</small>`);
+      const modelStatus = world.modelStatus(target.id);
+      this.html('#world-target-info', `<strong>${escape(info.name)} · Lv.${target.level}</strong><small><b>${modelStatus === 'failed' ? '모델 오류 · 정지됨' : modelStatus === 'loading' ? '모델 확인 중 · 정지됨' : world.trackingSelected ? '추적 중' : '선택됨'}</b> · ${distance.toFixed(1)}m · HP ${targetHp} / ${targetHp}</small>`);
       this.html('#world-target-detail', `${info.types.map(type => types[type]).join(' / ')} · 이동 ${movementSpeed(target.speciesId, target.level).toFixed(1)}m/s`);
-      this.button('#world-target-battle').textContent = world.canEngageWild(target.id) ? '배틀' : '접근 후 배틀';
+      this.button('#world-target-track').disabled = Boolean(modelStatus);
+      this.button('#world-target-battle').disabled = Boolean(modelStatus);
+      this.button('#world-target-battle').textContent = modelStatus ? '모델 확인 필요' : world.canEngageWild(target.id) ? '배틀' : '접근 후 배틀';
     }
     const nearby = world.visibleEntities(12).filter(entity => entity.kind === 'wild').map(entity => ({ entity, distance: Math.hypot(entity.x - world.player.x, entity.z - world.player.z) })).sort((a, b) => a.distance - b.distance);
     const list = this.host.querySelector<HTMLElement>('#world-nearby')!, nearbyIds = new Set(nearby.map(({ entity }) => entity.id));
@@ -727,7 +848,7 @@ export class OpenWorldPanel {
     this.html('#world-next-guide', `<span class="world-guide-symbol" aria-hidden="true">›</span><span><small>길안내${guide.recommendedLevel ? ` · 권장 Lv.${guide.recommendedLevel}` : ''}</small><strong>${escape(guide.title)}</strong><span>${escape(guide.detail)}</span></span><b aria-hidden="true">지도</b>`);
     const guideNode = this.host.querySelector<HTMLElement>('#world-next-guide')!;
     if (guideNode.dataset.status !== guide.status) guideNode.dataset.status = guide.status;
-    this.minimap(); this.renderer?.update();
+    this.minimap(); this.renderer?.update(); this.offerRegionalStarter();
   }
 
   private drawRegionMap(): void {
@@ -739,7 +860,7 @@ export class OpenWorldPanel {
       this.html('#world-travel', '');
       const extent = Math.max(cave.width, cave.depth) + 4;
       const rotation = cameraMapRotation(this.cameraHeading) * 180 / Math.PI;
-      this.html('#world-map-content', `<svg viewBox="0 0 240 240" role="img" aria-label="${escape(cave.name)} 내부 지도"><rect width="240" height="240" rx="8" fill="#a7b3a5"/><g transform="rotate(${rotation} 120 120)">${cave.wallSegments.map(wall => `<rect x="${this.mapCoordinate(wall.x - wall.width / 2)}" y="${this.mapCoordinate(wall.z - wall.depth / 2)}" width="${wall.width / extent * 240}" height="${wall.depth / extent * 240}" fill="#334a44"/>`).join('')}</g>${cave.portals.map(portal => { const marker = point(portal.interior.x, portal.interior.z); return `<g class="world-map-point traversable" data-map-x="${portal.interior.x}" data-map-z="${portal.interior.z}" tabindex="0" role="button" aria-label="출구로 걸어가기"><circle cx="${marker.x}" cy="${marker.y}" r="5"/><text x="${marker.x + 6}" y="${marker.y - 5}">출구</text></g>`; }).join('')}<g id="world-map-peers">${this.mapPeers()}</g>${this.mapCompass(240)}<circle cx="${point(world.player.x, world.player.z).x}" cy="${point(world.player.x, world.player.z).y}" r="4" fill="#e04f45" stroke="white"/></svg>`);
+      this.html('#world-map-content', `<svg viewBox="0 0 240 240" role="img" aria-label="${escape(cave.name)} 내부 지도"><rect width="240" height="240" rx="8" fill="#a7b3a5"/><g transform="rotate(${rotation} 120 120)">${cave.wallSegments.map(wall => `<rect x="${this.mapCoordinate(wall.x - wall.width / 2)}" y="${this.mapCoordinate(wall.z - wall.depth / 2)}" width="${wall.width / extent * 240}" height="${wall.depth / extent * 240}" fill="#334a44" transform="rotate(${wall.rotationY * -180 / Math.PI} ${this.mapCoordinate(wall.x)} ${this.mapCoordinate(wall.z)})"/>`).join('')}</g>${cave.portals.map(portal => { const marker = point(portal.interior.x, portal.interior.z); return `<g class="world-map-point traversable" data-map-x="${portal.interior.x}" data-map-z="${portal.interior.z}" tabindex="0" role="button" aria-label="출구로 걸어가기"><circle cx="${marker.x}" cy="${marker.y}" r="5"/><text x="${marker.x + 6}" y="${marker.y - 5}">출구</text></g>`; }).join('')}<g id="world-map-peers">${this.mapPeers()}</g>${this.mapCompass(240)}<circle cx="${point(world.player.x, world.player.z).x}" cy="${point(world.player.x, world.player.z).y}" r="4" fill="#e04f45" stroke="white"/></svg>`);
       this.bindMapNavigation();
       return;
     }
@@ -819,5 +940,5 @@ export class OpenWorldPanel {
   private text(selector: string, value: string): void { const node = this.host?.querySelector(selector); if (node && this.htmlCache.get(node) !== value) { node.textContent = value; this.htmlCache.set(node, value); } }
   private button(selector: string): HTMLButtonElement { return this.host!.querySelector(selector)!; }
   private input(selector: string): HTMLInputElement { return this.host!.querySelector(selector)!; }
-  unmount(): void { this.manualMovementActive = false; this.layoutObserver?.disconnect(); this.layoutObserver = undefined; window.removeEventListener('keydown', this.hotkeys); this.compactViewport.removeEventListener('change', this.onViewportChange); this.multiplayer?.close(); this.multiplayer = undefined; this.renderer?.destroy(); this.renderer = undefined; this.host = undefined; this.ready = false; }
+  unmount(): void { this.starterDialog?.remove(); this.starterDialog = undefined; this.manualMovementActive = false; this.layoutObserver?.disconnect(); this.layoutObserver = undefined; window.removeEventListener('keydown', this.hotkeys); window.removeEventListener('online', this.onConnectionRestored); this.compactViewport.removeEventListener('change', this.onViewportChange); this.multiplayer?.close(); this.multiplayer = undefined; this.renderer?.destroy(); this.renderer = undefined; this.host = undefined; this.ready = false; }
 }

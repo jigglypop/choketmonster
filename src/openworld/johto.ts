@@ -163,7 +163,11 @@ function townBuildingAt(x: number, z: number, town: JohtoLocation): boolean {
 }
 
 export function sampleJohtoWorld(x: number, z: number): WorldSample {
-  const height = baseHeight(x, z);
+  const silver = JOHTO_LOCATIONS.find(location => location.id === 'mt-silver')!;
+  const silverDistance = Math.hypot(x - silver.x, z - silver.z), silverRadius = scaleWorldDistance(14);
+  const silverT = Math.max(0, 1 - silverDistance / silverRadius);
+  const height = baseHeight(x, z) + 2.8 * silverT * silverT * (3 - 2 * silverT);
+  const landform = silverDistance < silverRadius ? { surface: 'snow' as const } : {};
   const joinedHeight = (value: number) => terrainPlateauHeight(value, x, z, townPlateaus);
   if (![x, z].every(Number.isFinite) || Math.abs(x) > WORLD_MAX || Math.abs(z) > WORLD_MAX) return { height, biome: 'rock', blocked: true };
   const nearest = johtoLocationAt(x, z), distance = Math.hypot(x - nearest.x, z - nearest.z), pathDistance = distanceToJohtoPath(x, z);
@@ -184,15 +188,15 @@ export function sampleJohtoWorld(x: number, z: number): WorldSample {
     const surface = (kind: KantoLocationKind) => kind === 'sea' ? -.66 : height + (kind === 'cave' ? .58 : 0);
     const pathHeight = surface(closest.from.kind) + (surface(closest.to.kind) - surface(closest.from.kind)) * closestT;
     const pathBiome = closestT < .5 ? closest.from.kind : closest.to.kind;
-    return { height: joinedHeight(pathHeight), biome: pathBiome === 'sea' ? 'lake' : pathBiome === 'cave' ? 'rock' : pathBiome === 'forest' ? 'forest' : 'meadow', blocked: false };
+    return { height: joinedHeight(pathHeight), biome: pathBiome === 'sea' ? 'lake' : pathBiome === 'cave' ? 'rock' : pathBiome === 'forest' ? 'forest' : 'meadow', ...landform, blocked: false };
   }
   if (nearest.kind === 'sea' && playable) return { height: joinedHeight(-.66), biome: 'lake', blocked: false };
   if (playable) {
     const rocky = nearest.kind === 'cave' || nearest.id === 'route-44' || nearest.id === 'route-45';
-    return { height: joinedHeight(rocky ? height + .58 : height), biome: rocky ? 'rock' : nearest.kind === 'forest' ? 'forest' : 'meadow', blocked: false };
+    return { height: joinedHeight(rocky ? height + .58 : height), biome: rocky ? 'rock' : nearest.kind === 'forest' ? 'forest' : 'meadow', ...landform, blocked: false };
   }
   const mountain = x > 42 * WORLD_SCALE || z < -32 * WORLD_SCALE;
-  return { height: joinedHeight(height + (mountain ? .72 : .18)), biome: mountain ? 'rock' : 'forest', blocked: true };
+  return { height: joinedHeight(height + (mountain ? .72 : .18)), biome: mountain ? 'rock' : 'forest', ...landform, blocked: true };
 }
 
 export function isJohtoPlayable(x: number, z: number): boolean { return !sampleJohtoWorld(x, z).blocked; }

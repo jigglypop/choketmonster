@@ -11,7 +11,6 @@ import {
   LoopOnce,
   LoopRepeat,
   BufferGeometry,
-  Box3,
   CanvasTexture,
   Color,
   DirectionalLight,
@@ -30,7 +29,6 @@ import {
   Object3D,
   Quaternion,
   SRGBColorSpace,
-  Texture,
   Vector3,
 } from 'three';
 import { type GLTF } from 'three/addons/loaders/GLTFLoader.js';
@@ -50,7 +48,7 @@ import { createGrounding, terrainSurfaceHeight } from './grounding';
 import { getWorldAtlas, type WorldAtlas } from './atlas';
 import { hasPokemonModel } from '../game/assets';
 import { selectPokemonMotionClip } from '../data/model-motion';
-import { acquireModel, modelCacheStats } from '../three/model-cache';
+import { acquireModel, modelCacheStats, retryFailedModels } from '../three/model-cache';
 import { creatureLods, terrainChunks, TERRAIN_CHUNK_SIZE, type TerrainChunk, type VisibilityTest } from './lod';
 import { initialYaw, movementYaw, turnTowards } from './motion';
 import { normalizePokemonModel } from './model-normalization';
@@ -75,8 +73,16 @@ const NATURE_DETAIL_RADIUS = 68;
 const NATURE_VISIBLE_RADIUS = 94;
 const DEFAULT_CAMERA_OFFSET = new Vector3(5.6, 7.6, 8.8);
 
+const MODEL_RETRY_EVENT = 'choketmon-retry-world-models';
 function useModelStatus(url: string): { url: string; gltf: GLTF | null; failed: boolean } {
   const [state, setState] = useState({ url, gltf: null as GLTF | null, failed: false });
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (!state.failed) return;
+    const retry = () => setAttempt(value => value + 1);
+    window.addEventListener(MODEL_RETRY_EVENT, retry);
+    return () => window.removeEventListener(MODEL_RETRY_EVENT, retry);
+  }, [state.failed]);
   useEffect(() => {
     let active = true;
     setState({ url, gltf: null, failed: false });
@@ -84,7 +90,7 @@ function useModelStatus(url: string): { url: string; gltf: GLTF | null; failed: 
     request.promise.then(gltf => { if (active) setState({ url, gltf, failed: false }); })
       .catch(() => { if (active) setState({ url, gltf: null, failed: true }); });
     return () => { active = false; request.release(); };
-  }, [url]);
+  }, [url, attempt]);
   return state.url === url ? state : { url, gltf: null, failed: false };
 }
 
@@ -319,16 +325,10 @@ function TownBuilding({ townId, townColor, index, gym, badges, showGymLabel }: {
 }
 
 function WorldLabel({ name, x, y, z }: { name: string; x: number; y: number; z: number }) {
-  const texture = useMemo(() => {
-    const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 128;
-    const context = canvas.getContext('2d')!;
-    context.fillStyle = 'rgba(20, 48, 41, .9)'; context.beginPath(); context.roundRect(5, 5, 502, 118, 24); context.fill();
-    context.strokeStyle = '#ead77c'; context.lineWidth = 5; context.stroke();
-    context.fillStyle = '#fff6d5'; context.textAlign = 'center'; context.textBaseline = 'middle'; context.font = '800 42px system-ui, sans-serif'; context.fillText(name, 256, 65);
-    const result = new CanvasTexture(canvas); result.colorSpace = SRGBColorSpace; return result;
-  }, [name]);
-  useEffect(() => () => texture.dispose(), [texture]);
-  return <sprite position={[x, y, z]} scale={[3, .75, 1]}><spriteMaterial map={texture} transparent depthWrite={false} /></sprite>;
+  // Screen-space type keeps its natural aspect ratio regardless of terrain scale or camera distance.
+  return <Html center position={[x, y, z]} zIndexRange={[3, 2]} style={{ pointerEvents: 'none' }}>
+    <span className="ow-place-label" data-world-label={name}>{name}</span>
+  </Html>;
 }
 
 function RegionalLandmark({ region, x, y, z }: { region: string; x: number; y: number; z: number }) {
@@ -388,13 +388,8 @@ function TrailAndWater({ sampleWorld, player, badges, atlas, visible, mobile, gy
     <group name={`region-landmarks:${atlas.id}`} userData={{ gaesupWorldObject: 'region-landmarks' }}>
       <mesh geometry={trail} receiveShadow><SurfaceMaterial surface="path" color={regionTrailColor(atlas)} /></mesh>
       {atlas.id !== 'kanto' && atlas.locations.filter(item => item.kind === 'special' && !isRegionalLeagueLocation(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) < 70 && visible(item.x, 5, item.z, 10)).map(item => <RegionalLandmark key={item.id} region={atlas.id} x={item.x} y={terrainSurfaceHeight(sampleWorld, item.x, item.z)} z={item.z} />)}
-      {atlas.locations.filter(item => isRegionalLeagueLocation(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) < 100).map(item => {
-        // Place scenery beyond the existing blocked edge, leaving arrival and walking paths clear.
-        const candidates = [18, 24, 30].flatMap(radius => [0, -.7, .7, -1.4, 1.4].map(angle => ({ x: item.x + Math.sin(angle) * radius, z: item.z - Math.cos(angle) * radius })));
-        const point = candidates.find(point => [-5.2, 0, 5.2].every(dx => [-4, 0, 5.2].every(dz => sampleWorld(point.x + dx, point.z + dz).blocked)));
-        if (!point) return null;
-        return <RegionalLeagueLandmark key={item.id} region={atlas.id} x={point.x} y={terrainSurfaceHeight(sampleWorld, point.x, point.z)} z={point.z} />;
-      })}
+      {atlas.locations.filter(item => isRegionalLeagueLocation(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) < 100)
+        .map(item => <RegionalLeagueLandmark key={item.id} region={atlas.id} x={item.x} y={terrainSurfaceHeight(sampleWorld, item.x, item.z)} z={item.z} />)}
       {atlas.locations.filter(item => item.kind === 'town' && !isRegionalLeagueLocation(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) <= 85 && visible(item.x, 3, item.z, 14 * WORLD_SCALE)).map(town => <group key={town.id} name={`town:${town.id}`} position={[town.x, terrainSurfaceHeight(sampleWorld, town.x, town.z) + .05, town.z]}>
         <TownPaving color={townColors[town.id] ?? atlas.palette.town} />
         {atlas.buildingOffsets(town).map(([x, z], index) => <group key={index} position={[x, 0, z]} scale={WORLD_SCALE}>
@@ -450,7 +445,7 @@ function StaticModel({ item }: { item: OpenWorldProp }) {
   return <RigidBody type="fixed" colliders={item.collider ?? 'trimesh'} {...transform}>{visual}</RigidBody>;
 }
 
-function PokemonModel({ creature, url }: { creature: WorldCreature; url: string }) {
+function PokemonModel({ creature, url, onStatus }: { creature: WorldCreature; url: string; onStatus?: OpenWorldViewOptions['onModelStatus'] }) {
   const { gltf, failed } = useModelStatus(url);
   const root = useRef<Group>(null);
   const mixer = useRef<AnimationMixer | null>(null);
@@ -468,6 +463,9 @@ function PokemonModel({ creature, url }: { creature: WorldCreature; url: string 
     });
     return normalizePokemonModel(scene, gltf.animations, creature.displayHeight ?? 1.2, { speciesId: creature.speciesId, types: getSpecies(creature.speciesId).types }, gltf.scene);
   }, [creature.displayHeight, creature.speciesId, gltf]);
+  const status = normalized ? 'ready' : failed ? 'failed' : 'loading';
+  useLayoutEffect(() => { onStatus?.(creature.id, status, creature.speciesId); }, [creature.id, creature.speciesId, onStatus, status]);
+  useLayoutEffect(() => () => onStatus?.(creature.id, 'untracked', creature.speciesId), [creature.id, creature.speciesId, onStatus]);
   useFrame(({ clock }, delta) => {
     mixer.current?.update(Math.min(delta, .05) * (creature.action === 'walk' ? MathUtils.clamp((creature.movementSpeed ?? 2.4) / 2.4, .65, 1.8) : 1));
     if (!root.current) return;
@@ -575,6 +573,12 @@ function Creature({ creature, selected, distance, options, showLabels, model }: 
   distance: number;
   options: OpenWorldViewOptions;
 }) {
+  const supportedModel = hasPokemonModel(creature.speciesId);
+  useEffect(() => {
+    if (supportedModel) return;
+    options.onModelStatus?.(creature.id, 'failed', creature.speciesId);
+    return () => options.onModelStatus?.(creature.id, 'untracked', creature.speciesId);
+  }, [creature.id, creature.speciesId, options, supportedModel]);
   const sample = options.sampleWorld ?? fallbackSample;
   const y = terrainSurfaceHeight(sample, creature.x, creature.z);
   const hp = MathUtils.clamp(creature.maxHp > 0 ? creature.hp / creature.maxHp : 0, 0, 1);
@@ -613,9 +617,9 @@ function Creature({ creature, selected, distance, options, showLabels, model }: 
       onClick={event => { event.stopPropagation(); if (!creature.remotePlayer) options.onSelect(creature.id); }}
       onDoubleClick={event => { event.stopPropagation(); if (!creature.remotePlayer) options.onInteract?.(creature.id); }}
     >
-      {model && hasPokemonModel(creature.speciesId)
-        ? <PokemonModel creature={creature} url={(options.modelUrl ?? (id => `/models/pokemon/${id}.glb`))(creature.speciesId)} />
-        : <ModelStatus name="3D 미지원 · 저장 기록 유지" />}
+      {model && supportedModel
+        ? <PokemonModel creature={creature} url={(options.modelUrl ?? (id => `/models/pokemon/${id}.glb`))(creature.speciesId)} onStatus={options.onModelStatus} />
+        : !supportedModel ? <ModelStatus name="3D 미지원 · 이동 중지" /> : null}
       {(selected || creature.inBattle) && <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, .04, 0]}><ringGeometry args={[1.1, 1.34, 40]} /><meshBasicMaterial color={creature.inBattle ? '#f09155' : '#f6dd67'} transparent opacity={.86} /></mesh>}
       <AttackEffect active={creature.action === 'attack'} moveType={creature.moveType} />
       {showLabels && (distance <= 28 || selected || creature.inBattle || creature.remotePlayer) && <CreatureBillboard creature={creature} hp={hp} distance={distance} emphasized={selected || !!creature.inBattle || !!creature.remotePlayer} />}
@@ -865,7 +869,7 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
   const atlas = getWorldAtlas(snapshot.regionId ?? 'kanto');
   const sceneId = snapshot.sceneId ?? surfaceSceneId(atlas.id), cave = getCaveScene(sceneId);
   const sample = cave?.sample ?? atlas.sample;
-  const waterMaterials = useTerrainMaterials(atlas.palette.water);
+  const waterMaterials = useTerrainMaterials(atlas.palette.water, cave ? undefined : atlas.sample);
   const groundMaterial = waterMaterials.ground;
   // Fixed daytime presentation: never rebuild lighting or sky for a world clock tick.
   const daylight = 1;
@@ -1012,6 +1016,7 @@ export function mountOpenWorld(host: HTMLElement, options: OpenWorldViewOptions)
   root.render(<OpenWorldApp store={store} options={options} lifetime={lifetime} commands={commands} />);
   const poll = window.setInterval(() => store.set(options.getSnapshot()), 100);
   return {
+    retryModels() { retryFailedModels(); window.dispatchEvent(new Event(MODEL_RETRY_EVENT)); },
     update(snapshot = options.getSnapshot()) { store.set(snapshot); },
     navigateTo(point) { return commands.navigateTo?.(point) ?? false; },
     setCameraHeading(radians) { commands.setCameraHeading?.(radians); },

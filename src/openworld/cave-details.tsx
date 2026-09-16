@@ -1,29 +1,33 @@
 import { useLayoutEffect, useMemo, useRef } from 'react';
-import { ConeGeometry, IcosahedronGeometry, InstancedMesh, Matrix4, Quaternion, Vector3, type BufferGeometry, type MeshStandardMaterial } from 'three';
+import { ConeGeometry, Euler, IcosahedronGeometry, InstancedMesh, Matrix4, Quaternion, Vector3, type BufferGeometry, type MeshStandardMaterial } from 'three';
 import { WaterMaterial } from './materials';
 import type { CaveScene } from './caves';
 import type { WorldPoint } from './types';
 
-type Detail = { x: number; y: number; z: number; sx: number; sy: number; sz: number; upsideDown?: boolean };
+type Detail = { x: number; y: number; z: number; sx: number; sy: number; sz: number; rotationY?: number; upsideDown?: boolean };
 const variation = (index: number, seed: number) => { const n = Math.sin(index * 127.1 + seed * 311.7) * 43758.5453; return n - Math.floor(n); };
 
 export function caveFormations(cave: CaveScene) {
   const ledges: Detail[] = [], stalactites: Detail[] = [], stalagmites: Detail[] = [];
-  for (let side = 0; side < 4; side++) {
-    const alongX = side < 2, length = alongX ? cave.width : cave.depth;
-    for (let offset = -length / 2 + 3, index = 0; offset < length / 2 - 2; offset += 2.7, index++) {
-      const v = variation(index + side * 31, cave.relief.seed), sign = side % 2 ? 1 : -1;
-      const x = alongX ? offset : sign * (cave.width / 2 - 1.9);
-      const z = alongX ? sign * (cave.depth / 2 - 1.9) : offset;
+  for (let side = 0; side < cave.wallSegments.length; side++) {
+    const wall = cave.wallSegments[side], tangentX = Math.cos(wall.rotationY), tangentZ = -Math.sin(wall.rotationY);
+    const normalA = { x: -tangentZ, z: tangentX }, normalB = { x: tangentZ, z: -tangentX };
+    const inward = normalA.x * -wall.x + normalA.z * -wall.z > normalB.x * -wall.x + normalB.z * -wall.z ? normalA : normalB;
+    const count = Math.max(1, Math.ceil(wall.width / 2.7));
+    for (let index = 0; index < count; index++) {
+      const along = (index + .5) / count * wall.width - wall.width / 2;
+      const v = variation(index + side * 31, cave.relief.seed);
+      const x = wall.x + tangentX * along + inward.x * 1.25;
+      const z = wall.z + tangentZ * along + inward.z * 1.25;
       // Keep all solid bases inside the already blocked outer wall ring.
       if (cave.portals.some(portal => Math.hypot(portal.interior.x - x, portal.interior.z - z) < 4)) continue;
       const y = cave.sample(x, z).height;
-      ledges.push({ x, z, y: y + .6 + v, sx: alongX ? 2.1 : .8, sy: .65 + v * .5, sz: alongX ? .8 : 2.1 });
-      ledges.push({ x, z, y: 4 + v * .3, sx: alongX ? 2 : 1, sy: .45, sz: alongX ? 1 : 2 });
+      ledges.push({ x, z, y: y + .6 + v, sx: 2.1, sy: .65 + v * .5, sz: .8, rotationY: wall.rotationY });
+      ledges.push({ x, z, y: 4 + v * .3, sx: 2, sy: .45, sz: 1, rotationY: wall.rotationY });
       if (cave.relief.theme !== 'industrial') {
         const height = .8 + v * 1.5;
-        stalactites.push({ x, z, y: 4.05 - height / 2, sx: .28 + v * .32, sy: height, sz: .35 + v * .22, upsideDown: true });
-        if (index % 2 === 0) stalagmites.push({ x, z, y: y + height / 2, sx: .35 + v * .3, sy: height, sz: .4 + v * .3 });
+        stalactites.push({ x, z, y: 4.05 - height / 2, sx: .28 + v * .32, sy: height, sz: .35 + v * .22, rotationY: wall.rotationY, upsideDown: true });
+        if (index % 2 === 0) stalagmites.push({ x, z, y: y + height / 2, sx: .35 + v * .3, sy: height, sz: .4 + v * .3, rotationY: wall.rotationY });
       }
     }
   }
@@ -41,10 +45,10 @@ function Batch({ name, entries, material, pointed = false }: { name: string; ent
   }, [pointed]);
   useLayoutEffect(() => {
     const mesh = ref.current!;
-    const matrix = new Matrix4(), rotation = new Quaternion(), scale = new Vector3(), position = new Vector3();
+    const matrix = new Matrix4(), rotation = new Quaternion(), angles = new Euler(), scale = new Vector3(), position = new Vector3();
     for (let index = 0; index < entries.length; index++) {
       const item = entries[index];
-      rotation.setFromAxisAngle(new Vector3(1, 0, 0), item.upsideDown ? Math.PI : 0);
+      rotation.setFromEuler(angles.set(item.upsideDown ? Math.PI : 0, item.rotationY ?? 0, 0));
       matrix.compose(position.set(item.x, item.y, item.z), rotation, scale.set(item.sx, item.sy, item.sz));
       mesh.setMatrixAt(index, matrix);
     }

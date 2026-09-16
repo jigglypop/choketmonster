@@ -36,8 +36,8 @@ describe('Galar, Hisui and Paldea authored regions', () => {
     for (const town of atlas.locations.filter(location => location.kind === 'town')) {
       for (const [dx, dz] of atlas.buildingOffsets(town)) expect(atlas.sample(town.x + dx, town.z + dz).blocked).toBe(true);
     }
-    // Authored data can be validated without implying that model/licensing gates are cleared.
-    expect(isPlayableWorldRegion(definition.id)).toBe(false);
+    // Runtime admission is independent from the source label retained by each model.
+    expect(isPlayableWorldRegion(definition.id)).toBe(true);
   });
 
   it('keeps PokeAPI Galar rows as source and labels Hisui/Paldea authored encounters supplemental', () => {

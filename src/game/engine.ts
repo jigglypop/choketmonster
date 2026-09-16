@@ -15,6 +15,7 @@ import { getFieldTrainer, type FieldTrainer } from '../data/field-trainers';
 import { genderFor, isValidGender, validateEgg, type Egg, type MonsterGender } from './breeding';
 import { abilityForSpecies, abilityImmunity, createIndividualTraits, hasSturdy, isValidAbility, isValidIndividualValues,
   legacyIndividualTraits, statsWithIndividualValues, type IndividualValues, type MonsterAbility } from './individual-traits';
+import { REGIONAL_STARTERS, claimedRegionalStarters, isCampaignRegion, monsterRegionalUseReason, needsRegionalStarter, regionalLevelCap } from './regional-policy';
 export { duplicateMergeValue } from './growth';
 export { abilityForSpecies, createIndividualTraits, speciesAbilities, type IndividualValues, type MonsterAbility } from './individual-traits';
 
@@ -30,6 +31,8 @@ export type Monster = {
   instanceId: string;
   speciesId: number;
   nickname: string;
+  /** Region where this individual was obtained. It survives evolution, trade and merging. */
+  originRegion?: CampaignRegion;
   gender?: MonsterGender;
   level: number;
   xp: number;
@@ -63,6 +66,8 @@ export type BattleState = {
   enemy: BattleSide;
   turn: number;
   canRun: boolean;
+  /** Region policy applied when this battle began. Absent only in legacy active battles. */
+  policyRegion?: CampaignRegion;
   awaitingSwitch?: 'player';
   gymBadge?: number;
   campaignRegion?: CampaignRegion;
@@ -128,6 +133,8 @@ export type GameState = {
   defeatedFieldTrainers?: string[];
   championDefeated: boolean;
   campaign?: CampaignProgress;
+  /** Regions whose one-time starter choice has already been claimed. */
+  claimedRegionalStarters?: CampaignRegion[];
   /** Undefined in legacy schema-v2 saves is migrated to enabled by validateGame. */
   experienceShare?: boolean;
   adventureVersion?: string;
@@ -158,7 +165,7 @@ export const ITEM_LABELS: Readonly<Record<InventoryItem, string>> = {
   ...EXTRA_EVOLUTION_LABELS,
 };
 const INVENTORY_ITEMS = Object.keys(ITEM_PRICES) as InventoryItem[];
-export const SHOP_ITEMS: readonly InventoryItem[] = INVENTORY_ITEMS.filter(item => item !== 'great-ball' && item !== 'ultra-ball');
+export const SHOP_ITEMS: readonly InventoryItem[] = INVENTORY_ITEMS.filter(item => item !== 'great-ball' && item !== 'ultra-ball' && item !== 'friendship-treat');
 
 /** Legacy ball counts are conserved, and subsequent saves keep legacy keys at zero. */
 export function normalizeBalls(state: GameState): void {
@@ -295,7 +302,7 @@ function learnMove(monster: Monster, moveId: number): void {
   reconcileMoveOrder(monster);
 }
 
-export function createMonster(state: Pick<GameState, 'nextInstanceId'> & Partial<Pick<GameState, 'seed'>>, speciesId: number, level: number): Monster {
+export function createMonster(state: Pick<GameState, 'nextInstanceId'> & Partial<Pick<GameState, 'seed' | 'campaign'>>, speciesId: number, level: number, originRegion?: CampaignRegion): Monster {
   const species = getSpecies(speciesId);
   const normalizedLevel = Math.max(1, Math.min(100, Math.floor(level)));
   const instanceId = `mon-${state.nextInstanceId++}`;
@@ -305,6 +312,7 @@ export function createMonster(state: Pick<GameState, 'nextInstanceId'> & Partial
     instanceId,
     speciesId,
     nickname: species.name,
+    originRegion: originRegion ?? state.campaign?.startRegion ?? 'kanto',
     gender: genderFor(speciesId, instanceId),
     level: normalizedLevel,
     xp: experienceAtLevel(normalizedLevel, species.growthRate),
@@ -336,6 +344,7 @@ export function createGame(starterId: 1 | 4 | 7 | 152 | 155 | 158, seed: number 
   };
   const startRegion = starterId >= 152 ? 'johto' : 'kanto';
   state.campaign = { startRegion, johtoBadges: [], johtoLeague: 0, kantoLeague: 0, redDefeated: false };
+  state.claimedRegionalStarters = [startRegion];
   if (startRegion === 'johto') { state.adventureVersion = 'gold'; state.versionCaught = { gold: [starterId] }; }
   state.player.team.push(createMonster(state, starterId, 5));
   addLog(state, `${getSpecies(starterId).name}와 모험을 시작했다.`);
@@ -371,10 +380,10 @@ export function explore(state: GameState, regionId: string): ExploreResult {
     const candidates = fair.length ? fair : region.encounterIds.filter((id) => minimumWildLevel(id) <= 10);
     const pool = candidates.length ? candidates : region.encounterIds;
     const speciesId = pool[Math.floor(random(state) * pool.length)];
-    const wild = createMonster(state, speciesId, encounterLevel(state, region.minBadges, speciesId));
+    const wild = createMonster(state, speciesId, encounterLevel(state, region.minBadges, speciesId), 'kanto');
     state.dex.seen = uniqueSorted([...state.dex.seen, speciesId]);
     state.battle = {
-      kind: 'wild', regionId, player: { team: state.player.team, activeIndex: firstHealthy(state.player.team) },
+      kind: 'wild', regionId, policyRegion: 'kanto', player: { team: state.player.team, activeIndex: firstRegionalHealthy(state, 'kanto') },
       enemy: { team: [wild], activeIndex: 0 }, turn: 1, canRun: true,
     };
     const text = `야생 ${getSpecies(speciesId).name}이(가) 나타났다.`;
@@ -405,8 +414,8 @@ export function challengeGym(state: GameState, regionId: string): BattleState {
   if (region.gym.badge !== state.player.badges + 1) throw new Error('체육관은 순서대로 도전해야 합니다.');
   if (state.player.badges < region.minBadges) throw new Error(`배지 ${region.minBadges}개가 필요합니다.`);
   state.regionId = regionId;
-  const enemy = createMonster(state, region.gym.speciesId, region.gym.level);
-  state.battle = { kind: 'gym', regionId, player: { team: state.player.team, activeIndex: firstHealthy(state.player.team) }, enemy: { team: [enemy], activeIndex: 0 }, turn: 1, canRun: false, gymBadge: region.gym.badge };
+  const enemy = createMonster(state, region.gym.speciesId, region.gym.level, 'kanto');
+  state.battle = { kind: 'gym', regionId, policyRegion: 'kanto', player: { team: state.player.team, activeIndex: firstRegionalHealthy(state, 'kanto') }, enemy: { team: [enemy], activeIndex: 0 }, turn: 1, canRun: false, gymBadge: region.gym.badge };
   addLog(state, `${region.gym.leader}에게 도전했다.`);
   return state.battle;
 }
@@ -421,11 +430,11 @@ export function challengeCampaignGym(state: GameState, region: CampaignRegion, l
   if (state.battle || state.captureOffer) throw new Error('배틀과 포획 선택을 마친 뒤 도전하세요.');
   const gym = getCampaignGyms(state, region).find(item => item.locationId === locationId);
   if (!gym || gym.badge !== getRegionalBadges(state, region) + 1) throw new Error('체육관은 지역별 순서대로 도전해야 합니다.');
-  const healthy = firstHealthy(state.player.team);
+  const healthy = firstRegionalHealthy(state, region);
   state.regionId = region === 'kanto' ? REGIONS[gym.badge - 1].id : REGIONS[0].id;
-  const enemy = createMonster(state, gym.speciesId, gym.level);
+  const enemy = createMonster(state, gym.speciesId, gym.level, region);
   state.dex.seen = uniqueSorted([...state.dex.seen, enemy.speciesId]);
-  state.battle = { kind: 'gym', campaignRegion: region, regionId: state.regionId, gymBadge: gym.badge,
+  state.battle = { kind: 'gym', campaignRegion: region, policyRegion: region, regionId: state.regionId, gymBadge: gym.badge,
     player: { team: state.player.team, activeIndex: healthy }, enemy: { team: [enemy], activeIndex: 0 }, turn: 1, canRun: false };
   addLog(state, `${region === 'johto' ? '성도' : '관동'} ${gym.name}에게 도전했다.`);
   return state.battle;
@@ -439,10 +448,10 @@ export function challengeCampaignTrainer(state: GameState, region: CampaignRegio
   if (!trainer) throw new Error('이 지역의 도전을 모두 마쳤습니다.');
   if (getRegionalBadges(state, region) < 8) throw new Error('사천왕 도전에는 해당 지역 배지 8개가 필요합니다.');
   if (trainer.kind === 'red' && !canChallengeRed(state)) throw new Error('레드 도전에는 두 지역 리그를 모두 클리어해야 합니다.');
-  const healthy = firstHealthy(state.player.team);
-  const enemy = trainer.team.map(([id, level]) => createMonster(state, id, level));
+  const healthy = firstRegionalHealthy(state, region);
+  const enemy = trainer.team.map(([id, level]) => createMonster(state, id, level, region));
   state.dex.seen = uniqueSorted([...state.dex.seen, ...enemy.map(monster => monster.speciesId)]);
-  state.battle = { kind: trainer.kind, campaignRegion: region, trainerId: trainer.id,
+  state.battle = { kind: trainer.kind, campaignRegion: region, policyRegion: region, trainerId: trainer.id,
     regionId: trainer.kind === 'red' ? 'mt-silver' : 'pokemon-league',
     player: { team: state.player.team, activeIndex: healthy }, enemy: { team: enemy, activeIndex: 0 }, turn: 1, canRun: false };
   addLog(state, `${trainer.name}에게 도전했다.`);
@@ -460,19 +469,13 @@ export function challengeFieldTrainer(state: GameState, trainer: FieldTrainer): 
   if (state.battle || state.captureOffer) throw new Error('진행 중인 배틀이나 포획 선택을 먼저 마쳐 주세요.');
   state.defeatedFieldTrainers ??= [];
   if (state.defeatedFieldTrainers.includes(trainer.id)) throw new Error('이미 승리한 트레이너입니다.');
-  const healthy = firstHealthy(state.player.team);
-  const enemy = trainer.team.map(([id, level]) => createMonster(state, id, level));
+  const healthy = firstRegionalHealthy(state, trainer.region);
+  const enemy = trainer.team.map(([id, level]) => createMonster(state, id, level, trainer.region));
   state.dex.seen = uniqueSorted([...state.dex.seen, ...enemy.map(monster => monster.speciesId)]);
-  state.battle = { kind: 'trainer', campaignRegion: trainer.region, trainerId: trainer.id, regionId: trainer.locationId,
+  state.battle = { kind: 'trainer', campaignRegion: trainer.region, policyRegion: trainer.region, trainerId: trainer.id, regionId: trainer.locationId,
     player: { team: state.player.team, activeIndex: healthy }, enemy: { team: enemy, activeIndex: 0 }, turn: 1, canRun: false };
   addLog(state, `${trainer.name}에게 트레이너 배틀을 신청했다.`);
   return state.battle;
-}
-
-function firstHealthy(team: Monster[]): number {
-  const index = team.findIndex((monster) => monster.hp > 0);
-  if (index < 0) throw new Error('싸울 수 있는 포켓몬이 없습니다. 치료소를 이용하세요.');
-  return index;
 }
 
 function active(side: BattleSide): Monster { return side.team[side.activeIndex]; }
@@ -684,13 +687,16 @@ function residual(battle: BattleState, monster: Monster, events: BattleLogEntry[
   }
 }
 
-function gainExperience(monster: Monster, amount: number, events?: BattleLogEntry[], battle?: BattleState, shared = false): ExperienceGain | undefined {
-  if (monster.level >= 100) return undefined;
-  const applied = Math.max(0, Math.min(Math.floor(amount), experienceAtLevel(100, getSpecies(monster.speciesId).growthRate) - monster.xp));
+function gainExperience(monster: Monster, amount: number, events?: BattleLogEntry[], battle?: BattleState, shared = false, maximumLevel = 100): ExperienceGain | undefined {
+  maximumLevel = Math.max(1, Math.min(100, Math.floor(maximumLevel)));
+  if (monster.level >= maximumLevel) return undefined;
+  const species = getSpecies(monster.speciesId);
+  const maximumXp = maximumLevel >= 100 ? experienceAtLevel(100, species.growthRate) : experienceAtLevel(maximumLevel + 1, species.growthRate) - 1;
+  const applied = Math.max(0, Math.min(Math.floor(amount), maximumXp - monster.xp));
   if (!applied) return undefined;
   const levelBefore = monster.level;
   monster.xp += applied;
-  while (monster.level < 100 && monster.xp >= experienceAtLevel(monster.level + 1, getSpecies(monster.speciesId).growthRate)) {
+  while (monster.level < maximumLevel && monster.xp >= experienceAtLevel(monster.level + 1, species.growthRate)) {
     const oldMax = monster.stats.hp;
     monster.level++;
     const progress = evolutionProgress(monster); progress.friendship = Math.min(255, progress.friendship + 5);
@@ -716,8 +722,9 @@ function concludeIfNeeded(state: GameState, battle: BattleState, events: BattleL
     // A modest 1.5x reward keeps battles worthwhile without changing growth curves.
     const fullAmount = Math.max(1, Math.floor(getSpecies(enemy.speciesId).baseExperience * enemy.level * 1.5 / 7));
     const recipients = (state.experienceShare === false ? [winner] : battle.player.team).filter(monster => monster.hp > 0);
+    const maximumLevel = battle.policyRegion ? regionalLevelCap(state, battle.policyRegion) : 100;
     for (const teammate of recipients) {
-      const sharedGain = gainExperience(teammate, fullAmount, events, battle, teammate.instanceId !== winner.instanceId);
+      const sharedGain = gainExperience(teammate, fullAmount, events, battle, teammate.instanceId !== winner.instanceId, maximumLevel);
       if (sharedGain) experienceGains.push(sharedGain);
     }
     const next = battle.enemy.team.findIndex((monster) => monster.hp > 0);
@@ -749,7 +756,8 @@ function concludeIfNeeded(state: GameState, battle: BattleState, events: BattleL
   }
   const player = active(battle.player);
   if (player.hp <= 0) {
-    const next = battle.player.team.findIndex((monster) => monster.hp > 0);
+    const next = battle.player.team.findIndex((monster) => monster.hp > 0
+      && (!battle.policyRegion || !monsterRegionalUseReason(state, battle.policyRegion, monster)));
     if (next >= 0) { battle.awaitingSwitch = 'player'; events.push(event(battle, '다음 포켓몬을 선택해야 한다.')); }
     else {
       recoverAfterDefeat(state);
@@ -779,6 +787,9 @@ export function actBattle(state: GameState, action: BattleAction, aiChoice?: num
   if (action.type === 'switch') {
     const target = battle.player.team[action.index];
     if (!target || target.hp <= 0 || action.index === battle.player.activeIndex) throw new Error('교체할 수 없는 포켓몬입니다.');
+    if (battle.policyRegion) {
+      const reason = monsterRegionalUseReason(state, battle.policyRegion, target); if (reason) throw new Error(reason);
+    }
     const outgoing = active(battle.player);
     if (battle.statStages) delete battle.statStages[outgoing.instanceId];
     if (battle.transformations) delete battle.transformations[outgoing.instanceId];
@@ -874,6 +885,37 @@ export function isMonsterInBattle(state: GameState, instanceId: string): boolean
   return Boolean(state.battle?.player.team.some(monster => monster.instanceId === instanceId));
 }
 
+export function firstUsableRegionalTeamIndex(state: GameState, region: CampaignRegion, startIndex = 0): number {
+  if (!Number.isInteger(startIndex)) return -1;
+  return Array.from({ length: state.player.team.length }, (_, offset) => (startIndex + offset) % state.player.team.length)
+    .find(index => state.player.team[index].hp > 0 && !monsterRegionalUseReason(state, region, state.player.team[index])) ?? -1;
+}
+
+function firstRegionalHealthy(state: GameState, region: CampaignRegion): number {
+  const index = firstUsableRegionalTeamIndex(state, region);
+  if (index < 0) throw new Error(`이 지방에서 사용할 수 있는 포켓몬이 없습니다. 현지 출신 Lv.${regionalLevelCap(state, region)} 이하 포켓몬을 준비하세요.`);
+  return index;
+}
+
+export function claimRegionalStarter(state: GameState, region: CampaignRegion, speciesId: number): Monster {
+  assertPlayable(state);
+  if (state.battle || state.captureOffer) throw new Error('배틀과 포획 선택을 마친 뒤 스타팅 포켓몬을 선택하세요.');
+  const reason = campaignTravelReason(state, region); if (reason) throw new Error(reason);
+  if (!isCampaignRegion(region) || !REGIONAL_STARTERS[region].includes(speciesId as never)) throw new Error('해당 지방의 스타팅 포켓몬을 선택하세요.');
+  if (!needsRegionalStarter(state, region)) throw new Error('이 지방의 스타팅 포켓몬은 이미 받았습니다.');
+  if (state.player.team.length >= 6 && state.player.box.length >= 10_000) throw new Error('팀과 박스에 빈자리가 필요합니다.');
+  const monster = createMonster(state, speciesId, 5, region);
+  if (state.player.team.length >= 6) {
+    if (state.player.box.length >= 10_000) throw new Error('팀과 박스에 빈자리가 필요합니다.');
+    state.player.box.push(state.player.team.pop()!);
+  }
+  state.player.team.push(monster);
+  state.claimedRegionalStarters = [...claimedRegionalStarters(state), region];
+  state.dex.seen = uniqueSorted([...state.dex.seen, speciesId]); recordCapture(state, speciesId);
+  addLog(state, `${getSpecies(speciesId).name}을(를) ${region} 지방 스타팅 포켓몬으로 받았다.`);
+  return monster;
+}
+
 function battleRemovalActiveId(state: GameState, removedIds: ReadonlySet<string>): string | undefined {
   const battle = state.battle;
   if (!battle) return undefined;
@@ -908,7 +950,7 @@ function useHealingItem(state: GameState, item: 'potion' | 'super-potion', targe
   monster.hp = Math.min(monster.stats.hp, monster.hp + (item === 'potion' ? 20 : 50)); state.inventory[item]--;
 }
 
-export function useItem(state: GameState, item: InventoryItem, targetInstanceId?: string, quantity = 1): void {
+export function useItem(state: GameState, item: InventoryItem, targetInstanceId?: string, quantity = 1, policyRegion?: CampaignRegion): void {
   if (!Number.isSafeInteger(quantity) || quantity < 1) throw new Error('사용 수량은 1 이상의 정수여야 합니다.');
   if (!targetInstanceId) throw new Error('대상 포켓몬을 선택해야 합니다.');
   if (['friendship-treat', 'beauty-treat', 'affection-treat'].includes(item)) {
@@ -927,6 +969,10 @@ export function useItem(state: GameState, item: InventoryItem, targetInstanceId?
     if (quantity > state.inventory[item]) throw new Error('이상한사탕 보유 수량이 부족합니다.');
     if (quantity > 100 - monster.level) throw new Error('레벨 100을 넘도록 사용할 수 없습니다.');
     const targetLevel = monster.level + quantity;
+    if (policyRegion) {
+      const cap = regionalLevelCap(state, policyRegion);
+      if (targetLevel > cap) throw new Error(`현지 배지 기준 이상한사탕 사용 한도는 Lv.${cap}입니다.`);
+    }
     const grown: Monster = { ...monster, evolutionProgress: structuredClone(evolutionProgress(monster)), moves: structuredClone(monster.moves), moveOrder: monster.moveOrder?.slice(), movePpReserve: structuredClone(monster.movePpReserve) };
     gainExperience(grown, experienceAtLevel(targetLevel, getSpecies(monster.speciesId).growthRate) - monster.xp);
     state.inventory[item] -= quantity;
@@ -948,7 +994,7 @@ export function evolve(state: GameState, instanceId: string, option: { targetId?
   if (requiredItem) state.inventory[requiredItem]--;
   // Shedinja is a second individual: keep Nincada/Ninjask's identity and neural memory.
   if (route.shed) {
-    const shed = createMonster(state, 292, monster.level);
+    const shed = createMonster(state, 292, monster.level, monster.originRegion);
     state.player.team.push(shed); state.inventory['poke-ball']--;
     const ninjask = getSpecies(monster.speciesId).evolutions.find(candidate => candidate.target === 291)!;
     applyEvolution(state, monster, ninjask);
@@ -958,7 +1004,7 @@ export function evolve(state: GameState, instanceId: string, option: { targetId?
   const leaveShell = monster.speciesId === 290 && evolution.target === 291
     && state.player.team.includes(monster) && state.player.team.length < 6 && state.inventory['poke-ball'] > 0;
   if (leaveShell) {
-    const shed = createMonster(state, 292, monster.level);
+    const shed = createMonster(state, 292, monster.level, monster.originRegion);
     state.player.team.push(shed); state.inventory['poke-ball']--;
     state.dex.seen = uniqueSorted([...state.dex.seen, 292]); recordCapture(state, 292);
     addLog(state, '남은 팀 자리에 껍질몬이 나타났다.');
@@ -1018,7 +1064,7 @@ export function evolutionItemUses(item: InventoryItem): string {
     }
     evolutionUses = new Map([...names].map(([id, list]) => [id, list.join(' · ')]));
   }
-  return ({ 'evolution-catalyst': '친밀도·성별·기술·시간·장소·동료·특수 행동 조건을 대체합니다. 필요한 레벨은 유지합니다.',
+  return ({ 'evolution-catalyst': '원본의 별도 진화 조건을 대체합니다. 필요한 레벨은 유지합니다.',
     'friendship-treat': '개체 친밀도 +20 · 걷기와 레벨업으로도 상승합니다.', 'beauty-treat': '개체 아름다움 +20', 'affection-treat': '개체 애정 +20' } as Partial<Record<InventoryItem, string>>)[item] ?? evolutionUses.get(item) ?? '';
 }
 
@@ -1044,18 +1090,24 @@ export function availableEvolutions(state: GameState, instanceId: string): Evolu
   return getSpecies(monster.speciesId).evolutions.filter((evolution) => evolutionReady(state, monster, evolution));
 }
 
-export function swapTeam(state: GameState, teamIndex: number, boxIndex: number): void {
+export function swapTeam(state: GameState, teamIndex: number, boxIndex: number, policyRegion?: CampaignRegion): void {
   if (state.battle) throw new Error('전투 중에는 팀을 바꿀 수 없습니다.');
   const teamMonster = state.player.team[teamIndex]; const boxMonster = state.player.box[boxIndex];
   if (!teamMonster || !boxMonster) throw new Error('교체 위치가 올바르지 않습니다.');
+  if (policyRegion && !monsterRegionalUseReason(state, policyRegion, teamMonster)
+    && monsterRegionalUseReason(state, policyRegion, boxMonster)
+    && !state.player.team.some((monster, index) => index !== teamIndex && !monsterRegionalUseReason(state, policyRegion, monster)))
+    throw new Error('현재 지방에서 사용할 수 있는 포켓몬 한 마리는 팀에 남겨야 합니다.');
   state.player.team[teamIndex] = boxMonster; state.player.box[boxIndex] = teamMonster;
 }
 
-export function depositMonster(state: GameState, teamIndex: number): void {
+export function depositMonster(state: GameState, teamIndex: number, policyRegion?: CampaignRegion): void {
   if (!Number.isInteger(teamIndex) || teamIndex < 0 || teamIndex >= state.player.team.length) throw new Error('잘못된 팀 위치입니다.');
   if (state.player.team.length <= 1 || state.player.box.length >= 10000) throw new Error('지금은 맡길 수 없습니다.');
   if (state.battle?.player.activeIndex === teamIndex) throw new Error('현재 출전 중인 포켓몬은 맡길 수 없습니다.');
   if (!state.player.team.some((monster, index) => index !== teamIndex && monster.hp > 0)) throw new Error('싸울 수 있는 포켓몬 한 마리는 팀에 남겨야 합니다.');
+  if (policyRegion && !state.player.team.some((monster, index) => index !== teamIndex && !monsterRegionalUseReason(state, policyRegion, monster)))
+    throw new Error('현재 지방에서 사용할 수 있는 포켓몬 한 마리는 팀에 남겨야 합니다.');
   const [monster] = state.player.team.splice(teamIndex, 1);
   if (state.battle) {
     if (teamIndex < state.battle.player.activeIndex) state.battle.player.activeIndex--;
@@ -1151,11 +1203,14 @@ function recordCapture(state: GameState, speciesId: number): void {
 }
 
 /** Remove only an explicitly selected individual, preserving the historical dex. */
-export function releaseMonster(state: GameState, instanceId: string): Monster {
+export function releaseMonster(state: GameState, instanceId: string, policyRegion?: CampaignRegion): Monster {
   if (state.captureOffer) throw new Error('포획 선택을 마친 뒤 놓아줄 수 있습니다.');
   const monster = findOwned(state, instanceId);
   const teamIndex = state.player.team.findIndex(item => item.instanceId === instanceId);
   if (teamIndex >= 0 && state.player.team.length <= 1) throw new Error('마지막 팀 포켓몬은 놓아줄 수 없습니다.');
+  if (policyRegion && !monsterRegionalUseReason(state, policyRegion, monster)
+    && !allOwned(state).some(candidate => candidate !== monster && !monsterRegionalUseReason(state, policyRegion, candidate)))
+    throw new Error('현재 지방에서 사용할 수 있는 마지막 포켓몬은 놓아줄 수 없습니다.');
   const removed = new Set([instanceId]), activeId = battleRemovalActiveId(state, removed);
   if (teamIndex >= 0) state.player.team.splice(teamIndex, 1);
   else state.player.box.splice(state.player.box.findIndex(item => item.instanceId === instanceId), 1);
@@ -1165,12 +1220,12 @@ export function releaseMonster(state: GameState, instanceId: string): Monster {
 }
 
 /** Use the same preview and commit rules for one donor and an entire batch. */
-export function mergeDuplicateMonster(state: GameState, targetId: string, donorId: string): number {
-  return mergeDuplicateMonsters(state, targetId, [donorId]).gainedXp;
+export function mergeDuplicateMonster(state: GameState, targetId: string, donorId: string, policyRegion?: CampaignRegion): number {
+  return mergeDuplicateMonsters(state, targetId, [donorId], policyRegion).gainedXp;
 }
 
 /** Freeze the explicitly selected donor IDs so a later capture cannot join an approved merge. */
-export function previewDuplicateMerge(state: GameState, targetId: string, donorIds: readonly string[]) {
+export function previewDuplicateMerge(state: GameState, targetId: string, donorIds: readonly string[], policyRegion?: CampaignRegion) {
   if (state.captureOffer) throw new Error('포획 선택을 마친 뒤 합칠 수 있습니다.');
   if (!donorIds.length || new Set(donorIds).size !== donorIds.length || donorIds.includes(targetId)) throw new Error('서로 다른 중복 개체를 선택하세요.');
   const target = findOwned(state, targetId), donors = donorIds.map(id => findOwned(state, id));
@@ -1189,13 +1244,14 @@ export function previewDuplicateMerge(state: GameState, targetId: string, donorI
   const destinationXp = experienceAtLevel(toLevel, growth) + (toLevel < 100 ? Math.floor(progress * (experienceAtLevel(toLevel + 1, growth) - experienceAtLevel(toLevel, growth))) : 0);
   const gainedXp = Math.max(0, destinationXp - target.xp);
   const movesToTeam = !state.battle && state.player.team.every(monster => donorIds.includes(monster.instanceId));
+  const regionalUseReason = policyRegion ? monsterRegionalUseReason(state, policyRegion, { ...target, level: toLevel }) : undefined;
   return { donorIds: [...donorIds], count: donors.length, donorLevels, highestDonorLevel, baselineLevel, bonusLevels, totalLevels, gainedLevels, toLevel, excessLevels: uncappedToLevel - toLevel, gainedXp,
-    movesToTeam };
+    movesToTeam, regionalUseReason };
 }
 
 /** Commit a validated batch once, even when its combined XP reaches level 100 partway through. */
-export function mergeDuplicateMonsters(state: GameState, targetId: string, donorIds: readonly string[]) {
-  const plan = previewDuplicateMerge(state, targetId, donorIds), target = findOwned(state, targetId);
+export function mergeDuplicateMonsters(state: GameState, targetId: string, donorIds: readonly string[], policyRegion?: CampaignRegion) {
+  const plan = previewDuplicateMerge(state, targetId, donorIds, policyRegion), target = findOwned(state, targetId);
   const ids = new Set(plan.donorIds);
   const activeId = battleRemovalActiveId(state, ids);
   const team = state.player.team.filter(monster => !ids.has(monster.instanceId));
@@ -1279,6 +1335,11 @@ export function validateGame(value: unknown): GameState {
     || (progress.kantoLeague === 5) !== state.championDefeated || typeof progress.redDefeated !== 'boolean'
     || (progress.redDefeated && !canChallengeRed(state))) throw new Error('지역별 리그 진행이 손상되었습니다.');
   validateExpansionCampaign(state);
+  state.claimedRegionalStarters ??= [progress.startRegion];
+  if (!Array.isArray(state.claimedRegionalStarters) || state.claimedRegionalStarters.length > CAMPAIGN_REGIONS.length
+    || !state.claimedRegionalStarters.includes(progress.startRegion)
+    || state.claimedRegionalStarters.some((region, index, all) => !isCampaignRegion(region) || all.indexOf(region) !== index))
+    throw new Error('지역별 스타팅 포켓몬 수령 기록이 손상되었습니다.');
   if (!Array.isArray(state.logs) || state.logs.length > 200 || state.logs.some((log) => typeof log !== 'string' || log.length > 500)) throw new Error('로그가 손상되었습니다.');
   const region = getRegion(state.regionId);
   if (region.minBadges > state.player.badges) throw new Error('잠기지 않은 지역 진행이 손상되었습니다.');
@@ -1290,6 +1351,8 @@ export function validateGame(value: unknown): GameState {
   for (const monster of monsters) {
     if (!monster || typeof monster.instanceId !== 'string' || !/^mon-[1-9]\d*$/.test(monster.instanceId) || ids.has(monster.instanceId)) throw new Error('개체 ID가 없거나 중복되었습니다.');
     ids.add(monster.instanceId); const species = getSpecies(monster.speciesId);
+    monster.originRegion ??= progress.startRegion;
+    if (!isCampaignRegion(monster.originRegion)) throw new Error('포켓몬 출신 지방 기록이 손상되었습니다.');
     if (monster.ivs === undefined && monster.ability === undefined) Object.assign(monster, legacyIndividualTraits(monster.instanceId, monster.speciesId));
     else if (monster.ivs === undefined || monster.ability === undefined) throw new Error('개체값/특성 데이터가 일부만 있습니다.');
     if (!isValidIndividualValues(monster.ivs)) throw new Error('개체값이 잘못되었습니다.');
@@ -1342,6 +1405,7 @@ export function validateGame(value: unknown): GameState {
     if (!['wild', 'gym', 'trainer', 'champion', 'elite', 'red'].includes(battle.kind) || !Number.isInteger(battle.turn) || battle.turn < 1 || typeof battle.canRun !== 'boolean' || !Array.isArray(battle.enemy?.team) || battle.enemy.team.length < 1 || !Number.isInteger(battle.enemy.activeIndex) || battle.enemy.activeIndex < 0 || battle.enemy.activeIndex >= battle.enemy.team.length || !Number.isInteger(battle.player?.activeIndex) || battle.player.activeIndex < 0 || battle.player.activeIndex >= state.player.team.length) throw new Error('전투 상태가 손상되었습니다.');
     if (battle.kind === 'wild' ? !battle.canRun || battle.enemy.team.length !== 1 : battle.canRun) throw new Error('전투 도주 규칙이 손상되었습니다.');
     if (battle.campaignRegion !== undefined && !CAMPAIGN_REGIONS.includes(battle.campaignRegion)) throw new Error('전투 지역이 손상되었습니다.');
+    if (battle.policyRegion !== undefined && !isCampaignRegion(battle.policyRegion)) throw new Error('전투 사용 정책 지역이 손상되었습니다.');
     if (battle.kind !== 'wild' && campaignTravelReason(state, battle.campaignRegion ?? 'kanto')) throw new Error('리그 여행 조건이 손상되었습니다.');
     if (battle.kind === 'gym' && (!Number.isInteger(battle.gymBadge) || battle.gymBadge !== getRegionalBadges(state, battle.campaignRegion ?? 'kanto') + 1)) throw new Error('체육관 전투 진행이 손상되었습니다.');
     if (battle.kind === 'trainer') {

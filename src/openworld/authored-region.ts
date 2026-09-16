@@ -9,6 +9,14 @@ export type AuthoredRegionDefinition = {
   id: ExpansionRegion;
   locations: readonly KantoLocation[];
   connections: ReadonlyArray<readonly [string, string]>;
+  terrainFeatures?: readonly AuthoredTerrainFeature[];
+};
+
+export type AuthoredTerrainFeature = {
+  locationId: string;
+  surface: NonNullable<WorldSample['surface']>;
+  radius: number;
+  elevation: number;
 };
 
 export function authoredLocation(region: ExpansionRegion, id: string, name: string, x: number, z: number, kind: KantoLocationKind, fallback: readonly [number, number], requiredBadges = 0): KantoLocation {
@@ -21,6 +29,11 @@ export function authoredLocation(region: ExpansionRegion, id: string, name: stri
 
 export function createAuthoredRegionSampler(definition: AuthoredRegionDefinition) {
   const byId = new Map(definition.locations.map(location => [location.id, location]));
+  const features = (definition.terrainFeatures ?? []).map(feature => {
+    const location = byId.get(feature.locationId);
+    if (!location) throw new Error(`${definition.id}: invalid terrain feature ${feature.locationId}`);
+    return { ...feature, x: location.x, z: location.z, radius: scaleWorldDistance(feature.radius) };
+  });
   const segments = definition.connections.map(([from, to]) => {
     const a = byId.get(from), b = byId.get(to); if (!a || !b) throw new Error(`${definition.id}: invalid connection ${from} -> ${to}`);
     const dx = b.x - a.x, dz = b.z - a.z; return { from: a, to: b, x: a.x, z: a.z, dx, dz, lengthSquared: dx * dx + dz * dz || 1 };
@@ -28,7 +41,15 @@ export function createAuthoredRegionSampler(definition: AuthoredRegionDefinition
   const towns = definition.locations.filter(location => location.kind === 'town');
   const buildingCache = new Map<string, ReadonlyArray<readonly [number, number]>>();
   const buildingCandidates = [[-5,-4],[5,-4],[-5,4],[5,4],[-6,0],[6,0],[0,-6],[0,6]].map(([x,z])=>[x*WORLD_SCALE,z*WORLD_SCALE] as const);
-  const baseHeight = (x: number, z: number) => .18 * Math.sin((x / WORLD_SCALE + definition.id.length * 5) * .08) + .14 * Math.cos((z / WORLD_SCALE - definition.id.length * 3) * .07);
+  const featureAt = (x: number, z: number) => features.map(feature => ({ feature, distance: Math.hypot(x - feature.x, z - feature.z) }))
+    .filter(entry => entry.distance < entry.feature.radius).sort((a, b) => a.distance - b.distance)[0];
+  const featureLift = (x: number, z: number) => {
+    const entry = featureAt(x, z); if (!entry) return 0;
+    const t = 1 - entry.distance / entry.feature.radius;
+    return entry.feature.elevation * t * t * (3 - 2 * t);
+  };
+  const baseHeight = (x: number, z: number) => .18 * Math.sin((x / WORLD_SCALE + definition.id.length * 5) * .08)
+    + .14 * Math.cos((z / WORLD_SCALE - definition.id.length * 3) * .07) + featureLift(x, z);
   const surfaceHeight = (kind: KantoLocationKind, height: number) => kind === 'sea' ? -.68 : height + (kind === 'cave' || kind === 'special' ? .5 : 0);
   const plateaus = towns.map(town => ({ x: town.x, z: town.z, height: baseHeight(town.x, town.z) }));
   const nearestLocation = (x: number, z: number) => definition.locations.reduce((best, item) => Math.hypot(x - item.x, z - item.z) < Math.hypot(x - best.x, z - best.z) ? item : best);
@@ -44,6 +65,7 @@ export function createAuthoredRegionSampler(definition: AuthoredRegionDefinition
   };
   const sample = (x: number, z: number): WorldSample => {
     const height = baseHeight(x, z);
+    const terrainFeature = featureAt(x, z)?.feature;
     if (![x, z].every(Number.isFinite) || Math.abs(x) > WORLD_MAX || Math.abs(z) > WORLD_MAX) return { height, biome: 'rock', blocked: true };
     const nearest = nearestLocation(x, z), path = nearestSegment(x, z), localDistance = Math.hypot(x - nearest.x, z - nearest.z);
     const town=towns.find(item=>Math.hypot(x-item.x,z-item.z)<scaleWorldDistance(8));
@@ -61,7 +83,7 @@ export function createAuthoredRegionSampler(definition: AuthoredRegionDefinition
     const surface = onPath
       ? surfaceHeight(path.segment.from.kind, height) * (1 - blend) + surfaceHeight(path.segment.to.kind, height) * blend
       : surfaceHeight(nearest.kind, height);
-    return { height: terrainPlateauHeight(surface, x, z, plateaus), biome, blocked: false };
+    return { height: terrainPlateauHeight(surface, x, z, plateaus), biome, ...(terrainFeature ? { surface: terrainFeature.surface } : {}), blocked: false };
   };
   const evaluate = (_from: { x: number; z: number }, to: { x: number; z: number }, badges: number): KantoTraversal => {
     const location = nearestLocation(to.x, to.z);

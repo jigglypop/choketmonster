@@ -19,6 +19,22 @@ function fixture() {
 }
 beforeEach(() => { remote.choose.mockReset().mockImplementation((_controller, choices) => Promise.resolve(choices.map(() => decision))); });
 describe('server decisions and the independent world clock', () => {
+  it('does not request or advance a turn until both rendered battle models are ready', async () => {
+    const world = fixture(), companion = world.entities.find(entity => entity.kind === 'companion')!;
+    world.requireReadyModels();
+    await world.prepareServerBattle(false);
+    expect(remote.choose).not.toHaveBeenCalled();
+    const turn = world.game.battle!.turn;
+    world.setModelStatus(companion.id, 'ready');
+    world.step({ deltaSeconds: 1 }); expect(world.game.battle!.turn).toBe(turn);
+    world.setModelStatus(world.battleWildId!, 'ready');
+    await world.prepareServerBattle(false);
+    expect(remote.choose).toHaveBeenCalledTimes(1);
+    expect(world.step({ deltaSeconds: 1 }).events.some(event => event.type === 'battle-turn')).toBe(true);
+    world.setModelStatus(world.battleWildId!, 'failed');
+    const pausedTurn = world.game.battle!.turn;
+    world.step({ deltaSeconds: 1 }); expect(world.game.battle!.turn).toBe(pausedTurn);
+  });
   it('keeps ticking during network delay without inventing a battle action', async () => {
     const world = fixture();
     let resolve!: (value: typeof decision[]) => void;
