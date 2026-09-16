@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { selectMusicCue, sceneMusicTrack } from '../src/audio/scene-music';
+import {
+  BATTLE_MUSIC_HOLD_MS,
+  SceneMusicDirector,
+  WILD_BATTLE_MUSIC_DELAY_MS,
+  selectMusicCue,
+  sceneMusicTrack,
+} from '../src/audio/scene-music';
 import sources from '../public/audio/pokemon-rg/sources.json';
 
 describe('scene soundtrack', () => {
@@ -26,5 +32,35 @@ describe('scene soundtrack', () => {
       expect(bytes.length, track.cue).toBe(track.bytes);
       expect(createHash('sha256').update(bytes).digest('hex'), track.cue).toBe(track.sha256);
     }
+  });
+
+  it('keeps exploration music through short wild battles and absorbs chained encounters', () => {
+    let now = 10_000;
+    const director = new SceneMusicDirector(() => now);
+    const route = { started: true, location: { id: 'route-24', kind: 'route' as const } };
+    expect(director.update(route)).toEqual({ cue: 'route24' });
+    expect(director.update({ ...route, battle: { kind: 'wild' } })).toEqual({ cue: 'route24', nextUpdateAt: now + WILD_BATTLE_MUSIC_DELAY_MS });
+    now += WILD_BATTLE_MUSIC_DELAY_MS - 1;
+    expect(director.update({ ...route, battle: { kind: 'wild' } }).cue).toBe('route24');
+    now += 1;
+    expect(director.resolve()).toEqual({ cue: 'wild-battle' });
+
+    expect(director.update({ ...route, captureOffer: true })).toEqual({ cue: 'wild-battle', nextUpdateAt: now + BATTLE_MUSIC_HOLD_MS });
+    now += 2_000;
+    expect(director.update({ ...route, battle: { kind: 'wild' } })).toEqual({ cue: 'wild-battle' });
+    now += 500;
+    expect(director.update(route)).toEqual({ cue: 'wild-battle', nextUpdateAt: now + BATTLE_MUSIC_HOLD_MS });
+    now += BATTLE_MUSIC_HOLD_MS;
+    expect(director.resolve()).toEqual({ cue: 'route24' });
+  });
+
+  it('switches important battles immediately without a victory-track interruption', () => {
+    let now = 20_000;
+    const director = new SceneMusicDirector(() => now);
+    const town = { started: true, location: { id: 'pallet', kind: 'town' as const } };
+    expect(director.update(town).cue).toBe('pallet');
+    expect(director.update({ ...town, battle: { kind: 'gym' } }).cue).toBe('gym-battle');
+    now += 100;
+    expect(director.update({ ...town, captureOffer: true }).cue).toBe('gym-battle');
   });
 });

@@ -46,7 +46,7 @@ describe('field exploration without human NPCs', () => {
     expect(restored.game.defeatedFieldTrainers).toEqual(game.defeatedFieldTrainers);
     expect(restored.game.battle?.trainerId).toBe(trainer.id);
     expect(restored.simulation.trainerRenderData()).toEqual([]);
-    expect(restored.simulation.localFieldTrainer).toBeUndefined();
+    expect(restored.simulation.localFieldTrainer?.region).toBe('johto');
     expect(restored.simulation.challengeFieldTrainerById(trainer.id)).toBe(false);
   });
 

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Graph } from '../src/core/brain';
 import { getSpecies } from '../src/data/pokemon';
 import { advanceEggProgress, breedingCompatibility, createEgg, hatchEgg } from '../src/game/breeding';
-import { actBattle, createGame, createMonster, experienceAtLevel, mergeDuplicateMonsters, previewDuplicateMerge, releaseMonster, restoreGame, serializeGame, validateGame } from '../src/game/engine';
+import { actBattle, createGame, createMonster, experienceAtLevel, mergeDuplicateMonsters, previewDuplicateMerge, releaseMonster, restoreGame, serializeGame, statsFor, validateGame } from '../src/game/engine';
 import { defaultView, packSave, unpackSave } from '../src/game/storage';
 import { evolutionProgress } from '../src/game/evolution-progress';
 
@@ -53,6 +53,8 @@ describe('교배, 알, 전투 중 컬렉션 규칙', () => {
     restored.versionCaught = { red: [] };
     const child = hatchEgg(restored, egg.eggId);
     expect(child).toMatchObject({ speciesId: 1, level: 1, xp: 0 });
+    expect(Object.values(child.ivs!)).toHaveLength(6); expect(child.ability?.slot).toBeGreaterThan(0);
+    expect(child.stats).toEqual(statsFor(getSpecies(1), 1, child.ivs));
     expect(evolutionProgress(child).gender).toBe(child.gender);
     expect(child.brain?.seed).toBe(seed); expect(child.brain?.seed).not.toBe(first.brain?.seed);
     expect(restored.nursery).toEqual([]); expect(restored.dex.caught).toContain(1);

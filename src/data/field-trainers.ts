@@ -1,9 +1,11 @@
 import { GENERATED_FIELD_TRAINERS } from './field-trainers.generated';
+import authoredTrainers from './authored-trainers.json' with { type: 'json' };
+import type { CampaignRegion } from '../game/campaign';
 export type FieldTrainer = {
-  id: string; region: 'johto'; locationId: string; name: string; trainerClass: string;
+  id: string; region: CampaignRegion; locationId: string; name: string; trainerClass: string;
   team: readonly (readonly [speciesId: number, level: number])[]; reward: number;
   sourceClass?: string; sourceMap?: string; sourceX?: number; sourceZ?: number;
-  trainerOrigin?: 'source' | 'supplemental';
+  trainerOrigin?: 'source' | 'supplemental' | 'authored';
 };
 
 export const FIELD_TRAINER_SOURCE = {
@@ -19,12 +21,20 @@ const supplementalTrainers = TRAINER_FREE_PROGRESS_LOCATIONS.map((locationId, in
   return { ...source, id: `supplemental-${locationId}-${source.id}`, locationId, trainerOrigin: 'supplemental' };
 });
 /** Crystal map trainers plus explicitly labeled placements for progression locations whose original map has none. */
-export const FIELD_TRAINERS: readonly FieldTrainer[] = [...sourceTrainers, ...supplementalTrainers];
+const authoredRoster: FieldTrainer[] = authoredTrainers.map(trainer => ({ ...trainer,
+  region: trainer.region as CampaignRegion, trainerOrigin: 'authored',
+  team: trainer.team.map(([speciesId, level]) => [speciesId, level] as const),
+}));
+export const FIELD_TRAINERS: readonly FieldTrainer[] = [...sourceTrainers, ...supplementalTrainers, ...authoredRoster];
 
 export function availableFieldTrainer(region: string, locationId: string, defeated: readonly string[] = []): FieldTrainer | undefined {
+  return fieldTrainersAt(region, locationId).find(trainer => !defeated.includes(trainer.id));
+}
+export function fieldTrainersAt(region: string, locationId: string): FieldTrainer[] {
   const matches = (trainerLocation: string) => trainerLocation === locationId
     || trainerLocation === 'route-42' && locationId.startsWith('route-42-')
     || trainerLocation === 'dark-cave' && locationId.startsWith('dark-cave-');
-  return FIELD_TRAINERS.find(trainer => trainer.region === region && matches(trainer.locationId) && !defeated.includes(trainer.id));
+  return FIELD_TRAINERS.filter(trainer => trainer.region === region && matches(trainer.locationId))
+    .sort((a, b) => Math.max(...a.team.map(([, level]) => level)) - Math.max(...b.team.map(([, level]) => level)));
 }
 export function getFieldTrainer(id: string): FieldTrainer | undefined { return FIELD_TRAINERS.find(trainer => trainer.id === id); }

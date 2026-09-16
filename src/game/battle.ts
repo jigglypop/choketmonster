@@ -1,4 +1,5 @@
 import type { PokemonMove, PokemonType } from './contracts';
+import { abilityImmunity, hasSturdy, lowHpPowerMultiplier, type MonsterAbility } from './individual-traits';
 
 export type Combatant = {
   level: number;
@@ -6,6 +7,7 @@ export type Combatant = {
   stats: { hp: number; attack: number; defense: number; specialAttack: number; specialDefense: number; speed: number };
   types: readonly PokemonType[];
   status?: string;
+  ability?: MonsterAbility;
 };
 
 const effectiveness: Partial<Record<PokemonType, Partial<Record<PokemonType, number>>>> = {
@@ -33,16 +35,25 @@ export function typeMultiplier(attack: PokemonType, defenders: readonly PokemonT
   return defenders.reduce((total, defense) => total * (effectiveness[attack]?.[defense] ?? 1), 1);
 }
 
-export function calculateDamage(attacker: Combatant, defender: Combatant, move: PokemonMove, randomFactor = 1): { damage: number; multiplier: number } {
+export function calculateDamage(attacker: Combatant, defender: Combatant, move: PokemonMove, randomFactor = 1): {
+  damage: number; multiplier: number; abilityActivation?: 'immunity' | 'absorb' | 'sturdy';
+} {
   if (move.damageClass === 'status' || move.power <= 0) return { damage: 0, multiplier: 1 };
+  const immunity = abilityImmunity(defender.ability, move.type);
+  if (immunity) return { damage: 0, multiplier: 0, abilityActivation: immunity.heal ? 'absorb' : 'immunity' };
   const rawAttack = move.damageClass === 'physical' ? attacker.stats.attack : attacker.stats.specialAttack;
   const attack = move.damageClass === 'physical' && attacker.status === 'burn' ? Math.max(1, Math.floor(rawAttack / 2)) : rawAttack;
   const defense = Math.max(1, move.damageClass === 'physical' ? defender.stats.defense : defender.stats.specialDefense);
   const stab = attacker.types.includes(move.type) ? 1.5 : 1;
   const multiplier = typeMultiplier(move.type, defender.types);
   if (multiplier === 0) return { damage: 0, multiplier };
+  const abilityPower = lowHpPowerMultiplier(attacker.ability, attacker.hp, attacker.stats.hp, move.type);
   const base = (((2 * attacker.level / 5 + 2) * move.power * attack / defense) / 50) + 2;
-  return { damage: Math.max(1, Math.floor(base * stab * multiplier * randomFactor)), multiplier };
+  const damage = Math.max(1, Math.floor(base * stab * multiplier * abilityPower * randomFactor));
+  if (hasSturdy(defender.ability) && defender.hp === defender.stats.hp && damage >= defender.hp) {
+    return { damage: Math.max(0, defender.hp - 1), multiplier, abilityActivation: 'sturdy' };
+  }
+  return { damage, multiplier };
 }
 
 export function turnOrder(

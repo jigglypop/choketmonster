@@ -1,5 +1,5 @@
 import { getGameAudioSettings, subscribeGameAudioSettings } from './game-audio';
-import { sceneMusicTrack, selectMusicCue, type MusicCue, type MusicScene } from './scene-music';
+import { SceneMusicDirector, sceneMusicTrack, type MusicCue, type MusicScene } from './scene-music';
 import './audio.css';
 
 const DB_NAME = 'choketmon-local-music-v1';
@@ -10,6 +10,7 @@ const SELECT_EVENT = 'choketmon:music-select';
 const REMOVE_EVENT = 'choketmon:music-remove';
 const QUERY_EVENT = 'choketmon:music-query';
 const STATUS_EVENT = 'choketmon:music-status';
+const MUSIC_FADE_MS = 1_000;
 
 type StoredTrack = { blob: Blob; name: string; type: string; size: number; lastModified: number };
 type MusicStatus = { message: string; hasFile: boolean; name?: string; playing: boolean; state: 'empty' | 'loading' | 'ready' | 'playing' | 'paused' | 'blocked' | 'error' };
@@ -80,8 +81,13 @@ function validateAudio(url: string): Promise<void> {
 export function mountOriginalMusic(button: HTMLButtonElement): { open(): void; setScene(scene: MusicScene): void; destroy(): void } {
   const input = document.createElement('input');
   input.id = 'game-music-file'; input.type = 'file'; input.accept = 'audio/*,video/mp4,.mp4,.mp3,.m4a,.aac,.ogg,.wav,.flac'; input.hidden = true;
-  const audio = document.createElement('audio');
-  audio.id = 'game-music-audio'; audio.preload = 'metadata'; audio.loop = true; audio.hidden = true;
+  const createAudio = () => {
+    const element = document.createElement('audio');
+    element.preload = 'auto'; element.loop = true; element.hidden = true;
+    return element;
+  };
+  let audio = createAudio();
+  audio.id = 'game-music-audio';
   const feedback = document.createElement('output');
   feedback.id = 'game-music-feedback'; feedback.setAttribute('role', 'status'); feedback.hidden = true;
   document.body.append(input, audio, feedback);
@@ -91,7 +97,14 @@ export function mountOriginalMusic(button: HTMLButtonElement): { open(): void; s
   let restoring = true;
   let selecting = false;
   let sceneCue: MusicCue = 'opening';
+  const sceneDirector = new SceneMusicDirector();
   let installedCue: MusicCue | undefined;
+  let failedCue: MusicCue | undefined;
+  let failedCueRetryAt = 0;
+  let sceneTimer = 0;
+  let fadeTimer = 0;
+  let fadingAudio: HTMLAudioElement | undefined;
+  const cuePositions = new Map<MusicCue, number>();
   let objectUrl: string | undefined;
   let disposed = false;
   let generation = 0;
@@ -134,6 +147,22 @@ export function mountOriginalMusic(button: HTMLButtonElement): { open(): void; s
     audio.muted = settings.muted;
     audio.dataset.volume = String(audio.volume);
     audio.dataset.muted = String(audio.muted);
+    if (fadingAudio) fadingAudio.muted = settings.muted;
+  };
+  const stopFadingAudio = () => {
+    window.clearInterval(fadeTimer); fadeTimer = 0;
+    if (!fadingAudio) return;
+    fadingAudio.pause(); fadingAudio.removeAttribute('src'); fadingAudio.load(); fadingAudio.remove(); fadingAudio = undefined;
+    syncSettings();
+  };
+  const restoreCuePosition = (element: HTMLAudioElement, cue: MusicCue) => {
+    const position = cuePositions.get(cue);
+    if (!position) return;
+    const restore = () => {
+      if (Number.isFinite(element.duration) && element.duration > 0) element.currentTime = position % element.duration;
+    };
+    if (element.readyState >= HTMLMediaElement.HAVE_METADATA) restore();
+    else element.addEventListener('loadedmetadata', restore, { once: true });
   };
   const releaseUrl = () => {
     if (objectUrl) URL.revokeObjectURL(objectUrl);
@@ -148,7 +177,7 @@ export function mountOriginalMusic(button: HTMLButtonElement): { open(): void; s
       return false;
     }
     if (disposed || token !== generation) { URL.revokeObjectURL(candidateUrl); return false; }
-    playbackGeneration++; playAttempt = undefined;
+    playbackGeneration++; playAttempt = undefined; stopFadingAudio();
     audio.pause(); audio.removeAttribute('src'); audio.load(); releaseUrl();
     customTrack = true; installedCue = undefined; delete audio.dataset.cue;
     objectUrl = candidateUrl; track = next; audio.src = candidateUrl; audio.load(); syncSettings(); syncButton();
@@ -181,22 +210,75 @@ export function mountOriginalMusic(button: HTMLButtonElement): { open(): void; s
     return attempt;
   };
   const installScene = () => {
-    if (disposed || selecting || customTrack || installedCue === sceneCue) return;
+    if (disposed || selecting || customTrack || installedCue === sceneCue || (failedCue === sceneCue && Date.now() < failedCueRetryAt)) return;
     generation++; playbackGeneration++; playAttempt = undefined;
-    audio.pause(); releaseUrl();
     const next = sceneMusicTrack(sceneCue);
-    track = next; installedCue = sceneCue; audio.dataset.cue = sceneCue;
-    audio.src = next.url; audio.load(); syncSettings(); syncButton();
+    const previous = audio;
+    const previousCue = installedCue;
+    const canCrossfade = wantsPlayback && !document.hidden && !previous.paused && Boolean(previousCue);
+    if (previousCue && Number.isFinite(previous.currentTime)) cuePositions.set(previousCue, previous.currentTime);
+    stopFadingAudio(); releaseUrl();
+    track = next; installedCue = sceneCue;
+
+    if (canCrossfade) {
+      const incoming = createAudio();
+      incoming.onplay = () => syncButton();
+      incoming.onpause = () => syncButton();
+      incoming.onerror = () => emit({ message: '음악 파일 재생 중 오류가 발생했습니다. 이전 곡을 유지하거나 잠시 뒤 다시 시도합니다.', hasFile: Boolean(track), name: track?.name, playing: false, state: 'error' }, true);
+      previous.removeAttribute('id'); incoming.id = 'game-music-audio';
+      incoming.dataset.cue = sceneCue; incoming.src = next.url;
+      incoming.muted = getGameAudioSettings().muted; incoming.volume = 0;
+      previous.after(incoming); audio = incoming; fadingAudio = previous;
+      restoreCuePosition(incoming, sceneCue); incoming.load(); syncButton();
+      const token = playbackGeneration;
+      let request: Promise<void>;
+      try { request = incoming.play(); } catch (error) { request = Promise.reject(error); }
+      void request.then(() => {
+        if (disposed || token !== playbackGeneration || audio !== incoming || fadingAudio !== previous) return;
+        failedCue = undefined; failedCueRetryAt = 0;
+        const startedAt = performance.now();
+        fadeTimer = window.setInterval(() => {
+          if (disposed || audio !== incoming || fadingAudio !== previous || incoming.paused) { stopFadingAudio(); return; }
+          const progress = Math.min(1, (performance.now() - startedAt) / MUSIC_FADE_MS);
+          const volume = getGameAudioSettings().musicVolume;
+          incoming.volume = volume * progress;
+          previous.volume = volume * (1 - progress);
+          if (progress >= 1) stopFadingAudio();
+        }, 50);
+        syncButton();
+        emit({ message: '장면에 맞춰 BGM을 부드럽게 전환하는 중', hasFile: false, name: next.name, playing: true, state: 'playing' });
+      }).catch(() => {
+        if (disposed || audio !== incoming || fadingAudio !== previous) return;
+        incoming.pause(); incoming.remove();
+        previous.id = 'game-music-audio'; audio = previous; fadingAudio = undefined;
+        track = previousCue ? sceneMusicTrack(previousCue) : null; installedCue = previousCue;
+        failedCue = next.cue; failedCueRetryAt = Date.now() + 30_000;
+        syncSettings(); syncButton();
+        emit({ message: '다음 BGM을 불러오지 못해 이전 곡을 계속 재생합니다.', hasFile: false, name: track?.name, playing: !audio.paused, state: 'error' }, true);
+      });
+    } else {
+      previous.pause(); previous.src = next.url; previous.dataset.cue = sceneCue;
+      restoreCuePosition(previous, sceneCue); previous.load(); syncSettings(); syncButton();
+    }
     emit({ message: '장면에 맞춰 자동 재생', hasFile: false, name: next.name, playing: false, state: 'ready' });
-    if (wantsPlayback) void attemptPlay();
+    if (wantsPlayback && !canCrossfade) void attemptPlay();
   };
   const setScene = (scene: MusicScene) => {
-    sceneCue = selectMusicCue(scene);
+    window.clearTimeout(sceneTimer);
+    const scheduled = sceneDirector.update(scene);
+    sceneCue = scheduled.cue;
+    if (scheduled.nextUpdateAt !== undefined) {
+      sceneTimer = window.setTimeout(() => {
+        const resolved = sceneDirector.resolve();
+        sceneCue = resolved.cue;
+        if (!restoring) installScene();
+      }, Math.max(0, scheduled.nextUpdateAt - Date.now()));
+    }
     if (!restoring) installScene();
   };
   const pause = (announce = false) => {
     wantsPlayback = false; playbackGeneration++; playAttempt = undefined;
-    sessionStorage.setItem(PAUSED_KEY, '1'); audio.pause(); syncButton();
+    sessionStorage.setItem(PAUSED_KEY, '1'); audio.pause(); stopFadingAudio(); syncButton();
     if (track) emit({ message: 'BGM 정지', hasFile: true, name: track.name, playing: false, state: 'paused' }, announce);
   };
   const choose = () => input.click();
@@ -265,7 +347,7 @@ export function mountOriginalMusic(button: HTMLButtonElement): { open(): void; s
     if (wantsPlayback) void attemptPlay();
   };
   const onVisibility = () => {
-    if (document.hidden) { playbackGeneration++; playAttempt = undefined; audio.pause(); }
+    if (document.hidden) { playbackGeneration++; playAttempt = undefined; audio.pause(); stopFadingAudio(); }
     else if (wantsPlayback && playbackRequested) void attemptPlay();
   };
   const onSelect = () => choose();
@@ -293,7 +375,7 @@ export function mountOriginalMusic(button: HTMLButtonElement): { open(): void; s
     open: () => { if (track) { wantsPlayback = true; playbackRequested = true; sessionStorage.removeItem(PAUSED_KEY); void attemptPlay(); } else choose(); },
     destroy: () => {
       disposed = true; generation++; playbackGeneration++; playAttempt = undefined;
-      window.clearTimeout(feedbackTimer); unsubscribe(); audio.pause(); audio.removeAttribute('src'); audio.load(); releaseUrl();
+      window.clearTimeout(feedbackTimer); window.clearTimeout(sceneTimer); stopFadingAudio(); unsubscribe(); audio.pause(); audio.removeAttribute('src'); audio.load(); releaseUrl();
       for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) document.removeEventListener(type, onGameInput, true);
       document.removeEventListener('visibilitychange', onVisibility);
       document.removeEventListener(SELECT_EVENT, onSelect);

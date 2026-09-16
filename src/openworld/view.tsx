@@ -711,6 +711,7 @@ function PlayerCamera({ snapshot, options, destination, onDestination, commands 
   const path = useRef<WorldPoint[]>([]);
   const announcedReady = useRef(false);
   const movementActive = useRef(false);
+  const movementTime = useRef(0);
   const cameraHeading = useRef({ time: 0, angle: Infinity });
   const { camera, size } = useThree();
   const sample = options.sampleWorld ?? fallbackSample;
@@ -729,7 +730,8 @@ function PlayerCamera({ snapshot, options, destination, onDestination, commands 
 
   useEffect(() => {
     external.current.set(snapshot.player.x, terrainSurfaceHeight(sample, snapshot.player.x, snapshot.player.z), snapshot.player.z);
-    if (position.current.distanceTo(external.current) > 3 || !keys.current.size) {
+    const locallyMoving = movementActive.current || keys.current.size > 0 || path.current.length > 0;
+    if (position.current.distanceTo(external.current) > 3 || !locallyMoving) {
       const dx = external.current.x - position.current.x;
       const dy = external.current.y - position.current.y;
       const dz = external.current.z - position.current.z;
@@ -811,6 +813,11 @@ function PlayerCamera({ snapshot, options, destination, onDestination, commands 
     if (!hasMovement && movementActive.current) options.onMovementEnd?.();
     movementActive.current = hasMovement;
     if ((forwardAxis || sideAxis) && options.onMovementInput?.() !== false) {
+      // Preserve a short, bounded amount of travel through a slow render/save
+      // frame, then drain it in steps accepted by movePartner's collision gate.
+      movementTime.current = Math.min(.35, movementTime.current + Math.max(0, delta));
+      const movementDelta = Math.min(.1, movementTime.current);
+      movementTime.current -= movementDelta;
       if (!path.current.length) {
         camera.getWorldDirection(forward.current);
         forward.current.y = 0;
@@ -819,7 +826,7 @@ function PlayerCamera({ snapshot, options, destination, onDestination, commands 
         movement.current.copy(forward.current).multiplyScalar(forwardAxis).addScaledVector(right.current, sideAxis).normalize();
       }
       // Stop at the waypoint even when a slow frame would step past it.
-      movement.current.multiplyScalar(Math.min(routeDistance, Math.min(delta, .1) * (snapshot.entities.find(entity => entity.id.startsWith('companion:'))?.movementSpeed ?? 2.2)));
+      movement.current.multiplyScalar(Math.min(routeDistance, movementDelta * (snapshot.entities.find(entity => entity.id.startsWith('companion:'))?.movementSpeed ?? 2.2)));
       const x = MathUtils.clamp(target.x + movement.current.x, WORLD_MIN, WORLD_MAX);
       const z = MathUtils.clamp(target.z + movement.current.z, WORLD_MIN, WORLD_MAX);
       const terrain = sample(x, z);
@@ -843,7 +850,7 @@ function PlayerCamera({ snapshot, options, destination, onDestination, commands 
         path.current = [];
         onDestination(null);
       }
-    }
+    } else movementTime.current = 0;
     const now = performance.now();
     if (now - cameraHeading.current.time >= 100) {
       camera.getWorldDirection(forward.current);

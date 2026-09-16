@@ -4,9 +4,9 @@ import { advanceEggProgress } from '../game/breeding';
 import { Random, clamp } from '../core/random';
 import { POKEMON, getMove, getSpecies } from '../data/pokemon';
 import { getVersionSpeciesIds } from '../data/pokemon-versions';
-import { replenishBalls, challengeCampaignGym, challengeCampaignTrainer } from '../game/engine';
+import { replenishBalls, challengeCampaignGym, challengeCampaignTrainer, challengeFieldTrainer } from '../game/engine';
 import { CAMPAIGN_REGIONS, getRegionalBadges, getCampaignGyms, getNextCampaignTrainer, campaignTravelReason, regionalWildLevels, type CampaignRegion } from '../game/campaign';
-import type { FieldTrainer } from '../data/field-trainers';
+import { availableFieldTrainer, fieldTrainersAt, type FieldTrainer } from '../data/field-trainers';
 import { chooseRegionalEncounter, encounterPeriodAt, regionalRuntimePools, supplementalEncounterRules, type EncounterPeriod } from '../data/regional-encounters';
 import { chooseExpansionEncounter, expansionEncounterSpecies, isExpansionRegion } from '../data/expansion-spawns';
 import { gameplayHabitat } from '../game/habitat';
@@ -222,8 +222,10 @@ export class OpenWorldSimulation {
     const steps = Math.floor(this.evolutionStepRemainder);
     if (steps) { this.evolutionStepRemainder -= steps; addEvolutionSteps(lead, steps); advanceEggProgress(this.game, steps); }
   }
-  // Keep source records and historical battles loadable, without spawning NPCs.
-  get localFieldTrainer(): FieldTrainer | undefined { return undefined; }
+  // Menu challenges do not spawn human NPCs in the world.
+  get localFieldTrainer(): FieldTrainer | undefined {
+    return availableFieldTrainer(this.regionId, this.locationAt(this.player.x, this.player.z).id, this.game.defeatedFieldTrainers);
+  }
   trainerRenderData(radius = 40): Array<FieldTrainer & { x: number; z: number }> {
     if (!finite(radius) || radius <= 0 || radius > 120) throw new Error('Trainer render radius must be 0..120');
     return [];
@@ -444,7 +446,15 @@ export class OpenWorldSimulation {
     return true;
   }
 
-  challengeFieldTrainerById(_id: string): boolean { return false; }
+  challengeFieldTrainerById(id: string): boolean {
+    if (this.game.battle || this.game.captureOffer || !this.game.player.team.some(monster => monster.hp > 0)) return false;
+    const trainer = fieldTrainersAt(this.regionId, this.locationAt(this.player.x, this.player.z).id)
+      .find(item => item.id === id && !this.game.defeatedFieldTrainers?.includes(id));
+    if (!trainer || campaignTravelReason(this.game, trainer.region)) return false;
+    challengeFieldTrainer(this.game, trainer);
+    this.battleWildId = `trainer:${trainer.id}`; this.resetTrainerTurn(); this.controlMode = 'auto';
+    return true;
+  }
 
   challengeLocalTrainer(id?: string): boolean {
     if (!isCampaignRegion(this.regionId) || this.game.battle || this.game.captureOffer || !this.game.player.team.some(monster => monster.hp > 0)) return false;

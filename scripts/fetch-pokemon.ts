@@ -15,11 +15,12 @@ const SOURCE_MANIFEST = new URL('src/data/source-manifest.json', ROOT);
 const SPRITE_MANIFEST = new URL('public/pokemon/manifest.json', ROOT);
 const CONCURRENCY = 12;
 const CSV_FILES = [
+  'abilities.csv', 'ability_names.csv', 'ability_prose.csv',
   'experience.csv', 'growth_rates.csv', 'items.csv', 'languages.csv', 'move_meta.csv',
   'move_meta_ailments.csv', 'move_meta_stat_changes.csv', 'move_names.csv', 'moves.csv',
   'pokedex_prose.csv', 'pokedex_version_groups.csv', 'pokedexes.csv', 'pokemon.csv',
   'pokemon_dex_numbers.csv', 'pokemon_evolution.csv', 'pokemon_form_names.csv', 'pokemon_forms.csv',
-  'pokemon_habitat_names.csv', 'pokemon_habitats.csv', 'pokemon_moves.csv', 'pokemon_species.csv',
+  'pokemon_abilities.csv', 'pokemon_habitat_names.csv', 'pokemon_habitats.csv', 'pokemon_moves.csv', 'pokemon_species.csv',
   'pokemon_species_names.csv', 'pokemon_stats.csv', 'pokemon_types.csv', 'stats.csv',
   'type_efficacy.csv', 'types.csv', 'version_groups.csv', 'version_names.csv', 'versions.csv',
 ] as const;

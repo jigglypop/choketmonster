@@ -6,6 +6,18 @@ use std::{
 };
 
 const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FieldTrainerRecord {
+    id: String,
+    region: String,
+    location_id: String,
+    team: Vec<(i64, i64)>,
+}
+fn field_trainer_catalog() -> &'static Vec<FieldTrainerRecord> {
+    static TRAINERS: OnceLock<Vec<FieldTrainerRecord>> = OnceLock::new();
+    TRAINERS.get_or_init(|| serde_json::from_str(include_str!("../../src/data/trainer-battle-catalog.json")).expect("checked trainer catalog"))
+}
 const REQUIRED_INVENTORY_ITEMS: [&str; 12] = [
     "poke-ball",
     "great-ball",
@@ -124,6 +136,17 @@ struct Move {
     pp: i64,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AbilitySource {
+    id: i64,
+    slot: i64,
+    hidden: bool,
+    slug: String,
+    name: String,
+    english_name: String,
+}
+
 struct Catalog {
     species: HashMap<i64, Species>,
     moves: HashMap<i64, Move>,
@@ -132,6 +155,7 @@ struct Catalog {
 
 static CATALOG: OnceLock<Catalog> = OnceLock::new();
 static GRAPH: OnceLock<Value> = OnceLock::new();
+static ABILITIES: OnceLock<HashMap<i64, Vec<AbilitySource>>> = OnceLock::new();
 
 fn catalog() -> &'static Catalog {
     CATALOG.get_or_init(|| {
@@ -157,6 +181,16 @@ fn catalog() -> &'static Catalog {
                 .map(|version| (version.id, version.species_ids.into_iter().collect()))
                 .collect(),
         }
+    })
+}
+
+fn abilities() -> &'static HashMap<i64, Vec<AbilitySource>> {
+    ABILITIES.get_or_init(|| {
+        serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/data/pokemon-abilities-validation.json"
+        )))
+        .expect("generated Pokemon ability catalog must be valid JSON")
     })
 }
 
@@ -209,16 +243,66 @@ fn experience_at_level(species: &Species, level: i64) -> Result<i64, &'static st
         .ok_or("포켓몬 경험치 표가 올바르지 않습니다.")
 }
 
+#[cfg(test)]
 fn expected_stats(species: &Species, level: i64) -> [i64; 6] {
-    let normal = |base| 2 * base * level / 100 + 5;
+    expected_stats_with_ivs(species, level, [0; 6])
+}
+
+fn expected_stats_with_ivs(species: &Species, level: i64, ivs: [i64; 6]) -> [i64; 6] {
+    let normal = |base, iv| (2 * base + iv) * level / 100 + 5;
     [
-        2 * species.base_stats.hp * level / 100 + level + 10,
-        normal(species.base_stats.attack),
-        normal(species.base_stats.defense),
-        normal(species.base_stats.special_attack),
-        normal(species.base_stats.special_defense),
-        normal(species.base_stats.speed),
+        (2 * species.base_stats.hp + ivs[0]) * level / 100 + level + 10,
+        normal(species.base_stats.attack, ivs[1]),
+        normal(species.base_stats.defense, ivs[2]),
+        normal(species.base_stats.special_attack, ivs[3]),
+        normal(species.base_stats.special_defense, ivs[4]),
+        normal(species.base_stats.speed, ivs[5]),
     ]
+}
+
+fn validate_individual_traits(monster: &Value, species_id: i64) -> Result<[i64; 6], &'static str> {
+    match (monster.get("ivs"), monster.get("ability")) {
+        (None, None) => return Ok([0; 6]),
+        (Some(_), None) | (None, Some(_)) => return Err("개체값과 특성은 함께 저장해야 합니다."),
+        _ => {}
+    }
+    let ivs = object(monster, "ivs")?;
+    let fields = ["hp", "attack", "defense", "specialAttack", "specialDefense", "speed"];
+    if ivs.len() != fields.len() || fields.iter().any(|field| !ivs.contains_key(*field)) {
+        return Err("개체값 구성이 올바르지 않습니다.");
+    }
+    let values = [
+        integer(ivs.get("hp"), 0, 31)?,
+        integer(ivs.get("attack"), 0, 31)?,
+        integer(ivs.get("defense"), 0, 31)?,
+        integer(ivs.get("specialAttack"), 0, 31)?,
+        integer(ivs.get("specialDefense"), 0, 31)?,
+        integer(ivs.get("speed"), 0, 31)?,
+    ];
+    let ability = object(monster, "ability")?;
+    let required = ["id", "slot", "hidden", "slug", "name", "englishName", "effect", "description"];
+    if ability.len() != required.len() || required.iter().any(|field| !ability.contains_key(*field)) {
+        return Err("특성 구성이 올바르지 않습니다.");
+    }
+    let id = integer(ability.get("id"), 1, MAX_SAFE_INTEGER)?;
+    let slot = integer(ability.get("slot"), 1, 3)?;
+    let source = abilities().get(&species_id).and_then(|entries| entries.iter()
+        .find(|entry| entry.id == id && entry.slot == slot)).ok_or("특성이 원본 종/슬롯 데이터와 맞지 않습니다.")?;
+    if ability.get("hidden").and_then(Value::as_bool) != Some(source.hidden)
+        || ability.get("slug").and_then(Value::as_str) != Some(source.slug.as_str())
+        || ability.get("name").and_then(Value::as_str) != Some(source.name.as_str())
+        || ability.get("englishName").and_then(Value::as_str) != Some(source.english_name.as_str()) {
+        return Err("특성 원본 정보가 변조되었습니다.");
+    }
+    let implemented = ["overgrow", "blaze", "torrent", "swarm", "levitate", "sturdy", "water-absorb", "volt-absorb"];
+    let partial = ["flash-fire", "lightning-rod", "motor-drive", "sap-sipper", "storm-drain", "dry-skin"];
+    let expected_effect = if implemented.contains(&source.slug.as_str()) { "implemented" }
+        else if partial.contains(&source.slug.as_str()) { "partial" } else { "display-only" };
+    if ability.get("effect").and_then(Value::as_str) != Some(expected_effect)
+        || ability.get("description").and_then(Value::as_str).is_none_or(|text| text.is_empty() || text.chars().count() > 240) {
+        return Err("특성 효과 표시가 올바르지 않습니다.");
+    }
+    Ok(values)
 }
 
 fn finite_number(value: &Value, absolute_maximum: f64) -> bool {
@@ -438,6 +522,7 @@ fn validate_monster(
     if owned {
         owned_species.insert(species_id);
     }
+    let ivs = validate_individual_traits(monster, species_id)?;
     let nickname = monster
         .get("nickname")
         .and_then(Value::as_str)
@@ -466,7 +551,7 @@ fn validate_monster(
         "speed",
     ]
     .into_iter()
-    .zip(expected_stats(species, level))
+    .zip(expected_stats_with_ivs(species, level, ivs))
     {
         if integer(stats.get(field), 1, 10_000)? != expected {
             return Err("계산 능력치가 종과 레벨에 맞지 않습니다.");
@@ -1012,7 +1097,7 @@ fn validate_battle_progress(
     let kind = battle
         .get("kind")
         .and_then(Value::as_str)
-        .filter(|kind| matches!(*kind, "wild" | "gym" | "elite" | "champion" | "red"))
+        .filter(|kind| matches!(*kind, "wild" | "gym" | "trainer" | "elite" | "champion" | "red"))
         .ok_or("전투 종류가 올바르지 않습니다.")?;
     let region_id = battle
         .get("regionId")
@@ -1095,6 +1180,24 @@ fn validate_battle_progress(
     }
 
     match kind {
+        "trainer" => {
+            let trainer = trainer_id.and_then(Value::as_str)
+                .and_then(|id| field_trainer_catalog().iter().find(|trainer| trainer.id == id))
+                .ok_or("트레이너 정보가 올바르지 않습니다.")?;
+            let enemy_team = battle.get("enemy").and_then(|enemy| enemy.get("team")).and_then(Value::as_array)
+                .ok_or("트레이너 편성이 올바르지 않습니다.")?;
+            if trainer.region != campaign_region || trainer.location_id != region_id
+                || battle.get("gymBadge").is_some()
+                || game.get("defeatedFieldTrainers").and_then(Value::as_array)
+                    .is_some_and(|ids| ids.iter().any(|id| id.as_str() == Some(trainer.id.as_str())))
+                || enemy_team.len() != trainer.team.len()
+                || enemy_team.iter().zip(&trainer.team).any(|(monster, (species, level))|
+                    monster.get("speciesId").and_then(Value::as_i64) != Some(*species)
+                    || monster.get("level").and_then(Value::as_i64) != Some(*level))
+            {
+                return Err("트레이너 배틀 진행이 올바르지 않습니다.");
+            }
+        }
         "gym" => {
             let completed = match campaign_region {
                 "johto" => campaign.johto_badges.len() as i64,
@@ -1293,7 +1396,7 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
             let id = trainer
                 .as_str()
                 .filter(|id| {
-                    id.starts_with("crystal-")
+                    (id.starts_with("crystal-") || field_trainer_catalog().iter().any(|trainer| trainer.id == *id))
                         && id.len() <= 100
                         && id
                             .bytes()
@@ -1529,6 +1632,33 @@ mod tests {
     #[test]
     fn accepts_consistent_save() {
         validate_save(&valid_save()).unwrap();
+    }
+
+    #[test]
+    fn validates_ordinary_trainer_battle_and_victory_history() {
+        let mut save = valid_save();
+        set_campaign(&mut save, 0, 0, 0, false);
+        let trainer = field_trainer_catalog().iter().find(|trainer| trainer.id == "practice-johto-new-bark").unwrap();
+        set_battle(&mut save, "trainer", &trainer.location_id, Some("johto"), Some(&trainer.id), None);
+        let (species_id, level) = trainer.team[0];
+        let species = catalog().species.get(&species_id).unwrap();
+        let stats = expected_stats(species, level);
+        let enemy = &mut save["game"]["battle"]["enemy"]["team"][0];
+        enemy["speciesId"] = Value::from(species_id);
+        enemy["level"] = Value::from(level);
+        enemy["xp"] = Value::from(experience_at_level(species, level).unwrap());
+        enemy["hp"] = Value::from(stats[0]);
+        enemy["stats"] = serde_json::json!({"hp":stats[0],"attack":stats[1],"defense":stats[2],"specialAttack":stats[3],"specialDefense":stats[4],"speed":stats[5]});
+        enemy["moves"] = serde_json::json!([]);
+        validate_save(&save).unwrap();
+        let mut invalid = save.clone();
+        invalid["game"]["battle"]["regionId"] = Value::String("wrong-town".into());
+        assert!(validate_save(&invalid).is_err());
+        invalid = save.clone();
+        invalid["game"]["defeatedFieldTrainers"] = serde_json::json!([trainer.id]);
+        assert!(validate_save(&invalid).is_err());
+        invalid["game"].as_object_mut().unwrap().remove("battle");
+        validate_save(&invalid).unwrap();
     }
 
     #[test]
@@ -2006,6 +2136,36 @@ mod tests {
             edited["game"]["player"]["team"][0]["movePpReserve"] = invalid;
             assert!(validate_save(&edited).is_err());
         }
+    }
+
+    #[test]
+    fn validates_individual_values_and_source_ability_slots() {
+        let mut save = valid_save();
+        let monster = &mut save["game"]["player"]["team"][0];
+        let species_id = monster["speciesId"].as_i64().unwrap();
+        let level = monster["level"].as_i64().unwrap();
+        let source = &abilities()[&species_id][0];
+        let ivs = [31, 30, 29, 28, 27, 26];
+        monster["ivs"] = serde_json::json!({"hp":31,"attack":30,"defense":29,"specialAttack":28,"specialDefense":27,"speed":26});
+        monster["ability"] = serde_json::json!({
+            "id":source.id,"slot":source.slot,"hidden":source.hidden,"slug":source.slug,
+            "name":source.name,"englishName":source.english_name,"effect":"implemented",
+            "description":"검증된 전투 효과"
+        });
+        let stats = expected_stats_with_ivs(&catalog().species[&species_id], level, ivs);
+        monster["stats"] = serde_json::json!({"hp":stats[0],"attack":stats[1],"defense":stats[2],"specialAttack":stats[3],"specialDefense":stats[4],"speed":stats[5]});
+        monster["hp"] = Value::from(stats[0]);
+        validate_save(&save).unwrap();
+
+        let mut bad_iv = save.clone();
+        bad_iv["game"]["player"]["team"][0]["ivs"]["speed"] = Value::from(32);
+        assert!(validate_save(&bad_iv).is_err());
+        let mut bad_ability = save.clone();
+        bad_ability["game"]["player"]["team"][0]["ability"]["slot"] = Value::from(3);
+        assert!(validate_save(&bad_ability).is_err());
+        let mut partial = save;
+        partial["game"]["player"]["team"][0].as_object_mut().unwrap().remove("ability");
+        assert!(validate_save(&partial).is_err());
     }
 
     #[test]

@@ -1,0 +1,3586 @@
+[
+  {
+    "id": "practice-kanto-pallet",
+    "region": "kanto",
+    "locationId": "pallet",
+    "name": "태초마을 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        16,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-route-1",
+    "region": "kanto",
+    "locationId": "route-1",
+    "name": "1번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        16,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-viridian",
+    "region": "kanto",
+    "locationId": "viridian",
+    "name": "상록시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        16,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-route-2-south",
+    "region": "kanto",
+    "locationId": "route-2-south",
+    "name": "2번 도로 남쪽 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        16,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-viridian-forest",
+    "region": "kanto",
+    "locationId": "viridian-forest",
+    "name": "상록숲 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        10,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-route-2-north",
+    "region": "kanto",
+    "locationId": "route-2-north",
+    "name": "2번 도로 북쪽 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        16,
+        4
+      ]
+    ],
+    "reward": 160,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-pewter",
+    "region": "kanto",
+    "locationId": "pewter",
+    "name": "회색시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        16,
+        6
+      ]
+    ],
+    "reward": 240,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-route-3",
+    "region": "kanto",
+    "locationId": "route-3",
+    "name": "3번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        16,
+        6
+      ]
+    ],
+    "reward": 240,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-route-4",
+    "region": "kanto",
+    "locationId": "route-4",
+    "name": "4번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        19,
+        8
+      ]
+    ],
+    "reward": 320,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-cerulean",
+    "region": "kanto",
+    "locationId": "cerulean",
+    "name": "블루시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        19,
+        10
+      ],
+      [
+        21,
+        9
+      ]
+    ],
+    "reward": 400,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-route-24",
+    "region": "kanto",
+    "locationId": "route-24",
+    "name": "24번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        10,
+        11
+      ],
+      [
+        13,
+        10
+      ]
+    ],
+    "reward": 440,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-route-25",
+    "region": "kanto",
+    "locationId": "route-25",
+    "name": "25번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        16,
+        12
+      ],
+      [
+        43,
+        11
+      ]
+    ],
+    "reward": 480,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-route-5",
+    "region": "kanto",
+    "locationId": "route-5",
+    "name": "5번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        16,
+        12
+      ],
+      [
+        43,
+        11
+      ]
+    ],
+    "reward": 480,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-saffron",
+    "region": "kanto",
+    "locationId": "saffron",
+    "name": "노랑시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        43,
+        20
+      ],
+      [
+        52,
+        19
+      ]
+    ],
+    "reward": 800,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-route-6",
+    "region": "kanto",
+    "locationId": "route-6",
+    "name": "6번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        16,
+        13
+      ],
+      [
+        19,
+        12
+      ]
+    ],
+    "reward": 520,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-vermilion",
+    "region": "kanto",
+    "locationId": "vermilion",
+    "name": "갈색시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        19,
+        15
+      ],
+      [
+        21,
+        14
+      ]
+    ],
+    "reward": 600,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-route-11",
+    "region": "kanto",
+    "locationId": "route-11",
+    "name": "11번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        21,
+        15
+      ],
+      [
+        23,
+        14
+      ]
+    ],
+    "reward": 600,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-route-12",
+    "region": "kanto",
+    "locationId": "route-12",
+    "name": "12번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        16,
+        20
+      ],
+      [
+        43,
+        19
+      ]
+    ],
+    "reward": 800,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-lavender",
+    "region": "kanto",
+    "locationId": "lavender",
+    "name": "보라타운 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        92,
+        18
+      ],
+      [
+        93,
+        17
+      ]
+    ],
+    "reward": 720,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-route-10-south",
+    "region": "kanto",
+    "locationId": "route-10-south",
+    "name": "10번 도로 남쪽 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        21,
+        16
+      ],
+      [
+        23,
+        15
+      ]
+    ],
+    "reward": 640,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-route-10-north",
+    "region": "kanto",
+    "locationId": "route-10-north",
+    "name": "10번 도로 북쪽 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        21,
+        15
+      ],
+      [
+        23,
+        14
+      ]
+    ],
+    "reward": 600,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-route-9",
+    "region": "kanto",
+    "locationId": "route-9",
+    "name": "9번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        19,
+        13
+      ],
+      [
+        21,
+        12
+      ]
+    ],
+    "reward": 520,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-route-8",
+    "region": "kanto",
+    "locationId": "route-8",
+    "name": "8번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        16,
+        18
+      ],
+      [
+        37,
+        17
+      ]
+    ],
+    "reward": 720,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-route-7",
+    "region": "kanto",
+    "locationId": "route-7",
+    "name": "7번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        16,
+        18
+      ],
+      [
+        37,
+        17
+      ]
+    ],
+    "reward": 720,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-celadon",
+    "region": "kanto",
+    "locationId": "celadon",
+    "name": "무지개시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        43,
+        20
+      ],
+      [
+        52,
+        19
+      ]
+    ],
+    "reward": 800,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-route-16",
+    "region": "kanto",
+    "locationId": "route-16",
+    "name": "16번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        19,
+        22
+      ],
+      [
+        20,
+        21
+      ]
+    ],
+    "reward": 880,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-route-17",
+    "region": "kanto",
+    "locationId": "route-17",
+    "name": "17번 도로·사이클링로드 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        19,
+        24
+      ],
+      [
+        20,
+        23
+      ]
+    ],
+    "reward": 960,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-route-18",
+    "region": "kanto",
+    "locationId": "route-18",
+    "name": "18번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        19,
+        25
+      ],
+      [
+        20,
+        24
+      ]
+    ],
+    "reward": 1000,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-fuchsia",
+    "region": "kanto",
+    "locationId": "fuchsia",
+    "name": "연분홍시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        48,
+        25
+      ],
+      [
+        84,
+        24
+      ]
+    ],
+    "reward": 1000,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-route-15",
+    "region": "kanto",
+    "locationId": "route-15",
+    "name": "15번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        16,
+        24
+      ],
+      [
+        43,
+        23
+      ]
+    ],
+    "reward": 960,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-route-14",
+    "region": "kanto",
+    "locationId": "route-14",
+    "name": "14번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        16,
+        24
+      ],
+      [
+        43,
+        23
+      ]
+    ],
+    "reward": 960,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-route-13",
+    "region": "kanto",
+    "locationId": "route-13",
+    "name": "13번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        16,
+        22
+      ],
+      [
+        43,
+        21
+      ]
+    ],
+    "reward": 880,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-cinnabar",
+    "region": "kanto",
+    "locationId": "cinnabar",
+    "name": "홍련섬 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        58,
+        32
+      ],
+      [
+        77,
+        31
+      ]
+    ],
+    "reward": 1280,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-route-22",
+    "region": "kanto",
+    "locationId": "route-22",
+    "name": "22번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        19,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kanto-route-23",
+    "region": "kanto",
+    "locationId": "route-23",
+    "name": "23번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        21,
+        35
+      ],
+      [
+        22,
+        34
+      ]
+    ],
+    "reward": 1400,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-johto-new-bark",
+    "region": "johto",
+    "locationId": "new-bark",
+    "name": "연두마을 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        161,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-johto-route-27",
+    "region": "johto",
+    "locationId": "route-27",
+    "name": "27번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        84,
+        28
+      ],
+      [
+        20,
+        27
+      ]
+    ],
+    "reward": 1120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-johto-route-29",
+    "region": "johto",
+    "locationId": "route-29",
+    "name": "29번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        16,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-johto-cherrygrove",
+    "region": "johto",
+    "locationId": "cherrygrove",
+    "name": "무궁시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        161,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-johto-route-30",
+    "region": "johto",
+    "locationId": "route-30",
+    "name": "30번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        16,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-johto-route-31",
+    "region": "johto",
+    "locationId": "route-31",
+    "name": "31번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        16,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-johto-violet",
+    "region": "johto",
+    "locationId": "violet",
+    "name": "도라지시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        161,
+        4
+      ]
+    ],
+    "reward": 160,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-johto-route-32",
+    "region": "johto",
+    "locationId": "route-32",
+    "name": "32번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        69,
+        4
+      ]
+    ],
+    "reward": 160,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-johto-route-33",
+    "region": "johto",
+    "locationId": "route-33",
+    "name": "33번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        187,
+        6
+      ]
+    ],
+    "reward": 240,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-johto-azalea",
+    "region": "johto",
+    "locationId": "azalea",
+    "name": "고동마을 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        161,
+        6
+      ]
+    ],
+    "reward": 240,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-johto-ilex-forest",
+    "region": "johto",
+    "locationId": "ilex-forest",
+    "name": "너도밤나무숲 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        10,
+        5
+      ]
+    ],
+    "reward": 200,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-johto-route-34",
+    "region": "johto",
+    "locationId": "route-34",
+    "name": "34번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        96,
+        10
+      ],
+      [
+        19,
+        9
+      ]
+    ],
+    "reward": 400,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-johto-goldenrod",
+    "region": "johto",
+    "locationId": "goldenrod",
+    "name": "금빛시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        161,
+        8
+      ]
+    ],
+    "reward": 320,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-johto-route-35",
+    "region": "johto",
+    "locationId": "route-35",
+    "name": "35번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        32,
+        10
+      ],
+      [
+        29,
+        9
+      ]
+    ],
+    "reward": 400,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-johto-national-park",
+    "region": "johto",
+    "locationId": "national-park",
+    "name": "자연공원 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        10,
+        10
+      ],
+      [
+        11,
+        9
+      ]
+    ],
+    "reward": 400,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-johto-route-36",
+    "region": "johto",
+    "locationId": "route-36",
+    "name": "36번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        32,
+        12
+      ],
+      [
+        29,
+        11
+      ]
+    ],
+    "reward": 480,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-johto-route-37",
+    "region": "johto",
+    "locationId": "route-37",
+    "name": "37번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        16,
+        13
+      ],
+      [
+        234,
+        12
+      ]
+    ],
+    "reward": 520,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-johto-ecruteak",
+    "region": "johto",
+    "locationId": "ecruteak",
+    "name": "인주시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        161,
+        14
+      ]
+    ],
+    "reward": 560,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-johto-route-38",
+    "region": "johto",
+    "locationId": "route-38",
+    "name": "38번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        19,
+        13
+      ],
+      [
+        20,
+        12
+      ]
+    ],
+    "reward": 520,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-johto-route-39",
+    "region": "johto",
+    "locationId": "route-39",
+    "name": "39번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        19,
+        15
+      ],
+      [
+        20,
+        14
+      ]
+    ],
+    "reward": 600,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-johto-olivine",
+    "region": "johto",
+    "locationId": "olivine",
+    "name": "담청시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        161,
+        16
+      ]
+    ],
+    "reward": 640,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-johto-cianwood",
+    "region": "johto",
+    "locationId": "cianwood",
+    "name": "진청시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        161,
+        20
+      ]
+    ],
+    "reward": 800,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-johto-route-42-west",
+    "region": "johto",
+    "locationId": "route-42-west",
+    "name": "42번 도로 서쪽 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        56,
+        13
+      ],
+      [
+        179,
+        12
+      ]
+    ],
+    "reward": 520,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-johto-route-42-east",
+    "region": "johto",
+    "locationId": "route-42-east",
+    "name": "42번 도로 동쪽 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        56,
+        13
+      ],
+      [
+        179,
+        12
+      ]
+    ],
+    "reward": 520,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-johto-mahogany",
+    "region": "johto",
+    "locationId": "mahogany",
+    "name": "황토마을 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        161,
+        17
+      ]
+    ],
+    "reward": 680,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-johto-route-43",
+    "region": "johto",
+    "locationId": "route-43",
+    "name": "43번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        180,
+        15
+      ],
+      [
+        203,
+        14
+      ]
+    ],
+    "reward": 600,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-johto-route-44",
+    "region": "johto",
+    "locationId": "route-44",
+    "name": "44번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        114,
+        22
+      ],
+      [
+        70,
+        21
+      ]
+    ],
+    "reward": 880,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-johto-blackthorn",
+    "region": "johto",
+    "locationId": "blackthorn",
+    "name": "검은먹시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        161,
+        24
+      ]
+    ],
+    "reward": 960,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-johto-route-45",
+    "region": "johto",
+    "locationId": "route-45",
+    "name": "45번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        74,
+        20
+      ],
+      [
+        75,
+        19
+      ]
+    ],
+    "reward": 800,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-johto-route-46",
+    "region": "johto",
+    "locationId": "route-46",
+    "name": "46번 도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        74,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-littleroot-town",
+    "region": "hoenn",
+    "locationId": "littleroot-town",
+    "name": "미로마을 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        263,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-101",
+    "region": "hoenn",
+    "locationId": "hoenn-route-101",
+    "name": "101번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        265,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-oldale-town",
+    "region": "hoenn",
+    "locationId": "oldale-town",
+    "name": "고도마을 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        263,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-102",
+    "region": "hoenn",
+    "locationId": "hoenn-route-102",
+    "name": "102번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        261,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-petalburg-city",
+    "region": "hoenn",
+    "locationId": "petalburg-city",
+    "name": "등화도시 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        263,
+        4
+      ]
+    ],
+    "reward": 160,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-104",
+    "region": "hoenn",
+    "locationId": "hoenn-route-104",
+    "name": "104번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        261,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-dewford-town",
+    "region": "hoenn",
+    "locationId": "dewford-town",
+    "name": "무로마을 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        263,
+        7
+      ]
+    ],
+    "reward": 280,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-petalburg-woods",
+    "region": "hoenn",
+    "locationId": "petalburg-woods",
+    "name": "등화숲 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        261,
+        5
+      ]
+    ],
+    "reward": 200,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-rustboro-city",
+    "region": "hoenn",
+    "locationId": "rustboro-city",
+    "name": "금탄도시 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        263,
+        7
+      ]
+    ],
+    "reward": 280,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-116",
+    "region": "hoenn",
+    "locationId": "hoenn-route-116",
+    "name": "116번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        261,
+        6
+      ]
+    ],
+    "reward": 240,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-verdanturf-town",
+    "region": "hoenn",
+    "locationId": "verdanturf-town",
+    "name": "잔디마을 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        263,
+        10
+      ]
+    ],
+    "reward": 400,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-117",
+    "region": "hoenn",
+    "locationId": "hoenn-route-117",
+    "name": "117번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        261,
+        13
+      ],
+      [
+        43,
+        12
+      ]
+    ],
+    "reward": 520,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-mauville-city",
+    "region": "hoenn",
+    "locationId": "mauville-city",
+    "name": "보라시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        263,
+        14
+      ]
+    ],
+    "reward": 560,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-110",
+    "region": "hoenn",
+    "locationId": "hoenn-route-110",
+    "name": "110번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        261,
+        12
+      ],
+      [
+        309,
+        11
+      ]
+    ],
+    "reward": 480,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-slateport-city",
+    "region": "hoenn",
+    "locationId": "slateport-city",
+    "name": "잿빛도시 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        263,
+        14
+      ]
+    ],
+    "reward": 560,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-103",
+    "region": "hoenn",
+    "locationId": "hoenn-route-103",
+    "name": "103번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        261,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-111",
+    "region": "hoenn",
+    "locationId": "hoenn-route-111",
+    "name": "111번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        27,
+        19
+      ],
+      [
+        328,
+        18
+      ]
+    ],
+    "reward": 760,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-112",
+    "region": "hoenn",
+    "locationId": "hoenn-route-112",
+    "name": "112번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        322,
+        14
+      ],
+      [
+        183,
+        13
+      ]
+    ],
+    "reward": 560,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-lavaridge-town",
+    "region": "hoenn",
+    "locationId": "lavaridge-town",
+    "name": "용암마을 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        263,
+        18
+      ]
+    ],
+    "reward": 720,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-113",
+    "region": "hoenn",
+    "locationId": "hoenn-route-113",
+    "name": "113번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        327,
+        14
+      ],
+      [
+        218,
+        13
+      ]
+    ],
+    "reward": 560,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-fallarbor-town",
+    "region": "hoenn",
+    "locationId": "fallarbor-town",
+    "name": "단풍마을 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        263,
+        20
+      ]
+    ],
+    "reward": 800,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-114",
+    "region": "hoenn",
+    "locationId": "hoenn-route-114",
+    "name": "114번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        333,
+        15
+      ],
+      [
+        270,
+        14
+      ]
+    ],
+    "reward": 600,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-115",
+    "region": "hoenn",
+    "locationId": "hoenn-route-115",
+    "name": "115번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        333,
+        23
+      ],
+      [
+        276,
+        22
+      ]
+    ],
+    "reward": 920,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-118",
+    "region": "hoenn",
+    "locationId": "hoenn-route-118",
+    "name": "118번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        263,
+        24
+      ],
+      [
+        309,
+        23
+      ]
+    ],
+    "reward": 960,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-119",
+    "region": "hoenn",
+    "locationId": "hoenn-route-119",
+    "name": "119번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        263,
+        24
+      ],
+      [
+        264,
+        23
+      ]
+    ],
+    "reward": 960,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-fortree-city",
+    "region": "hoenn",
+    "locationId": "fortree-city",
+    "name": "검방울시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        263,
+        24
+      ]
+    ],
+    "reward": 960,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-120",
+    "region": "hoenn",
+    "locationId": "hoenn-route-120",
+    "name": "120번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        261,
+        25
+      ],
+      [
+        262,
+        24
+      ]
+    ],
+    "reward": 1000,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-121",
+    "region": "hoenn",
+    "locationId": "hoenn-route-121",
+    "name": "121번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        261,
+        25
+      ],
+      [
+        353,
+        24
+      ]
+    ],
+    "reward": 1000,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-lilycove-city",
+    "region": "hoenn",
+    "locationId": "lilycove-city",
+    "name": "해안시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        263,
+        28
+      ]
+    ],
+    "reward": 1120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-mossdeep-city",
+    "region": "hoenn",
+    "locationId": "mossdeep-city",
+    "name": "이끼시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        263,
+        32
+      ]
+    ],
+    "reward": 1280,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-sootopolis-city",
+    "region": "hoenn",
+    "locationId": "sootopolis-city",
+    "name": "루네시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        263,
+        34
+      ]
+    ],
+    "reward": 1360,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-ever-grande-city",
+    "region": "hoenn",
+    "locationId": "ever-grande-city",
+    "name": "그랜드시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        263,
+        45
+      ]
+    ],
+    "reward": 1800,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-hoenn-pacifidlog-town",
+    "region": "hoenn",
+    "locationId": "pacifidlog-town",
+    "name": "황금마을 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        263,
+        34
+      ]
+    ],
+    "reward": 1360,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-twinleaf-town",
+    "region": "sinnoh",
+    "locationId": "twinleaf-town",
+    "name": "떡잎마을 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        399,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-201",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-201",
+    "name": "201번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        396,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-sandgem-town",
+    "region": "sinnoh",
+    "locationId": "sandgem-town",
+    "name": "잔모래마을 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        399,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-202",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-202",
+    "name": "202번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        403,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-jubilife-city",
+    "region": "sinnoh",
+    "locationId": "jubilife-city",
+    "name": "축복시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        399,
+        5
+      ]
+    ],
+    "reward": 200,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-203",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-203",
+    "name": "203번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        396,
+        4
+      ]
+    ],
+    "reward": 160,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-oreburgh-city",
+    "region": "sinnoh",
+    "locationId": "oreburgh-city",
+    "name": "무쇠시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        399,
+        7
+      ]
+    ],
+    "reward": 280,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-207",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-207",
+    "name": "207번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        66,
+        5
+      ]
+    ],
+    "reward": 200,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-208",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-208",
+    "name": "208번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        406,
+        17
+      ],
+      [
+        399,
+        16
+      ]
+    ],
+    "reward": 680,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-hearthome-city",
+    "region": "sinnoh",
+    "locationId": "hearthome-city",
+    "name": "연고시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        399,
+        16
+      ]
+    ],
+    "reward": 640,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-209",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-209",
+    "name": "209번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        315,
+        17
+      ],
+      [
+        400,
+        16
+      ]
+    ],
+    "reward": 680,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-solaceon-town",
+    "region": "sinnoh",
+    "locationId": "solaceon-town",
+    "name": "신수마을 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        399,
+        18
+      ]
+    ],
+    "reward": 720,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-210",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-210",
+    "name": "210번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        397,
+        18
+      ],
+      [
+        74,
+        17
+      ]
+    ],
+    "reward": 720,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-celestic-town",
+    "region": "sinnoh",
+    "locationId": "celestic-town",
+    "name": "봉신마을 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        399,
+        22
+      ]
+    ],
+    "reward": 880,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-211",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-211",
+    "name": "211번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        307,
+        13
+      ],
+      [
+        399,
+        12
+      ]
+    ],
+    "reward": 520,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-eterna-city",
+    "region": "sinnoh",
+    "locationId": "eterna-city",
+    "name": "영원시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        399,
+        14
+      ]
+    ],
+    "reward": 560,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-eterna-forest",
+    "region": "sinnoh",
+    "locationId": "eterna-forest",
+    "name": "영원의숲 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        427,
+        10
+      ],
+      [
+        406,
+        9
+      ]
+    ],
+    "reward": 400,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-205",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-205",
+    "name": "205번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        422,
+        9
+      ]
+    ],
+    "reward": 360,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-floaroma-town",
+    "region": "sinnoh",
+    "locationId": "floaroma-town",
+    "name": "꽃향기마을 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        399,
+        8
+      ]
+    ],
+    "reward": 320,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-204",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-204",
+    "name": "204번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        396,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-206",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-206",
+    "name": "206번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        77,
+        16
+      ],
+      [
+        74,
+        15
+      ]
+    ],
+    "reward": 640,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-212",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-212",
+    "name": "212번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        315,
+        21
+      ],
+      [
+        183,
+        20
+      ]
+    ],
+    "reward": 840,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-pastoria-city",
+    "region": "sinnoh",
+    "locationId": "pastoria-city",
+    "name": "들판시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        399,
+        22
+      ]
+    ],
+    "reward": 880,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-213",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-213",
+    "name": "213번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        422,
+        23
+      ],
+      [
+        418,
+        22
+      ]
+    ],
+    "reward": 920,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-214",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-214",
+    "name": "214번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        75,
+        21
+      ],
+      [
+        74,
+        20
+      ]
+    ],
+    "reward": 840,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-veilstone-city",
+    "region": "sinnoh",
+    "locationId": "veilstone-city",
+    "name": "장막시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        399,
+        24
+      ]
+    ],
+    "reward": 960,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-215",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-215",
+    "name": "215번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        397,
+        19
+      ],
+      [
+        183,
+        18
+      ]
+    ],
+    "reward": 760,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-216",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-216",
+    "name": "216번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        459,
+        32
+      ],
+      [
+        215,
+        31
+      ]
+    ],
+    "reward": 1280,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-217",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-217",
+    "name": "217번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        459,
+        32
+      ],
+      [
+        220,
+        31
+      ]
+    ],
+    "reward": 1280,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-snowpoint-city",
+    "region": "sinnoh",
+    "locationId": "snowpoint-city",
+    "name": "선단시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        399,
+        32
+      ]
+    ],
+    "reward": 1280,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-222",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-222",
+    "name": "222번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        125,
+        38
+      ],
+      [
+        419,
+        37
+      ]
+    ],
+    "reward": 1520,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-sunyshore-city",
+    "region": "sinnoh",
+    "locationId": "sunyshore-city",
+    "name": "물가시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        399,
+        35
+      ]
+    ],
+    "reward": 1400,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-218",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-218",
+    "name": "218번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        423,
+        28
+      ],
+      [
+        419,
+        27
+      ]
+    ],
+    "reward": 1120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-sinnoh-canalave-city",
+    "region": "sinnoh",
+    "locationId": "canalave-city",
+    "name": "운하시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        399,
+        26
+      ]
+    ],
+    "reward": 1040,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-nuvema-town",
+    "region": "unova",
+    "locationId": "nuvema-town",
+    "name": "마름꽃마을 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        504,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-unova-route-1",
+    "region": "unova",
+    "locationId": "unova-route-1",
+    "name": "1번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        504,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-accumula-town",
+    "region": "unova",
+    "locationId": "accumula-town",
+    "name": "넝쿨마을 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        504,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-unova-route-2",
+    "region": "unova",
+    "locationId": "unova-route-2",
+    "name": "2번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        504,
+        4
+      ]
+    ],
+    "reward": 160,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-striaton-city",
+    "region": "unova",
+    "locationId": "striaton-city",
+    "name": "성신시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        504,
+        6
+      ]
+    ],
+    "reward": 240,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-unova-route-3",
+    "region": "unova",
+    "locationId": "unova-route-3",
+    "name": "3번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        504,
+        8
+      ]
+    ],
+    "reward": 320,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-nacrene-city",
+    "region": "unova",
+    "locationId": "nacrene-city",
+    "name": "칠보시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        504,
+        10
+      ]
+    ],
+    "reward": 400,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-pinwheel-forest",
+    "region": "unova",
+    "locationId": "pinwheel-forest",
+    "name": "바람개비숲 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        535,
+        12
+      ],
+      [
+        519,
+        11
+      ]
+    ],
+    "reward": 480,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-skyarrow-bridge",
+    "region": "unova",
+    "locationId": "skyarrow-bridge",
+    "name": "스카이애로브리지 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        504,
+        14
+      ]
+    ],
+    "reward": 560,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-castelia-city",
+    "region": "unova",
+    "locationId": "castelia-city",
+    "name": "구름시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        504,
+        15
+      ]
+    ],
+    "reward": 600,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-unova-route-4",
+    "region": "unova",
+    "locationId": "unova-route-4",
+    "name": "4번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        551,
+        15
+      ],
+      [
+        554,
+        14
+      ]
+    ],
+    "reward": 600,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-nimbasa-city",
+    "region": "unova",
+    "locationId": "nimbasa-city",
+    "name": "뇌문시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        504,
+        20
+      ]
+    ],
+    "reward": 800,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-unova-route-5",
+    "region": "unova",
+    "locationId": "unova-route-5",
+    "name": "5번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        574,
+        19
+      ],
+      [
+        572,
+        18
+      ]
+    ],
+    "reward": 760,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-driftveil-drawbridge",
+    "region": "unova",
+    "locationId": "driftveil-drawbridge",
+    "name": "물풍경도개교 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        504,
+        22
+      ]
+    ],
+    "reward": 880,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-driftveil-city",
+    "region": "unova",
+    "locationId": "driftveil-city",
+    "name": "물풍경시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        504,
+        23
+      ]
+    ],
+    "reward": 920,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-unova-route-6",
+    "region": "unova",
+    "locationId": "unova-route-6",
+    "name": "6번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        585,
+        22
+      ],
+      [
+        588,
+        21
+      ]
+    ],
+    "reward": 880,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-mistralton-city",
+    "region": "unova",
+    "locationId": "mistralton-city",
+    "name": "궐수시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        504,
+        28
+      ]
+    ],
+    "reward": 1120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-unova-route-7",
+    "region": "unova",
+    "locationId": "unova-route-7",
+    "name": "7번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        520,
+        26
+      ],
+      [
+        585,
+        25
+      ]
+    ],
+    "reward": 1040,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-icirrus-city",
+    "region": "unova",
+    "locationId": "icirrus-city",
+    "name": "설화시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        536,
+        30
+      ],
+      [
+        616,
+        29
+      ]
+    ],
+    "reward": 1200,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-unova-route-8",
+    "region": "unova",
+    "locationId": "unova-route-8",
+    "name": "8번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        536,
+        30
+      ],
+      [
+        616,
+        29
+      ]
+    ],
+    "reward": 1200,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-moor-of-icirrus",
+    "region": "unova",
+    "locationId": "moor-of-icirrus",
+    "name": "설화의습지초원 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        536,
+        30
+      ],
+      [
+        616,
+        29
+      ]
+    ],
+    "reward": 1200,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-unova-route-9",
+    "region": "unova",
+    "locationId": "unova-route-9",
+    "name": "9번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        575,
+        31
+      ],
+      [
+        572,
+        30
+      ]
+    ],
+    "reward": 1240,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-opelucid-city",
+    "region": "unova",
+    "locationId": "opelucid-city",
+    "name": "쌍용시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        504,
+        36
+      ]
+    ],
+    "reward": 1440,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-unova-route-10",
+    "region": "unova",
+    "locationId": "unova-route-10",
+    "name": "10번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        507,
+        33
+      ],
+      [
+        629,
+        32
+      ]
+    ],
+    "reward": 1320,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-unova-route-16",
+    "region": "unova",
+    "locationId": "unova-route-16",
+    "name": "16번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        574,
+        19
+      ],
+      [
+        572,
+        18
+      ]
+    ],
+    "reward": 760,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-lostlorn-forest",
+    "region": "unova",
+    "locationId": "lostlorn-forest",
+    "name": "미혹의숲 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        546,
+        19
+      ],
+      [
+        541,
+        18
+      ]
+    ],
+    "reward": 760,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-unova-route-15",
+    "region": "unova",
+    "locationId": "unova-route-15",
+    "name": "15번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        105,
+        47
+      ],
+      [
+        22,
+        46
+      ]
+    ],
+    "reward": 1880,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-unova-route-14",
+    "region": "unova",
+    "locationId": "unova-route-14",
+    "name": "14번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        55,
+        47
+      ],
+      [
+        39,
+        46
+      ]
+    ],
+    "reward": 1880,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-undella-town",
+    "region": "unova",
+    "locationId": "undella-town",
+    "name": "물결마을 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        504,
+        32
+      ]
+    ],
+    "reward": 1280,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-unova-route-13",
+    "region": "unova",
+    "locationId": "unova-route-13",
+    "name": "13번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        114,
+        47
+      ],
+      [
+        277,
+        46
+      ]
+    ],
+    "reward": 1880,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-lacunosa-town",
+    "region": "unova",
+    "locationId": "lacunosa-town",
+    "name": "보배마을 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        504,
+        34
+      ]
+    ],
+    "reward": 1360,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-unova-route-12",
+    "region": "unova",
+    "locationId": "unova-route-12",
+    "name": "12번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        415,
+        47
+      ],
+      [
+        191,
+        46
+      ]
+    ],
+    "reward": 1880,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-village-bridge",
+    "region": "unova",
+    "locationId": "village-bridge",
+    "name": "빌리지브리지 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        55,
+        47
+      ],
+      [
+        400,
+        46
+      ]
+    ],
+    "reward": 1880,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-unova-unova-route-11",
+    "region": "unova",
+    "locationId": "unova-route-11",
+    "name": "11번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        629,
+        47
+      ],
+      [
+        55,
+        46
+      ]
+    ],
+    "reward": 1880,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kalos-vaniville-town",
+    "region": "kalos",
+    "locationId": "vaniville-town",
+    "name": "조아마을 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        659,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kalos-kalos-route-2",
+    "region": "kalos",
+    "locationId": "kalos-route-2",
+    "name": "2번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        659,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kalos-santalune-forest",
+    "region": "kalos",
+    "locationId": "santalune-forest",
+    "name": "백단숲 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        664,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kalos-santalune-city",
+    "region": "kalos",
+    "locationId": "santalune-city",
+    "name": "백단시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        659,
+        5
+      ]
+    ],
+    "reward": 200,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kalos-kalos-route-3",
+    "region": "kalos",
+    "locationId": "kalos-route-3",
+    "name": "3번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        659,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kalos-kalos-route-5",
+    "region": "kalos",
+    "locationId": "kalos-route-5",
+    "name": "5번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        659,
+        8
+      ]
+    ],
+    "reward": 320,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kalos-lumiose-city",
+    "region": "kalos",
+    "locationId": "lumiose-city",
+    "name": "미르시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        659,
+        10
+      ]
+    ],
+    "reward": 400,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kalos-kalos-route-7",
+    "region": "kalos",
+    "locationId": "kalos-route-7",
+    "name": "7번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        453,
+        12
+      ],
+      [
+        313,
+        11
+      ]
+    ],
+    "reward": 480,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kalos-cyllage-city",
+    "region": "kalos",
+    "locationId": "cyllage-city",
+    "name": "삼채시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        659,
+        14
+      ]
+    ],
+    "reward": 560,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kalos-kalos-route-8",
+    "region": "kalos",
+    "locationId": "kalos-route-8",
+    "name": "8번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        425,
+        13
+      ],
+      [
+        325,
+        12
+      ]
+    ],
+    "reward": 520,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kalos-kalos-route-10",
+    "region": "kalos",
+    "locationId": "kalos-route-10",
+    "name": "10번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        622,
+        19
+      ],
+      [
+        561,
+        18
+      ]
+    ],
+    "reward": 760,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kalos-geosenge-town",
+    "region": "kalos",
+    "locationId": "geosenge-town",
+    "name": "옥유마을 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        659,
+        20
+      ]
+    ],
+    "reward": 800,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kalos-shalour-city",
+    "region": "kalos",
+    "locationId": "shalour-city",
+    "name": "사라시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        659,
+        23
+      ]
+    ],
+    "reward": 920,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kalos-kalos-route-12",
+    "region": "kalos",
+    "locationId": "kalos-route-12",
+    "name": "12번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        79,
+        23
+      ],
+      [
+        441,
+        22
+      ]
+    ],
+    "reward": 920,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kalos-coumarine-city",
+    "region": "kalos",
+    "locationId": "coumarine-city",
+    "name": "비익시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        659,
+        26
+      ]
+    ],
+    "reward": 1040,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kalos-kalos-route-14",
+    "region": "kalos",
+    "locationId": "kalos-route-14",
+    "name": "14번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        451,
+        30
+      ],
+      [
+        70,
+        29
+      ]
+    ],
+    "reward": 1200,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kalos-laverre-city",
+    "region": "kalos",
+    "locationId": "laverre-city",
+    "name": "후늬시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        659,
+        29
+      ]
+    ],
+    "reward": 1160,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kalos-kalos-route-15",
+    "region": "kalos",
+    "locationId": "kalos-route-15",
+    "name": "15번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        262,
+        34
+      ],
+      [
+        451,
+        33
+      ]
+    ],
+    "reward": 1360,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kalos-dendemille-town",
+    "region": "kalos",
+    "locationId": "dendemille-town",
+    "name": "버들비마을 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        659,
+        31
+      ]
+    ],
+    "reward": 1240,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kalos-kalos-route-18",
+    "region": "kalos",
+    "locationId": "kalos-route-18",
+    "name": "18번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        533,
+        44
+      ],
+      [
+        324,
+        43
+      ]
+    ],
+    "reward": 1760,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kalos-anistar-city",
+    "region": "kalos",
+    "locationId": "anistar-city",
+    "name": "향전시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        659,
+        35
+      ]
+    ],
+    "reward": 1400,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kalos-kalos-route-19",
+    "region": "kalos",
+    "locationId": "kalos-route-19",
+    "name": "19번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        659,
+        37
+      ]
+    ],
+    "reward": 1480,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kalos-snowbelle-city",
+    "region": "kalos",
+    "locationId": "snowbelle-city",
+    "name": "이설시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        659,
+        39
+      ]
+    ],
+    "reward": 1560,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-kalos-kalos-route-21",
+    "region": "kalos",
+    "locationId": "kalos-route-21",
+    "name": "21번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        659,
+        42
+      ]
+    ],
+    "reward": 1680,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-alola-iki-town",
+    "region": "alola",
+    "locationId": "iki-town",
+    "name": "릴리마을 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        734,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-alola-alola-route-1",
+    "region": "alola",
+    "locationId": "alola-route-1",
+    "name": "1번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        165,
+        3
+      ]
+    ],
+    "reward": 120,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-alola-hauoli-city",
+    "region": "alola",
+    "locationId": "hauoli-city",
+    "name": "하우올리시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        676,
+        6
+      ]
+    ],
+    "reward": 240,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-alola-alola-route-2",
+    "region": "alola",
+    "locationId": "alola-route-2",
+    "name": "2번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        23,
+        6
+      ]
+    ],
+    "reward": 240,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-alola-alola-route-3",
+    "region": "alola",
+    "locationId": "alola-route-3",
+    "name": "3번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        21,
+        9
+      ]
+    ],
+    "reward": 360,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-alola-melemele-meadow",
+    "region": "alola",
+    "locationId": "melemele-meadow",
+    "name": "멜레멜레화원 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        548,
+        10
+      ],
+      [
+        669,
+        9
+      ]
+    ],
+    "reward": 400,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-alola-heahea-city",
+    "region": "alola",
+    "locationId": "heahea-city",
+    "name": "환대시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        734,
+        11
+      ]
+    ],
+    "reward": 440,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-alola-alola-route-4",
+    "region": "alola",
+    "locationId": "alola-route-4",
+    "name": "4번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        506,
+        11
+      ],
+      [
+        731,
+        10
+      ]
+    ],
+    "reward": 440,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-alola-paniola-town",
+    "region": "alola",
+    "locationId": "paniola-town",
+    "name": "오하나마을 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        734,
+        13
+      ]
+    ],
+    "reward": 520,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-alola-paniola-ranch",
+    "region": "alola",
+    "locationId": "paniola-ranch",
+    "name": "오하나목장 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        749,
+        12
+      ],
+      [
+        179,
+        11
+      ]
+    ],
+    "reward": 480,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-alola-alola-route-5",
+    "region": "alola",
+    "locationId": "alola-route-5",
+    "name": "5번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        731,
+        13
+      ],
+      [
+        753,
+        12
+      ]
+    ],
+    "reward": 520,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-alola-lush-jungle",
+    "region": "alola",
+    "locationId": "lush-jungle",
+    "name": "셰이드정글 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        42,
+        19
+      ],
+      [
+        51,
+        18
+      ]
+    ],
+    "reward": 760,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-alola-konikoni-city",
+    "region": "alola",
+    "locationId": "konikoni-city",
+    "name": "코니코니시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        734,
+        22
+      ]
+    ],
+    "reward": 880,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-alola-alola-route-8",
+    "region": "alola",
+    "locationId": "alola-route-8",
+    "name": "8번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        732,
+        17
+      ],
+      [
+        734,
+        16
+      ]
+    ],
+    "reward": 680,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-alola-malie-city",
+    "region": "alola",
+    "locationId": "malie-city",
+    "name": "말리에시티 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        568,
+        25
+      ],
+      [
+        88,
+        24
+      ]
+    ],
+    "reward": 1000,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-alola-malie-garden",
+    "region": "alola",
+    "locationId": "malie-garden",
+    "name": "말리에정원 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        61,
+        25
+      ],
+      [
+        166,
+        24
+      ]
+    ],
+    "reward": 1000,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-alola-alola-route-10",
+    "region": "alola",
+    "locationId": "alola-route-10",
+    "name": "10번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        22,
+        26
+      ],
+      [
+        735,
+        25
+      ]
+    ],
+    "reward": 1040,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-alola-tapu-village",
+    "region": "alola",
+    "locationId": "tapu-village",
+    "name": "카푸마을 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        279,
+        30
+      ],
+      [
+        735,
+        29
+      ]
+    ],
+    "reward": 1200,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-alola-alola-route-17",
+    "region": "alola",
+    "locationId": "alola-route-17",
+    "name": "17번도로 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        22,
+        33
+      ],
+      [
+        559,
+        32
+      ]
+    ],
+    "reward": 1320,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-alola-seafolk-village",
+    "region": "alola",
+    "locationId": "seafolk-village",
+    "name": "바다민족의마을 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        734,
+        38
+      ]
+    ],
+    "reward": 1520,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-alola-poni-wilds",
+    "region": "alola",
+    "locationId": "poni-wilds",
+    "name": "포니들판 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        279,
+        41
+      ],
+      [
+        210,
+        40
+      ]
+    ],
+    "reward": 1640,
+    "trainerOrigin": "authored"
+  },
+  {
+    "id": "practice-alola-ancient-poni-path",
+    "region": "alola",
+    "locationId": "ancient-poni-path",
+    "name": "포니옛길 도전자",
+    "trainerClass": "트레이너",
+    "team": [
+      [
+        279,
+        41
+      ],
+      [
+        210,
+        40
+      ]
+    ],
+    "reward": 1640,
+    "trainerOrigin": "authored"
+  }
+]

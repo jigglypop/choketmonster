@@ -40,7 +40,7 @@ async function importScene(page: Page, save: SaveEnvelope, cue: string, playing 
   else expect(await audio.evaluate(element => (element as HTMLAudioElement).paused)).toBe(true);
 }
 
-test('real world saves switch town, cave and battle music while preserving explicit pause', async ({ page }) => {
+test('short battles keep exploration music, long battles fade once, then hold before returning', async ({ page }, testInfo) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await page.routeWebSocket('**', socket => socket.close());
   await page.route('**/api/auth/me', route => route.fulfill({ json: { user: null } }));
@@ -50,7 +50,20 @@ test('real world saves switch town, cave and battle music while preserving expli
   await page.locator('[data-starter="152"]').click();
   const saves = sceneSaves();
   await importScene(page, saves.underground, 'cave');
-  await importScene(page, saves.battle, 'wild-battle');
+  const cavePosition = await page.locator('#game-music-audio').evaluate(element => (element as HTMLAudioElement).currentTime);
+  await page.locator('#import-file').setInputFiles({ name: 'music-scene.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(saves.battle)) });
+  await expect(page.locator('#game-music-audio')).toHaveAttribute('data-cue', 'cave');
+  await page.waitForTimeout(1_000);
+  await expect(page.locator('#game-music-audio')).toHaveAttribute('data-cue', 'cave');
+  await expect(page.locator('#game-music-audio')).toHaveAttribute('data-cue', 'wild-battle', { timeout: 5_000 });
+  await page.screenshot({ path: testInfo.outputPath('battle-crossfade.png') });
+  await page.locator('#import-file').setInputFiles({ name: 'music-scene.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(saves.town)) });
+  await expect(page.locator('#game-music-audio')).toHaveAttribute('data-cue', 'wild-battle');
+  await page.waitForTimeout(1_000);
+  await expect(page.locator('#game-music-audio')).toHaveAttribute('data-cue', 'wild-battle');
+  await expect(page.locator('#game-music-audio')).toHaveAttribute('data-cue', 'pallet', { timeout: 8_500 });
+  await importScene(page, saves.underground, 'cave');
+  await expect.poll(() => page.locator('#game-music-audio').evaluate(element => (element as HTMLAudioElement).currentTime)).toBeGreaterThan(cavePosition);
   await page.locator('#game-sound-toggle').click();
   await importScene(page, saves.town, 'pallet', false);
   await page.reload();

@@ -1,5 +1,6 @@
 import type { Graph } from '../core/brain';
 import { getMove, getSpecies } from '../data/pokemon';
+import { fieldTrainersAt, getFieldTrainer } from '../data/field-trainers';
 import { pokemonModelUrl, pokemonSpriteUrl } from '../game/assets';
 import { getMoveLayout } from '../game/move-layout';
 import { evolutionItemUses } from '../game/engine';
@@ -13,6 +14,7 @@ import { lastServerDecision } from '../game/server-brain';
 import { mountOpenWorld } from './view';
 import type { OpenWorldRenderSnapshot, OpenWorldView, WorldCreature, WorldHeading } from './types';
 import './panel.css';
+import './trainer-battles.css';
 import { showGymVictory } from '../ui/gym-victory';
 import { pokemonWorldDisplayHeight } from './visual-scale';
 import { MultiplayerSession } from './multiplayer';
@@ -91,6 +93,7 @@ export class OpenWorldPanel {
       <details class="world-explore-panel"><summary class="world-explore-toggle"><div><strong id="world-location-short">성도</strong><small id="world-explore-short">탐험 설정 · 상점</small></div><i>⌄</i></summary><div class="world-explore-scroll">
       <div class="world-heading"><span class="world-eyebrow" id="world-region-label">성도</span><span id="world-encounter-layout" class="world-encounter-layout">고정 야생 분포</span><h1 id="world-biome">연두마을</h1><p id="world-zone-level">다음 도로로 모험을 떠나세요</p></div>
       <div class="world-tools"><button id="world-pause">Ⅱ 일시 정지</button><button id="world-heal">캠프 회복</button></div>
+      <button id="world-trainer-open" class="world-trainer-open">트레이너 배틀</button>
       <fieldset class="world-automation"><legend>자동 설정</legend><label><input id="world-auto-catch" type="checkbox" checked><span>자동 포획</span></label><label title="건강한 팀원 모두 같은 경험치"><input id="world-exp-share" type="checkbox" checked><span>팀 경험치 공유</span></label><label><input id="world-learning" type="checkbox" checked><span id="world-learning-label">기술 학습</span></label></fieldset>
       <div class="world-control-mode" role="group" aria-label="조작 모드"><div class="world-mode-buttons"><button id="world-mode-auto">자동</button><button id="world-mode-manual">수동</button></div><div class="world-control-copy"><strong id="world-control-title"></strong><small id="world-control-help"></small></div></div>
       <details class="world-shop"><summary>프렌들리숍 · <span id="world-ball-stock"></span></summary><div id="world-shop-items"></div><button id="world-box-open" class="world-box-open">박스 관리 · 팀 <span id="world-team-count">1</span>/6</button><small id="world-shop-note">승리 후에는 볼 1개로 확정 포획합니다.</small></details>
@@ -119,6 +122,7 @@ export class OpenWorldPanel {
       <section class="world-capture-offer" id="world-capture-offer" aria-label="승리 후 포획" hidden></section>
       <dialog class="kanto-map-dialog" id="world-map-dialog"><header><div><small id="world-map-region-name">KANTO REGION</small><h2>지도 · 길찾기</h2></div><button id="world-map-close">닫기 ✕</button></header><div class="world-map-toolbar"><div class="world-region-picker"><label for="world-region">여행할 지역</label><select id="world-region">${PLAYABLE_WORLDS.map(region => `<option value="${region.id}">${region.name}</option>`).join('')}</select></div><fieldset id="world-map-orientation"><legend>카메라 방향</legend>${(['north','east','south','west'] as const).map(direction => `<button type="button" data-map-orientation="${direction}">${compassLabel(direction)}</button>`).join('')}</fieldset></div><section id="world-campaign-guide" class="world-campaign-guide" aria-label="지역 진행"></section><p id="world-map-note">방문한 마을로 무료 이동합니다. 지도 지점은 통행 가능한 경우 걸어서 이동합니다.</p><div id="world-travel"></div><div id="world-map-content"></div></dialog>
       <dialog class="world-box-dialog" id="world-box-dialog" aria-labelledby="world-box-title"><header><div><small>POKÉMON STORAGE</small><h2 id="world-box-title">팀 · 박스 관리</h2></div><button id="world-box-close">닫기 ✕</button></header><p>탐험을 일시 정지하고 안전하게 팀을 정리합니다. 전투 중에는 현재 출전 개체와 마지막 생존 개체를 맡길 수 없습니다.</p><div id="world-box-content"></div></dialog>
+      <dialog class="world-trainer-dialog" id="world-trainer-dialog" aria-labelledby="world-trainer-title"><header><div><small>TRAINER BATTLE</small><h2 id="world-trainer-title">트레이너 배틀</h2></div><button id="world-trainer-close">닫기</button></header><p id="world-trainer-description"></p><div id="world-trainer-list"></div></dialog>
       <div class="world-feed" id="world-feed" aria-live="polite"></div>
       <div class="world-respawn" id="world-respawn"></div>
       <details class="world-method"><summary>회로와 게임 규칙</summary><p>브라우저 MaleCNS 실측 부분 회로 ${this.options.graph.nodes.length} 뉴런 · ${this.options.graph.edges.length.toLocaleString()} 연결. 전체 회로가 연결된 배틀은 서버에서 계산하고 반환된 개체 기억은 이 기기에 저장합니다. 감각 입력·행동 대응·학습 보상·월드 속도는 게임을 위해 설계했습니다. 자동 모드에서 추적 대상이 없으면 통행 가능한 탐험 목적지를 게임 규칙으로 정하고, 회로가 이동 방향을 선택합니다.</p></details>
@@ -135,9 +139,13 @@ export class OpenWorldPanel {
       onPlayerMove: next => {
         if (!this.noteManualInput()) return false;
         const accepted = this.simulation.movePartner(next);
-        // Camera movement is immediate; HTML updates are limited to 10Hz.
+        // The render store polls positions separately. Rebuilding the full HUD and
+        // scene here duplicated that work on the input path and stalled movement.
         const now = performance.now();
-        if (accepted && now - this.lastMovementRefresh >= 100) { this.lastMovementRefresh = now; this.refresh(); }
+        if (accepted && now - this.lastMovementRefresh >= 100) {
+          this.lastMovementRefresh = now;
+          this.html('#world-position', `${next.x.toFixed(0)}, ${next.z.toFixed(0)}`);
+        }
         return accepted;
       },
       onSelect: id => { if (id?.startsWith('companion:')) return; this.manualIdleSeconds = 0; this.simulation.selectWild(id, true); this.options.changed(); this.refresh(); },
@@ -194,6 +202,17 @@ export class OpenWorldPanel {
     });
     this.button('#world-box-open').onclick = () => void this.openBox();
     this.button('#world-box-close').onclick = () => this.closeBox();
+    this.button('#world-trainer-open').onclick = () => this.openTrainerBattles();
+    this.button('#world-trainer-close').onclick = () => this.host!.querySelector<HTMLDialogElement>('#world-trainer-dialog')!.close();
+    this.host.querySelector('#world-trainer-list')!.addEventListener('click', event => {
+      const button = (event.target as Element).closest<HTMLButtonElement>('[data-trainer-battle]');
+      if (!button || button.disabled) return;
+      if (this.simulation.challengeFieldTrainerById(button.dataset.trainerBattle!)) {
+        this.host!.querySelector<HTMLDialogElement>('#world-trainer-dialog')!.close();
+        this.paused = false; this.manualMovementActive = false;
+        this.options.changed(); this.refresh();
+      }
+    });
     this.host.querySelector<HTMLDialogElement>('#world-box-dialog')!.addEventListener('cancel', event => { event.preventDefault(); this.closeBox(); });
     this.button('#world-chat-login').onclick = () => this.options.openAccount?.();
     const multiplayerPanel = this.host.querySelector<HTMLElement>('.world-multiplayer')!;
@@ -548,6 +567,19 @@ export class OpenWorldPanel {
     svg.onkeydown = event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); navigate(event.target as Element); } };
   }
 
+  private openTrainerBattles(): void {
+    const world = this.simulation, game = this.options.game;
+    const location = world.locationAt(world.player.x, world.player.z);
+    const trainers = fieldTrainersAt(world.regionId, location.id);
+    const blocked = Boolean(game.battle || game.captureOffer || !game.player.team.some(monster => monster.hp > 0));
+    this.html('#world-trainer-description', `${escape(location.name)}의 상대에게 도전하세요. 승리하면 경험치와 상금을 받습니다.`);
+    this.html('#world-trainer-list', trainers.length ? trainers.map(trainer => {
+      const defeated = game.defeatedFieldTrainers?.includes(trainer.id);
+      return `<article class="world-trainer-card"><div><strong>${escape(trainer.name)}</strong><small>${escape(trainer.trainerClass)} · ${trainer.trainerOrigin === 'source' ? '크리스탈 원본 편성' : '게임용 추가 대전'}</small><p>${trainer.team.map(([id, level]) => `${escape(getSpecies(id).name)} Lv.${level}`).join(' · ')}</p><small>상금 ${trainer.reward.toLocaleString()}원</small></div><button data-trainer-battle="${escape(trainer.id)}" ${defeated || blocked ? 'disabled' : ''}>${defeated ? '승리 완료' : '도전'}</button></article>`;
+    }).join('') : '<p class="world-trainer-empty">이 구역에는 대전 상대가 없습니다. 가까운 마을이나 도로에서 도전하세요.</p>');
+    this.host!.querySelector<HTMLDialogElement>('#world-trainer-dialog')!.showModal();
+  }
+
   refresh(): void {
     this.options.musicChanged?.();
     if (!this.host?.querySelector('#ow-host')) return;
@@ -558,7 +590,7 @@ export class OpenWorldPanel {
     this.previousBattle = battle;
     this.multiplayer?.update(this.presence());
     this.renderRealtime();
-    const campaignTrainer = battle?.trainerId ? CAMPAIGN_TRAINERS.find(item => item.id === battle.trainerId) : undefined;
+    const campaignTrainer = battle?.trainerId ? getFieldTrainer(battle.trainerId) ?? CAMPAIGN_TRAINERS.find(item => item.id === battle.trainerId) : undefined;
     const host = this.host.querySelector<HTMLElement>('#ow-host')!;
     host.dataset.runtime = 'gaesup-world'; host.dataset.graphId = this.options.graph.id;
     host.dataset.region = world.regionId;
@@ -638,6 +670,7 @@ export class OpenWorldPanel {
     this.button('#world-potion').disabled = !battle || game.inventory.potion <= 0 || lead.hp <= 0 || lead.hp >= lead.stats.hp;
     this.button('#world-run').disabled = !battle?.canRun;
     this.button('#world-heal').disabled = Boolean(battle);
+    this.button('#world-trainer-open').disabled = Boolean(battle || offer);
     this.button('#world-pause').textContent = this.paused ? '▶ 계속 탐험' : 'Ⅱ 일시 정지';
     this.input('#world-auto-catch').checked = world.autoCapture;
     this.input('#world-exp-share').checked = game.experienceShare !== false;
@@ -663,7 +696,7 @@ export class OpenWorldPanel {
       if (this.htmlCache.get(button) !== content) { button.innerHTML = content; this.htmlCache.set(button, content); }
     }
     const guide = this.destinationGuide();
-    this.html('#world-next-guide', `<span class="world-guide-symbol" aria-hidden="true">➤</span><span><small>길안내${guide.recommendedLevel ? ` · 권장 Lv.${guide.recommendedLevel}` : ''}</small><strong>${escape(guide.title)}</strong><span>${escape(guide.detail)}</span></span><b aria-hidden="true">↗</b>`);
+    this.html('#world-next-guide', `<span class="world-guide-symbol" aria-hidden="true">›</span><span><small>길안내${guide.recommendedLevel ? ` · 권장 Lv.${guide.recommendedLevel}` : ''}</small><strong>${escape(guide.title)}</strong><span>${escape(guide.detail)}</span></span><b aria-hidden="true">지도</b>`);
     this.host.querySelector<HTMLElement>('#world-next-guide')!.dataset.status = guide.status;
     this.minimap(); this.renderer?.update();
   }

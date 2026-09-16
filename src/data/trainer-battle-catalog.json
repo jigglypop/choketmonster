@@ -1,0 +1,5994 @@
+[
+  {
+    "id": "crystal-bug-catcher-bug-catcher-benny",
+    "region": "johto",
+    "locationId": "azalea",
+    "team": [
+      [
+        13,
+        7
+      ],
+      [
+        14,
+        9
+      ],
+      [
+        15,
+        12
+      ]
+    ],
+    "reward": 192
+  },
+  {
+    "id": "crystal-bug-catcher-al",
+    "region": "johto",
+    "locationId": "azalea",
+    "team": [
+      [
+        10,
+        12
+      ],
+      [
+        13,
+        12
+      ]
+    ],
+    "reward": 192
+  },
+  {
+    "id": "crystal-bug-catcher-josh",
+    "region": "johto",
+    "locationId": "azalea",
+    "team": [
+      [
+        46,
+        13
+      ]
+    ],
+    "reward": 208
+  },
+  {
+    "id": "crystal-twins-amyandmay1",
+    "region": "johto",
+    "locationId": "azalea",
+    "team": [
+      [
+        167,
+        10
+      ],
+      [
+        165,
+        10
+      ]
+    ],
+    "reward": 160
+  },
+  {
+    "id": "crystal-twins-amyandmay2",
+    "region": "johto",
+    "locationId": "azalea",
+    "team": [
+      [
+        165,
+        10
+      ],
+      [
+        167,
+        10
+      ]
+    ],
+    "reward": 160
+  },
+  {
+    "id": "crystal-cooltrainerm-mike",
+    "region": "johto",
+    "locationId": "blackthorn",
+    "team": [
+      [
+        148,
+        37
+      ]
+    ],
+    "reward": 592
+  },
+  {
+    "id": "crystal-cooltrainerm-paul",
+    "region": "johto",
+    "locationId": "blackthorn",
+    "team": [
+      [
+        147,
+        34
+      ],
+      [
+        147,
+        34
+      ],
+      [
+        147,
+        34
+      ]
+    ],
+    "reward": 544
+  },
+  {
+    "id": "crystal-cooltrainerf-lola",
+    "region": "johto",
+    "locationId": "blackthorn",
+    "team": [
+      [
+        147,
+        34
+      ],
+      [
+        148,
+        36
+      ]
+    ],
+    "reward": 576
+  },
+  {
+    "id": "crystal-cooltrainerm-cody",
+    "region": "johto",
+    "locationId": "blackthorn",
+    "team": [
+      [
+        116,
+        34
+      ],
+      [
+        117,
+        36
+      ]
+    ],
+    "reward": 576
+  },
+  {
+    "id": "crystal-cooltrainerf-fran",
+    "region": "johto",
+    "locationId": "blackthorn",
+    "team": [
+      [
+        117,
+        37
+      ]
+    ],
+    "reward": 592
+  },
+  {
+    "id": "crystal-blackbelt-t-yoshi",
+    "region": "johto",
+    "locationId": "cianwood",
+    "team": [
+      [
+        106,
+        27
+      ]
+    ],
+    "reward": 432
+  },
+  {
+    "id": "crystal-blackbelt-t-lao",
+    "region": "johto",
+    "locationId": "cianwood",
+    "team": [
+      [
+        107,
+        27
+      ]
+    ],
+    "reward": 432
+  },
+  {
+    "id": "crystal-blackbelt-t-nob",
+    "region": "johto",
+    "locationId": "cianwood",
+    "team": [
+      [
+        66,
+        25
+      ],
+      [
+        67,
+        25
+      ]
+    ],
+    "reward": 400
+  },
+  {
+    "id": "crystal-blackbelt-t-lung",
+    "region": "johto",
+    "locationId": "cianwood",
+    "team": [
+      [
+        56,
+        23
+      ],
+      [
+        56,
+        23
+      ],
+      [
+        57,
+        25
+      ]
+    ],
+    "reward": 400
+  },
+  {
+    "id": "crystal-cooltrainerm-darin",
+    "region": "johto",
+    "locationId": "dragons-den",
+    "team": [
+      [
+        148,
+        37
+      ]
+    ],
+    "reward": 592
+  },
+  {
+    "id": "crystal-cooltrainerf-cara",
+    "region": "johto",
+    "locationId": "dragons-den",
+    "team": [
+      [
+        116,
+        33
+      ],
+      [
+        116,
+        33
+      ],
+      [
+        117,
+        35
+      ]
+    ],
+    "reward": 560
+  },
+  {
+    "id": "crystal-twins-leaandpia1",
+    "region": "johto",
+    "locationId": "dragons-den",
+    "team": [
+      [
+        147,
+        35
+      ],
+      [
+        147,
+        35
+      ]
+    ],
+    "reward": 560
+  },
+  {
+    "id": "crystal-sage-jeffrey",
+    "region": "johto",
+    "locationId": "ecruteak",
+    "team": [
+      [
+        93,
+        22
+      ]
+    ],
+    "reward": 352
+  },
+  {
+    "id": "crystal-sage-ping",
+    "region": "johto",
+    "locationId": "ecruteak",
+    "team": [
+      [
+        92,
+        16
+      ],
+      [
+        92,
+        16
+      ],
+      [
+        92,
+        16
+      ],
+      [
+        92,
+        16
+      ],
+      [
+        92,
+        16
+      ]
+    ],
+    "reward": 256
+  },
+  {
+    "id": "crystal-medium-martha",
+    "region": "johto",
+    "locationId": "ecruteak",
+    "team": [
+      [
+        92,
+        18
+      ],
+      [
+        93,
+        20
+      ],
+      [
+        92,
+        20
+      ]
+    ],
+    "reward": 320
+  },
+  {
+    "id": "crystal-medium-grace",
+    "region": "johto",
+    "locationId": "ecruteak",
+    "team": [
+      [
+        93,
+        20
+      ],
+      [
+        93,
+        20
+      ]
+    ],
+    "reward": 320
+  },
+  {
+    "id": "crystal-lass-carrie",
+    "region": "johto",
+    "locationId": "goldenrod",
+    "team": [
+      [
+        209,
+        18
+      ]
+    ],
+    "reward": 288
+  },
+  {
+    "id": "crystal-lass-bridget",
+    "region": "johto",
+    "locationId": "goldenrod",
+    "team": [
+      [
+        39,
+        15
+      ],
+      [
+        39,
+        15
+      ],
+      [
+        39,
+        15
+      ]
+    ],
+    "reward": 240
+  },
+  {
+    "id": "crystal-beauty-victoria",
+    "region": "johto",
+    "locationId": "goldenrod",
+    "team": [
+      [
+        161,
+        9
+      ],
+      [
+        161,
+        13
+      ],
+      [
+        161,
+        17
+      ]
+    ],
+    "reward": 272
+  },
+  {
+    "id": "crystal-beauty-samantha",
+    "region": "johto",
+    "locationId": "goldenrod",
+    "team": [
+      [
+        52,
+        16
+      ],
+      [
+        52,
+        16
+      ]
+    ],
+    "reward": 256
+  },
+  {
+    "id": "crystal-super-nerd-eric",
+    "region": "johto",
+    "locationId": "goldenrod",
+    "team": [
+      [
+        88,
+        11
+      ],
+      [
+        88,
+        11
+      ]
+    ],
+    "reward": 176
+  },
+  {
+    "id": "crystal-super-nerd-teru",
+    "region": "johto",
+    "locationId": "goldenrod",
+    "team": [
+      [
+        81,
+        7
+      ],
+      [
+        100,
+        11
+      ],
+      [
+        81,
+        7
+      ],
+      [
+        81,
+        9
+      ]
+    ],
+    "reward": 176
+  },
+  {
+    "id": "crystal-pokemaniac-issac",
+    "region": "johto",
+    "locationId": "goldenrod",
+    "team": [
+      [
+        108,
+        12
+      ]
+    ],
+    "reward": 192
+  },
+  {
+    "id": "crystal-pokemaniac-donald",
+    "region": "johto",
+    "locationId": "goldenrod",
+    "team": [
+      [
+        79,
+        10
+      ],
+      [
+        79,
+        10
+      ]
+    ],
+    "reward": 160
+  },
+  {
+    "id": "crystal-burglar-duncan",
+    "region": "johto",
+    "locationId": "goldenrod",
+    "team": [
+      [
+        109,
+        23
+      ],
+      [
+        126,
+        25
+      ],
+      [
+        109,
+        23
+      ]
+    ],
+    "reward": 400
+  },
+  {
+    "id": "crystal-burglar-eddie",
+    "region": "johto",
+    "locationId": "goldenrod",
+    "team": [
+      [
+        58,
+        26
+      ],
+      [
+        109,
+        24
+      ]
+    ],
+    "reward": 416
+  },
+  {
+    "id": "crystal-gruntm-gruntm-13",
+    "region": "johto",
+    "locationId": "goldenrod",
+    "team": [
+      [
+        19,
+        27
+      ]
+    ],
+    "reward": 432
+  },
+  {
+    "id": "crystal-gruntm-gruntm-11",
+    "region": "johto",
+    "locationId": "goldenrod",
+    "team": [
+      [
+        89,
+        23
+      ],
+      [
+        109,
+        23
+      ],
+      [
+        19,
+        25
+      ]
+    ],
+    "reward": 400
+  },
+  {
+    "id": "crystal-gruntm-gruntm-25",
+    "region": "johto",
+    "locationId": "goldenrod",
+    "team": [
+      [
+        109,
+        24
+      ],
+      [
+        89,
+        24
+      ]
+    ],
+    "reward": 384
+  },
+  {
+    "id": "crystal-gruntf-gruntf-3",
+    "region": "johto",
+    "locationId": "goldenrod",
+    "team": [
+      [
+        44,
+        25
+      ],
+      [
+        44,
+        25
+      ]
+    ],
+    "reward": 400
+  },
+  {
+    "id": "crystal-gruntm-gruntm-24",
+    "region": "johto",
+    "locationId": "goldenrod",
+    "team": [
+      [
+        109,
+        25
+      ],
+      [
+        109,
+        25
+      ]
+    ],
+    "reward": 400
+  },
+  {
+    "id": "crystal-gruntm-gruntm-14",
+    "region": "johto",
+    "locationId": "goldenrod",
+    "team": [
+      [
+        20,
+        24
+      ],
+      [
+        42,
+        24
+      ]
+    ],
+    "reward": 384
+  },
+  {
+    "id": "crystal-gruntm-gruntm-15",
+    "region": "johto",
+    "locationId": "goldenrod",
+    "team": [
+      [
+        88,
+        26
+      ],
+      [
+        110,
+        23
+      ]
+    ],
+    "reward": 416
+  },
+  {
+    "id": "crystal-bug-catcher-wayne",
+    "region": "johto",
+    "locationId": "ilex-forest",
+    "team": [
+      [
+        165,
+        8
+      ],
+      [
+        46,
+        10
+      ]
+    ],
+    "reward": 160
+  },
+  {
+    "id": "crystal-fisher-andre",
+    "region": "johto",
+    "locationId": "lake-of-rage",
+    "team": [
+      [
+        130,
+        27
+      ]
+    ],
+    "reward": 432
+  },
+  {
+    "id": "crystal-fisher-raymond",
+    "region": "johto",
+    "locationId": "lake-of-rage",
+    "team": [
+      [
+        129,
+        22
+      ],
+      [
+        129,
+        22
+      ],
+      [
+        129,
+        22
+      ],
+      [
+        129,
+        22
+      ]
+    ],
+    "reward": 352
+  },
+  {
+    "id": "crystal-cooltrainerm-aaron",
+    "region": "johto",
+    "locationId": "lake-of-rage",
+    "team": [
+      [
+        2,
+        24
+      ],
+      [
+        5,
+        24
+      ],
+      [
+        8,
+        24
+      ]
+    ],
+    "reward": 384
+  },
+  {
+    "id": "crystal-cooltrainerf-lois",
+    "region": "johto",
+    "locationId": "lake-of-rage",
+    "team": [
+      [
+        188,
+        25
+      ],
+      [
+        38,
+        25
+      ]
+    ],
+    "reward": 400
+  },
+  {
+    "id": "crystal-skier-roxanne",
+    "region": "johto",
+    "locationId": "mahogany",
+    "team": [
+      [
+        124,
+        28
+      ]
+    ],
+    "reward": 448
+  },
+  {
+    "id": "crystal-boarder-ronald",
+    "region": "johto",
+    "locationId": "mahogany",
+    "team": [
+      [
+        86,
+        24
+      ],
+      [
+        87,
+        25
+      ],
+      [
+        86,
+        24
+      ]
+    ],
+    "reward": 400
+  },
+  {
+    "id": "crystal-skier-clarissa",
+    "region": "johto",
+    "locationId": "mahogany",
+    "team": [
+      [
+        87,
+        28
+      ]
+    ],
+    "reward": 448
+  },
+  {
+    "id": "crystal-boarder-brad",
+    "region": "johto",
+    "locationId": "mahogany",
+    "team": [
+      [
+        220,
+        26
+      ],
+      [
+        220,
+        26
+      ]
+    ],
+    "reward": 416
+  },
+  {
+    "id": "crystal-boarder-douglas",
+    "region": "johto",
+    "locationId": "mahogany",
+    "team": [
+      [
+        90,
+        24
+      ],
+      [
+        91,
+        25
+      ],
+      [
+        90,
+        24
+      ]
+    ],
+    "reward": 400
+  },
+  {
+    "id": "crystal-schoolboy-jack1",
+    "region": "johto",
+    "locationId": "national-park",
+    "team": [
+      [
+        43,
+        12
+      ],
+      [
+        100,
+        15
+      ]
+    ],
+    "reward": 240
+  },
+  {
+    "id": "crystal-pokefanf-beverly1",
+    "region": "johto",
+    "locationId": "national-park",
+    "team": [
+      [
+        209,
+        14
+      ]
+    ],
+    "reward": 224
+  },
+  {
+    "id": "crystal-pokefanm-william",
+    "region": "johto",
+    "locationId": "national-park",
+    "team": [
+      [
+        26,
+        14
+      ]
+    ],
+    "reward": 224
+  },
+  {
+    "id": "crystal-lass-krise",
+    "region": "johto",
+    "locationId": "national-park",
+    "team": [
+      [
+        43,
+        12
+      ],
+      [
+        104,
+        15
+      ]
+    ],
+    "reward": 240
+  },
+  {
+    "id": "crystal-sailor-huey1",
+    "region": "johto",
+    "locationId": "lighthouse",
+    "team": [
+      [
+        60,
+        18
+      ],
+      [
+        61,
+        18
+      ]
+    ],
+    "reward": 288
+  },
+  {
+    "id": "crystal-gentleman-alfred",
+    "region": "johto",
+    "locationId": "lighthouse",
+    "team": [
+      [
+        164,
+        20
+      ]
+    ],
+    "reward": 320
+  },
+  {
+    "id": "crystal-sailor-terrell",
+    "region": "johto",
+    "locationId": "lighthouse",
+    "team": [
+      [
+        61,
+        20
+      ]
+    ],
+    "reward": 320
+  },
+  {
+    "id": "crystal-gentleman-preston",
+    "region": "johto",
+    "locationId": "lighthouse",
+    "team": [
+      [
+        58,
+        18
+      ],
+      [
+        58,
+        18
+      ]
+    ],
+    "reward": 288
+  },
+  {
+    "id": "crystal-bird-keeper-theo",
+    "region": "johto",
+    "locationId": "lighthouse",
+    "team": [
+      [
+        16,
+        17
+      ],
+      [
+        16,
+        15
+      ],
+      [
+        16,
+        19
+      ],
+      [
+        16,
+        15
+      ],
+      [
+        16,
+        15
+      ]
+    ],
+    "reward": 304
+  },
+  {
+    "id": "crystal-sailor-kent",
+    "region": "johto",
+    "locationId": "lighthouse",
+    "team": [
+      [
+        98,
+        18
+      ],
+      [
+        98,
+        20
+      ]
+    ],
+    "reward": 320
+  },
+  {
+    "id": "crystal-lass-connie1",
+    "region": "johto",
+    "locationId": "lighthouse",
+    "team": [
+      [
+        183,
+        21
+      ]
+    ],
+    "reward": 336
+  },
+  {
+    "id": "crystal-sailor-ernest",
+    "region": "johto",
+    "locationId": "lighthouse",
+    "team": [
+      [
+        66,
+        18
+      ],
+      [
+        66,
+        18
+      ],
+      [
+        61,
+        18
+      ]
+    ],
+    "reward": 288
+  },
+  {
+    "id": "crystal-bird-keeper-denis",
+    "region": "johto",
+    "locationId": "lighthouse",
+    "team": [
+      [
+        21,
+        18
+      ],
+      [
+        22,
+        20
+      ],
+      [
+        21,
+        18
+      ]
+    ],
+    "reward": 320
+  },
+  {
+    "id": "crystal-cooltrainerm-blake",
+    "region": "johto",
+    "locationId": "route-27",
+    "team": [
+      [
+        82,
+        33
+      ],
+      [
+        195,
+        31
+      ],
+      [
+        102,
+        31
+      ]
+    ],
+    "reward": 528
+  },
+  {
+    "id": "crystal-cooltrainerm-brian",
+    "region": "johto",
+    "locationId": "route-27",
+    "team": [
+      [
+        28,
+        35
+      ]
+    ],
+    "reward": 560
+  },
+  {
+    "id": "crystal-cooltrainerf-reena1",
+    "region": "johto",
+    "locationId": "route-27",
+    "team": [
+      [
+        121,
+        31
+      ],
+      [
+        31,
+        33
+      ],
+      [
+        121,
+        31
+      ]
+    ],
+    "reward": 528
+  },
+  {
+    "id": "crystal-cooltrainerf-megan",
+    "region": "johto",
+    "locationId": "route-27",
+    "team": [
+      [
+        1,
+        32
+      ],
+      [
+        2,
+        32
+      ],
+      [
+        3,
+        32
+      ]
+    ],
+    "reward": 512
+  },
+  {
+    "id": "crystal-psychic-t-gilbert",
+    "region": "johto",
+    "locationId": "route-27",
+    "team": [
+      [
+        121,
+        30
+      ],
+      [
+        102,
+        30
+      ],
+      [
+        203,
+        34
+      ]
+    ],
+    "reward": 544
+  },
+  {
+    "id": "crystal-bird-keeper-jose2",
+    "region": "johto",
+    "locationId": "route-27",
+    "team": [
+      [
+        83,
+        34
+      ]
+    ],
+    "reward": 544
+  },
+  {
+    "id": "crystal-youngster-joey1",
+    "region": "johto",
+    "locationId": "route-30",
+    "team": [
+      [
+        19,
+        4
+      ]
+    ],
+    "reward": 64
+  },
+  {
+    "id": "crystal-youngster-mikey",
+    "region": "johto",
+    "locationId": "route-30",
+    "team": [
+      [
+        16,
+        2
+      ],
+      [
+        19,
+        4
+      ]
+    ],
+    "reward": 64
+  },
+  {
+    "id": "crystal-bug-catcher-don",
+    "region": "johto",
+    "locationId": "route-30",
+    "team": [
+      [
+        10,
+        3
+      ],
+      [
+        10,
+        3
+      ]
+    ],
+    "reward": 48
+  },
+  {
+    "id": "crystal-bug-catcher-wade1",
+    "region": "johto",
+    "locationId": "route-31",
+    "team": [
+      [
+        10,
+        2
+      ],
+      [
+        10,
+        2
+      ],
+      [
+        13,
+        3
+      ],
+      [
+        10,
+        2
+      ]
+    ],
+    "reward": 48
+  },
+  {
+    "id": "crystal-fisher-justin",
+    "region": "johto",
+    "locationId": "route-32",
+    "team": [
+      [
+        129,
+        5
+      ],
+      [
+        129,
+        5
+      ],
+      [
+        129,
+        15
+      ],
+      [
+        129,
+        5
+      ]
+    ],
+    "reward": 240
+  },
+  {
+    "id": "crystal-fisher-ralph1",
+    "region": "johto",
+    "locationId": "route-32",
+    "team": [
+      [
+        118,
+        10
+      ]
+    ],
+    "reward": 160
+  },
+  {
+    "id": "crystal-fisher-henry",
+    "region": "johto",
+    "locationId": "route-32",
+    "team": [
+      [
+        60,
+        8
+      ],
+      [
+        60,
+        8
+      ]
+    ],
+    "reward": 128
+  },
+  {
+    "id": "crystal-youngster-albert",
+    "region": "johto",
+    "locationId": "route-32",
+    "team": [
+      [
+        19,
+        6
+      ],
+      [
+        41,
+        8
+      ]
+    ],
+    "reward": 128
+  },
+  {
+    "id": "crystal-youngster-gordon",
+    "region": "johto",
+    "locationId": "route-32",
+    "team": [
+      [
+        194,
+        10
+      ]
+    ],
+    "reward": 160
+  },
+  {
+    "id": "crystal-camper-roland",
+    "region": "johto",
+    "locationId": "route-32",
+    "team": [
+      [
+        32,
+        9
+      ]
+    ],
+    "reward": 144
+  },
+  {
+    "id": "crystal-picnicker-liz1",
+    "region": "johto",
+    "locationId": "route-32",
+    "team": [
+      [
+        29,
+        9
+      ]
+    ],
+    "reward": 144
+  },
+  {
+    "id": "crystal-bird-keeper-peter",
+    "region": "johto",
+    "locationId": "route-32",
+    "team": [
+      [
+        16,
+        6
+      ],
+      [
+        16,
+        6
+      ],
+      [
+        21,
+        8
+      ]
+    ],
+    "reward": 128
+  },
+  {
+    "id": "crystal-hiker-anthony2",
+    "region": "johto",
+    "locationId": "route-33",
+    "team": [
+      [
+        74,
+        11
+      ],
+      [
+        66,
+        11
+      ]
+    ],
+    "reward": 176
+  },
+  {
+    "id": "crystal-camper-todd1",
+    "region": "johto",
+    "locationId": "route-34",
+    "team": [
+      [
+        54,
+        14
+      ]
+    ],
+    "reward": 224
+  },
+  {
+    "id": "crystal-youngster-samuel",
+    "region": "johto",
+    "locationId": "route-34",
+    "team": [
+      [
+        19,
+        7
+      ],
+      [
+        27,
+        10
+      ],
+      [
+        21,
+        8
+      ],
+      [
+        21,
+        8
+      ]
+    ],
+    "reward": 160
+  },
+  {
+    "id": "crystal-youngster-ian",
+    "region": "johto",
+    "locationId": "route-34",
+    "team": [
+      [
+        56,
+        10
+      ],
+      [
+        50,
+        12
+      ]
+    ],
+    "reward": 192
+  },
+  {
+    "id": "crystal-picnicker-gina1",
+    "region": "johto",
+    "locationId": "route-34",
+    "team": [
+      [
+        187,
+        9
+      ],
+      [
+        187,
+        9
+      ],
+      [
+        1,
+        12
+      ]
+    ],
+    "reward": 192
+  },
+  {
+    "id": "crystal-pokefanm-brandon",
+    "region": "johto",
+    "locationId": "route-34",
+    "team": [
+      [
+        209,
+        13
+      ]
+    ],
+    "reward": 208
+  },
+  {
+    "id": "crystal-cooltrainerf-irene",
+    "region": "johto",
+    "locationId": "route-34",
+    "team": [
+      [
+        118,
+        22
+      ],
+      [
+        119,
+        24
+      ]
+    ],
+    "reward": 384
+  },
+  {
+    "id": "crystal-cooltrainerf-jenn",
+    "region": "johto",
+    "locationId": "route-34",
+    "team": [
+      [
+        120,
+        24
+      ],
+      [
+        121,
+        26
+      ]
+    ],
+    "reward": 416
+  },
+  {
+    "id": "crystal-cooltrainerf-kate",
+    "region": "johto",
+    "locationId": "route-34",
+    "team": [
+      [
+        90,
+        26
+      ],
+      [
+        91,
+        28
+      ]
+    ],
+    "reward": 448
+  },
+  {
+    "id": "crystal-camper-ivan",
+    "region": "johto",
+    "locationId": "route-35",
+    "team": [
+      [
+        50,
+        10
+      ],
+      [
+        41,
+        10
+      ],
+      [
+        50,
+        14
+      ]
+    ],
+    "reward": 224
+  },
+  {
+    "id": "crystal-camper-elliot",
+    "region": "johto",
+    "locationId": "route-35",
+    "team": [
+      [
+        27,
+        13
+      ],
+      [
+        183,
+        15
+      ]
+    ],
+    "reward": 240
+  },
+  {
+    "id": "crystal-picnicker-brooke",
+    "region": "johto",
+    "locationId": "route-35",
+    "team": [
+      [
+        25,
+        16
+      ]
+    ],
+    "reward": 256
+  },
+  {
+    "id": "crystal-picnicker-kim",
+    "region": "johto",
+    "locationId": "route-35",
+    "team": [
+      [
+        37,
+        15
+      ]
+    ],
+    "reward": 240
+  },
+  {
+    "id": "crystal-bird-keeper-bryan",
+    "region": "johto",
+    "locationId": "route-35",
+    "team": [
+      [
+        16,
+        12
+      ],
+      [
+        17,
+        14
+      ]
+    ],
+    "reward": 224
+  },
+  {
+    "id": "crystal-firebreather-walt",
+    "region": "johto",
+    "locationId": "route-35",
+    "team": [
+      [
+        126,
+        11
+      ],
+      [
+        126,
+        13
+      ]
+    ],
+    "reward": 208
+  },
+  {
+    "id": "crystal-bug-catcher-arnie1",
+    "region": "johto",
+    "locationId": "route-35",
+    "team": [
+      [
+        48,
+        15
+      ]
+    ],
+    "reward": 240
+  },
+  {
+    "id": "crystal-juggler-irwin1",
+    "region": "johto",
+    "locationId": "route-35",
+    "team": [
+      [
+        100,
+        2
+      ],
+      [
+        100,
+        6
+      ],
+      [
+        100,
+        10
+      ],
+      [
+        100,
+        14
+      ]
+    ],
+    "reward": 224
+  },
+  {
+    "id": "crystal-psychic-t-mark",
+    "region": "johto",
+    "locationId": "route-36",
+    "team": [
+      [
+        63,
+        13
+      ],
+      [
+        63,
+        13
+      ],
+      [
+        64,
+        15
+      ]
+    ],
+    "reward": 240
+  },
+  {
+    "id": "crystal-schoolboy-alan1",
+    "region": "johto",
+    "locationId": "route-36",
+    "team": [
+      [
+        114,
+        16
+      ]
+    ],
+    "reward": 256
+  },
+  {
+    "id": "crystal-twins-annandanne1",
+    "region": "johto",
+    "locationId": "route-37",
+    "team": [
+      [
+        35,
+        16
+      ],
+      [
+        39,
+        16
+      ]
+    ],
+    "reward": 256
+  },
+  {
+    "id": "crystal-twins-annandanne2",
+    "region": "johto",
+    "locationId": "route-37",
+    "team": [
+      [
+        39,
+        16
+      ],
+      [
+        35,
+        16
+      ]
+    ],
+    "reward": 256
+  },
+  {
+    "id": "crystal-psychic-t-greg",
+    "region": "johto",
+    "locationId": "route-37",
+    "team": [
+      [
+        96,
+        17
+      ]
+    ],
+    "reward": 272
+  },
+  {
+    "id": "crystal-schoolboy-chad1",
+    "region": "johto",
+    "locationId": "route-38",
+    "team": [
+      [
+        122,
+        19
+      ]
+    ],
+    "reward": 304
+  },
+  {
+    "id": "crystal-lass-dana1",
+    "region": "johto",
+    "locationId": "route-38",
+    "team": [
+      [
+        180,
+        18
+      ],
+      [
+        54,
+        18
+      ]
+    ],
+    "reward": 288
+  },
+  {
+    "id": "crystal-bird-keeper-toby",
+    "region": "johto",
+    "locationId": "route-38",
+    "team": [
+      [
+        84,
+        15
+      ],
+      [
+        84,
+        16
+      ],
+      [
+        84,
+        17
+      ]
+    ],
+    "reward": 272
+  },
+  {
+    "id": "crystal-beauty-valerie",
+    "region": "johto",
+    "locationId": "route-38",
+    "team": [
+      [
+        187,
+        17
+      ],
+      [
+        188,
+        17
+      ]
+    ],
+    "reward": 272
+  },
+  {
+    "id": "crystal-sailor-harry",
+    "region": "johto",
+    "locationId": "route-38",
+    "team": [
+      [
+        194,
+        19
+      ]
+    ],
+    "reward": 304
+  },
+  {
+    "id": "crystal-beauty-olivia",
+    "region": "johto",
+    "locationId": "route-38",
+    "team": [
+      [
+        222,
+        19
+      ]
+    ],
+    "reward": 304
+  },
+  {
+    "id": "crystal-sailor-eugene",
+    "region": "johto",
+    "locationId": "route-39",
+    "team": [
+      [
+        61,
+        17
+      ],
+      [
+        20,
+        17
+      ],
+      [
+        98,
+        19
+      ]
+    ],
+    "reward": 304
+  },
+  {
+    "id": "crystal-pokefanm-derek1",
+    "region": "johto",
+    "locationId": "route-39",
+    "team": [
+      [
+        25,
+        17
+      ]
+    ],
+    "reward": 272
+  },
+  {
+    "id": "crystal-pokefanf-ruth",
+    "region": "johto",
+    "locationId": "route-39",
+    "team": [
+      [
+        25,
+        17
+      ]
+    ],
+    "reward": 272
+  },
+  {
+    "id": "crystal-psychic-t-norman",
+    "region": "johto",
+    "locationId": "route-39",
+    "team": [
+      [
+        79,
+        17
+      ],
+      [
+        79,
+        20
+      ]
+    ],
+    "reward": 320
+  },
+  {
+    "id": "crystal-swimmerm-simon",
+    "region": "johto",
+    "locationId": "route-40",
+    "team": [
+      [
+        72,
+        20
+      ],
+      [
+        72,
+        20
+      ]
+    ],
+    "reward": 320
+  },
+  {
+    "id": "crystal-swimmerm-randall",
+    "region": "johto",
+    "locationId": "route-40",
+    "team": [
+      [
+        90,
+        18
+      ],
+      [
+        8,
+        20
+      ],
+      [
+        90,
+        18
+      ]
+    ],
+    "reward": 320
+  },
+  {
+    "id": "crystal-swimmerf-elaine",
+    "region": "johto",
+    "locationId": "route-40",
+    "team": [
+      [
+        120,
+        21
+      ]
+    ],
+    "reward": 336
+  },
+  {
+    "id": "crystal-swimmerf-paula",
+    "region": "johto",
+    "locationId": "route-40",
+    "team": [
+      [
+        120,
+        19
+      ],
+      [
+        90,
+        19
+      ]
+    ],
+    "reward": 304
+  },
+  {
+    "id": "crystal-swimmerm-charlie",
+    "region": "johto",
+    "locationId": "route-41",
+    "team": [
+      [
+        90,
+        21
+      ],
+      [
+        72,
+        19
+      ],
+      [
+        73,
+        19
+      ]
+    ],
+    "reward": 336
+  },
+  {
+    "id": "crystal-swimmerm-george",
+    "region": "johto",
+    "locationId": "route-41",
+    "team": [
+      [
+        72,
+        16
+      ],
+      [
+        72,
+        17
+      ],
+      [
+        72,
+        16
+      ],
+      [
+        120,
+        19
+      ],
+      [
+        72,
+        17
+      ],
+      [
+        223,
+        19
+      ]
+    ],
+    "reward": 304
+  },
+  {
+    "id": "crystal-swimmerm-berke",
+    "region": "johto",
+    "locationId": "route-41",
+    "team": [
+      [
+        211,
+        23
+      ]
+    ],
+    "reward": 368
+  },
+  {
+    "id": "crystal-swimmerm-kirk",
+    "region": "johto",
+    "locationId": "route-41",
+    "team": [
+      [
+        130,
+        20
+      ],
+      [
+        130,
+        20
+      ]
+    ],
+    "reward": 320
+  },
+  {
+    "id": "crystal-swimmerm-mathew",
+    "region": "johto",
+    "locationId": "route-41",
+    "team": [
+      [
+        98,
+        23
+      ]
+    ],
+    "reward": 368
+  },
+  {
+    "id": "crystal-swimmerf-kaylee",
+    "region": "johto",
+    "locationId": "route-41",
+    "team": [
+      [
+        118,
+        18
+      ],
+      [
+        118,
+        20
+      ],
+      [
+        119,
+        20
+      ]
+    ],
+    "reward": 320
+  },
+  {
+    "id": "crystal-swimmerf-susie",
+    "region": "johto",
+    "locationId": "route-41",
+    "team": [
+      [
+        54,
+        20
+      ],
+      [
+        118,
+        22
+      ]
+    ],
+    "reward": 352
+  },
+  {
+    "id": "crystal-swimmerf-denise",
+    "region": "johto",
+    "locationId": "route-41",
+    "team": [
+      [
+        86,
+        22
+      ]
+    ],
+    "reward": 352
+  },
+  {
+    "id": "crystal-swimmerf-kara",
+    "region": "johto",
+    "locationId": "route-41",
+    "team": [
+      [
+        120,
+        20
+      ],
+      [
+        121,
+        20
+      ]
+    ],
+    "reward": 320
+  },
+  {
+    "id": "crystal-swimmerf-wendy",
+    "region": "johto",
+    "locationId": "route-41",
+    "team": [
+      [
+        116,
+        21
+      ],
+      [
+        116,
+        21
+      ]
+    ],
+    "reward": 336
+  },
+  {
+    "id": "crystal-fisher-tully1",
+    "region": "johto",
+    "locationId": "route-42",
+    "team": [
+      [
+        211,
+        18
+      ]
+    ],
+    "reward": 288
+  },
+  {
+    "id": "crystal-hiker-benjamin",
+    "region": "johto",
+    "locationId": "route-42",
+    "team": [
+      [
+        50,
+        14
+      ],
+      [
+        74,
+        14
+      ],
+      [
+        51,
+        16
+      ]
+    ],
+    "reward": 256
+  },
+  {
+    "id": "crystal-pokemaniac-shane",
+    "region": "johto",
+    "locationId": "route-42",
+    "team": [
+      [
+        30,
+        16
+      ],
+      [
+        33,
+        16
+      ]
+    ],
+    "reward": 256
+  },
+  {
+    "id": "crystal-pokemaniac-ben",
+    "region": "johto",
+    "locationId": "route-43",
+    "team": [
+      [
+        80,
+        19
+      ]
+    ],
+    "reward": 304
+  },
+  {
+    "id": "crystal-pokemaniac-brent1",
+    "region": "johto",
+    "locationId": "route-43",
+    "team": [
+      [
+        108,
+        19
+      ]
+    ],
+    "reward": 304
+  },
+  {
+    "id": "crystal-pokemaniac-ron",
+    "region": "johto",
+    "locationId": "route-43",
+    "team": [
+      [
+        34,
+        19
+      ]
+    ],
+    "reward": 304
+  },
+  {
+    "id": "crystal-fisher-marvin",
+    "region": "johto",
+    "locationId": "route-43",
+    "team": [
+      [
+        129,
+        10
+      ],
+      [
+        130,
+        10
+      ],
+      [
+        129,
+        15
+      ],
+      [
+        130,
+        15
+      ]
+    ],
+    "reward": 240
+  },
+  {
+    "id": "crystal-picnicker-tiffany3",
+    "region": "johto",
+    "locationId": "route-43",
+    "team": [
+      [
+        35,
+        20
+      ]
+    ],
+    "reward": 320
+  },
+  {
+    "id": "crystal-camper-spencer",
+    "region": "johto",
+    "locationId": "route-43",
+    "team": [
+      [
+        27,
+        17
+      ],
+      [
+        28,
+        17
+      ],
+      [
+        41,
+        19
+      ]
+    ],
+    "reward": 304
+  },
+  {
+    "id": "crystal-fisher-wilton1",
+    "region": "johto",
+    "locationId": "route-44",
+    "team": [
+      [
+        118,
+        23
+      ],
+      [
+        118,
+        23
+      ],
+      [
+        119,
+        25
+      ]
+    ],
+    "reward": 400
+  },
+  {
+    "id": "crystal-fisher-edgar",
+    "region": "johto",
+    "locationId": "route-44",
+    "team": [
+      [
+        223,
+        25
+      ],
+      [
+        223,
+        25
+      ]
+    ],
+    "reward": 400
+  },
+  {
+    "id": "crystal-psychic-t-phil",
+    "region": "johto",
+    "locationId": "route-44",
+    "team": [
+      [
+        177,
+        24
+      ],
+      [
+        64,
+        26
+      ]
+    ],
+    "reward": 416
+  },
+  {
+    "id": "crystal-pokemaniac-zach",
+    "region": "johto",
+    "locationId": "route-44",
+    "team": [
+      [
+        111,
+        27
+      ]
+    ],
+    "reward": 432
+  },
+  {
+    "id": "crystal-bird-keeper-vance1",
+    "region": "johto",
+    "locationId": "route-44",
+    "team": [
+      [
+        17,
+        25
+      ],
+      [
+        17,
+        25
+      ]
+    ],
+    "reward": 400
+  },
+  {
+    "id": "crystal-cooltrainerm-allen",
+    "region": "johto",
+    "locationId": "route-44",
+    "team": [
+      [
+        5,
+        27
+      ]
+    ],
+    "reward": 432
+  },
+  {
+    "id": "crystal-cooltrainerf-cybil",
+    "region": "johto",
+    "locationId": "route-44",
+    "team": [
+      [
+        12,
+        25
+      ],
+      [
+        182,
+        25
+      ]
+    ],
+    "reward": 400
+  },
+  {
+    "id": "crystal-hiker-erik",
+    "region": "johto",
+    "locationId": "route-45",
+    "team": [
+      [
+        66,
+        24
+      ],
+      [
+        75,
+        27
+      ],
+      [
+        66,
+        27
+      ]
+    ],
+    "reward": 432
+  },
+  {
+    "id": "crystal-hiker-michael",
+    "region": "johto",
+    "locationId": "route-45",
+    "team": [
+      [
+        74,
+        25
+      ],
+      [
+        75,
+        25
+      ],
+      [
+        76,
+        25
+      ]
+    ],
+    "reward": 400
+  },
+  {
+    "id": "crystal-hiker-parry3",
+    "region": "johto",
+    "locationId": "route-45",
+    "team": [
+      [
+        95,
+        29
+      ]
+    ],
+    "reward": 464
+  },
+  {
+    "id": "crystal-hiker-timothy",
+    "region": "johto",
+    "locationId": "route-45",
+    "team": [
+      [
+        50,
+        27
+      ],
+      [
+        51,
+        27
+      ]
+    ],
+    "reward": 432
+  },
+  {
+    "id": "crystal-blackbelt-t-kenji3",
+    "region": "johto",
+    "locationId": "route-45",
+    "team": [
+      [
+        67,
+        28
+      ]
+    ],
+    "reward": 448
+  },
+  {
+    "id": "crystal-cooltrainerm-ryan",
+    "region": "johto",
+    "locationId": "route-45",
+    "team": [
+      [
+        18,
+        25
+      ],
+      [
+        125,
+        27
+      ]
+    ],
+    "reward": 432
+  },
+  {
+    "id": "crystal-cooltrainerf-kelly",
+    "region": "johto",
+    "locationId": "route-45",
+    "team": [
+      [
+        183,
+        27
+      ],
+      [
+        8,
+        24
+      ],
+      [
+        8,
+        24
+      ]
+    ],
+    "reward": 432
+  },
+  {
+    "id": "crystal-hiker-bailey",
+    "region": "johto",
+    "locationId": "route-46",
+    "team": [
+      [
+        74,
+        13
+      ],
+      [
+        74,
+        13
+      ],
+      [
+        74,
+        13
+      ],
+      [
+        74,
+        13
+      ],
+      [
+        74,
+        13
+      ]
+    ],
+    "reward": 208
+  },
+  {
+    "id": "crystal-camper-ted",
+    "region": "johto",
+    "locationId": "route-46",
+    "team": [
+      [
+        56,
+        17
+      ]
+    ],
+    "reward": 272
+  },
+  {
+    "id": "crystal-picnicker-erin1",
+    "region": "johto",
+    "locationId": "route-46",
+    "team": [
+      [
+        77,
+        16
+      ],
+      [
+        77,
+        16
+      ]
+    ],
+    "reward": 256
+  },
+  {
+    "id": "crystal-psychic-t-nathan",
+    "region": "johto",
+    "locationId": "ruins-of-alph",
+    "team": [
+      [
+        203,
+        26
+      ]
+    ],
+    "reward": 416
+  },
+  {
+    "id": "crystal-gruntm-gruntm-29",
+    "region": "johto",
+    "locationId": "slowpoke-well",
+    "team": [
+      [
+        19,
+        9
+      ],
+      [
+        19,
+        9
+      ]
+    ],
+    "reward": 144
+  },
+  {
+    "id": "crystal-gruntm-gruntm-1",
+    "region": "johto",
+    "locationId": "slowpoke-well",
+    "team": [
+      [
+        109,
+        14
+      ]
+    ],
+    "reward": 224
+  },
+  {
+    "id": "crystal-gruntm-gruntm-2",
+    "region": "johto",
+    "locationId": "slowpoke-well",
+    "team": [
+      [
+        19,
+        7
+      ],
+      [
+        41,
+        9
+      ],
+      [
+        41,
+        9
+      ]
+    ],
+    "reward": 144
+  },
+  {
+    "id": "crystal-gruntf-gruntf-1",
+    "region": "johto",
+    "locationId": "slowpoke-well",
+    "team": [
+      [
+        41,
+        9
+      ],
+      [
+        23,
+        11
+      ]
+    ],
+    "reward": 176
+  },
+  {
+    "id": "crystal-sage-chow",
+    "region": "johto",
+    "locationId": "sprout-tower",
+    "team": [
+      [
+        69,
+        3
+      ],
+      [
+        69,
+        3
+      ],
+      [
+        69,
+        3
+      ]
+    ],
+    "reward": 48
+  },
+  {
+    "id": "crystal-sage-nico",
+    "region": "johto",
+    "locationId": "sprout-tower",
+    "team": [
+      [
+        69,
+        3
+      ],
+      [
+        69,
+        3
+      ],
+      [
+        69,
+        3
+      ]
+    ],
+    "reward": 48
+  },
+  {
+    "id": "crystal-sage-edmond",
+    "region": "johto",
+    "locationId": "sprout-tower",
+    "team": [
+      [
+        69,
+        3
+      ],
+      [
+        69,
+        3
+      ],
+      [
+        69,
+        3
+      ]
+    ],
+    "reward": 48
+  },
+  {
+    "id": "crystal-sage-jin",
+    "region": "johto",
+    "locationId": "sprout-tower",
+    "team": [
+      [
+        69,
+        6
+      ]
+    ],
+    "reward": 96
+  },
+  {
+    "id": "crystal-sage-troy",
+    "region": "johto",
+    "locationId": "sprout-tower",
+    "team": [
+      [
+        69,
+        7
+      ],
+      [
+        163,
+        7
+      ]
+    ],
+    "reward": 112
+  },
+  {
+    "id": "crystal-sage-neal",
+    "region": "johto",
+    "locationId": "sprout-tower",
+    "team": [
+      [
+        69,
+        6
+      ]
+    ],
+    "reward": 96
+  },
+  {
+    "id": "crystal-hiker-daniel",
+    "region": "johto",
+    "locationId": "union-cave",
+    "team": [
+      [
+        95,
+        11
+      ]
+    ],
+    "reward": 176
+  },
+  {
+    "id": "crystal-pokemaniac-larry",
+    "region": "johto",
+    "locationId": "union-cave",
+    "team": [
+      [
+        79,
+        10
+      ]
+    ],
+    "reward": 160
+  },
+  {
+    "id": "crystal-hiker-russell",
+    "region": "johto",
+    "locationId": "union-cave",
+    "team": [
+      [
+        74,
+        4
+      ],
+      [
+        74,
+        6
+      ],
+      [
+        74,
+        8
+      ]
+    ],
+    "reward": 128
+  },
+  {
+    "id": "crystal-firebreather-ray",
+    "region": "johto",
+    "locationId": "union-cave",
+    "team": [
+      [
+        37,
+        9
+      ]
+    ],
+    "reward": 144
+  },
+  {
+    "id": "crystal-firebreather-bill",
+    "region": "johto",
+    "locationId": "union-cave",
+    "team": [
+      [
+        109,
+        6
+      ],
+      [
+        109,
+        6
+      ]
+    ],
+    "reward": 96
+  },
+  {
+    "id": "crystal-hiker-phillip",
+    "region": "johto",
+    "locationId": "union-cave",
+    "team": [
+      [
+        74,
+        23
+      ],
+      [
+        74,
+        23
+      ],
+      [
+        75,
+        23
+      ]
+    ],
+    "reward": 368
+  },
+  {
+    "id": "crystal-hiker-leonard",
+    "region": "johto",
+    "locationId": "union-cave",
+    "team": [
+      [
+        74,
+        23
+      ],
+      [
+        66,
+        25
+      ]
+    ],
+    "reward": 400
+  },
+  {
+    "id": "crystal-pokemaniac-andrew",
+    "region": "johto",
+    "locationId": "union-cave",
+    "team": [
+      [
+        105,
+        24
+      ],
+      [
+        105,
+        24
+      ]
+    ],
+    "reward": 384
+  },
+  {
+    "id": "crystal-pokemaniac-calvin",
+    "region": "johto",
+    "locationId": "union-cave",
+    "team": [
+      [
+        115,
+        26
+      ]
+    ],
+    "reward": 416
+  },
+  {
+    "id": "crystal-cooltrainerm-nick",
+    "region": "johto",
+    "locationId": "union-cave",
+    "team": [
+      [
+        4,
+        26
+      ],
+      [
+        7,
+        26
+      ],
+      [
+        1,
+        26
+      ]
+    ],
+    "reward": 416
+  },
+  {
+    "id": "crystal-cooltrainerf-gwen",
+    "region": "johto",
+    "locationId": "union-cave",
+    "team": [
+      [
+        133,
+        26
+      ],
+      [
+        136,
+        22
+      ],
+      [
+        134,
+        22
+      ],
+      [
+        135,
+        22
+      ]
+    ],
+    "reward": 416
+  },
+  {
+    "id": "crystal-cooltrainerf-emma",
+    "region": "johto",
+    "locationId": "union-cave",
+    "team": [
+      [
+        61,
+        28
+      ]
+    ],
+    "reward": 448
+  },
+  {
+    "id": "crystal-bird-keeper-rod",
+    "region": "johto",
+    "locationId": "violet",
+    "team": [
+      [
+        16,
+        7
+      ],
+      [
+        16,
+        7
+      ]
+    ],
+    "reward": 112
+  },
+  {
+    "id": "crystal-bird-keeper-abe",
+    "region": "johto",
+    "locationId": "violet",
+    "team": [
+      [
+        21,
+        9
+      ]
+    ],
+    "reward": 144
+  },
+  {
+    "id": "supplemental-new-bark-crystal-bug-catcher-bug-catcher-benny",
+    "region": "johto",
+    "locationId": "new-bark",
+    "team": [
+      [
+        13,
+        7
+      ],
+      [
+        14,
+        9
+      ],
+      [
+        15,
+        12
+      ]
+    ],
+    "reward": 192
+  },
+  {
+    "id": "supplemental-tohjo-falls-crystal-bug-catcher-al",
+    "region": "johto",
+    "locationId": "tohjo-falls",
+    "team": [
+      [
+        10,
+        12
+      ],
+      [
+        13,
+        12
+      ]
+    ],
+    "reward": 192
+  },
+  {
+    "id": "supplemental-mt-silver-crystal-bug-catcher-josh",
+    "region": "johto",
+    "locationId": "mt-silver",
+    "team": [
+      [
+        46,
+        13
+      ]
+    ],
+    "reward": 208
+  },
+  {
+    "id": "supplemental-route-29-crystal-twins-amyandmay1",
+    "region": "johto",
+    "locationId": "route-29",
+    "team": [
+      [
+        167,
+        10
+      ],
+      [
+        165,
+        10
+      ]
+    ],
+    "reward": 160
+  },
+  {
+    "id": "supplemental-cherrygrove-crystal-twins-amyandmay2",
+    "region": "johto",
+    "locationId": "cherrygrove",
+    "team": [
+      [
+        165,
+        10
+      ],
+      [
+        167,
+        10
+      ]
+    ],
+    "reward": 160
+  },
+  {
+    "id": "supplemental-burned-tower-crystal-cooltrainerm-mike",
+    "region": "johto",
+    "locationId": "burned-tower",
+    "team": [
+      [
+        148,
+        37
+      ]
+    ],
+    "reward": 592
+  },
+  {
+    "id": "supplemental-bell-tower-crystal-cooltrainerm-paul",
+    "region": "johto",
+    "locationId": "bell-tower",
+    "team": [
+      [
+        147,
+        34
+      ],
+      [
+        147,
+        34
+      ],
+      [
+        147,
+        34
+      ]
+    ],
+    "reward": 544
+  },
+  {
+    "id": "supplemental-olivine-crystal-cooltrainerf-lola",
+    "region": "johto",
+    "locationId": "olivine",
+    "team": [
+      [
+        147,
+        34
+      ],
+      [
+        148,
+        36
+      ]
+    ],
+    "reward": 576
+  },
+  {
+    "id": "supplemental-whirl-islands-crystal-cooltrainerm-cody",
+    "region": "johto",
+    "locationId": "whirl-islands",
+    "team": [
+      [
+        116,
+        34
+      ],
+      [
+        117,
+        36
+      ]
+    ],
+    "reward": 576
+  },
+  {
+    "id": "supplemental-mt-mortar-crystal-cooltrainerf-fran",
+    "region": "johto",
+    "locationId": "mt-mortar",
+    "team": [
+      [
+        117,
+        37
+      ]
+    ],
+    "reward": 592
+  },
+  {
+    "id": "supplemental-ice-path-crystal-blackbelt-t-yoshi",
+    "region": "johto",
+    "locationId": "ice-path",
+    "team": [
+      [
+        106,
+        27
+      ]
+    ],
+    "reward": 432
+  },
+  {
+    "id": "supplemental-dark-cave-east-crystal-blackbelt-t-lao",
+    "region": "johto",
+    "locationId": "dark-cave-east",
+    "team": [
+      [
+        107,
+        27
+      ]
+    ],
+    "reward": 432
+  },
+  {
+    "id": "supplemental-dark-cave-west-crystal-blackbelt-t-nob",
+    "region": "johto",
+    "locationId": "dark-cave-west",
+    "team": [
+      [
+        66,
+        25
+      ],
+      [
+        67,
+        25
+      ]
+    ],
+    "reward": 400
+  },
+  {
+    "id": "practice-kanto-pallet",
+    "region": "kanto",
+    "locationId": "pallet",
+    "team": [
+      [
+        16,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-kanto-route-1",
+    "region": "kanto",
+    "locationId": "route-1",
+    "team": [
+      [
+        16,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-kanto-viridian",
+    "region": "kanto",
+    "locationId": "viridian",
+    "team": [
+      [
+        16,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-kanto-route-2-south",
+    "region": "kanto",
+    "locationId": "route-2-south",
+    "team": [
+      [
+        16,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-kanto-viridian-forest",
+    "region": "kanto",
+    "locationId": "viridian-forest",
+    "team": [
+      [
+        10,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-kanto-route-2-north",
+    "region": "kanto",
+    "locationId": "route-2-north",
+    "team": [
+      [
+        16,
+        4
+      ]
+    ],
+    "reward": 160
+  },
+  {
+    "id": "practice-kanto-pewter",
+    "region": "kanto",
+    "locationId": "pewter",
+    "team": [
+      [
+        16,
+        6
+      ]
+    ],
+    "reward": 240
+  },
+  {
+    "id": "practice-kanto-route-3",
+    "region": "kanto",
+    "locationId": "route-3",
+    "team": [
+      [
+        16,
+        6
+      ]
+    ],
+    "reward": 240
+  },
+  {
+    "id": "practice-kanto-route-4",
+    "region": "kanto",
+    "locationId": "route-4",
+    "team": [
+      [
+        19,
+        8
+      ]
+    ],
+    "reward": 320
+  },
+  {
+    "id": "practice-kanto-cerulean",
+    "region": "kanto",
+    "locationId": "cerulean",
+    "team": [
+      [
+        19,
+        10
+      ],
+      [
+        21,
+        9
+      ]
+    ],
+    "reward": 400
+  },
+  {
+    "id": "practice-kanto-route-24",
+    "region": "kanto",
+    "locationId": "route-24",
+    "team": [
+      [
+        10,
+        11
+      ],
+      [
+        13,
+        10
+      ]
+    ],
+    "reward": 440
+  },
+  {
+    "id": "practice-kanto-route-25",
+    "region": "kanto",
+    "locationId": "route-25",
+    "team": [
+      [
+        16,
+        12
+      ],
+      [
+        43,
+        11
+      ]
+    ],
+    "reward": 480
+  },
+  {
+    "id": "practice-kanto-route-5",
+    "region": "kanto",
+    "locationId": "route-5",
+    "team": [
+      [
+        16,
+        12
+      ],
+      [
+        43,
+        11
+      ]
+    ],
+    "reward": 480
+  },
+  {
+    "id": "practice-kanto-saffron",
+    "region": "kanto",
+    "locationId": "saffron",
+    "team": [
+      [
+        43,
+        20
+      ],
+      [
+        52,
+        19
+      ]
+    ],
+    "reward": 800
+  },
+  {
+    "id": "practice-kanto-route-6",
+    "region": "kanto",
+    "locationId": "route-6",
+    "team": [
+      [
+        16,
+        13
+      ],
+      [
+        19,
+        12
+      ]
+    ],
+    "reward": 520
+  },
+  {
+    "id": "practice-kanto-vermilion",
+    "region": "kanto",
+    "locationId": "vermilion",
+    "team": [
+      [
+        19,
+        15
+      ],
+      [
+        21,
+        14
+      ]
+    ],
+    "reward": 600
+  },
+  {
+    "id": "practice-kanto-route-11",
+    "region": "kanto",
+    "locationId": "route-11",
+    "team": [
+      [
+        21,
+        15
+      ],
+      [
+        23,
+        14
+      ]
+    ],
+    "reward": 600
+  },
+  {
+    "id": "practice-kanto-route-12",
+    "region": "kanto",
+    "locationId": "route-12",
+    "team": [
+      [
+        16,
+        20
+      ],
+      [
+        43,
+        19
+      ]
+    ],
+    "reward": 800
+  },
+  {
+    "id": "practice-kanto-lavender",
+    "region": "kanto",
+    "locationId": "lavender",
+    "team": [
+      [
+        92,
+        18
+      ],
+      [
+        93,
+        17
+      ]
+    ],
+    "reward": 720
+  },
+  {
+    "id": "practice-kanto-route-10-south",
+    "region": "kanto",
+    "locationId": "route-10-south",
+    "team": [
+      [
+        21,
+        16
+      ],
+      [
+        23,
+        15
+      ]
+    ],
+    "reward": 640
+  },
+  {
+    "id": "practice-kanto-route-10-north",
+    "region": "kanto",
+    "locationId": "route-10-north",
+    "team": [
+      [
+        21,
+        15
+      ],
+      [
+        23,
+        14
+      ]
+    ],
+    "reward": 600
+  },
+  {
+    "id": "practice-kanto-route-9",
+    "region": "kanto",
+    "locationId": "route-9",
+    "team": [
+      [
+        19,
+        13
+      ],
+      [
+        21,
+        12
+      ]
+    ],
+    "reward": 520
+  },
+  {
+    "id": "practice-kanto-route-8",
+    "region": "kanto",
+    "locationId": "route-8",
+    "team": [
+      [
+        16,
+        18
+      ],
+      [
+        37,
+        17
+      ]
+    ],
+    "reward": 720
+  },
+  {
+    "id": "practice-kanto-route-7",
+    "region": "kanto",
+    "locationId": "route-7",
+    "team": [
+      [
+        16,
+        18
+      ],
+      [
+        37,
+        17
+      ]
+    ],
+    "reward": 720
+  },
+  {
+    "id": "practice-kanto-celadon",
+    "region": "kanto",
+    "locationId": "celadon",
+    "team": [
+      [
+        43,
+        20
+      ],
+      [
+        52,
+        19
+      ]
+    ],
+    "reward": 800
+  },
+  {
+    "id": "practice-kanto-route-16",
+    "region": "kanto",
+    "locationId": "route-16",
+    "team": [
+      [
+        19,
+        22
+      ],
+      [
+        20,
+        21
+      ]
+    ],
+    "reward": 880
+  },
+  {
+    "id": "practice-kanto-route-17",
+    "region": "kanto",
+    "locationId": "route-17",
+    "team": [
+      [
+        19,
+        24
+      ],
+      [
+        20,
+        23
+      ]
+    ],
+    "reward": 960
+  },
+  {
+    "id": "practice-kanto-route-18",
+    "region": "kanto",
+    "locationId": "route-18",
+    "team": [
+      [
+        19,
+        25
+      ],
+      [
+        20,
+        24
+      ]
+    ],
+    "reward": 1000
+  },
+  {
+    "id": "practice-kanto-fuchsia",
+    "region": "kanto",
+    "locationId": "fuchsia",
+    "team": [
+      [
+        48,
+        25
+      ],
+      [
+        84,
+        24
+      ]
+    ],
+    "reward": 1000
+  },
+  {
+    "id": "practice-kanto-route-15",
+    "region": "kanto",
+    "locationId": "route-15",
+    "team": [
+      [
+        16,
+        24
+      ],
+      [
+        43,
+        23
+      ]
+    ],
+    "reward": 960
+  },
+  {
+    "id": "practice-kanto-route-14",
+    "region": "kanto",
+    "locationId": "route-14",
+    "team": [
+      [
+        16,
+        24
+      ],
+      [
+        43,
+        23
+      ]
+    ],
+    "reward": 960
+  },
+  {
+    "id": "practice-kanto-route-13",
+    "region": "kanto",
+    "locationId": "route-13",
+    "team": [
+      [
+        16,
+        22
+      ],
+      [
+        43,
+        21
+      ]
+    ],
+    "reward": 880
+  },
+  {
+    "id": "practice-kanto-cinnabar",
+    "region": "kanto",
+    "locationId": "cinnabar",
+    "team": [
+      [
+        58,
+        32
+      ],
+      [
+        77,
+        31
+      ]
+    ],
+    "reward": 1280
+  },
+  {
+    "id": "practice-kanto-route-22",
+    "region": "kanto",
+    "locationId": "route-22",
+    "team": [
+      [
+        19,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-kanto-route-23",
+    "region": "kanto",
+    "locationId": "route-23",
+    "team": [
+      [
+        21,
+        35
+      ],
+      [
+        22,
+        34
+      ]
+    ],
+    "reward": 1400
+  },
+  {
+    "id": "practice-johto-new-bark",
+    "region": "johto",
+    "locationId": "new-bark",
+    "team": [
+      [
+        161,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-johto-route-27",
+    "region": "johto",
+    "locationId": "route-27",
+    "team": [
+      [
+        84,
+        28
+      ],
+      [
+        20,
+        27
+      ]
+    ],
+    "reward": 1120
+  },
+  {
+    "id": "practice-johto-route-29",
+    "region": "johto",
+    "locationId": "route-29",
+    "team": [
+      [
+        16,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-johto-cherrygrove",
+    "region": "johto",
+    "locationId": "cherrygrove",
+    "team": [
+      [
+        161,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-johto-route-30",
+    "region": "johto",
+    "locationId": "route-30",
+    "team": [
+      [
+        16,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-johto-route-31",
+    "region": "johto",
+    "locationId": "route-31",
+    "team": [
+      [
+        16,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-johto-violet",
+    "region": "johto",
+    "locationId": "violet",
+    "team": [
+      [
+        161,
+        4
+      ]
+    ],
+    "reward": 160
+  },
+  {
+    "id": "practice-johto-route-32",
+    "region": "johto",
+    "locationId": "route-32",
+    "team": [
+      [
+        69,
+        4
+      ]
+    ],
+    "reward": 160
+  },
+  {
+    "id": "practice-johto-route-33",
+    "region": "johto",
+    "locationId": "route-33",
+    "team": [
+      [
+        187,
+        6
+      ]
+    ],
+    "reward": 240
+  },
+  {
+    "id": "practice-johto-azalea",
+    "region": "johto",
+    "locationId": "azalea",
+    "team": [
+      [
+        161,
+        6
+      ]
+    ],
+    "reward": 240
+  },
+  {
+    "id": "practice-johto-ilex-forest",
+    "region": "johto",
+    "locationId": "ilex-forest",
+    "team": [
+      [
+        10,
+        5
+      ]
+    ],
+    "reward": 200
+  },
+  {
+    "id": "practice-johto-route-34",
+    "region": "johto",
+    "locationId": "route-34",
+    "team": [
+      [
+        96,
+        10
+      ],
+      [
+        19,
+        9
+      ]
+    ],
+    "reward": 400
+  },
+  {
+    "id": "practice-johto-goldenrod",
+    "region": "johto",
+    "locationId": "goldenrod",
+    "team": [
+      [
+        161,
+        8
+      ]
+    ],
+    "reward": 320
+  },
+  {
+    "id": "practice-johto-route-35",
+    "region": "johto",
+    "locationId": "route-35",
+    "team": [
+      [
+        32,
+        10
+      ],
+      [
+        29,
+        9
+      ]
+    ],
+    "reward": 400
+  },
+  {
+    "id": "practice-johto-national-park",
+    "region": "johto",
+    "locationId": "national-park",
+    "team": [
+      [
+        10,
+        10
+      ],
+      [
+        11,
+        9
+      ]
+    ],
+    "reward": 400
+  },
+  {
+    "id": "practice-johto-route-36",
+    "region": "johto",
+    "locationId": "route-36",
+    "team": [
+      [
+        32,
+        12
+      ],
+      [
+        29,
+        11
+      ]
+    ],
+    "reward": 480
+  },
+  {
+    "id": "practice-johto-route-37",
+    "region": "johto",
+    "locationId": "route-37",
+    "team": [
+      [
+        16,
+        13
+      ],
+      [
+        234,
+        12
+      ]
+    ],
+    "reward": 520
+  },
+  {
+    "id": "practice-johto-ecruteak",
+    "region": "johto",
+    "locationId": "ecruteak",
+    "team": [
+      [
+        161,
+        14
+      ]
+    ],
+    "reward": 560
+  },
+  {
+    "id": "practice-johto-route-38",
+    "region": "johto",
+    "locationId": "route-38",
+    "team": [
+      [
+        19,
+        13
+      ],
+      [
+        20,
+        12
+      ]
+    ],
+    "reward": 520
+  },
+  {
+    "id": "practice-johto-route-39",
+    "region": "johto",
+    "locationId": "route-39",
+    "team": [
+      [
+        19,
+        15
+      ],
+      [
+        20,
+        14
+      ]
+    ],
+    "reward": 600
+  },
+  {
+    "id": "practice-johto-olivine",
+    "region": "johto",
+    "locationId": "olivine",
+    "team": [
+      [
+        161,
+        16
+      ]
+    ],
+    "reward": 640
+  },
+  {
+    "id": "practice-johto-cianwood",
+    "region": "johto",
+    "locationId": "cianwood",
+    "team": [
+      [
+        161,
+        20
+      ]
+    ],
+    "reward": 800
+  },
+  {
+    "id": "practice-johto-route-42-west",
+    "region": "johto",
+    "locationId": "route-42-west",
+    "team": [
+      [
+        56,
+        13
+      ],
+      [
+        179,
+        12
+      ]
+    ],
+    "reward": 520
+  },
+  {
+    "id": "practice-johto-route-42-east",
+    "region": "johto",
+    "locationId": "route-42-east",
+    "team": [
+      [
+        56,
+        13
+      ],
+      [
+        179,
+        12
+      ]
+    ],
+    "reward": 520
+  },
+  {
+    "id": "practice-johto-mahogany",
+    "region": "johto",
+    "locationId": "mahogany",
+    "team": [
+      [
+        161,
+        17
+      ]
+    ],
+    "reward": 680
+  },
+  {
+    "id": "practice-johto-route-43",
+    "region": "johto",
+    "locationId": "route-43",
+    "team": [
+      [
+        180,
+        15
+      ],
+      [
+        203,
+        14
+      ]
+    ],
+    "reward": 600
+  },
+  {
+    "id": "practice-johto-route-44",
+    "region": "johto",
+    "locationId": "route-44",
+    "team": [
+      [
+        114,
+        22
+      ],
+      [
+        70,
+        21
+      ]
+    ],
+    "reward": 880
+  },
+  {
+    "id": "practice-johto-blackthorn",
+    "region": "johto",
+    "locationId": "blackthorn",
+    "team": [
+      [
+        161,
+        24
+      ]
+    ],
+    "reward": 960
+  },
+  {
+    "id": "practice-johto-route-45",
+    "region": "johto",
+    "locationId": "route-45",
+    "team": [
+      [
+        74,
+        20
+      ],
+      [
+        75,
+        19
+      ]
+    ],
+    "reward": 800
+  },
+  {
+    "id": "practice-johto-route-46",
+    "region": "johto",
+    "locationId": "route-46",
+    "team": [
+      [
+        74,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-hoenn-littleroot-town",
+    "region": "hoenn",
+    "locationId": "littleroot-town",
+    "team": [
+      [
+        263,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-101",
+    "region": "hoenn",
+    "locationId": "hoenn-route-101",
+    "team": [
+      [
+        265,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-hoenn-oldale-town",
+    "region": "hoenn",
+    "locationId": "oldale-town",
+    "team": [
+      [
+        263,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-102",
+    "region": "hoenn",
+    "locationId": "hoenn-route-102",
+    "team": [
+      [
+        261,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-hoenn-petalburg-city",
+    "region": "hoenn",
+    "locationId": "petalburg-city",
+    "team": [
+      [
+        263,
+        4
+      ]
+    ],
+    "reward": 160
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-104",
+    "region": "hoenn",
+    "locationId": "hoenn-route-104",
+    "team": [
+      [
+        261,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-hoenn-dewford-town",
+    "region": "hoenn",
+    "locationId": "dewford-town",
+    "team": [
+      [
+        263,
+        7
+      ]
+    ],
+    "reward": 280
+  },
+  {
+    "id": "practice-hoenn-petalburg-woods",
+    "region": "hoenn",
+    "locationId": "petalburg-woods",
+    "team": [
+      [
+        261,
+        5
+      ]
+    ],
+    "reward": 200
+  },
+  {
+    "id": "practice-hoenn-rustboro-city",
+    "region": "hoenn",
+    "locationId": "rustboro-city",
+    "team": [
+      [
+        263,
+        7
+      ]
+    ],
+    "reward": 280
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-116",
+    "region": "hoenn",
+    "locationId": "hoenn-route-116",
+    "team": [
+      [
+        261,
+        6
+      ]
+    ],
+    "reward": 240
+  },
+  {
+    "id": "practice-hoenn-verdanturf-town",
+    "region": "hoenn",
+    "locationId": "verdanturf-town",
+    "team": [
+      [
+        263,
+        10
+      ]
+    ],
+    "reward": 400
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-117",
+    "region": "hoenn",
+    "locationId": "hoenn-route-117",
+    "team": [
+      [
+        261,
+        13
+      ],
+      [
+        43,
+        12
+      ]
+    ],
+    "reward": 520
+  },
+  {
+    "id": "practice-hoenn-mauville-city",
+    "region": "hoenn",
+    "locationId": "mauville-city",
+    "team": [
+      [
+        263,
+        14
+      ]
+    ],
+    "reward": 560
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-110",
+    "region": "hoenn",
+    "locationId": "hoenn-route-110",
+    "team": [
+      [
+        261,
+        12
+      ],
+      [
+        309,
+        11
+      ]
+    ],
+    "reward": 480
+  },
+  {
+    "id": "practice-hoenn-slateport-city",
+    "region": "hoenn",
+    "locationId": "slateport-city",
+    "team": [
+      [
+        263,
+        14
+      ]
+    ],
+    "reward": 560
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-103",
+    "region": "hoenn",
+    "locationId": "hoenn-route-103",
+    "team": [
+      [
+        261,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-111",
+    "region": "hoenn",
+    "locationId": "hoenn-route-111",
+    "team": [
+      [
+        27,
+        19
+      ],
+      [
+        328,
+        18
+      ]
+    ],
+    "reward": 760
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-112",
+    "region": "hoenn",
+    "locationId": "hoenn-route-112",
+    "team": [
+      [
+        322,
+        14
+      ],
+      [
+        183,
+        13
+      ]
+    ],
+    "reward": 560
+  },
+  {
+    "id": "practice-hoenn-lavaridge-town",
+    "region": "hoenn",
+    "locationId": "lavaridge-town",
+    "team": [
+      [
+        263,
+        18
+      ]
+    ],
+    "reward": 720
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-113",
+    "region": "hoenn",
+    "locationId": "hoenn-route-113",
+    "team": [
+      [
+        327,
+        14
+      ],
+      [
+        218,
+        13
+      ]
+    ],
+    "reward": 560
+  },
+  {
+    "id": "practice-hoenn-fallarbor-town",
+    "region": "hoenn",
+    "locationId": "fallarbor-town",
+    "team": [
+      [
+        263,
+        20
+      ]
+    ],
+    "reward": 800
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-114",
+    "region": "hoenn",
+    "locationId": "hoenn-route-114",
+    "team": [
+      [
+        333,
+        15
+      ],
+      [
+        270,
+        14
+      ]
+    ],
+    "reward": 600
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-115",
+    "region": "hoenn",
+    "locationId": "hoenn-route-115",
+    "team": [
+      [
+        333,
+        23
+      ],
+      [
+        276,
+        22
+      ]
+    ],
+    "reward": 920
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-118",
+    "region": "hoenn",
+    "locationId": "hoenn-route-118",
+    "team": [
+      [
+        263,
+        24
+      ],
+      [
+        309,
+        23
+      ]
+    ],
+    "reward": 960
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-119",
+    "region": "hoenn",
+    "locationId": "hoenn-route-119",
+    "team": [
+      [
+        263,
+        24
+      ],
+      [
+        264,
+        23
+      ]
+    ],
+    "reward": 960
+  },
+  {
+    "id": "practice-hoenn-fortree-city",
+    "region": "hoenn",
+    "locationId": "fortree-city",
+    "team": [
+      [
+        263,
+        24
+      ]
+    ],
+    "reward": 960
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-120",
+    "region": "hoenn",
+    "locationId": "hoenn-route-120",
+    "team": [
+      [
+        261,
+        25
+      ],
+      [
+        262,
+        24
+      ]
+    ],
+    "reward": 1000
+  },
+  {
+    "id": "practice-hoenn-hoenn-route-121",
+    "region": "hoenn",
+    "locationId": "hoenn-route-121",
+    "team": [
+      [
+        261,
+        25
+      ],
+      [
+        353,
+        24
+      ]
+    ],
+    "reward": 1000
+  },
+  {
+    "id": "practice-hoenn-lilycove-city",
+    "region": "hoenn",
+    "locationId": "lilycove-city",
+    "team": [
+      [
+        263,
+        28
+      ]
+    ],
+    "reward": 1120
+  },
+  {
+    "id": "practice-hoenn-mossdeep-city",
+    "region": "hoenn",
+    "locationId": "mossdeep-city",
+    "team": [
+      [
+        263,
+        32
+      ]
+    ],
+    "reward": 1280
+  },
+  {
+    "id": "practice-hoenn-sootopolis-city",
+    "region": "hoenn",
+    "locationId": "sootopolis-city",
+    "team": [
+      [
+        263,
+        34
+      ]
+    ],
+    "reward": 1360
+  },
+  {
+    "id": "practice-hoenn-ever-grande-city",
+    "region": "hoenn",
+    "locationId": "ever-grande-city",
+    "team": [
+      [
+        263,
+        45
+      ]
+    ],
+    "reward": 1800
+  },
+  {
+    "id": "practice-hoenn-pacifidlog-town",
+    "region": "hoenn",
+    "locationId": "pacifidlog-town",
+    "team": [
+      [
+        263,
+        34
+      ]
+    ],
+    "reward": 1360
+  },
+  {
+    "id": "practice-sinnoh-twinleaf-town",
+    "region": "sinnoh",
+    "locationId": "twinleaf-town",
+    "team": [
+      [
+        399,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-201",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-201",
+    "team": [
+      [
+        396,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-sinnoh-sandgem-town",
+    "region": "sinnoh",
+    "locationId": "sandgem-town",
+    "team": [
+      [
+        399,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-202",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-202",
+    "team": [
+      [
+        403,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-sinnoh-jubilife-city",
+    "region": "sinnoh",
+    "locationId": "jubilife-city",
+    "team": [
+      [
+        399,
+        5
+      ]
+    ],
+    "reward": 200
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-203",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-203",
+    "team": [
+      [
+        396,
+        4
+      ]
+    ],
+    "reward": 160
+  },
+  {
+    "id": "practice-sinnoh-oreburgh-city",
+    "region": "sinnoh",
+    "locationId": "oreburgh-city",
+    "team": [
+      [
+        399,
+        7
+      ]
+    ],
+    "reward": 280
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-207",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-207",
+    "team": [
+      [
+        66,
+        5
+      ]
+    ],
+    "reward": 200
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-208",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-208",
+    "team": [
+      [
+        406,
+        17
+      ],
+      [
+        399,
+        16
+      ]
+    ],
+    "reward": 680
+  },
+  {
+    "id": "practice-sinnoh-hearthome-city",
+    "region": "sinnoh",
+    "locationId": "hearthome-city",
+    "team": [
+      [
+        399,
+        16
+      ]
+    ],
+    "reward": 640
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-209",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-209",
+    "team": [
+      [
+        315,
+        17
+      ],
+      [
+        400,
+        16
+      ]
+    ],
+    "reward": 680
+  },
+  {
+    "id": "practice-sinnoh-solaceon-town",
+    "region": "sinnoh",
+    "locationId": "solaceon-town",
+    "team": [
+      [
+        399,
+        18
+      ]
+    ],
+    "reward": 720
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-210",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-210",
+    "team": [
+      [
+        397,
+        18
+      ],
+      [
+        74,
+        17
+      ]
+    ],
+    "reward": 720
+  },
+  {
+    "id": "practice-sinnoh-celestic-town",
+    "region": "sinnoh",
+    "locationId": "celestic-town",
+    "team": [
+      [
+        399,
+        22
+      ]
+    ],
+    "reward": 880
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-211",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-211",
+    "team": [
+      [
+        307,
+        13
+      ],
+      [
+        399,
+        12
+      ]
+    ],
+    "reward": 520
+  },
+  {
+    "id": "practice-sinnoh-eterna-city",
+    "region": "sinnoh",
+    "locationId": "eterna-city",
+    "team": [
+      [
+        399,
+        14
+      ]
+    ],
+    "reward": 560
+  },
+  {
+    "id": "practice-sinnoh-eterna-forest",
+    "region": "sinnoh",
+    "locationId": "eterna-forest",
+    "team": [
+      [
+        427,
+        10
+      ],
+      [
+        406,
+        9
+      ]
+    ],
+    "reward": 400
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-205",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-205",
+    "team": [
+      [
+        422,
+        9
+      ]
+    ],
+    "reward": 360
+  },
+  {
+    "id": "practice-sinnoh-floaroma-town",
+    "region": "sinnoh",
+    "locationId": "floaroma-town",
+    "team": [
+      [
+        399,
+        8
+      ]
+    ],
+    "reward": 320
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-204",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-204",
+    "team": [
+      [
+        396,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-206",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-206",
+    "team": [
+      [
+        77,
+        16
+      ],
+      [
+        74,
+        15
+      ]
+    ],
+    "reward": 640
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-212",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-212",
+    "team": [
+      [
+        315,
+        21
+      ],
+      [
+        183,
+        20
+      ]
+    ],
+    "reward": 840
+  },
+  {
+    "id": "practice-sinnoh-pastoria-city",
+    "region": "sinnoh",
+    "locationId": "pastoria-city",
+    "team": [
+      [
+        399,
+        22
+      ]
+    ],
+    "reward": 880
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-213",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-213",
+    "team": [
+      [
+        422,
+        23
+      ],
+      [
+        418,
+        22
+      ]
+    ],
+    "reward": 920
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-214",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-214",
+    "team": [
+      [
+        75,
+        21
+      ],
+      [
+        74,
+        20
+      ]
+    ],
+    "reward": 840
+  },
+  {
+    "id": "practice-sinnoh-veilstone-city",
+    "region": "sinnoh",
+    "locationId": "veilstone-city",
+    "team": [
+      [
+        399,
+        24
+      ]
+    ],
+    "reward": 960
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-215",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-215",
+    "team": [
+      [
+        397,
+        19
+      ],
+      [
+        183,
+        18
+      ]
+    ],
+    "reward": 760
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-216",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-216",
+    "team": [
+      [
+        459,
+        32
+      ],
+      [
+        215,
+        31
+      ]
+    ],
+    "reward": 1280
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-217",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-217",
+    "team": [
+      [
+        459,
+        32
+      ],
+      [
+        220,
+        31
+      ]
+    ],
+    "reward": 1280
+  },
+  {
+    "id": "practice-sinnoh-snowpoint-city",
+    "region": "sinnoh",
+    "locationId": "snowpoint-city",
+    "team": [
+      [
+        399,
+        32
+      ]
+    ],
+    "reward": 1280
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-222",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-222",
+    "team": [
+      [
+        125,
+        38
+      ],
+      [
+        419,
+        37
+      ]
+    ],
+    "reward": 1520
+  },
+  {
+    "id": "practice-sinnoh-sunyshore-city",
+    "region": "sinnoh",
+    "locationId": "sunyshore-city",
+    "team": [
+      [
+        399,
+        35
+      ]
+    ],
+    "reward": 1400
+  },
+  {
+    "id": "practice-sinnoh-sinnoh-route-218",
+    "region": "sinnoh",
+    "locationId": "sinnoh-route-218",
+    "team": [
+      [
+        423,
+        28
+      ],
+      [
+        419,
+        27
+      ]
+    ],
+    "reward": 1120
+  },
+  {
+    "id": "practice-sinnoh-canalave-city",
+    "region": "sinnoh",
+    "locationId": "canalave-city",
+    "team": [
+      [
+        399,
+        26
+      ]
+    ],
+    "reward": 1040
+  },
+  {
+    "id": "practice-unova-nuvema-town",
+    "region": "unova",
+    "locationId": "nuvema-town",
+    "team": [
+      [
+        504,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-unova-unova-route-1",
+    "region": "unova",
+    "locationId": "unova-route-1",
+    "team": [
+      [
+        504,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-unova-accumula-town",
+    "region": "unova",
+    "locationId": "accumula-town",
+    "team": [
+      [
+        504,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-unova-unova-route-2",
+    "region": "unova",
+    "locationId": "unova-route-2",
+    "team": [
+      [
+        504,
+        4
+      ]
+    ],
+    "reward": 160
+  },
+  {
+    "id": "practice-unova-striaton-city",
+    "region": "unova",
+    "locationId": "striaton-city",
+    "team": [
+      [
+        504,
+        6
+      ]
+    ],
+    "reward": 240
+  },
+  {
+    "id": "practice-unova-unova-route-3",
+    "region": "unova",
+    "locationId": "unova-route-3",
+    "team": [
+      [
+        504,
+        8
+      ]
+    ],
+    "reward": 320
+  },
+  {
+    "id": "practice-unova-nacrene-city",
+    "region": "unova",
+    "locationId": "nacrene-city",
+    "team": [
+      [
+        504,
+        10
+      ]
+    ],
+    "reward": 400
+  },
+  {
+    "id": "practice-unova-pinwheel-forest",
+    "region": "unova",
+    "locationId": "pinwheel-forest",
+    "team": [
+      [
+        535,
+        12
+      ],
+      [
+        519,
+        11
+      ]
+    ],
+    "reward": 480
+  },
+  {
+    "id": "practice-unova-skyarrow-bridge",
+    "region": "unova",
+    "locationId": "skyarrow-bridge",
+    "team": [
+      [
+        504,
+        14
+      ]
+    ],
+    "reward": 560
+  },
+  {
+    "id": "practice-unova-castelia-city",
+    "region": "unova",
+    "locationId": "castelia-city",
+    "team": [
+      [
+        504,
+        15
+      ]
+    ],
+    "reward": 600
+  },
+  {
+    "id": "practice-unova-unova-route-4",
+    "region": "unova",
+    "locationId": "unova-route-4",
+    "team": [
+      [
+        551,
+        15
+      ],
+      [
+        554,
+        14
+      ]
+    ],
+    "reward": 600
+  },
+  {
+    "id": "practice-unova-nimbasa-city",
+    "region": "unova",
+    "locationId": "nimbasa-city",
+    "team": [
+      [
+        504,
+        20
+      ]
+    ],
+    "reward": 800
+  },
+  {
+    "id": "practice-unova-unova-route-5",
+    "region": "unova",
+    "locationId": "unova-route-5",
+    "team": [
+      [
+        574,
+        19
+      ],
+      [
+        572,
+        18
+      ]
+    ],
+    "reward": 760
+  },
+  {
+    "id": "practice-unova-driftveil-drawbridge",
+    "region": "unova",
+    "locationId": "driftveil-drawbridge",
+    "team": [
+      [
+        504,
+        22
+      ]
+    ],
+    "reward": 880
+  },
+  {
+    "id": "practice-unova-driftveil-city",
+    "region": "unova",
+    "locationId": "driftveil-city",
+    "team": [
+      [
+        504,
+        23
+      ]
+    ],
+    "reward": 920
+  },
+  {
+    "id": "practice-unova-unova-route-6",
+    "region": "unova",
+    "locationId": "unova-route-6",
+    "team": [
+      [
+        585,
+        22
+      ],
+      [
+        588,
+        21
+      ]
+    ],
+    "reward": 880
+  },
+  {
+    "id": "practice-unova-mistralton-city",
+    "region": "unova",
+    "locationId": "mistralton-city",
+    "team": [
+      [
+        504,
+        28
+      ]
+    ],
+    "reward": 1120
+  },
+  {
+    "id": "practice-unova-unova-route-7",
+    "region": "unova",
+    "locationId": "unova-route-7",
+    "team": [
+      [
+        520,
+        26
+      ],
+      [
+        585,
+        25
+      ]
+    ],
+    "reward": 1040
+  },
+  {
+    "id": "practice-unova-icirrus-city",
+    "region": "unova",
+    "locationId": "icirrus-city",
+    "team": [
+      [
+        536,
+        30
+      ],
+      [
+        616,
+        29
+      ]
+    ],
+    "reward": 1200
+  },
+  {
+    "id": "practice-unova-unova-route-8",
+    "region": "unova",
+    "locationId": "unova-route-8",
+    "team": [
+      [
+        536,
+        30
+      ],
+      [
+        616,
+        29
+      ]
+    ],
+    "reward": 1200
+  },
+  {
+    "id": "practice-unova-moor-of-icirrus",
+    "region": "unova",
+    "locationId": "moor-of-icirrus",
+    "team": [
+      [
+        536,
+        30
+      ],
+      [
+        616,
+        29
+      ]
+    ],
+    "reward": 1200
+  },
+  {
+    "id": "practice-unova-unova-route-9",
+    "region": "unova",
+    "locationId": "unova-route-9",
+    "team": [
+      [
+        575,
+        31
+      ],
+      [
+        572,
+        30
+      ]
+    ],
+    "reward": 1240
+  },
+  {
+    "id": "practice-unova-opelucid-city",
+    "region": "unova",
+    "locationId": "opelucid-city",
+    "team": [
+      [
+        504,
+        36
+      ]
+    ],
+    "reward": 1440
+  },
+  {
+    "id": "practice-unova-unova-route-10",
+    "region": "unova",
+    "locationId": "unova-route-10",
+    "team": [
+      [
+        507,
+        33
+      ],
+      [
+        629,
+        32
+      ]
+    ],
+    "reward": 1320
+  },
+  {
+    "id": "practice-unova-unova-route-16",
+    "region": "unova",
+    "locationId": "unova-route-16",
+    "team": [
+      [
+        574,
+        19
+      ],
+      [
+        572,
+        18
+      ]
+    ],
+    "reward": 760
+  },
+  {
+    "id": "practice-unova-lostlorn-forest",
+    "region": "unova",
+    "locationId": "lostlorn-forest",
+    "team": [
+      [
+        546,
+        19
+      ],
+      [
+        541,
+        18
+      ]
+    ],
+    "reward": 760
+  },
+  {
+    "id": "practice-unova-unova-route-15",
+    "region": "unova",
+    "locationId": "unova-route-15",
+    "team": [
+      [
+        105,
+        47
+      ],
+      [
+        22,
+        46
+      ]
+    ],
+    "reward": 1880
+  },
+  {
+    "id": "practice-unova-unova-route-14",
+    "region": "unova",
+    "locationId": "unova-route-14",
+    "team": [
+      [
+        55,
+        47
+      ],
+      [
+        39,
+        46
+      ]
+    ],
+    "reward": 1880
+  },
+  {
+    "id": "practice-unova-undella-town",
+    "region": "unova",
+    "locationId": "undella-town",
+    "team": [
+      [
+        504,
+        32
+      ]
+    ],
+    "reward": 1280
+  },
+  {
+    "id": "practice-unova-unova-route-13",
+    "region": "unova",
+    "locationId": "unova-route-13",
+    "team": [
+      [
+        114,
+        47
+      ],
+      [
+        277,
+        46
+      ]
+    ],
+    "reward": 1880
+  },
+  {
+    "id": "practice-unova-lacunosa-town",
+    "region": "unova",
+    "locationId": "lacunosa-town",
+    "team": [
+      [
+        504,
+        34
+      ]
+    ],
+    "reward": 1360
+  },
+  {
+    "id": "practice-unova-unova-route-12",
+    "region": "unova",
+    "locationId": "unova-route-12",
+    "team": [
+      [
+        415,
+        47
+      ],
+      [
+        191,
+        46
+      ]
+    ],
+    "reward": 1880
+  },
+  {
+    "id": "practice-unova-village-bridge",
+    "region": "unova",
+    "locationId": "village-bridge",
+    "team": [
+      [
+        55,
+        47
+      ],
+      [
+        400,
+        46
+      ]
+    ],
+    "reward": 1880
+  },
+  {
+    "id": "practice-unova-unova-route-11",
+    "region": "unova",
+    "locationId": "unova-route-11",
+    "team": [
+      [
+        629,
+        47
+      ],
+      [
+        55,
+        46
+      ]
+    ],
+    "reward": 1880
+  },
+  {
+    "id": "practice-kalos-vaniville-town",
+    "region": "kalos",
+    "locationId": "vaniville-town",
+    "team": [
+      [
+        659,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-kalos-kalos-route-2",
+    "region": "kalos",
+    "locationId": "kalos-route-2",
+    "team": [
+      [
+        659,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-kalos-santalune-forest",
+    "region": "kalos",
+    "locationId": "santalune-forest",
+    "team": [
+      [
+        664,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-kalos-santalune-city",
+    "region": "kalos",
+    "locationId": "santalune-city",
+    "team": [
+      [
+        659,
+        5
+      ]
+    ],
+    "reward": 200
+  },
+  {
+    "id": "practice-kalos-kalos-route-3",
+    "region": "kalos",
+    "locationId": "kalos-route-3",
+    "team": [
+      [
+        659,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-kalos-kalos-route-5",
+    "region": "kalos",
+    "locationId": "kalos-route-5",
+    "team": [
+      [
+        659,
+        8
+      ]
+    ],
+    "reward": 320
+  },
+  {
+    "id": "practice-kalos-lumiose-city",
+    "region": "kalos",
+    "locationId": "lumiose-city",
+    "team": [
+      [
+        659,
+        10
+      ]
+    ],
+    "reward": 400
+  },
+  {
+    "id": "practice-kalos-kalos-route-7",
+    "region": "kalos",
+    "locationId": "kalos-route-7",
+    "team": [
+      [
+        453,
+        12
+      ],
+      [
+        313,
+        11
+      ]
+    ],
+    "reward": 480
+  },
+  {
+    "id": "practice-kalos-cyllage-city",
+    "region": "kalos",
+    "locationId": "cyllage-city",
+    "team": [
+      [
+        659,
+        14
+      ]
+    ],
+    "reward": 560
+  },
+  {
+    "id": "practice-kalos-kalos-route-8",
+    "region": "kalos",
+    "locationId": "kalos-route-8",
+    "team": [
+      [
+        425,
+        13
+      ],
+      [
+        325,
+        12
+      ]
+    ],
+    "reward": 520
+  },
+  {
+    "id": "practice-kalos-kalos-route-10",
+    "region": "kalos",
+    "locationId": "kalos-route-10",
+    "team": [
+      [
+        622,
+        19
+      ],
+      [
+        561,
+        18
+      ]
+    ],
+    "reward": 760
+  },
+  {
+    "id": "practice-kalos-geosenge-town",
+    "region": "kalos",
+    "locationId": "geosenge-town",
+    "team": [
+      [
+        659,
+        20
+      ]
+    ],
+    "reward": 800
+  },
+  {
+    "id": "practice-kalos-shalour-city",
+    "region": "kalos",
+    "locationId": "shalour-city",
+    "team": [
+      [
+        659,
+        23
+      ]
+    ],
+    "reward": 920
+  },
+  {
+    "id": "practice-kalos-kalos-route-12",
+    "region": "kalos",
+    "locationId": "kalos-route-12",
+    "team": [
+      [
+        79,
+        23
+      ],
+      [
+        441,
+        22
+      ]
+    ],
+    "reward": 920
+  },
+  {
+    "id": "practice-kalos-coumarine-city",
+    "region": "kalos",
+    "locationId": "coumarine-city",
+    "team": [
+      [
+        659,
+        26
+      ]
+    ],
+    "reward": 1040
+  },
+  {
+    "id": "practice-kalos-kalos-route-14",
+    "region": "kalos",
+    "locationId": "kalos-route-14",
+    "team": [
+      [
+        451,
+        30
+      ],
+      [
+        70,
+        29
+      ]
+    ],
+    "reward": 1200
+  },
+  {
+    "id": "practice-kalos-laverre-city",
+    "region": "kalos",
+    "locationId": "laverre-city",
+    "team": [
+      [
+        659,
+        29
+      ]
+    ],
+    "reward": 1160
+  },
+  {
+    "id": "practice-kalos-kalos-route-15",
+    "region": "kalos",
+    "locationId": "kalos-route-15",
+    "team": [
+      [
+        262,
+        34
+      ],
+      [
+        451,
+        33
+      ]
+    ],
+    "reward": 1360
+  },
+  {
+    "id": "practice-kalos-dendemille-town",
+    "region": "kalos",
+    "locationId": "dendemille-town",
+    "team": [
+      [
+        659,
+        31
+      ]
+    ],
+    "reward": 1240
+  },
+  {
+    "id": "practice-kalos-kalos-route-18",
+    "region": "kalos",
+    "locationId": "kalos-route-18",
+    "team": [
+      [
+        533,
+        44
+      ],
+      [
+        324,
+        43
+      ]
+    ],
+    "reward": 1760
+  },
+  {
+    "id": "practice-kalos-anistar-city",
+    "region": "kalos",
+    "locationId": "anistar-city",
+    "team": [
+      [
+        659,
+        35
+      ]
+    ],
+    "reward": 1400
+  },
+  {
+    "id": "practice-kalos-kalos-route-19",
+    "region": "kalos",
+    "locationId": "kalos-route-19",
+    "team": [
+      [
+        659,
+        37
+      ]
+    ],
+    "reward": 1480
+  },
+  {
+    "id": "practice-kalos-snowbelle-city",
+    "region": "kalos",
+    "locationId": "snowbelle-city",
+    "team": [
+      [
+        659,
+        39
+      ]
+    ],
+    "reward": 1560
+  },
+  {
+    "id": "practice-kalos-kalos-route-21",
+    "region": "kalos",
+    "locationId": "kalos-route-21",
+    "team": [
+      [
+        659,
+        42
+      ]
+    ],
+    "reward": 1680
+  },
+  {
+    "id": "practice-alola-iki-town",
+    "region": "alola",
+    "locationId": "iki-town",
+    "team": [
+      [
+        734,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-alola-alola-route-1",
+    "region": "alola",
+    "locationId": "alola-route-1",
+    "team": [
+      [
+        165,
+        3
+      ]
+    ],
+    "reward": 120
+  },
+  {
+    "id": "practice-alola-hauoli-city",
+    "region": "alola",
+    "locationId": "hauoli-city",
+    "team": [
+      [
+        676,
+        6
+      ]
+    ],
+    "reward": 240
+  },
+  {
+    "id": "practice-alola-alola-route-2",
+    "region": "alola",
+    "locationId": "alola-route-2",
+    "team": [
+      [
+        23,
+        6
+      ]
+    ],
+    "reward": 240
+  },
+  {
+    "id": "practice-alola-alola-route-3",
+    "region": "alola",
+    "locationId": "alola-route-3",
+    "team": [
+      [
+        21,
+        9
+      ]
+    ],
+    "reward": 360
+  },
+  {
+    "id": "practice-alola-melemele-meadow",
+    "region": "alola",
+    "locationId": "melemele-meadow",
+    "team": [
+      [
+        548,
+        10
+      ],
+      [
+        669,
+        9
+      ]
+    ],
+    "reward": 400
+  },
+  {
+    "id": "practice-alola-heahea-city",
+    "region": "alola",
+    "locationId": "heahea-city",
+    "team": [
+      [
+        734,
+        11
+      ]
+    ],
+    "reward": 440
+  },
+  {
+    "id": "practice-alola-alola-route-4",
+    "region": "alola",
+    "locationId": "alola-route-4",
+    "team": [
+      [
+        506,
+        11
+      ],
+      [
+        731,
+        10
+      ]
+    ],
+    "reward": 440
+  },
+  {
+    "id": "practice-alola-paniola-town",
+    "region": "alola",
+    "locationId": "paniola-town",
+    "team": [
+      [
+        734,
+        13
+      ]
+    ],
+    "reward": 520
+  },
+  {
+    "id": "practice-alola-paniola-ranch",
+    "region": "alola",
+    "locationId": "paniola-ranch",
+    "team": [
+      [
+        749,
+        12
+      ],
+      [
+        179,
+        11
+      ]
+    ],
+    "reward": 480
+  },
+  {
+    "id": "practice-alola-alola-route-5",
+    "region": "alola",
+    "locationId": "alola-route-5",
+    "team": [
+      [
+        731,
+        13
+      ],
+      [
+        753,
+        12
+      ]
+    ],
+    "reward": 520
+  },
+  {
+    "id": "practice-alola-lush-jungle",
+    "region": "alola",
+    "locationId": "lush-jungle",
+    "team": [
+      [
+        42,
+        19
+      ],
+      [
+        51,
+        18
+      ]
+    ],
+    "reward": 760
+  },
+  {
+    "id": "practice-alola-konikoni-city",
+    "region": "alola",
+    "locationId": "konikoni-city",
+    "team": [
+      [
+        734,
+        22
+      ]
+    ],
+    "reward": 880
+  },
+  {
+    "id": "practice-alola-alola-route-8",
+    "region": "alola",
+    "locationId": "alola-route-8",
+    "team": [
+      [
+        732,
+        17
+      ],
+      [
+        734,
+        16
+      ]
+    ],
+    "reward": 680
+  },
+  {
+    "id": "practice-alola-malie-city",
+    "region": "alola",
+    "locationId": "malie-city",
+    "team": [
+      [
+        568,
+        25
+      ],
+      [
+        88,
+        24
+      ]
+    ],
+    "reward": 1000
+  },
+  {
+    "id": "practice-alola-malie-garden",
+    "region": "alola",
+    "locationId": "malie-garden",
+    "team": [
+      [
+        61,
+        25
+      ],
+      [
+        166,
+        24
+      ]
+    ],
+    "reward": 1000
+  },
+  {
+    "id": "practice-alola-alola-route-10",
+    "region": "alola",
+    "locationId": "alola-route-10",
+    "team": [
+      [
+        22,
+        26
+      ],
+      [
+        735,
+        25
+      ]
+    ],
+    "reward": 1040
+  },
+  {
+    "id": "practice-alola-tapu-village",
+    "region": "alola",
+    "locationId": "tapu-village",
+    "team": [
+      [
+        279,
+        30
+      ],
+      [
+        735,
+        29
+      ]
+    ],
+    "reward": 1200
+  },
+  {
+    "id": "practice-alola-alola-route-17",
+    "region": "alola",
+    "locationId": "alola-route-17",
+    "team": [
+      [
+        22,
+        33
+      ],
+      [
+        559,
+        32
+      ]
+    ],
+    "reward": 1320
+  },
+  {
+    "id": "practice-alola-seafolk-village",
+    "region": "alola",
+    "locationId": "seafolk-village",
+    "team": [
+      [
+        734,
+        38
+      ]
+    ],
+    "reward": 1520
+  },
+  {
+    "id": "practice-alola-poni-wilds",
+    "region": "alola",
+    "locationId": "poni-wilds",
+    "team": [
+      [
+        279,
+        41
+      ],
+      [
+        210,
+        40
+      ]
+    ],
+    "reward": 1640
+  },
+  {
+    "id": "practice-alola-ancient-poni-path",
+    "region": "alola",
+    "locationId": "ancient-poni-path",
+    "team": [
+      [
+        279,
+        41
+      ],
+      [
+        210,
+        40
+      ]
+    ],
+    "reward": 1640
+  }
+]
