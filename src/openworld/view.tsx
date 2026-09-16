@@ -711,7 +711,6 @@ function PlayerCamera({ snapshot, options, destination, onDestination, commands 
   const path = useRef<WorldPoint[]>([]);
   const announcedReady = useRef(false);
   const movementActive = useRef(false);
-  const movementTime = useRef(0);
   const cameraHeading = useRef({ time: 0, angle: Infinity });
   const { camera, size } = useThree();
   const sample = options.sampleWorld ?? fallbackSample;
@@ -792,65 +791,68 @@ function PlayerCamera({ snapshot, options, destination, onDestination, commands 
       options.onReady?.();
     }
     const pressed = keys.current;
-    let forwardAxis = Number(pressed.has('KeyW') || pressed.has('ArrowUp')) - Number(pressed.has('KeyS') || pressed.has('ArrowDown'));
-    let sideAxis = Number(pressed.has('KeyD') || pressed.has('ArrowRight')) - Number(pressed.has('KeyA') || pressed.has('ArrowLeft'));
+    const forwardAxis = Number(pressed.has('KeyW') || pressed.has('ArrowUp')) - Number(pressed.has('KeyS') || pressed.has('ArrowDown'));
+    const sideAxis = Number(pressed.has('KeyD') || pressed.has('ArrowRight')) - Number(pressed.has('KeyA') || pressed.has('ArrowLeft'));
     const target = position.current;
-    let routeDistance = Infinity;
-    if (!forwardAxis && !sideAxis && path.current.length) {
-      const waypoint = path.current[0];
-      const dx = waypoint.x - target.x, dz = waypoint.z - target.z, remaining = Math.hypot(dx, dz);
-      if (remaining <= .12) {
-        path.current.shift();
-        if (!path.current.length) onDestination(null);
-      } else {
-        routeDistance = remaining;
-        forwardAxis = dz / remaining;
-        sideAxis = dx / remaining;
-        movement.current.set(dx / remaining, 0, dz / remaining);
-      }
-    }
-    const hasMovement = Boolean(forwardAxis || sideAxis || path.current.length);
-    if (!hasMovement && movementActive.current) options.onMovementEnd?.();
-    movementActive.current = hasMovement;
-    if ((forwardAxis || sideAxis) && options.onMovementInput?.() !== false) {
-      // Preserve a short, bounded amount of travel through a slow render/save
-      // frame, then drain it in steps accepted by movePartner's collision gate.
-      movementTime.current = Math.min(.35, movementTime.current + Math.max(0, delta));
-      const movementDelta = Math.min(.1, movementTime.current);
-      movementTime.current -= movementDelta;
-      if (!path.current.length) {
+    const keyboardMovement = Boolean(forwardAxis || sideAxis);
+    const wantsMovement = keyboardMovement || path.current.length > 0;
+    const movementAllowed = wantsMovement && options.onMovementInput?.() !== false;
+    if (movementAllowed) {
+      const speed = snapshot.entities.find(entity => entity.id.startsWith('companion:'))?.movementSpeed ?? 2.2;
+      let remainingFrame = Math.min(Math.max(delta, 0), .35);
+      let substeps = 0;
+      if (keyboardMovement) {
         camera.getWorldDirection(forward.current);
         forward.current.y = 0;
         forward.current.normalize();
         right.current.set(-forward.current.z, 0, forward.current.x);
-        movement.current.copy(forward.current).multiplyScalar(forwardAxis).addScaledVector(right.current, sideAxis).normalize();
       }
-      // Stop at the waypoint even when a slow frame would step past it.
-      movement.current.multiplyScalar(Math.min(routeDistance, movementDelta * (snapshot.entities.find(entity => entity.id.startsWith('companion:'))?.movementSpeed ?? 2.2)));
-      const x = MathUtils.clamp(target.x + movement.current.x, WORLD_MIN, WORLD_MAX);
-      const z = MathUtils.clamp(target.z + movement.current.z, WORLD_MIN, WORLD_MAX);
-      const terrain = sample(x, z);
-      if (!terrain.blocked) {
+      // Consume the bounded frame time now, in collision-safe chunks. Deferring
+      // one chunk per rendered frame permanently slows movement below 10 FPS.
+      while (remainingFrame > .0001 && substeps++ < 32) {
+        let routeDistance = Infinity;
+        if (keyboardMovement) {
+          movement.current.copy(forward.current).multiplyScalar(forwardAxis).addScaledVector(right.current, sideAxis).normalize();
+        } else {
+          const waypoint = path.current[0];
+          if (!waypoint) break;
+          const dx = waypoint.x - target.x, dz = waypoint.z - target.z;
+          routeDistance = Math.hypot(dx, dz);
+          if (routeDistance <= .12) {
+            path.current.shift();
+            if (!path.current.length) onDestination(null);
+            continue;
+          }
+          movement.current.set(dx / routeDistance, 0, dz / routeDistance);
+        }
+        const movementDelta = Math.min(.1, remainingFrame, routeDistance / speed);
+        movement.current.multiplyScalar(movementDelta * speed);
+        const x = MathUtils.clamp(target.x + movement.current.x, WORLD_MIN, WORLD_MAX);
+        const z = MathUtils.clamp(target.z + movement.current.z, WORLD_MIN, WORLD_MAX);
+        const terrain = sample(x, z);
+        if (terrain.blocked) {
+          if (path.current.length) { path.current = []; onDestination(null); }
+          break;
+        }
         const nextHeading = Math.abs(movement.current.x) > Math.abs(movement.current.z)
           ? (movement.current.x > 0 ? 1 : 3)
           : headingForStep(movement.current.x, movement.current.z);
-        const accepted = options.onPlayerMove({ x, z, heading: nextHeading });
-        if (accepted !== false) {
-          camera.position.x += x - target.x;
-          const groundY = terrainSurfaceHeight(sample, x, z);
-          camera.position.y += groundY - target.y;
-          camera.position.z += z - target.z;
-          target.set(x, groundY, z);
-          external.current.copy(target);
-        } else if (path.current.length) {
-          path.current = [];
-          onDestination(null);
+        if (options.onPlayerMove({ x, z, heading: nextHeading }) === false) {
+          if (path.current.length) { path.current = []; onDestination(null); }
+          break;
         }
-      } else if (path.current.length) {
-        path.current = [];
-        onDestination(null);
+        camera.position.x += x - target.x;
+        const groundY = terrainSurfaceHeight(sample, x, z);
+        camera.position.y += groundY - target.y;
+        camera.position.z += z - target.z;
+        target.set(x, groundY, z);
+        external.current.copy(target);
+        remainingFrame -= movementDelta;
       }
-    } else movementTime.current = 0;
+    }
+    const stillMoving = keyboardMovement || path.current.length > 0;
+    if (!stillMoving && (movementActive.current || wantsMovement)) options.onMovementEnd?.();
+    movementActive.current = stillMoving;
     const now = performance.now();
     if (now - cameraHeading.current.time >= 100) {
       camera.getWorldDirection(forward.current);
