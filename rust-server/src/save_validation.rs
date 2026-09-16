@@ -1623,9 +1623,9 @@ mod tests {
 
     #[test]
     fn accepts_a_client_canonicalized_insomnia_save() {
-        let (&species_id, source) = abilities()
-            .iter()
-            .find_map(|(species_id, entries)| entries.iter().find(|entry| entry.slug == "insomnia").map(|entry| (species_id, entry)))
+        let species_id = 163;
+        let source = abilities()[&species_id]
+            .iter().find(|entry| entry.slug == "insomnia")
             .expect("fixture species with insomnia");
         let species = &catalog().species[&species_id];
         let level = 5;
@@ -1643,6 +1643,8 @@ mod tests {
                 "name":source.name,"englishName":source.english_name,"effect":"partial","description":"수면 관련 효과 일부 적용"},
             "moves":[{"moveId":learned.move_id,"pp":pp}]
         });
+        save["game"]["dex"]["seen"] = serde_json::json!([1, species_id]);
+        save["game"]["dex"]["caught"] = serde_json::json!([1, species_id]);
         validate_save(&save).unwrap();
     }
 
