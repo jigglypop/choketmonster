@@ -36,6 +36,11 @@ export function unpackSave(input: unknown, expectedGraph?: Graph, internal?: { a
     monster.brain.graph = structuredClone(graph);
     if (monster.brain.sensoryBypass !== false) throw new Error('저장된 신경 모델이 맞지 않습니다.');
   }
+  if (candidate.nursery !== undefined && !Array.isArray(candidate.nursery)) throw new Error('알 보관함이 손상되었습니다.');
+  for (const egg of candidate.nursery ?? []) if (egg?.brain) {
+    egg.brain.graph = structuredClone(graph);
+    if (egg.brain.sensoryBypass !== false) throw new Error('저장된 알의 신경 모델이 맞지 않습니다.');
+  }
   const game = validateGame(candidate);
   const view = value.view;
   if (!view || typeof view.learning !== 'boolean' || (view.learningDefaultsVersion !== undefined && view.learningDefaultsVersion !== 1) || !view.position || ![view.position.x, view.position.y, view.position.steps].every(Number.isSafeInteger) || view.position.x < 1 || view.position.x > 22 || view.position.y < 1 || view.position.y > 13 || view.position.steps < 0) throw new Error('탐험 위치가 올바르지 않습니다.');

@@ -3,6 +3,11 @@ import { JOHTO_ATLAS } from './johto';
 import * as hoennMap from './hoenn';
 import * as sinnohMap from './sinnoh';
 import * as unovaMap from './unova';
+import * as kalosMap from './kalos';
+import * as alolaMap from './alola';
+import * as galarMap from './galar';
+import * as hisuiMap from './hisui';
+import * as paldeaMap from './paldea';
 import { CAVE_SCENES, getCaveScene, type CaveScene } from './caves';
 import { WORLD_SCALE, surfaceSceneId } from './world-space';
 import {
@@ -210,10 +215,11 @@ const expandedAtlas = (base: WorldAtlas, data: {
   mapVersion: string; start: WorldAtlas['start']; locations: WorldAtlas['locations']; connections: WorldAtlas['connections'];
   gates: WorldAtlas['gates']; gyms: WorldAtlas['gyms']; sample: WorldAtlas['sample']; locationAt: WorldAtlas['locationAt'];
   distanceToPath: WorldAtlas['distanceToPath']; evaluateTraversal: WorldAtlas['evaluateTraversal']; safeArrival: WorldAtlas['safeArrival'];
+  buildingOffsets: WorldAtlas['buildingOffsets'];
 }): WorldAtlas => ({
   ...base, ...data, surfaceConnections: data.connections,
-  defaultVersion: base.id === 'hoenn' ? 'emerald' : base.id === 'sinnoh' ? 'platinum' : 'black',
-  buildingOffsets: base.id === 'hoenn' ? hoennMap.hoennBuildingOffsets : base.id === 'sinnoh' ? sinnohMap.sinnohBuildingOffsets : unovaMap.unovaBuildingOffsets,
+  defaultVersion: base.id === 'hoenn' ? 'emerald' : base.id === 'sinnoh' ? 'platinum' : base.id === 'unova' ? 'black' : base.id === 'kalos' ? 'x' : base.id === 'alola' ? 'ultra-moon' : base.defaultVersion,
+  buildingOffsets: data.buildingOffsets,
   nearestWalkable: (x, z, badges = 0) => {
     if (data.evaluateTraversal({ x, z }, { x, z }, badges).allowed) return { x, z };
     for (const location of [...data.locations].sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z))) {
@@ -225,13 +231,18 @@ const expandedAtlas = (base: WorldAtlas, data: {
   encounters: (id, badges) => { const location = data.locations.find(item => item.id === id); return location && location.requiredBadges <= badges ? [...location.encounters] : []; },
 });
 const expansionMaps = {
-  hoenn: { mapVersion: hoennMap.HOENN_MAP_VERSION, start: hoennMap.HOENN_START, locations: hoennMap.HOENN_LOCATIONS, connections: hoennMap.HOENN_CONNECTIONS, gates: hoennMap.HOENN_GATES, gyms: hoennMap.HOENN_GYMS, sample: hoennMap.sampleHoennWorld, locationAt: hoennMap.hoennLocationAt, distanceToPath: hoennMap.distanceToHoennPath, evaluateTraversal: hoennMap.evaluateHoennTraversal, safeArrival: hoennMap.safeHoennArrival },
-  sinnoh: { mapVersion: sinnohMap.SINNOH_MAP_VERSION, start: sinnohMap.SINNOH_START, locations: sinnohMap.SINNOH_LOCATIONS, connections: sinnohMap.SINNOH_CONNECTIONS, gates: sinnohMap.SINNOH_GATES, gyms: sinnohMap.SINNOH_GYMS, sample: sinnohMap.sampleSinnohWorld, locationAt: sinnohMap.sinnohLocationAt, distanceToPath: sinnohMap.distanceToSinnohPath, evaluateTraversal: sinnohMap.evaluateSinnohTraversal, safeArrival: sinnohMap.safeSinnohArrival },
-  unova: { mapVersion: unovaMap.UNOVA_MAP_VERSION, start: unovaMap.UNOVA_START, locations: unovaMap.UNOVA_LOCATIONS, connections: unovaMap.UNOVA_CONNECTIONS, gates: unovaMap.UNOVA_GATES, gyms: unovaMap.UNOVA_GYMS, sample: unovaMap.sampleUnovaWorld, locationAt: unovaMap.unovaLocationAt, distanceToPath: unovaMap.distanceToUnovaPath, evaluateTraversal: unovaMap.evaluateUnovaTraversal, safeArrival: unovaMap.safeUnovaArrival },
+  hoenn: { mapVersion: hoennMap.HOENN_MAP_VERSION, start: hoennMap.HOENN_START, locations: hoennMap.HOENN_LOCATIONS, connections: hoennMap.HOENN_CONNECTIONS, gates: hoennMap.HOENN_GATES, gyms: hoennMap.HOENN_GYMS, sample: hoennMap.sampleHoennWorld, locationAt: hoennMap.hoennLocationAt, distanceToPath: hoennMap.distanceToHoennPath, evaluateTraversal: hoennMap.evaluateHoennTraversal, safeArrival: hoennMap.safeHoennArrival, buildingOffsets: hoennMap.hoennBuildingOffsets },
+  sinnoh: { mapVersion: sinnohMap.SINNOH_MAP_VERSION, start: sinnohMap.SINNOH_START, locations: sinnohMap.SINNOH_LOCATIONS, connections: sinnohMap.SINNOH_CONNECTIONS, gates: sinnohMap.SINNOH_GATES, gyms: sinnohMap.SINNOH_GYMS, sample: sinnohMap.sampleSinnohWorld, locationAt: sinnohMap.sinnohLocationAt, distanceToPath: sinnohMap.distanceToSinnohPath, evaluateTraversal: sinnohMap.evaluateSinnohTraversal, safeArrival: sinnohMap.safeSinnohArrival, buildingOffsets: sinnohMap.sinnohBuildingOffsets },
+  unova: { mapVersion: unovaMap.UNOVA_MAP_VERSION, start: unovaMap.UNOVA_START, locations: unovaMap.UNOVA_LOCATIONS, connections: unovaMap.UNOVA_CONNECTIONS, gates: unovaMap.UNOVA_GATES, gyms: unovaMap.UNOVA_GYMS, sample: unovaMap.sampleUnovaWorld, locationAt: unovaMap.unovaLocationAt, distanceToPath: unovaMap.distanceToUnovaPath, evaluateTraversal: unovaMap.evaluateUnovaTraversal, safeArrival: unovaMap.safeUnovaArrival, buildingOffsets: unovaMap.unovaBuildingOffsets },
+  kalos: { mapVersion: kalosMap.KALOS_MAP_VERSION, start: kalosMap.KALOS_START, locations: kalosMap.KALOS_LOCATIONS, connections: kalosMap.KALOS_CONNECTIONS, gates: kalosMap.KALOS_GATES, gyms: kalosMap.KALOS_GYMS, sample: kalosMap.sampleKalosWorld, locationAt: kalosMap.kalosLocationAt, distanceToPath: kalosMap.distanceToKalosPath, evaluateTraversal: kalosMap.evaluateKalosTraversal, safeArrival: kalosMap.safeKalosArrival, buildingOffsets: kalosMap.kalosBuildingOffsets },
+  alola: { mapVersion: alolaMap.ALOLA_MAP_VERSION, start: alolaMap.ALOLA_START, locations: alolaMap.ALOLA_LOCATIONS, connections: alolaMap.ALOLA_CONNECTIONS, gates: alolaMap.ALOLA_GATES, gyms: alolaMap.ALOLA_GYMS, sample: alolaMap.sampleAlolaWorld, locationAt: alolaMap.alolaLocationAt, distanceToPath: alolaMap.distanceToAlolaPath, evaluateTraversal: alolaMap.evaluateAlolaTraversal, safeArrival: alolaMap.safeAlolaArrival, buildingOffsets: alolaMap.alolaBuildingOffsets },
+  galar: { mapVersion: galarMap.GALAR_MAP_VERSION, start: galarMap.GALAR_START, locations: galarMap.GALAR_LOCATIONS, connections: galarMap.GALAR_CONNECTIONS, gates: galarMap.GALAR_GATES, gyms: galarMap.GALAR_GYMS, sample: galarMap.sampleGalarWorld, locationAt: galarMap.galarLocationAt, distanceToPath: galarMap.distanceToGalarPath, evaluateTraversal: galarMap.evaluateGalarTraversal, safeArrival: galarMap.safeGalarArrival, buildingOffsets: galarMap.galarBuildingOffsets },
+  hisui: { mapVersion: hisuiMap.HISUI_MAP_VERSION, start: hisuiMap.HISUI_START, locations: hisuiMap.HISUI_LOCATIONS, connections: hisuiMap.HISUI_CONNECTIONS, gates: hisuiMap.HISUI_GATES, gyms: hisuiMap.HISUI_GYMS, sample: hisuiMap.sampleHisuiWorld, locationAt: hisuiMap.hisuiLocationAt, distanceToPath: hisuiMap.distanceToHisuiPath, evaluateTraversal: hisuiMap.evaluateHisuiTraversal, safeArrival: hisuiMap.safeHisuiArrival, buildingOffsets: hisuiMap.hisuiBuildingOffsets },
+  paldea: { mapVersion: paldeaMap.PALDEA_MAP_VERSION, start: paldeaMap.PALDEA_START, locations: paldeaMap.PALDEA_LOCATIONS, connections: paldeaMap.PALDEA_CONNECTIONS, gates: paldeaMap.PALDEA_GATES, gyms: paldeaMap.PALDEA_GYMS, sample: paldeaMap.samplePaldeaWorld, locationAt: paldeaMap.paldeaLocationAt, distanceToPath: paldeaMap.distanceToPaldeaPath, evaluateTraversal: paldeaMap.evaluatePaldeaTraversal, safeArrival: paldeaMap.safePaldeaArrival, buildingOffsets: paldeaMap.paldeaBuildingOffsets },
 };
 export const WORLDS: readonly WorldAtlas[] = [kanto, johto, ...plans.filter(plan => plan.id !== 'johto').map(plan => {
   const base = createAtlas(plan);
-  return plan.id === 'hoenn' || plan.id === 'sinnoh' || plan.id === 'unova' ? expandedAtlas(base, expansionMaps[plan.id]) : base;
+  return plan.id === 'hoenn' || plan.id === 'sinnoh' || plan.id === 'unova' || plan.id === 'kalos' || plan.id === 'alola' || plan.id === 'galar' || plan.id === 'hisui' || plan.id === 'paldea' ? expandedAtlas(base, expansionMaps[plan.id]) : base;
 })];
 const worldsById = new Map(WORLDS.map(world => [world.id, world]));
 export function getWorldAtlas(id: string): WorldAtlas {

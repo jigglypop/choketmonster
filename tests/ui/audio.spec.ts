@@ -25,13 +25,18 @@ async function chooseFixture(page: Page, name: string, frequency = 440) {
   await page.locator('.settings-done').click();
 }
 
-test('bundled CC0 MP4 starts after game input and a video/mp4 selection survives reload', async ({ page }) => {
+test('bundled bgm.mp3 starts after game input and a video/mp4 selection survives reload', async ({ page }) => {
   await isolateApp(page); await page.goto('/');
   await expect(page.locator('#game-sound-toggle')).toHaveAttribute('data-music', /ready|playing/);
   await page.locator('[data-starter="152"]').click(); await expectPlaying(page);
-  expect(await page.locator('#game-music-audio').evaluate(element => (element as HTMLAudioElement).duration)).toBeGreaterThan(30);
+  const media = await page.locator('#game-music-audio').evaluate(element => {
+    const audio = element as HTMLAudioElement;
+    return { duration: audio.duration, loop: audio.loop, error: audio.error?.message };
+  });
+  expect(media.duration).toBeGreaterThan(0); expect(Number.isFinite(media.duration)).toBe(true);
+  expect(media.loop).toBe(true); expect(media.error).toBeUndefined();
   await page.locator('#open-interface-settings').click();
-  await expect(page.locator('#audio-music-file-status')).toContainText('Other Center');
+  await expect(page.locator('#audio-music-file-status')).toContainText('bgm.mp3');
   const chooser = page.waitForEvent('filechooser'); await page.locator('#audio-music-change').click();
   await (await chooser).setFiles({ name: 'local-loop.mp4', mimeType: 'video/mp4', buffer: readFileSync('public/audio/other-center.mp4') });
   await expect(page.locator('#audio-music-file-status')).toContainText('local-loop.mp4');

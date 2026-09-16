@@ -1,7 +1,8 @@
-"""Fetch an openly licensed game loop and encode its playback copy as AAC/MP4.
+"""Fetch the alternate CC0 game loop and encode its playback copy as AAC/MP4.
 
 Run: uv run --with imageio-ffmpeg python scripts/prepare-default-music.py
 The original is retained in data/local; only the MP4 and provenance ship.
+This does not replace the user-supplied default bgm.mp3 or its provenance.
 """
 import hashlib
 import json
@@ -42,5 +43,5 @@ receipt = {
     'runtimeUrl': '/audio/other-center.mp4', 'runtimeSha256': hashlib.sha256(output.read_bytes()).hexdigest(),
     'runtimeBytes': output.stat().st_size, 'conversion': 'AAC 128 kbit/s in MP4, original tempo and pitch, no video',
 }
-(output_dir / 'music-sources.json').write_text(json.dumps(receipt, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+(output_dir / 'other-center-sources.json').write_text(json.dumps(receipt, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 print(json.dumps(receipt, ensure_ascii=False))

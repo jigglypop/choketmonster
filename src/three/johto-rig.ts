@@ -5,11 +5,11 @@ import {
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 
 /** Authored articulation, separate from the immutable source models and their clips. */
-export const REGIONAL_RIG_VERSION = 'regional-authored-v2';
+export const REGIONAL_RIG_VERSION = 'regional-authored-v3';
 export const JOHTO_RIG_VERSION = REGIONAL_RIG_VERSION;
 // Deoxys' source GLB contains one ArmatureAction whose 402 tracks repeat their bind-pose values.
 // Preserve that source clip for provenance, and append authored motion so the runtime can animate it.
-const STATIC_NATIVE_CLIP_SPECIES = new Set([386]);
+const STATIC_NATIVE_CLIP_SPECIES = new Set([386,794,796,798,802,805,914]);
 type Shape = 'biped' | 'quadruped' | 'bird' | 'winged' | 'fish' | 'plant' | 'floatingPlant' | 'glyph' | 'serpent' | 'soft';
 type Joint = { bone: Bone; start: Vector3; end: Vector3; role: string; side: number; phase: number };
 const groups: Record<Exclude<Shape, 'biped'>, number[]> = {
@@ -203,7 +203,10 @@ function skinStaticModel(model: Object3D, id: number): Joint[] {
   const inverse = model.matrixWorld.clone().invert(), bounds = new Box3(), point = new Vector3();
   for (const mesh of meshes) {
     const transform = inverse.clone().multiply(mesh.matrixWorld), positions = mesh.geometry.getAttribute('position');
-    for (let i = 0; i < positions.count; i++) bounds.expandByPoint(point.fromBufferAttribute(positions, i).applyMatrix4(transform));
+    for (let i = 0; i < positions.count; i++) {
+      if (mesh instanceof SkinnedMesh) mesh.getVertexPosition(i, point); else point.fromBufferAttribute(positions, i);
+      bounds.expandByPoint(point.applyMatrix4(transform));
+    }
   }
   const size = bounds.getSize(new Vector3());
   if (bounds.isEmpty() || ![size.x, size.y, size.z].every(Number.isFinite)) throw new Error(`Invalid source geometry for rig ${id}`);
@@ -214,7 +217,9 @@ function skinStaticModel(model: Object3D, id: number): Joint[] {
   const discarded = new Set<Mesh['geometry']>();
   const weldedWeights = new Map<string, Array<[number, number]>>();
   for (const mesh of meshes) {
-    const geometry = mesh.geometry.clone().applyMatrix4(inverse.clone().multiply(mesh.matrixWorld));
+    const transform=inverse.clone().multiply(mesh.matrixWorld),geometry=mesh.geometry.clone();
+    if(mesh instanceof SkinnedMesh){const source=mesh.geometry.getAttribute('position'),baked=new Float32Array(source.count*3);for(let i=0;i<source.count;i++){mesh.getVertexPosition(i,point).applyMatrix4(transform);baked[i*3]=point.x;baked[i*3+1]=point.y;baked[i*3+2]=point.z;}geometry.setAttribute('position',new BufferAttribute(baked,3));}
+    else geometry.applyMatrix4(transform);
     const positions = geometry.getAttribute('position'), indices = new Uint16Array(positions.count * 4), weights = new Float32Array(positions.count * 4);
     const parts = anatomicalParts(geometry, bounds, id, mesh.name);
     for (let i = 0; i < positions.count; i++) {
@@ -246,7 +251,7 @@ function existingJoints(model: Object3D): Joint[] {
   return [...bones].map(bone => {
     const name = bone.name.toLowerCase(), side = /^(l|left)|[_.]l($|[_.])/.test(name) ? -1 : /^(r(?!oot)|right)|[_.]r($|[_.])/.test(name) ? 1 : 0;
     let role = /wing/.test(name) ? 'wing' : /tail/.test(name) ? 'tail' : /thigh|upleg/.test(name) ? 'leg'
-      : /foot|lowerleg|shin/.test(name) ? 'foot' : /arm|shoulder/.test(name) ? 'arm' : /hand/.test(name) ? 'armTip'
+      : /foot|lowerleg|shin/.test(name) ? 'foot' : /hand|forearm|arm_02|lowerarm/.test(name) ? 'armTip' : /arm|shoulder/.test(name) ? 'arm'
         : /head/.test(name) ? 'head' : /neck/.test(name) ? 'neck' : /spine|chest|body|^waist/.test(name) ? 'spine' : /hips|pelvis/.test(name) ? 'hips' : 'other';
     if (role === 'other') {
       let depth = 0, parent = bone.parent;
@@ -267,13 +272,19 @@ function authoredClips(model: Object3D, joints: Joint[], id: number): AnimationC
     const times = Array.from({ length: 25 }, (_, i) => i * duration / 24), tracks: Array<QuaternionKeyframeTrack | VectorKeyframeTrack> = [];
     for (const { bone, role, side, phase } of animated) {
       const base = bone.quaternion.clone(), world = bone.getWorldQuaternion(new Quaternion());
-      const axis = new Vector3(role.startsWith('wing') || role.startsWith('fin') || role.startsWith('leaf') ? 0 : 1, role === 'tail' ? 1 : 0, role.startsWith('wing') || role.startsWith('fin') || role.startsWith('leaf') ? 1 : 0).normalize().applyQuaternion(world.clone().invert());
+      const upperArm = role === 'arm' && !/shoulder/i.test(bone.name);
+      // Upper arms in many static source rigs are authored in a horizontal bind pose. Rotate
+      // around world Z so idle/walk lower them toward the body instead of only swinging the
+      // unchanged T pose around world Y. The side sign lowers both left and right arms.
+      const worldAxis = upperArm ? new Vector3(0, 0, 1)
+        : new Vector3(role.startsWith('wing') || role.startsWith('fin') || role.startsWith('leaf') ? 0 : 1, role === 'tail' ? 1 : 0, role.startsWith('wing') || role.startsWith('fin') || role.startsWith('leaf') ? 1 : 0).normalize();
+      const axis = worldAxis.applyQuaternion(world.clone().invert());
       const values: number[] = [];
       for (const time of times) {
         const p = time / duration, loop = Math.sin(p * Math.PI * 2), gait = Math.sin(p * Math.PI * 2 + (side === 1 ? Math.PI : 0) + phase);
         let angle = 0;
-        if (kind === 'idle') angle = ['head', 'neck'].includes(role) ? loop * .025 : role === 'spine' ? loop * .012 : role === 'tail' ? Math.sin(p * Math.PI * 2 + phase) * .065 : /wing|fin|leaf/.test(role) ? loop * .045 * (side || 1) : 0;
-        if (kind === 'walk') angle = role === 'leg' ? gait * .27 : role === 'foot' ? Math.max(0, gait) * -.22 : /wing/.test(role) ? loop * .32 * side : /fin|leaf/.test(role) ? loop * .15 * side : /arm/.test(role) ? gait * -.16 : role === 'tail' ? Math.sin(p * Math.PI * 2 + phase) * .13 : role === 'spine' ? loop * .035 : role === 'head' ? -loop * .025 : 0;
+        if (kind === 'idle') angle = upperArm ? -side * (.92 + loop * .035) : ['head', 'neck'].includes(role) ? loop * .025 : role === 'spine' ? loop * .012 : role === 'tail' ? Math.sin(p * Math.PI * 2 + phase) * .065 : /wing|fin|leaf/.test(role) ? loop * .045 * (side || 1) : 0;
+        if (kind === 'walk') angle = upperArm ? -side * (.82 + gait * .16) : role === 'leg' ? gait * .27 : role === 'foot' ? Math.max(0, gait) * -.22 : /wing/.test(role) ? loop * .32 * side : /fin|leaf/.test(role) ? loop * .15 * side : /arm/.test(role) ? gait * -.16 : role === 'tail' ? Math.sin(p * Math.PI * 2 + phase) * .13 : role === 'spine' ? loop * .035 : role === 'head' ? -loop * .025 : 0;
         if (kind === 'attack') angle = Math.sin(p * Math.PI) * (role === 'spine' ? .17 : /arm|wing|fin/.test(role) ? -.35 : role === 'head' ? .14 : role === 'tail' ? .18 : 0);
         if (kind === 'damage') angle = Math.sin(p * Math.PI) * (role === 'spine' ? -.12 : role === 'head' ? -.1 : /arm|wing/.test(role) ? .16 : /leg|foot|tail/.test(role) ? .07 * (side || 1) : 0);
         // Its coarse, connected shoulder mesh folds under large arm rotations.
@@ -304,12 +315,12 @@ function authoredClips(model: Object3D, joints: Joint[], id: number): AnimationC
 
 /** Called once on a loaded template, before per-creature skeleton cloning. No simulation RNG. */
 export function prepareRegionalRig(gltf: Pick<GLTF, 'scene' | 'animations'>, id: number): void {
-  if (id < 152 || id > 649 || gltf.scene.userData.authoredRig) return;
-  const sourceClips = [...gltf.animations];
-  if (sourceClips.length && !STATIC_NATIVE_CLIP_SPECIES.has(id)) return;
+  if (id < 1 || id > 1025 || gltf.scene.userData.authoredRig) return;
   let skinned = false; gltf.scene.traverse(object => { if (object instanceof SkinnedMesh) skinned = true; });
+  const sourceClips = [...gltf.animations];
+  if (sourceClips.length && skinned && !STATIC_NATIVE_CLIP_SPECIES.has(id)) return;
   // Corsola's source has only a rigid waist influence; add actual leg/body joints.
-  let sourceSkeleton = skinned && id !== 222;
+  let sourceSkeleton = skinned && id !== 222 && !STATIC_NATIVE_CLIP_SPECIES.has(id);
   let joints = sourceSkeleton ? existingJoints(gltf.scene) : skinStaticModel(gltf.scene, id);
   const motionRoles = /^(hips|spine|neck|head|tail|leg|foot|arm|armTip|wing|wingTip|shell|shellTip|antenna|fin|finTip|leaf|leafTip)$/;
   if (sourceSkeleton && joints.filter(joint => motionRoles.test(joint.role)).length < 2) {

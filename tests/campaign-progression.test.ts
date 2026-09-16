@@ -105,11 +105,11 @@ describe('regional campaign and growth', () => {
     const before = JSON.stringify(game); expect(() => depositMonster(game, -1)).toThrow(); expect(JSON.stringify(game)).toBe(before);
   });
 
-  it('limits duplicate merge value to 20 percent of level without recycling accumulated XP', () => {
+  it('limits duplicate merge bonus to 5 percent of the highest participant level without recycling accumulated XP', () => {
     const game = createGame(1, 'rarity');
     const common = duplicateMergeValue(createMonster(game, 19, 20)), rare = duplicateMergeValue(createMonster(game, 113, 20));
-    expect(common).toEqual({ levels: 4, percent: 20 }); expect(rare).toEqual(common);
-    expect(duplicateMergeValue(createMonster(game, 19, 40))).toEqual({ levels: 8, percent: 20 });
+    expect(common).toEqual({ levels: 1, percent: 5 }); expect(rare).toEqual(common);
+    expect(duplicateMergeValue(createMonster(game, 19, 40))).toEqual({ levels: 2, percent: 5 });
     const same = createMonster(game, 19, 20);
     same.xp += 1000; expect(duplicateMergeValue(same)).toEqual(common);
   });

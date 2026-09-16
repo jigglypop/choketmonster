@@ -1,0 +1,16 @@
+.breeding-panel { margin: 14px 0; padding: 18px; }
+.breeding-panel > p { margin: 8px 0 14px; color: var(--muted); font-size: calc(12px * var(--ui-font-scale, 1)); line-height: 1.65; }
+.breeding-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 9px; align-items: end; }
+.breeding-form label { display: grid; gap: 5px; color: var(--muted); font-size: calc(12px * var(--ui-font-scale, 1)); font-weight: 700; }
+.breeding-form select { min-width: 0; height: 40px; padding: 0 9px; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
+.breeding-form button { min-height: 40px; }
+.breeding-form small { grid-column: 1 / -1; min-height: 1.4em; color: #557667; }
+.egg-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 13px; }
+.egg-card { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; gap: 9px; align-items: center; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: rgba(248, 250, 243, .76); }
+.egg-icon { display: grid; place-items: center; width: 38px; height: 44px; border-radius: 50%; background: #f7f1d8; color: #9b7944; font-size: 22px; }
+.egg-card strong, .egg-card small { display: block; }
+.egg-card small { margin-top: 3px; color: var(--muted); font-size: calc(11px * var(--ui-font-scale, 1)); }
+.egg-card progress { width: 100%; height: 6px; margin-top: 7px; accent-color: #6f9d80; }
+.egg-card button { padding: 8px 10px; }
+.breeding-source { display: block; margin-top: 11px; color: var(--muted); font-size: calc(10px * var(--ui-font-scale, 1)); }
+@media (max-width: 720px) { .breeding-form { grid-template-columns: 1fr; } .breeding-form small { grid-column: 1; } .egg-list { grid-template-columns: 1fr; } }

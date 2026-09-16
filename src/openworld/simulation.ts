@@ -1,12 +1,13 @@
 import { Brain, validateGraph, type BrainState, type Graph } from '../core/brain';
 import { addEvolutionSteps } from '../game/evolution-progress';
+import { advanceEggProgress } from '../game/breeding';
 import { Random, clamp } from '../core/random';
 import { POKEMON, getMove, getSpecies } from '../data/pokemon';
 import { getVersionSpeciesIds } from '../data/pokemon-versions';
 import { replenishBalls, challengeCampaignGym, challengeCampaignTrainer } from '../game/engine';
 import { CAMPAIGN_REGIONS, getRegionalBadges, getCampaignGyms, getNextCampaignTrainer, campaignTravelReason, regionalWildLevels, type CampaignRegion } from '../game/campaign';
 import type { FieldTrainer } from '../data/field-trainers';
-import { chooseRegionalEncounter, encounterPeriodAt, regionalSourcePools, supplementalEncounterRules, type EncounterPeriod } from '../data/regional-encounters';
+import { chooseRegionalEncounter, encounterPeriodAt, regionalRuntimePools, supplementalEncounterRules, type EncounterPeriod } from '../data/regional-encounters';
 import { chooseExpansionEncounter, expansionEncounterSpecies, isExpansionRegion } from '../data/expansion-spawns';
 import { gameplayHabitat } from '../game/habitat';
 import { ConnectomeController, type NeuralMonster } from '../game/connectome';
@@ -199,6 +200,7 @@ export class OpenWorldSimulation {
   get atlas(): WorldAtlas { return this.restoringAtlas ?? getWorldAtlas(this.regionId); }
   sampleWorld(x: number, z: number): WorldSample { return getCaveScene(this.sceneId)?.sample(x, z) ?? this.atlas.sample(x, z); }
   locationAt(x: number, z: number) { return caveLocation(this.sceneId) ?? this.atlas.locationAt(x, z); }
+  isSafeTown(x: number, z: number): boolean { return !getCaveScene(this.sceneId) && this.atlas.locationAt(x, z).kind === 'town'; }
   get dayPeriod(): EncounterPeriod { return encounterPeriodAt(this.worldClockSeconds); }
   get timeOfDay(): EncounterPeriod { return this.dayPeriod; }
   get worldHour(): number { return this.worldClockSeconds / (20 * 60) * 24; }
@@ -218,7 +220,7 @@ export class OpenWorldSimulation {
     const lead = this.game.player.team[0]; if (!lead || !Number.isFinite(meters) || meters <= 0) return;
     this.evolutionStepRemainder += meters;
     const steps = Math.floor(this.evolutionStepRemainder);
-    if (steps) { this.evolutionStepRemainder -= steps; addEvolutionSteps(lead, steps); }
+    if (steps) { this.evolutionStepRemainder -= steps; addEvolutionSteps(lead, steps); advanceEggProgress(this.game, steps); }
   }
   // Keep source records and historical battles loadable, without spawning NPCs.
   get localFieldTrainer(): FieldTrainer | undefined { return undefined; }
@@ -329,6 +331,7 @@ export class OpenWorldSimulation {
       while (this.wildEntities().length < wildCount) this.spawnWild();
       while (this.foods.length < 24) this.spawnFood();
     }
+    this.relocateTownWilds();
   }
 
   movePlayer(position: WorldPosition): boolean {
@@ -404,7 +407,7 @@ export class OpenWorldSimulation {
 
   canEngageWild(id: string): boolean {
     const companion = this.entities.find(entity => entity.kind === 'companion'), wild = this.entities.find(entity => entity.id === id && entity.kind === 'wild');
-    return !!companion && !!wild && distance(companion, wild) <= 4 && !this.pathBlocked(companion, wild.x, wild.z, []);
+    return !!companion && !!wild && !this.isSafeTown(this.player.x, this.player.z) && !this.isSafeTown(wild.x, wild.z) && distance(companion, wild) <= 4 && !this.pathBlocked(companion, wild.x, wild.z, []);
   }
 
   setAutoCapture(enabled: boolean): void { if (typeof enabled !== 'boolean') throw new Error('Auto-capture flag must be boolean'); this.autoCapture = enabled; }
@@ -507,8 +510,9 @@ export class OpenWorldSimulation {
   }
 
   startEncounter(id: string): boolean {
-    if (this.game.battle || this.game.captureOffer) return false;
+    if (this.game.battle || this.game.captureOffer || this.isSafeTown(this.player.x, this.player.z)) return false;
     const entity = this.entities.find(item => item.kind === 'wild' && item.id === id); if (!entity) return false;
+    if (this.isSafeTown(entity.x, entity.z)) return false;
     const healthy = Array.from({ length: this.game.player.team.length }, (_, offset) => (this.nextBattleTeamIndex + offset) % this.game.player.team.length)
       .find(index => this.game.player.team[index].hp > 0);
     if (healthy === undefined) return false;
@@ -805,8 +809,8 @@ export class OpenWorldSimulation {
     const encounterRegion = this.regionId === 'johto' ? 'johto' : 'kanto';
     const candidates = isExpansionRegion(this.regionId) ? expansionEncounterSpecies(this.regionId, locationId, this.regionalBadges, this.dayPeriod, biome)
       : biome === undefined ? regionalEncounters(locationId, this.regionalBadges, this.regionId)
-      : [...regionalSourcePools(encounterRegion, locationId, this.dayPeriod, biome).flatMap(pool => pool.slots.map(slot => slot.speciesId)),
-        ...(this.spawnSerial % 20 === 0 ? supplementalEncounterRules(encounterRegion).filter(rule => rule.locationId === locationId && rule.period === this.dayPeriod && rule.biome === biome && rule.requiredBadges <= this.regionalBadges).map(rule => rule.speciesId) : [])];
+      : [...regionalRuntimePools(encounterRegion, locationId, this.dayPeriod, biome).flatMap(pool => pool.slots.map(slot => slot.speciesId)),
+        ...(this.spawnSerial % 20 === 0 ? supplementalEncounterRules(encounterRegion).filter(rule => rule.locationId === locationId && rule.biome === biome && rule.requiredBadges <= this.regionalBadges).map(rule => rule.speciesId) : [])];
     return [...new Set(candidates)].filter(speciesId => !UNIQUE_SPECIES.has(speciesId)
       || (!caught.includes(speciesId) && !this.entities.some(entity => entity.kind === 'wild' && entity.speciesId === speciesId) && !this.respawnQueue.some(pending => pending.speciesId === speciesId)));
   }
@@ -869,14 +873,14 @@ export class OpenWorldSimulation {
       const x = this.player.x + Math.cos(angle) * radius, z = this.player.z + Math.sin(angle) * radius;
       const location = this.locationAt(x, z);
       const sample = this.sampleWorld(x, z);
-      if (!sample.blocked && location.minLevel <= current.maxLevel + 4 && this.spawnPool(location.id, sample.biome).length && !this.entities.some(entity => distance(entity, { x, z }) < 2)) return { x, z };
+      if (!sample.blocked && !this.isSafeTown(x, z) && location.minLevel <= current.maxLevel + 4 && this.spawnPool(location.id, sample.biome).length && !this.entities.some(entity => distance(entity, { x, z }) < 2)) return { x, z };
     }
     for (const location of [...this.atlas.locations].sort((a, b) => distance(a, this.player) - distance(b, this.player))) {
-      if (!this.spawnPool(location.id).length) continue;
+      if (location.kind === 'town' || !this.spawnPool(location.id).length) continue;
       for (let radius = 0; radius <= 18; radius += 2) for (let step = 0; step < 16; step++) {
         const angle = step / 16 * Math.PI * 2, point = { x: location.x + Math.cos(angle) * radius, z: location.z + Math.sin(angle) * radius };
         const sample = this.sampleWorld(point.x, point.z);
-        if (this.locationAt(point.x, point.z).id === location.id && !sample.blocked && this.spawnPool(location.id, sample.biome).length
+        if (this.locationAt(point.x, point.z).id === location.id && !sample.blocked && !this.isSafeTown(point.x, point.z) && this.spawnPool(location.id, sample.biome).length
           && !this.entities.some(entity => distance(entity, point) < 2)) return point;
       }
     }
@@ -888,7 +892,7 @@ export class OpenWorldSimulation {
   }
 
   private spawnWildAt(position: { x: number; z: number }): OpenWorldEntity {
-    if (this.sampleWorld(position.x,position.z).blocked) throw new Error('Wild spawn position is blocked');
+    if (this.sampleWorld(position.x,position.z).blocked || this.isSafeTown(position.x, position.z)) throw new Error('Wild spawn position is blocked or inside a safe town');
     const { speciesId, level } = this.encounterAt(position);
     const entity = this.makeEntity(`wild-${this.spawnSerial++}`, 'wild', speciesId, level, position); this.entities.push(entity); return entity;
   }
@@ -900,10 +904,21 @@ export class OpenWorldSimulation {
   }
 
   private advanceRespawns(deltaSeconds: number): void {
+    this.relocateTownWilds();
     for (const pending of this.respawnQueue) pending.remainingSeconds = Math.max(0, pending.remainingSeconds - deltaSeconds);
     const ready = this.respawnQueue.filter(pending => pending.remainingSeconds === 0);
     this.respawnQueue = this.respawnQueue.filter(pending => pending.remainingSeconds > 0);
     for (const _pending of ready) this.spawnWild();
+  }
+
+  /** Old saves keep their individuals and brain state; only illegal town positions move. */
+  private relocateTownWilds(): void {
+    for (const entity of this.wildEntities()) {
+      if (entity.id === this.battleWildId || !this.isSafeTown(entity.x, entity.z)) continue;
+      const point = this.localSpawnPosition();
+      Object.assign(entity, point, this.encounterAt(point));
+      entity.target = undefined;
+    }
   }
 
   private streamTravelEncounters(): void {
@@ -932,7 +947,7 @@ export class OpenWorldSimulation {
       if (this.controlMode === 'auto' && !this.selectionPinned) return this.explorationTarget(entity);
       return { kind: 'player', id: 'player', x: this.player.x, z: this.player.z };
     }
-    const food = [...this.foods].sort((a, b) => distance(entity, a) - distance(entity, b) || a.id - b.id)[0];
+    const food = this.foods.filter(food => !this.isSafeTown(food.x, food.z)).sort((a, b) => distance(entity, a) - distance(entity, b) || a.id - b.id)[0];
     return food ? { kind: 'food', id: String(food.id), x: food.x, z: food.z } : undefined;
   }
 
@@ -963,12 +978,12 @@ export class OpenWorldSimulation {
     return [1, clamp(dx / 16, -1, 1), clamp(dz / 10, -1, 1), Math.sign(dx), Math.sign(dz), Math.min(Math.abs(dx) / 16, 1), Math.min(Math.abs(dz) / 10, 1), ...blocked, entity.energy / 100];
   }
 
-  private pathBlocked(from: { x: number; z: number }, x: number, z: number, occupied: Array<{ x: number; z: number }>): boolean {
+  private pathBlocked(from: { x: number; z: number; kind?: OpenWorldEntity['kind'] }, x: number, z: number, occupied: Array<{ x: number; z: number }>): boolean {
     if (!getCaveScene(this.sceneId) && !this.atlas.evaluateTraversal(from, { x, z }, this.regionalBadges).allowed) return true;
     const length = Math.hypot(x - from.x, z - from.z), samples = Math.max(1, Math.ceil(length / PATH_SAMPLE_DISTANCE));
     for (let sample = 1; sample <= samples; sample++) {
       const ratio = sample / samples, px = from.x + (x - from.x) * ratio, pz = from.z + (z - from.z) * ratio;
-      if (this.sampleWorld(px, pz).blocked || occupied.some(point => Math.hypot(point.x - px, point.z - pz) < 1)) return true;
+      if (this.sampleWorld(px, pz).blocked || from.kind === 'wild' && this.isSafeTown(px, pz) || occupied.some(point => Math.hypot(point.x - px, point.z - pz) < 1)) return true;
     }
     return false;
   }
@@ -1328,11 +1343,10 @@ export function redEncounters(locationId: string, badges: number, regionId: Worl
 export function regionalEncounters(locationId: string, _badges: number, regionId: WorldRegionId = 'kanto', period?: EncounterPeriod, biome?: string): number[] {
   if (isExpansionRegion(regionId)) return expansionEncounterSpecies(regionId, locationId, _badges, period, biome);
   if (regionId !== 'kanto' && regionId !== 'johto') return [];
-  const periods = period ? [period] : (['morning', 'day', 'night'] as const);
-  const source = periods.flatMap(value => biome === undefined
-    ? [...regionalSourcePools(regionId, locationId, value, 'meadow'),...regionalSourcePools(regionId, locationId, value, 'lake')].flatMap(pool => pool.slots.map(slot => slot.speciesId))
-    : regionalSourcePools(regionId, locationId, value, biome).flatMap(pool => pool.slots.map(slot => slot.speciesId)));
-  const supplemental=supplementalEncounterRules(regionId).filter(rule=>rule.locationId===locationId&&rule.requiredBadges<=_badges&&(!period||rule.period===period)&&(!biome||rule.biome===biome)).map(rule=>rule.speciesId);
+  const source = (biome === undefined
+    ? [...regionalRuntimePools(regionId, locationId, period ?? 'day', 'meadow'), ...regionalRuntimePools(regionId, locationId, period ?? 'day', 'lake')]
+    : regionalRuntimePools(regionId, locationId, period ?? 'day', biome)).flatMap(pool => pool.slots.map(slot => slot.speciesId));
+  const supplemental=supplementalEncounterRules(regionId).filter(rule=>rule.locationId===locationId&&rule.requiredBadges<=_badges&&(!biome||rule.biome===biome)).map(rule=>rule.speciesId);
   return [...new Set([...source, ...supplemental])].sort((a, b) => a - b);
 }
 

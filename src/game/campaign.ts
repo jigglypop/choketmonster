@@ -3,10 +3,15 @@ import { KANTO_GYMS, type KantoGym, type KantoLocation } from '../openworld/kant
 import { HOENN_GYMS } from '../openworld/hoenn';
 import { SINNOH_GYMS } from '../openworld/sinnoh';
 import { UNOVA_GYMS } from '../openworld/unova';
+import { KALOS_GYMS } from '../openworld/kalos';
+import { ALOLA_GYMS } from '../openworld/alola';
+import { GALAR_GYMS } from '../openworld/galar';
+import { HISUI_GYMS } from '../openworld/hisui';
+import { PALDEA_GYMS } from '../openworld/paldea';
 
-export type ExpansionCampaignRegion = 'hoenn' | 'sinnoh' | 'unova';
+export type ExpansionCampaignRegion = 'hoenn' | 'sinnoh' | 'unova' | 'kalos' | 'alola' | 'galar' | 'hisui' | 'paldea';
 export type CampaignRegion = 'johto' | 'kanto' | ExpansionCampaignRegion;
-export const CAMPAIGN_REGIONS: readonly CampaignRegion[] = ['johto', 'kanto', 'hoenn', 'sinnoh', 'unova'];
+export const CAMPAIGN_REGIONS: readonly CampaignRegion[] = ['johto', 'kanto', 'hoenn', 'sinnoh', 'unova', 'kalos', 'alola', 'galar', 'hisui', 'paldea'];
 export type CampaignProgress = {
   startRegion: 'johto' | 'kanto';
   johtoBadges: number[];
@@ -59,6 +64,32 @@ export const CAMPAIGN_TRAINERS: readonly CampaignTrainer[] = [
   { id: 'unova-caitlin', name: '사천왕 카틀레야', region: 'unova', locationId: 'unova-pokemon-league', kind: 'elite', team: [[579,48],[518,48],[561,48],[576,50]] },
   { id: 'unova-marshal', name: '사천왕 연무', region: 'unova', locationId: 'unova-pokemon-league', kind: 'elite', team: [[538,48],[539,48],[620,48],[534,50]] },
   { id: 'unova-alder', name: '챔피언 노간주', region: 'unova', locationId: 'unova-pokemon-league', kind: 'champion', team: [[617,60],[589,60],[621,60],[584,60],[626,60],[637,62]] },
+  {id:'kalos-malus',name:'사천왕 파키라',region:'kalos',locationId:'kalos-pokemon-league',kind:'elite',team:[[668,63],[324,63],[609,63],[663,65]]},
+  {id:'kalos-siebold',name:'사천왕 즈미',region:'kalos',locationId:'kalos-pokemon-league',kind:'elite',team:[[693,63],[130,63],[121,63],[689,65]]},
+  {id:'kalos-wikstrom',name:'사천왕 간피',region:'kalos',locationId:'kalos-pokemon-league',kind:'elite',team:[[707,63],[476,63],[212,63],[681,65]]},
+  {id:'kalos-drashna',name:'사천왕 드라세나',region:'kalos',locationId:'kalos-pokemon-league',kind:'elite',team:[[691,63],[621,63],[334,63],[715,65]]},
+  {id:'kalos-diantha',name:'챔피언 카르네',region:'kalos',locationId:'kalos-pokemon-league',kind:'champion',team:[[701,64],[697,65],[699,65],[706,66],[711,66],[282,68]]},
+  {id:'alola-molayne',name:'사천왕 멀레인',region:'alola',locationId:'alola-pokemon-league',kind:'elite',team:[[707,66],[376,66],[625,66],[801,67],[51,68]]},
+  {id:'alola-olivia',name:'사천왕 라이치',region:'alola',locationId:'alola-pokemon-league',kind:'elite',team:[[348,66],[76,66],[346,66],[745,67],[719,68]]},
+  {id:'alola-acerola',name:'사천왕 아세로라',region:'alola',locationId:'alola-pokemon-league',kind:'elite',team:[[354,66],[478,66],[426,66],[781,67],[778,68]]},
+  {id:'alola-kahili',name:'사천왕 카일리',region:'alola',locationId:'alola-pokemon-league',kind:'elite',team:[[628,66],[741,66],[227,66],[630,67],[733,68]]},
+  {id:'alola-champion',name:'알로라 챔피언',region:'alola',locationId:'alola-pokemon-league',kind:'champion',team:[[745,68],[784,68],[730,68],[724,68],[791,69],[800,70]]},
+  {id:'galar-marnie',name:'챔피언컵 마리',region:'galar',locationId:'galar-pokemon-league',kind:'elite',team:[[510,66],[454,66],[560,67],[877,67],[861,68]]},
+  {id:'galar-hop',name:'챔피언컵 호브',region:'galar',locationId:'galar-pokemon-league',kind:'elite',team:[[832,67],[823,67],[855,68],[143,68],[818,69]]},
+  {id:'galar-bede',name:'챔피언컵 비트',region:'galar',locationId:'galar-pokemon-league',kind:'elite',team:[[879,68],[282,68],[858,69],[869,70]]},
+  {id:'galar-raihan',name:'챔피언컵 금랑',region:'galar',locationId:'galar-pokemon-league',kind:'elite',team:[[526,69],[330,69],[844,70],[884,71]]},
+  {id:'galar-leon',name:'챔피언 단델',region:'galar',locationId:'galar-pokemon-league',kind:'champion',team:[[681,70],[887,70],[812,71],[464,71],[537,72],[6,74]]},
+  // Legends: Arceus has no regional League. These are authored Survey Corps final trials.
+  {id:'hisui-mai',name:'조사대 결승 미도',region:'hisui',locationId:'temple-of-sinnoh',kind:'elite',team:[[446,68],[899,69],[470,70]]},
+  {id:'hisui-irida',name:'조사대 결승 주혜',region:'hisui',locationId:'temple-of-sinnoh',kind:'elite',team:[[136,69],[196,69],[700,70],[471,72]]},
+  {id:'hisui-adaman',name:'조사대 결승 찬석',region:'hisui',locationId:'temple-of-sinnoh',kind:'elite',team:[[134,69],[197,69],[470,70],[901,72]]},
+  {id:'hisui-kamado',name:'조사대 결승 전목',region:'hisui',locationId:'temple-of-sinnoh',kind:'elite',team:[[143,70],[462,70],[628,71],[901,73]]},
+  {id:'hisui-volo',name:'신오신전 월로',region:'hisui',locationId:'temple-of-sinnoh',kind:'champion',team:[[442,72],[407,72],[468,73],[448,73],[350,73],[445,75]]},
+  {id:'paldea-rika',name:'사천왕 칠리',region:'paldea',locationId:'paldea-pokemon-league',kind:'elite',team:[[980,68],[51,68],[323,69],[340,69],[977,70]]},
+  {id:'paldea-poppy',name:'사천왕 뽀삐',region:'paldea',locationId:'paldea-pokemon-league',kind:'elite',team:[[879,69],[823,69],[437,70],[863,70],[959,71]]},
+  {id:'paldea-larry',name:'사천왕 청목',region:'paldea',locationId:'paldea-pokemon-league',kind:'elite',team:[[357,70],[741,70],[334,71],[973,71],[931,72]]},
+  {id:'paldea-hassel',name:'사천왕 팔자크',region:'paldea',locationId:'paldea-pokemon-league',kind:'elite',team:[[1011,71],[691,71],[715,72],[612,72],[998,73]]},
+  {id:'paldea-geeta',name:'톱 챔피언 테사',region:'paldea',locationId:'paldea-pokemon-league',kind:'champion',team:[[956,72],[673,72],[975,73],[983,73],[991,74],[970,76]]},
 ];
 
 export function campaignProgress(game: GameState): CampaignProgress {
@@ -72,6 +103,11 @@ export function getCampaignGyms(game: GameState, region: string): readonly Kanto
   if (region === 'hoenn') return HOENN_GYMS;
   if (region === 'sinnoh') return SINNOH_GYMS;
   if (region === 'unova') return UNOVA_GYMS;
+  if (region === 'kalos') return KALOS_GYMS;
+  if (region === 'alola') return ALOLA_GYMS;
+  if (region === 'galar') return GALAR_GYMS;
+  if (region === 'hisui') return HISUI_GYMS;
+  if (region === 'paldea') return PALDEA_GYMS;
   if (region === 'johto') return JOHTO_CAMPAIGN_GYMS;
   if (region !== 'kanto') return [];
   return campaignProgress(game).startRegion === 'johto'
@@ -79,6 +115,11 @@ export function getCampaignGyms(game: GameState, region: string): readonly Kanto
 }
 export function campaignTravelReason(game: GameState, region: string): string | undefined {
   const progress = campaignProgress(game);
+  if (region === 'kalos' && (progress.expansion?.unova?.league ?? 0) < 5) return '하나 리그를 클리어한 뒤 칼로스로 여행할 수 있습니다.';
+  if (region === 'alola' && (progress.expansion?.kalos?.league ?? 0) < 5) return '칼로스 리그를 클리어한 뒤 알로라로 여행할 수 있습니다.';
+  if (region === 'galar' && (progress.expansion?.alola?.league ?? 0) < 5) return '알로라 최종전을 완료해야 가라르로 이동할 수 있습니다.';
+  if (region === 'hisui' && (progress.expansion?.galar?.league ?? 0) < 5) return '가라르 챔피언컵을 완료해야 히스이 조사 임무를 시작할 수 있습니다.';
+  if (region === 'paldea' && (progress.expansion?.hisui?.league ?? 0) < 5) return '히스이 조사대 결승을 완료해야 팔데아로 이동할 수 있습니다.';
   if (region === 'kanto' && progress.startRegion === 'johto' && progress.johtoLeague < 5)
     return '성도 배지 8개와 성도 사천왕·챔피언 클리어 후 관동으로 여행할 수 있습니다.';
   if (region === 'hoenn' && progress.kantoLeague < 5) return '관동 사천왕·챔피언 클리어 후 호연으로 여행할 수 있습니다.';
@@ -97,7 +138,7 @@ export function getNextCampaignTrainer(game: GameState, region: string): Campaig
 }
 
 export function isExpansionCampaignRegion(region: string): region is ExpansionCampaignRegion {
-  return region === 'hoenn' || region === 'sinnoh' || region === 'unova';
+  return region === 'hoenn' || region === 'sinnoh' || region === 'unova' || region === 'kalos' || region === 'alola' || region === 'galar' || region === 'hisui' || region === 'paldea';
 }
 export function recordCampaignGymVictory(game: GameState, region: CampaignRegion, badge: number): void {
   game.campaign ??= campaignProgress(game);

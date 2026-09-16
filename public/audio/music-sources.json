@@ -1,15 +1,11 @@
 {
-  "title": "Other Center",
-  "author": "Chris Murphy (zesona)",
-  "sourcePage": "https://opengameart.org/content/other-center",
-  "sourceUrl": "https://opengameart.org/sites/default/files/othercenter.ogg",
-  "license": "CC0-1.0",
-  "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
-  "scope": "Author-composed loop for a Pokemon parody game; not a recording of the Pokemon soundtrack.",
-  "sourceSha256": "0301701eca84af4580d23007100254a87747c0fcef819ea97101ec8fd79b1c6b",
-  "sourcePageSha256": "8ce25e93fded1aee09786eec93adfebe08e85be7e4fe765b79a164e8e095c438",
-  "runtimeUrl": "/audio/other-center.mp4",
-  "runtimeSha256": "ea3fadfd7573fcf89a2900b8e18146f2ac4b507099098073efea05184eee990b",
-  "runtimeBytes": 629173,
-  "conversion": "AAC 128 kbit/s in MP4, original tempo and pitch, no video"
+  "title": "bgm.mp3",
+  "source": "User-supplied public/audio/bgm.mp3, selected as the default track on 2026-09-16",
+  "license": "Not specified by the supplier; no CC0 attribution is asserted for this file",
+  "runtimeUrl": "/audio/bgm.mp3",
+  "sourceSha256": "586932ee7c02695b96dd52e44d78000b1d16633e8064863df633b2367049e1a7",
+  "runtimeSha256": "586932ee7c02695b96dd52e44d78000b1d16633e8064863df633b2367049e1a7",
+  "runtimeBytes": 215667,
+  "conversion": "None; supplied MP3 retained byte-for-byte",
+  "alternateTrackProvenance": "/audio/other-center-sources.json"
 }

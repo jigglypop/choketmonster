@@ -42,6 +42,7 @@ export function RenderProbe() {
           .filter(object => object.name.startsWith('creature:'))
           .map(object => ({ id: object.name.slice('creature:'.length), position: object.position.toArray(), yaw: object.rotation.y })),
         nameplates: scene.getObjectsByProperty('name', 'creature-nameplate').length,
+        targetRoutes: scene.getObjectsByProperty('name', 'world-target-route').length,
         loadedPokemon: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('pokemon-model:')).map(object => Number(object.name.slice('pokemon-model:'.length))),
         modelStatuses: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('pokemon-model-status:')).map(object => object.name.slice('pokemon-model-status:'.length)),
         townBuildings: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('town-building:')).map(object => object.name),
@@ -60,7 +61,7 @@ export function RenderProbe() {
           .filter(object => object.name.startsWith('cave-'))
           .map(object => ({ name: object.name, count: (object as InstancedMesh).count })),
         landmarks: scene.getObjectsByProperty('type', 'Group')
-          .filter(object => object.name.startsWith('landmark:league:') || object.name === 'campaign-fly-guide')
+          .filter(object => object.name.startsWith('landmark:league:') || object.name === 'campaign-destination-pointer')
           .map(object => object.name),
         detailAssets: ['moss-boulder', 'moss-stone', 'fern'].map(id => {
           const group = scene.getObjectByName(`nature:${id}.glb`);

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-09-12T17:50:10.859Z",
+  "generatedAt": "2026-09-16T10:23:18.863Z",
   "source": {
     "repository": "https://github.com/Pokemon-3D-api/assets",
     "commit": "429de1288cea0d43f5b4f56305d2276e94239d65",
@@ -37,6 +37,16 @@
       "repository": "https://github.com/dnnyngyen/codex-pokepets",
       "commit": "3bff0e1def268a3504f9cba1bec467a5d901d20b",
       "result": "The advertised generation 1-9 3D assets are rendered animated sprites rather than GLB/glTF geometry, so they do not satisfy the 3D-model requirement."
+    },
+    {
+      "repository": "https://github.com/Naaylla/pokemons-3D",
+      "commit": "9a723e37ab4341a5c9d67390ad49bc94812f4131",
+      "result": "The complete pinned tree contains one Bulbasaur GLB and no license; it fills none of the 54 gaps."
+    },
+    {
+      "repository": "https://github.com/Lilothestitch16/Pokemon-HOME-Unity-Models",
+      "commit": "7b18d1a3e22df48329220ea99c4d2a6617d72345",
+      "result": "The repository is an unlicensed extracted Unity project. Its recursive tree is too large for the GitHub tree API and exposes no GLB, glTF, FBX, or OBJ files in the returned 49,616 blobs; it is not an attributable runtime GLB source."
     }
   ],
   "catalog": {

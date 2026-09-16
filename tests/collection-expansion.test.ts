@@ -43,14 +43,14 @@ describe('expanded collection and individual lifecycle', () => {
     expect(() => validateGame(game)).not.toThrow();
   });
 
-  it('merges 20% of the donor level once, learns level-up moves, and preserves only the recipient memory', () => {
+  it('uses the highest participant as baseline plus a 5% bonus once, learns moves, and preserves recipient memory', () => {
     const game = createGame(1, 'merge');
     const target = game.player.team[0], donor = createMonster(game, 1, 30);
     game.player.box.push(donor); controller.ensure(target); controller.ensure(donor);
     const before = structuredClone(target.brain), plan = previewDuplicateMerge(game, target.instanceId, [donor.instanceId]);
     const world = new OpenWorldSimulation(graph, game, 88);
     expect(mergeDuplicateMonster(game, target.instanceId, donor.instanceId)).toBe(plan.gainedXp);
-    expect(target.level).toBe(11); expect(plan).toMatchObject({ donorLevels: 30, totalLevels: 6, gainedLevels: 6, toLevel: 11 });
+    expect(target.level).toBe(31); expect(plan).toMatchObject({ donorLevels: 30, highestDonorLevel: 30, baselineLevel: 30, bonusLevels: 1, totalLevels: 26, gainedLevels: 26, toLevel: 31 });
     expect(target.brain).toEqual(before);
     expect(game.player.box).toHaveLength(0);
     expect(() => mergeDuplicateMonster(game, target.instanceId, donor.instanceId)).toThrow();
@@ -79,13 +79,13 @@ describe('expanded collection and individual lifecycle', () => {
     game.dex.seen.push(25); game.dex.caught.push(25);
     const plan = previewDuplicateMerge(game, target.instanceId, [a.instanceId, b.instanceId]), dex = structuredClone(game.dex);
     const result = mergeDuplicateMonsters(game, target.instanceId, [a.instanceId, b.instanceId]);
-    expect(result).toEqual(plan); expect(result).toMatchObject({ count: 2, donorLevels: 32, gainedLevels: 6, toLevel: 11, movesToTeam: false });
+    expect(result).toEqual(plan); expect(result).toMatchObject({ count: 2, donorLevels: 32, highestDonorLevel: 20, baselineLevel: 20, bonusLevels: 1, gainedLevels: 16, toLevel: 21, movesToTeam: false });
     expect(game.player.team).toEqual([target]); expect(game.player.box).toEqual([other]);
-    expect(target.level).toBe(11); expect(target.xp).toBe(target.level < 100 ? experienceAtLevel(11, 'medium-slow') : target.xp); expect(target.brain).toBe(brain); expect(target.brain).toEqual(memory);
+    expect(target.level).toBe(21); expect(target.xp).toBe(target.level < 100 ? experienceAtLevel(21, 'medium-slow') : target.xp); expect(target.brain).toBe(brain); expect(target.brain).toEqual(memory);
     expect(target.moveLearning).toEqual(learning); expect(game.dex).toEqual(dex);
     expect(() => validateGame(game)).not.toThrow();
     expect(() => mergeDuplicateMonsters(game, target.instanceId, [a.instanceId, b.instanceId])).toThrow();
-    expect(target.xp).toBe(experienceAtLevel(11, 'medium-slow'));
+    expect(target.xp).toBe(experienceAtLevel(21, 'medium-slow'));
   });
 
   it('moves a boxed survivor into the team and commits every donor even when XP hits the cap', () => {

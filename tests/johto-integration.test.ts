@@ -5,7 +5,7 @@ import { createGame } from '../src/game/engine';
 import { getWorldAtlas } from '../src/openworld/atlas';
 import { PLAYABLE_WORLDS } from '../src/openworld/availability';
 import { GOLD_ENCOUNTER_LAYOUT, OpenWorldSimulation, regionalEncounters, restoreOpenWorld, serializeOpenWorld } from '../src/openworld/simulation';
-import { regionalSourcePools, supplementalEncounterRules } from '../src/data/regional-encounters';
+import { regionalRuntimePools, supplementalEncounterRules } from '../src/data/regional-encounters';
 import { regionalWildLevels } from '../src/game/campaign';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
@@ -45,9 +45,9 @@ describe('reconstructed Johto adventure', () => {
       const location = atlas.locationAt(entity.x, entity.z);
       expect(regionalEncounters(location.id, 0, 'johto')).toContain(entity.speciesId);
       const sample = atlas.sample(entity.x, entity.z);
-      const sourceSlots = regionalSourcePools('johto', location.id, world.dayPeriod, sample.biome).flatMap(pool => pool.slots).filter(slot => slot.speciesId === entity.speciesId);
+      const sourceSlots = regionalRuntimePools('johto', location.id, world.dayPeriod, sample.biome).flatMap(pool => pool.slots).filter(slot => slot.speciesId === entity.speciesId);
       const balanced=regionalWildLevels(game,'johto',location);
-      const supplemental = Number(entity.id.slice(5)) % 20 === 0 && supplementalEncounterRules('johto').some(rule => rule.speciesId === entity.speciesId && rule.locationId === location.id && rule.period === world.dayPeriod && rule.biome === sample.biome && rule.requiredBadges === 0);
+      const supplemental = Number(entity.id.slice(5)) % 20 === 0 && supplementalEncounterRules('johto').some(rule => rule.speciesId === entity.speciesId && rule.locationId === location.id && rule.biome === sample.biome && rule.requiredBadges === 0);
       expect((sourceSlots.length>0&&entity.level>=balanced.minLevel&&entity.level<=balanced.maxLevel) || supplemental).toBe(true);
       expect(sample.blocked).toBe(false);
     }
@@ -59,8 +59,8 @@ describe('reconstructed Johto adventure', () => {
     expect(world.challengeLocalGym()).toBe(false);
   });
 
-  it('exposes all five reconstructed regions and retains the Kanto route 1 layout', () => {
-    expect(PLAYABLE_WORLDS.map(world => world.id)).toEqual(['kanto', 'johto', 'hoenn', 'sinnoh', 'unova']);
+  it('exposes all seven reconstructed regions and retains the Kanto route 1 layout', () => {
+    expect(PLAYABLE_WORLDS.map(world => world.id)).toEqual(['kanto', 'johto', 'hoenn', 'sinnoh', 'unova', 'kalos', 'alola']);
     expect(regionalEncounters('route-1', 0, 'kanto')).toEqual(expect.arrayContaining([16, 19]));
     expect(regionalEncounters('route-1', 0, 'kanto')).not.toContain(151);
     expect(regionalEncounters('route-29', 0, 'johto')).not.toContain(250);

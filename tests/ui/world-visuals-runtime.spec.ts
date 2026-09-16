@@ -49,15 +49,19 @@ for (const region of ['kanto', 'johto'] as const) test(`${region} league hall re
   expect(errors).toEqual([]);
 });
 
-test('campaign fly guide renders a route in the live scene', async ({ page }) => {
+test('campaign pointer renders a route in the live scene', async ({ page }) => {
   test.setTimeout(120_000);
-  const game = createGame(152, 'fly-guide-visual');
+  const game = createGame(152, 'pointer-visual');
   const world = new OpenWorldSimulation(graph, game, 9713, undefined, policy);
   world.setControlMode('manual'); world.setAutoHunt(false);
   const errors = await load(page, packSave(game, graph, { ...defaultView(), openWorld: world.snapshot(), openWorldPaused: true, learning: false }));
   await expect.poll(() => page.evaluate(() => (window as any).__renderProbe?.read().landmarks ?? []), { timeout: 45_000 })
-    .toContain('campaign-fly-guide');
+    .toContain('campaign-destination-pointer');
   await expect(page.locator('#world-next-guide')).toHaveAttribute('data-status', 'route');
-  await page.screenshot({ path: `${output}/campaign-fly-guide.png` });
+  await expect.poll(() => page.evaluate(() => (window as any).__renderProbe?.read().loadedPokemon ?? []), { timeout: 45_000 }).toContain(152);
+  await page.screenshot({ path: `${output}/campaign-pointer.png` });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator('#ow-host')).toBeVisible();
+  await page.screenshot({ path: `${output}/campaign-pointer-mobile.png` });
   expect(errors).toEqual([]);
 });

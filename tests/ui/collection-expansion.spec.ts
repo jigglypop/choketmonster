@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { mkdirSync, readFileSync } from 'node:fs';
-import { createGame, createMonster, duplicateMergeValue } from '../../src/game/engine';
+import { createGame, createMonster } from '../../src/game/engine';
 import { defaultView, packSave } from '../../src/game/storage';
 import type { Graph } from '../../src/core/brain';
 
@@ -54,7 +54,9 @@ test('bounded duplicate levels and release use cancellable app modals, with read
   await expect(modal.locator('.confirmation-cancel')).toBeFocused();
   await expect(modal).toContainText('mon-2');
   await expect(modal).toContainText('mon-1');
-  await expect(modal).toContainText(`+${Math.floor(duplicateMergeValue(donor).levels)}레벨`);
+  await expect(modal).toContainText('기준선 Lv.20');
+  await expect(modal).toContainText('5% 보너스 1레벨');
+  await expect(modal).toContainText('현재보다 +16');
   const fits = await modal.evaluate(dialog => { const r = dialog.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && dialog.scrollWidth <= dialog.clientWidth + 1; });
   expect(fits).toBe(true);
   await modal.screenshot({ path: `${output}/merge-modal-mobile-150.png` });

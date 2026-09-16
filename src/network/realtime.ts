@@ -1,4 +1,4 @@
-export type RealtimeRegion = 'kanto' | 'johto' | 'hoenn' | 'sinnoh' | 'unova';
+export type RealtimeRegion = 'kanto' | 'johto' | 'hoenn' | 'sinnoh' | 'unova' | 'kalos' | 'alola' | 'galar' | 'hisui' | 'paldea';
 export type PlayerActivity = 'idle' | 'moving' | 'battle';
 export type RemotePlayer = { id: string; name: string; region: RealtimeRegion; sceneId: string; speciesId: number; x: number; z: number; heading: number; activity: PlayerActivity; updatedAt: number };
 export type ChatMessage = { id: string; playerId: string; name: string; text: string; sentAt: number };
@@ -16,12 +16,12 @@ type ServerMessage =
 export type RealtimeView = { status: RealtimeStatus; id?: string; region?: RealtimeRegion; sceneId?: string; players: RemotePlayer[]; history: ChatMessage[]; ping?: number; error?: string };
 type Options = { url?: string; ticket?: string; getTicket?: () => Promise<string>; createSocket?: (url: string) => WebSocket; now?: () => number; random?: () => number; visible?: () => boolean; maxBufferedAmount?: number };
 
-const REALTIME_REGIONS: readonly RealtimeRegion[] = ['kanto', 'johto', 'hoenn', 'sinnoh', 'unova'];
+const REALTIME_REGIONS: readonly RealtimeRegion[] = ['kanto', 'johto', 'hoenn', 'sinnoh', 'unova', 'kalos', 'alola', 'galar', 'hisui', 'paldea'];
 const validRegion = (value: unknown): value is RealtimeRegion => REALTIME_REGIONS.includes(value as RealtimeRegion);
 const WS_CONNECTING = 0, WS_OPEN = 1, WS_CLOSING = 2;
 const codePointLength = (value: string) => Array.from(value).length;
 const validScene = (value: unknown, region: RealtimeRegion): value is string => typeof value === 'string' && (value === `surface:${region}` || new RegExp(`^cave:${region}:[a-z0-9-]+$`).test(value)) && value.length <= 64;
-const validPlayer = (value: unknown): value is RemotePlayer => { const p = value as RemotePlayer; return Boolean(p && typeof p.id === 'string' && p.id && typeof p.name === 'string' && codePointLength(p.name) <= 32 && validRegion(p.region) && validScene(p.sceneId, p.region) && Number.isInteger(p.speciesId) && p.speciesId > 0 && p.speciesId <= 649 && [p.x, p.z, p.heading, p.updatedAt].every(Number.isFinite) && ['idle', 'moving', 'battle'].includes(p.activity)); };
+const validPlayer = (value: unknown): value is RemotePlayer => { const p = value as RemotePlayer; return Boolean(p && typeof p.id === 'string' && p.id && typeof p.name === 'string' && codePointLength(p.name) <= 32 && validRegion(p.region) && validScene(p.sceneId, p.region) && Number.isInteger(p.speciesId) && p.speciesId > 0 && p.speciesId <= 1025 && [p.x, p.z, p.heading, p.updatedAt].every(Number.isFinite) && ['idle', 'moving', 'battle'].includes(p.activity)); };
 const validChat = (value: unknown): value is ChatMessage => { const m = value as ChatMessage; return Boolean(m && typeof m.id === 'string' && m.id && typeof m.playerId === 'string' && typeof m.name === 'string' && codePointLength(m.name) <= 32 && typeof m.text === 'string' && codePointLength(m.text) <= 200 && Number.isFinite(m.sentAt)); };
 const samePresence = (a?: Presence, b?: Presence) => Boolean(a && b && a.region === b.region && a.sceneId === b.sceneId && a.speciesId === b.speciesId && a.x === b.x && a.z === b.z && a.heading === b.heading && a.activity === b.activity);
 

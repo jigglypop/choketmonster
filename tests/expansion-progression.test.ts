@@ -31,12 +31,12 @@ function winRealBattle(game: GameState) {
   }
   expect(game.battle).toBeUndefined();
 }
-describe('Hoenn to Sinnoh to Unova runtime progression', () => {
+describe('Hoenn through Alola runtime progression', () => {
   it('plays 24 gyms and 15 league battles with real turns and preserves regional progress across saves', () => {
     let game = previousCampaignCleared();
     expect(campaignTravelReason(game, 'sinnoh')).toContain('호연');
     expect(campaignTravelReason(game, 'unova')).toContain('신오');
-    for (const region of ['hoenn', 'sinnoh', 'unova'] as const) {
+    for (const region of ['hoenn', 'sinnoh', 'unova', 'kalos', 'alola'] as const) {
       let world = new OpenWorldSimulation(graph, game, 917);
       world.changeRegion(region); world.setControlMode('manual');
       expect(world.rosterStatus().total).toBe(15);
@@ -58,9 +58,9 @@ describe('Hoenn to Sinnoh to Unova runtime progression', () => {
       }
       validateGame(game);
     }
-  }, 30_000);
+  }, 50_000);
   it('offers every native species through an original pool or a labeled rare supplement', () => {
-    for (const [region, first, last] of [['hoenn',252,386],['sinnoh',387,493],['unova',494,649]] as const) {
+    for (const [region, first, last] of [['hoenn',252,386],['sinnoh',387,493],['unova',494,649],['kalos',650,721],['alola',722,809]] as const) {
       const atlas = getWorldAtlas(region), source = new Set(atlas.locations.flatMap(location => expansionEncounterPools(region,location.id).filter(pool => pool.method === 'walk' || pool.method === 'surf').flatMap(pool => pool.slots.map(slot => slot.speciesId))));
       const rules = expansionSupplementalRules(region), added = new Set(rules.map(rule => rule.speciesId));
       for (let id = first; id <= last; id++) { expect(source.has(id) || added.has(id), `${region}:${id}`).toBe(true); expect(isPlayableSpecies(id)).toBe(true); }

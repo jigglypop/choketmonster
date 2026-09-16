@@ -22,6 +22,8 @@ describe('open-world battle HP persistence', () => {
     world.setControlMode('auto');
     const target = world.entities.find(entity => entity.kind === 'wild')!;
     target.level = 100;
+    world.player = { x: target.x, z: target.z, heading: 0 };
+    Object.assign(world.entities.find(entity => entity.kind === 'companion')!, world.player);
     expect(world.startEncounter(target.id)).toBe(true);
 
     const enemy = game.battle!.enemy.team[0];

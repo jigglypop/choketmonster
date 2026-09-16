@@ -77,6 +77,10 @@ export type OpenWorldViewOptions = {
   onNavigationStart?: () => boolean | void;
   /** Active keyboard or route input, including attempts blocked by terrain. */
   onMovementInput?: () => boolean | void;
+  /** Called once when held movement or a click route stops. */
+  onMovementEnd?: () => void;
+  /** Camera forward heading: north = PI, east = PI/2, south = 0. */
+  onCameraHeading?: (radians: number) => void;
   onSelect: (instanceId: string | null) => void;
   onInteract?: (instanceId: string) => void;
   onTrainer?: (trainerId: string) => void;
@@ -93,5 +97,7 @@ export type OpenWorldViewOptions = {
 
 export type OpenWorldView = {
   update(snapshot?: OpenWorldRenderSnapshot): void;
+  navigateTo(point: WorldPoint): boolean;
+  setCameraHeading(radians: number): void;
   destroy(): void;
 };

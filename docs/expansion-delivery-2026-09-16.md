@@ -41,18 +41,24 @@
 
 지도·출현·모델 출처 상세는 `artifacts/research/region-expansion/sources.json`에 남겼다. 재생성 스크립트는 `scripts/fetch-expansion-encounter-source.ts`, `scripts/generate-expansion-encounters.ts`, `scripts/audit-expansion-models.ts`, `scripts/verify-expansion-rigging.ts`이다.
 
-## 기본 게임 음악
+## 최초 배포의 기본 게임 음악
 
 - 곡: **Other Center**, Chris Murphy (zesona)
 - 출처: https://opengameart.org/content/other-center
 - 조건: CC0-1.0, https://creativecommons.org/publicdomain/zero/1.0/
 - 포켓몬 패러디 게임용으로 작곡된 짧은 반복 음악이다.
 - 기본 파일: `public/audio/other-center.mp4`, AAC 128 kbit/s, 약 37.61초.
-- 원본 OGG와 출처 페이지를 `data/local/audio/other-center/`에 보관했다. SHA-256과 변환 내역은 `public/audio/music-sources.json`에 기록했다.
+- 원본 OGG와 출처 페이지를 `data/local/audio/other-center/`에 보관했다. SHA-256과 변환 내역은 `public/audio/other-center-sources.json`에 기록했다.
 - `uv run --with imageio-ffmpeg python scripts/prepare-default-music.py`로 다시 준비할 수 있다.
 - 첫 게임 입력 후 재생하며 사용자가 고른 파일을 우선한다. `video/mp4` MIME의 음원 파일도 허용하고 새로고침 후 유지한다.
 
-## 검증 범위
+## 사용자 요청에 따른 후속 수정
+
+- 제공된 `public/audio/bgm.mp3`를 변환 없이 기본 반복 음악으로 사용한다. 제공 파일의 체크섬과 출처 기록은 `public/audio/music-sources.json`에 있다.
+- 월드의 파트너·야생·다른 플레이어 포켓몬 크기를 직전 설정의 1.5배로 키운다.
+- 초파리 모양과 바닥 원형 경로 표시는 단순한 화살표 포인터 하나로 교체한다. 목적지 카드와 미니맵의 길안내는 유지한다.
+
+## 최초 배포의 검증 범위
 
 - 24개 체육관과 15개 리그 전투를 실제 전투 엔진 턴으로 진행하고 저장·복원을 확인했다.
 - 지도 연결, 지형 높이 연속성, 충돌, 안전 도착, 출현 가중치, 전체 추가 종의 원본/희귀 분포, 구형 지도 저장을 검사했다.

@@ -69,7 +69,7 @@ test('bulk merge previews every donor, cancels safely, keeps a boxed survivor an
   await page.locator('#merge-all-duplicates').click();
   const modal = page.getByRole('dialog', { name: '모두 합치기' });
   await expect(modal).toContainText('mon-2'); await expect(modal).toContainText('박스에서 팀으로');
-  await expect(modal).toContainText('초과 20레벨');
+  await expect(modal).toContainText('초과 5레벨');
   await modal.getByRole('button', { name: '취소', exact: true }).click();
   await expect(page.locator('[data-monster="mon-1"]')).toHaveCount(1);
   await expect(page.locator('[data-monster="mon-3"]')).toHaveCount(1);

@@ -3,11 +3,11 @@ import { POKEMON_WORLD_SCALE_BOOST, pokemonWorldDisplayHeight } from '../src/ope
 
 describe('open-world character scale', () => {
   it('keeps partners below nearby buildings while preserving species size order', () => {
-    expect(pokemonWorldDisplayHeight(.4)).toBeLessThan(1.3);
-    expect(pokemonWorldDisplayHeight(.7)).toBeLessThan(2.1);
+    expect(pokemonWorldDisplayHeight(.4)).toBeLessThan(1.95);
+    expect(pokemonWorldDisplayHeight(.7)).toBeLessThan(3.15);
     expect(pokemonWorldDisplayHeight(.7)).toBeGreaterThan(pokemonWorldDisplayHeight(.4));
     expect(pokemonWorldDisplayHeight(1.7)).toBeGreaterThan(pokemonWorldDisplayHeight(.7));
-    expect(pokemonWorldDisplayHeight(8.8)).toBeLessThan(3.5);
+    expect(pokemonWorldDisplayHeight(8.8)).toBeLessThan(5.25);
   });
 
   it('uses a safe display size for missing or invalid source heights', () => {
@@ -15,8 +15,7 @@ describe('open-world character scale', () => {
     expect(pokemonWorldDisplayHeight(Number.NaN)).toBeCloseTo(pokemonWorldDisplayHeight(1));
   });
 
-  it('applies the requested visual-only 18 percent size boost', () => {
-    expect(POKEMON_WORLD_SCALE_BOOST).toBeGreaterThanOrEqual(1.15);
-    expect(POKEMON_WORLD_SCALE_BOOST).toBeLessThanOrEqual(1.2);
+  it('enlarges the previous visual scale by 1.5 without changing species ratios', () => {
+    expect(POKEMON_WORLD_SCALE_BOOST / 1.18).toBeCloseTo(1.5);
   });
 });

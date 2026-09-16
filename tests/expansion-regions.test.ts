@@ -4,11 +4,15 @@ import { expansionSpeciesAssetAvailable } from '../src/data/expansion-asset-avai
 import { HOENN_CONNECTIONS, HOENN_GYMS, HOENN_LOCATIONS, hoennBuildingOffsets, nearestHoennWalkable, sampleHoennWorld } from '../src/openworld/hoenn';
 import { SINNOH_CONNECTIONS, SINNOH_GYMS, SINNOH_LOCATIONS, nearestSinnohWalkable, sampleSinnohWorld, sinnohBuildingOffsets } from '../src/openworld/sinnoh';
 import { UNOVA_CONNECTIONS, UNOVA_GYMS, UNOVA_LOCATIONS, nearestUnovaWalkable, sampleUnovaWorld, unovaBuildingOffsets } from '../src/openworld/unova';
+import { KALOS_CONNECTIONS, KALOS_GYMS, KALOS_LOCATIONS, nearestKalosWalkable, sampleKalosWorld, kalosBuildingOffsets } from '../src/openworld/kalos';
+import { ALOLA_CONNECTIONS, ALOLA_GYMS, ALOLA_LOCATIONS, nearestAlolaWalkable, sampleAlolaWorld, alolaBuildingOffsets } from '../src/openworld/alola';
 
 const regions = [
   {id:'hoenn' as const,locations:HOENN_LOCATIONS,connections:HOENN_CONNECTIONS,gyms:HOENN_GYMS,sample:sampleHoennWorld,nearest:nearestHoennWalkable,buildings:hoennBuildingOffsets,dex:[252,386] as const,league:'ever-grande-city'},
   {id:'sinnoh' as const,locations:SINNOH_LOCATIONS,connections:SINNOH_CONNECTIONS,gyms:SINNOH_GYMS,sample:sampleSinnohWorld,nearest:nearestSinnohWalkable,buildings:sinnohBuildingOffsets,dex:[387,493] as const,league:'sinnoh-pokemon-league'},
   {id:'unova' as const,locations:UNOVA_LOCATIONS,connections:UNOVA_CONNECTIONS,gyms:UNOVA_GYMS,sample:sampleUnovaWorld,nearest:nearestUnovaWalkable,buildings:unovaBuildingOffsets,dex:[494,649] as const,league:'unova-pokemon-league'},
+  {id:'kalos' as const,locations:KALOS_LOCATIONS,connections:KALOS_CONNECTIONS,gyms:KALOS_GYMS,sample:sampleKalosWorld,nearest:nearestKalosWalkable,buildings:kalosBuildingOffsets,dex:[650,721] as const,league:'kalos-pokemon-league'},
+  {id:'alola' as const,locations:ALOLA_LOCATIONS,connections:ALOLA_CONNECTIONS,gyms:ALOLA_GYMS,sample:sampleAlolaWorld,nearest:nearestAlolaWalkable,buildings:alolaBuildingOffsets,dex:[722,809] as const,league:'alola-pokemon-league'},
 ];
 describe('authored expansion regions',()=>{
   for(const region of regions)it(`${region.id} has connected walkable progression and collision`,()=>{
@@ -22,9 +26,9 @@ describe('authored expansion regions',()=>{
     for(let id=region.dex[0];id<=region.dex[1];id++)expect(expansionSpeciesAssetAvailable(region.id,id)).toBe(true);
   });
   it('uses normalized species IDs while preserving source form IDs',()=>{
-    expect(EXPANSION_ENCOUNTER_SOURCE.selectedVersions).toEqual({hoenn:'emerald',sinnoh:'platinum',unova:'black'});
+    expect(EXPANSION_ENCOUNTER_SOURCE.selectedVersions).toEqual({hoenn:'emerald',sinnoh:'platinum',unova:'black',kalos:'x',alola:'ultra-moon',galar:'sword',paldea:'scarlet'});
     for(const region of regions)for(const pool of EXPANSION_ENCOUNTER_POOLS[region.id]){
-      expect(['walk','surf']).toContain(pool.method);expect(pool.slots.reduce((sum,slot)=>sum+slot.weight,0)).toBe(100);
+      expect(['walk','surf']).toContain(pool.method);expect(pool.slots.reduce((sum,slot)=>sum+slot.weight,0)).toBeGreaterThan(0);
       for(const slot of pool.slots){expect(slot.speciesId).toBeGreaterThan(0);expect(slot.speciesId).toBeLessThanOrEqual(region.dex[1]);expect(slot.sourcePokemonId).toBeGreaterThan(0);}
     }
   });

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { Color, DataTexture, EquirectangularReflectionMapping, FloatType, LinearSRGBColorSpace, MeshStandardMaterial, PMREMGenerator, RepeatWrapping, RGBAFormat, SRGBColorSpace, Texture, TextureLoader } from 'three';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
 import {
-  abs, color, cos, dot, float, instanceIndex, length, materialColor, materialRoughness, max, min, mix, normalView, normalize,
+  abs, color, cos, dot, float, instanceIndex, length, materialColor, materialRoughness, max, min, mix, normalMap, normalView, normalize,
   positionLocal, positionViewDirection, positionWorld, pow, sin, smoothstep, texture, timerLocal, vec2, vec3,
 } from 'three/tsl';
 import { distanceToWaterSurface, selectWaterLod, type WaterLod, type WaterLodPlayer } from './water-lod';
@@ -13,7 +13,7 @@ import { WORLD_SCALE } from './world-space';
 
 type Surface = 'ground' | 'rock' | 'path';
 export type SurfaceTextures = { diffuse: Texture; normal: Texture; arm: Texture };
-export type WaterMaterialOptions = { lake?: boolean; center?: readonly [number, number]; extent?: readonly [number, number]; radius?: number };
+export type WaterMaterialOptions = { lake?: boolean; center?: readonly [number, number]; extent?: readonly [number, number]; radius?: number; waterNormals?: Texture };
 
 const BIOME_COLORS: Record<Exclude<WorldSample['biome'], 'meadow' | 'lake'>, string> = {
   forest: '#285b35', rock: '#777763',
@@ -207,15 +207,21 @@ export function createWaterNodeMaterial({
   center = lake ? [122, -50] : [-68, 202],
   extent = [91, 33],
   radius = 24,
+  waterNormals,
 }: WaterMaterialOptions = {}): MeshStandardNodeMaterial {
   const material = new MeshStandardNodeMaterial({
-    color: '#247e85', roughness: .19, metalness: 0, transparent: true, opacity: .88, depthWrite: false, envMapIntensity: 1.3,
+    color: '#237f9c', roughness: .28, metalness: 0, envMapIntensity: .9,
   });
   const clock = timerLocal();
-  const waveA = sin(positionWorld.x.mul(1.9).add(positionWorld.z.mul(1.3)).add(clock.mul(1.15)));
-  const waveB = cos(positionWorld.x.mul(.85).sub(positionWorld.z.mul(1.7)).sub(clock.mul(.8)));
-  const ripple = sin(positionWorld.x.mul(5.1).add(positionWorld.z.mul(3.2)).sub(clock.mul(1.7)));
-  const waveNormal = normalize(normalView.add(vec3(waveA.mul(.12).add(ripple.mul(.025)), 0, waveB.mul(.095))));
+  const waveA = sin(positionWorld.x.mul(.23).add(positionWorld.z.mul(.17)).add(clock.mul(.35)));
+  const waveB = cos(positionWorld.x.mul(.19).sub(positionWorld.z.mul(.21)).sub(clock.mul(.28)));
+  // Two slowly crossing normal-map samples avoid the old high-frequency grid
+  // and use Three's tangent-space normal mapping on both GPU backends.
+  const flowA = positionWorld.xz.mul(.045).add(vec2(clock.mul(.007), clock.mul(.004)));
+  const flowB = positionWorld.zx.mul(.061).sub(vec2(clock.mul(.003), clock.mul(.006)));
+  const waveNormal = waterNormals
+    ? normalMap(texture(waterNormals, flowA).rgb.add(texture(waterNormals, flowB).rgb).mul(.5), vec2(.35, .35))
+    : normalize(normalView.add(vec3(waveA.mul(.025), 0, waveB.mul(.025))));
   const delta = positionWorld.xz.sub(vec2(center[0], center[1]));
   const shore = lake
     ? float(radius).sub(length(delta))
@@ -223,13 +229,14 @@ export function createWaterNodeMaterial({
   const shallow = float(1).sub(smoothstep(0, 3.5, shore));
   const fresnel = pow(float(1).sub(max(dot(waveNormal, positionViewDirection), 0)), 3);
   const foam = float(1).sub(smoothstep(.08, .65, shore)).mul(smoothstep(-.3, .7, waveA.add(waveB.mul(.35))));
-  let waterColor = mix(color('#247e85'), color('#1c6b59'), shallow.mul(.6));
-  waterColor = mix(waterColor, color('#6da8b8'), fresnel.mul(.5));
-  waterColor = mix(waterColor, color('#b8d6c2'), foam.mul(.72));
-  material.colorNode = waterColor.add(vec3(.1, .16, .13).mul(pow(max(waveA.mul(waveB), 0), 14)));
+  let waterColor = mix(color('#237f9c'), color('#5faeaf'), shallow.mul(.55));
+  waterColor = mix(waterColor, color('#b1d5e0'), fresnel.mul(.24));
+  waterColor = mix(waterColor, color('#d3eae2'), foam.mul(.4));
+  material.colorNode = waterColor;
   material.normalNode = waveNormal;
   material.userData.openWorldNodeEffect = lake ? 'water:radial' : 'water:rectangular';
   material.userData.openWorldWaterBounds = { center: [...center], extent: [...extent], radius };
+  material.userData.openWorldWaterNormals = Boolean(waterNormals);
   return material;
 }
 
@@ -253,31 +260,40 @@ export function SurfaceMaterial(options: SurfaceMaterialOptions) {
 }
 
 /** Detailed shoreline water nearby, with a stable simple material outside the LOD boundary. */
-export function WaterMaterial({
+export function useWaterMaterials({
   lake = false,
   center = lake ? [122, -50] : [-68, 202],
   extent = [91, 33],
   radius = 24,
-  player,
-  mobile = false,
-}: WaterMaterialOptions & { player?: WaterLodPlayer; mobile?: boolean }) {
-  const shapeKey = `${lake ? 'lake' : 'rect'}:${center[0]}:${center[1]}:${extent[0]}:${extent[1]}:${radius}`;
+}: WaterMaterialOptions = {}) {
+  const waterNormals = useMemo(() => {
+    const texture = new TextureLoader().load('/textures/water/three-waternormals.jpg');
+    texture.wrapS = texture.wrapT = RepeatWrapping;
+    return texture;
+  }, []);
+  useEffect(() => () => waterNormals.dispose(), [waterNormals]);
   const materials = useMemo(() => {
-    const detailed = createWaterNodeMaterial({ lake, center, extent, radius });
+    const detailed = createWaterNodeMaterial({ lake, center, extent, radius, waterNormals });
     detailed.userData.openWorldWaterLod = 'detailed';
     const simple = new MeshStandardMaterial({
-      color: '#438d93', roughness: 1, metalness: 0, transparent: true, opacity: .88, depthWrite: false,
+      color: '#398fa4', roughness: .65, metalness: 0,
     });
     simple.userData.openWorldWaterLod = 'simple';
     return { detailed, simple };
-  }, [center[0], center[1], extent[0], extent[1], lake, radius]);
+  }, [center[0], center[1], extent[0], extent[1], lake, radius, waterNormals]);
   useEffect(() => () => {
     materials.detailed.dispose();
     materials.simple.dispose();
   }, [materials]);
+  return materials;
+}
+
+export function WaterMaterial({ player, mobile = false, ...shape }: WaterMaterialOptions & { player?: WaterLodPlayer; mobile?: boolean }) {
+  const materials = useWaterMaterials(shape);
+  const shapeKey = JSON.stringify(shape);
 
   const previous = useRef<{ shapeKey: string; lod: WaterLod } | undefined>(undefined);
-  const distance = player ? distanceToWaterSurface(player, { lake, center, extent, radius }) : 0;
+  const distance = player ? distanceToWaterSurface(player, shape) : 0;
   const lod = player
     ? selectWaterLod(previous.current?.shapeKey === shapeKey ? previous.current.lod : undefined, distance, mobile)
     : 'detailed';

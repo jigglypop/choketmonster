@@ -120,6 +120,11 @@ enum Region {
     Hoenn,
     Sinnoh,
     Unova,
+    Kalos,
+    Alola,
+    Galar,
+    Hisui,
+    Paldea,
 }
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 struct RoomKey {
@@ -709,7 +714,7 @@ fn join(
     activity: Activity,
 ) {
     if !valid_position(x, z, heading)
-        || !(1..=649).contains(&species_id)
+        || !(1..=1025).contains(&species_id)
         || !valid_scene(region, &scene_id)
     {
         send_error(
@@ -853,7 +858,7 @@ fn update_player(
     activity: Activity,
     now: Instant,
 ) {
-    if !valid_position(x, z, heading) || !(1..=649).contains(&species_id) {
+    if !valid_position(x, z, heading) || !(1..=1025).contains(&species_id) {
         send_error(
             state,
             id,
@@ -999,6 +1004,11 @@ fn valid_scene(region: Region, value: &str) -> bool {
         Region::Hoenn => "hoenn",
         Region::Sinnoh => "sinnoh",
         Region::Unova => "unova",
+        Region::Kalos => "kalos",
+        Region::Alola => "alola",
+        Region::Galar => "galar",
+        Region::Hisui => "hisui",
+        Region::Paldea => "paldea",
     };
     let mut parts = value.split(':');
     matches!(parts.next(), Some("surface") | Some("cave"))
@@ -1182,6 +1192,11 @@ mod tests {
             Region::Hoenn => "surface:hoenn",
             Region::Sinnoh => "surface:sinnoh",
             Region::Unova => "surface:unova",
+            Region::Kalos => "surface:kalos",
+            Region::Alola => "surface:alola",
+            Region::Galar => "surface:galar",
+            Region::Hisui => "surface:hisui",
+            Region::Paldea => "surface:paldea",
         };
         join(
             state,
@@ -1247,15 +1262,15 @@ mod tests {
     }
 
     #[test]
-    fn accepts_expansion_presence_through_species_649() {
+    fn accepts_expansion_presence_through_species_1025() {
         let state = test_state(64);
         let mut accepted = connect(&state, "aaaa");
         join(
             &state,
             "aaaa",
-            Region::Hoenn,
-            "surface:hoenn".into(),
-            649,
+            Region::Paldea,
+            "surface:paldea".into(),
+            1025,
             1.0,
             2.0,
             0.0,
@@ -1274,9 +1289,9 @@ mod tests {
         join(
             &state,
             "bbbb",
-            Region::Unova,
-            "surface:unova".into(),
-            650,
+            Region::Paldea,
+            "surface:paldea".into(),
+            1026,
             1.0,
             2.0,
             0.0,

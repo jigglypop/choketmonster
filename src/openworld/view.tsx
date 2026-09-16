@@ -54,7 +54,7 @@ import { initialYaw, movementYaw, turnTowards } from './motion';
 import { normalizePokemonModel } from './model-normalization';
 import './view.css';
 import { RenderProbe } from './render-probe';
-import { SkyLighting, SurfaceMaterial, WaterMaterial, regionTrailColor, useSurfaceMaterial, worldSurfaceColor } from './materials';
+import { SkyLighting, SurfaceMaterial, regionTrailColor, useSurfaceMaterial, useWaterMaterials, worldSurfaceColor } from './materials';
 import { AdaptiveResolution } from './adaptive-resolution';
 import { MAX_CAMERA_DISTANCE, MIN_CAMERA_DISTANCE } from './camera-navigation';
 import { findWorldPath, headingForStep } from './navigation';
@@ -63,7 +63,8 @@ import { onRenderSuspension, renderingSuspended } from '../three/render-budget';
 import { WORLD_MIN, WORLD_MAX, WORLD_SCALE, surfaceSceneId } from './world-space';
 import { getCaveScene } from './caves';
 import { CaveInterior, GymEntranceStatus, ProgressGate, RegionalLeagueLandmark, ScenePortals, isRegionalLeagueLocation } from './scene-landmarks';
-import { FlyGuide } from './fly-guide';
+import { DestinationPointer } from './destination-pointer';
+import { TargetRoute } from './target-route';
 import { createOpenWorldRenderer } from './gpu-renderer';
 const MODEL_CACHE_LIMIT = 16;
 const NATURE_DETAIL_RADIUS = 68;
@@ -193,7 +194,7 @@ function fallbackSample(x: number, z: number): WorldSample {
   return { height, biome: Math.abs(x) + Math.abs(z) > 175 ? 'rock' : 'meadow', blocked: false };
 }
 
-const Terrain = memo(function Terrain({ sampleWorld, chunk, atlas, material, onNavigate }: { sampleWorld: (x: number, z: number) => WorldSample; chunk: TerrainChunk; atlas: WorldAtlas; material: Material; onNavigate?: (point: WorldPoint) => void }) {
+const Terrain = memo(function Terrain({ sampleWorld, chunk, atlas, material, waterMaterial, onNavigate }: { sampleWorld: (x: number, z: number) => WorldSample; chunk: TerrainChunk; atlas: WorldAtlas; material: Material; waterMaterial: Material; onNavigate?: (point: WorldPoint) => void }) {
   const { geometry, skirt } = useMemo(() => {
     const n = chunk.segments, stride = n + 1;
     const vertices: number[] = [], colors: number[] = [], indices: number[] = [];
@@ -208,7 +209,16 @@ const Terrain = memo(function Terrain({ sampleWorld, chunk, atlas, material, onN
     const geometry = new BufferGeometry();
     geometry.setAttribute('position', new Float32BufferAttribute(vertices, 3));
     geometry.setAttribute('color', new Float32BufferAttribute(colors, 3));
+    geometry.setAttribute('uv', new Float32BufferAttribute(vertices.flatMap((_, index) => index % 3 === 0 ? [vertices[index] * .045, vertices[index + 2] * .045] : []), 2));
     geometry.setIndex(indices); geometry.computeVertexNormals();
+    for (let index = 0; index < indices.length; index += 3) {
+      const a = indices[index] * 3, b = indices[index + 1] * 3, c = indices[index + 2] * 3;
+      const x = (vertices[a] + vertices[b] + vertices[c]) / 3, z = (vertices[a + 2] + vertices[b + 2] + vertices[c + 2]) / 3;
+      const materialIndex = sampleWorld(x, z).biome === 'lake' ? 1 : 0;
+      const previous = geometry.groups.at(-1);
+      if (previous?.materialIndex === materialIndex) previous.count += 3;
+      else geometry.addGroup(index, 3, materialIndex);
+    }
     // Separate skirts close coarse/fine seams without bending the ground normals.
     const skirtVertices: number[] = [], skirtColors: number[] = [], skirtIndices: number[] = [];
     const edges = [Array.from({ length: stride }, (_, i) => i), Array.from({ length: stride }, (_, i) => i * stride + n),
@@ -226,7 +236,7 @@ const Terrain = memo(function Terrain({ sampleWorld, chunk, atlas, material, onN
     return { geometry, skirt };
   }, [chunk.x, chunk.z, chunk.segments, sampleWorld, atlas]);
   useEffect(() => () => { geometry.dispose(); skirt.dispose(); }, [geometry, skirt]);
-  const surface = <mesh geometry={geometry} material={material} dispose={null} receiveShadow name={`terrain-chunk:${chunk.key}:${chunk.segments}`} onClick={event => {
+  const surface = <mesh geometry={geometry} material={[material, waterMaterial]} dispose={null} receiveShadow name={`terrain-chunk:${chunk.key}:${chunk.segments}`} onClick={event => {
     event.stopPropagation(); if (event.button === 0 && event.delta <= 5) onNavigate?.({ x: event.point.x, z: event.point.z });
   }} />;
   return <group>
@@ -234,7 +244,7 @@ const Terrain = memo(function Terrain({ sampleWorld, chunk, atlas, material, onN
     <mesh geometry={skirt} material={material} dispose={null} />
   </group>;
 }, (before, after) => before.chunk.key === after.chunk.key && before.chunk.segments === after.chunk.segments
-  && before.sampleWorld === after.sampleWorld && before.atlas === after.atlas && before.material === after.material && before.onNavigate === after.onNavigate);
+  && before.sampleWorld === after.sampleWorld && before.atlas === after.atlas && before.material === after.material && before.waterMaterial === after.waterMaterial && before.onNavigate === after.onNavigate);
 
 function InstancedPart({ geometry, material, sourceMatrix, placements, shadows }: {
   geometry: BufferGeometry;
@@ -429,7 +439,7 @@ function TrailAndWater({ sampleWorld, player, badges, atlas, visible, mobile, gy
           const px = x + sideX * direction, pz = z + sideZ * direction;
           vertices.push(px, terrainSurfaceHeight(sampleWorld, px, pz) + .055, pz);
         }
-        if (step < steps) {
+        if (step < steps && sampleWorld(from.x + dx * ((step + .5) / steps), from.z + dz * ((step + .5) / steps)).biome !== 'lake') {
           const base = offset + step * 2;
           indices.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
         }
@@ -449,13 +459,6 @@ function TrailAndWater({ sampleWorld, player, badges, atlas, visible, mobile, gy
   return (
     <group name={`region-landmarks:${atlas.id}`} userData={{ gaesupWorldObject: 'region-landmarks' }}>
       <mesh geometry={trail} receiveShadow><SurfaceMaterial surface="path" color={regionTrailColor(atlas)} /></mesh>
-      {atlas.id === 'kanto' && <><mesh position={[-34 * WORLD_SCALE, -.66, 101 * WORLD_SCALE]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}>
-        <planeGeometry args={[91 * WORLD_SCALE, 33 * WORLD_SCALE]} /><WaterMaterial player={player} mobile={mobile} center={[-34 * WORLD_SCALE, 101 * WORLD_SCALE]} extent={[45.5 * WORLD_SCALE, 16.5 * WORLD_SCALE]} />
-      </mesh>
-      <mesh position={[61 * WORLD_SCALE, -.66, -25 * WORLD_SCALE]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}>
-        <circleGeometry args={[12 * WORLD_SCALE, 48]} /><WaterMaterial player={player} mobile={mobile} lake center={[61 * WORLD_SCALE, -25 * WORLD_SCALE]} radius={12 * WORLD_SCALE} />
-      </mesh></>}
-      {atlas.id !== 'kanto' && atlas.locations.filter(item => item.kind === 'sea' && Math.hypot(item.x - player.x, item.z - player.z) < 90).map(item => <mesh key={item.id} position={[item.x, sampleWorld(item.x, item.z).height + .025, item.z]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}><circleGeometry args={[12 * WORLD_SCALE, 32]} /><WaterMaterial player={player} mobile={mobile} lake center={[item.x, item.z]} radius={12 * WORLD_SCALE} /></mesh>)}
       {atlas.id !== 'kanto' && atlas.locations.filter(item => item.kind === 'special' && !isRegionalLeagueLocation(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) < 70 && visible(item.x, 5, item.z, 10)).map(item => <RegionalLandmark key={item.id} region={atlas.id} x={item.x} y={terrainSurfaceHeight(sampleWorld, item.x, item.z)} z={item.z} />)}
       {atlas.locations.filter(item => isRegionalLeagueLocation(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) < 100).map(item => {
         // Place scenery beyond the existing blocked edge, leaving arrival and walking paths clear.
@@ -606,43 +609,18 @@ function AttackEffect({ active, moveType }: { active: boolean; moveType?: string
 }
 
 function CreatureBillboard({ creature, hp, distance, emphasized }: { creature: WorldCreature; hp: number; distance: number; emphasized: boolean }) {
-  const texture = useMemo(() => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 128;
-    const context = canvas.getContext('2d')!;
-    context.fillStyle = '#102b25';
-    context.beginPath();
-    context.roundRect(4, 4, 504, 120, 24);
-    context.fill();
-    context.strokeStyle = 'rgba(244, 226, 151, .75)';
-    context.lineWidth = 4;
-    context.stroke();
-    context.fillStyle = '#fff5d6';
-    context.textAlign = 'center';
-    context.font = '800 44px system-ui, sans-serif';
-    context.fillText(creature.remotePlayer ? creature.remotePlayer.name : `${creature.name} · Lv.${creature.level}`, 256, 49, 468);
-    context.font = '700 32px system-ui, sans-serif';
-    context.fillText(creature.remotePlayer ? `${creature.remotePlayer.activity === 'battle' ? '배틀 중' : creature.remotePlayer.activity === 'moving' ? '이동 중' : '대기'}` : `${Math.max(0, Math.ceil(creature.hp))} / ${creature.maxHp} HP`, 256, 84, 468);
-    if (creature.remotePlayer) {
-      const result = new CanvasTexture(canvas); result.colorSpace = SRGBColorSpace; return result;
-    }
-    context.fillStyle = '#102b25';
-    context.beginPath();
-    context.roundRect(44, 91, 424, 17, 8);
-    context.fill();
-    context.fillStyle = hp > .45 ? '#82d179' : hp > .2 ? '#e5ca55' : '#e56f59';
-    context.beginPath();
-    context.roundRect(44, 91, Math.max(8, 424 * hp), 17, 8);
-    context.fill();
-    const result = new CanvasTexture(canvas);
-    result.colorSpace = SRGBColorSpace;
-    return result;
-  }, [creature.hp, creature.level, creature.maxHp, creature.name, creature.remotePlayer?.activity, hp]);
-  useEffect(() => () => texture.dispose(), [texture]);
   if (distance > 34 && !emphasized) return null;
-  const width = emphasized ? 2.8 : 2.4;
-  return <sprite name="creature-nameplate" position={[0, (creature.displayHeight ?? 1.2) + .5, 0]} scale={[width, width * .25, 1]}><spriteMaterial map={texture} transparent depthTest depthWrite={false} /></sprite>;
+  const remote = creature.remotePlayer;
+  return <group name="creature-nameplate" position={[0, (creature.displayHeight ?? 1.2) + .5, 0]}>
+    <Html center zIndexRange={[2, 1]} style={{ pointerEvents: 'none' }}>
+      <div className={`ow-creature-label${emphasized ? ' ow-creature-label-selected' : ''}`} data-creature-id={creature.id}>
+        <strong>{remote ? remote.name : `${creature.name} · Lv.${creature.level}`}</strong>
+        <span>{remote ? remote.activity === 'battle' ? '배틀 중' : remote.activity === 'moving' ? '이동 중' : '대기'
+          : `${Math.max(0, Math.ceil(creature.hp))} / ${creature.maxHp} HP`}</span>
+        {!remote && <div className="ow-hp-track"><i className="ow-hp-fill" style={{ width: `${Math.max(0, Math.min(1, hp)) * 100}%`, background: hp > .45 ? '#82d179' : hp > .2 ? '#e5ca55' : '#e56f59' }} /></div>}
+      </div>
+    </Html>
+  </group>;
 }
 
 function Creature({ creature, selected, distance, options, showLabels, model }: {
@@ -707,7 +685,9 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return target.isContentEditable || ['TEXTAREA', 'SELECT'].includes(target.tagName);
 }
 
-function PlayerCamera({ snapshot, options, destination, onDestination }: { snapshot: OpenWorldRenderSnapshot; options: OpenWorldViewOptions; destination: WorldPoint | null; onDestination: (point: WorldPoint | null) => void }) {
+type ViewCommands = { navigateTo?: (point: WorldPoint) => boolean; setCameraHeading?: (radians: number) => void };
+
+function PlayerCamera({ snapshot, options, destination, onDestination, commands }: { commands: ViewCommands; snapshot: OpenWorldRenderSnapshot; options: OpenWorldViewOptions; destination: WorldPoint | null; onDestination: (point: WorldPoint | null) => void }) {
   const controls = useRef<OrbitControlsImpl>(null);
   const keys = useRef(new Set<string>());
   const position = useRef(new Vector3(snapshot.player.x, terrainSurfaceHeight(options.sampleWorld ?? fallbackSample, snapshot.player.x, snapshot.player.z), snapshot.player.z));
@@ -719,6 +699,8 @@ function PlayerCamera({ snapshot, options, destination, onDestination }: { snaps
   const listenersReady = useRef(false);
   const path = useRef<WorldPoint[]>([]);
   const announcedReady = useRef(false);
+  const movementActive = useRef(false);
+  const cameraHeading = useRef({ time: 0, angle: Infinity });
   const { camera, size } = useThree();
   const sample = options.sampleWorld ?? fallbackSample;
 
@@ -749,6 +731,19 @@ function PlayerCamera({ snapshot, options, destination, onDestination }: { snaps
     camera.position.copy(initialTarget).add(DEFAULT_CAMERA_OFFSET);
     controls.current?.update();
   }, [camera]);
+  useEffect(() => {
+    commands.setCameraHeading = radians => {
+      if (!Number.isFinite(radians) || !controls.current) return;
+      const center = controls.current.target;
+      const radius = Math.hypot(camera.position.x - center.x, camera.position.z - center.z);
+      camera.position.x = center.x - Math.sin(radians) * radius;
+      camera.position.z = center.z - Math.cos(radians) * radius;
+      camera.lookAt(center); controls.current.update();
+      options.onCameraHeading?.(radians);
+    };
+    return () => { delete commands.setCameraHeading; };
+  }, [camera, commands, options]);
+
   useEffect(() => {
     const down = (event: KeyboardEvent) => {
       if (isTypingTarget(event.target)) return;
@@ -796,6 +791,9 @@ function PlayerCamera({ snapshot, options, destination, onDestination }: { snaps
         movement.current.set(dx / remaining, 0, dz / remaining);
       }
     }
+    const hasMovement = Boolean(forwardAxis || sideAxis || path.current.length);
+    if (!hasMovement && movementActive.current) options.onMovementEnd?.();
+    movementActive.current = hasMovement;
     if ((forwardAxis || sideAxis) && options.onMovementInput?.() !== false) {
       if (!path.current.length) {
         camera.getWorldDirection(forward.current);
@@ -828,6 +826,13 @@ function PlayerCamera({ snapshot, options, destination, onDestination }: { snaps
         path.current = [];
         onDestination(null);
       }
+    }
+    const now = performance.now();
+    if (now - cameraHeading.current.time >= 100) {
+      camera.getWorldDirection(forward.current);
+      const angle = Math.atan2(forward.current.x, forward.current.z);
+      if (Math.abs(angle - cameraHeading.current.angle) > .01) options.onCameraHeading?.(angle);
+      cameraHeading.current = { time: now, angle };
     }
     if (controls.current) {
       cameraTarget.current.set(target.x, target.y + 1.2, target.z);
@@ -897,11 +902,12 @@ function useViewWindow() {
   return { ...windowState, visible };
 }
 
-function Scene({ snapshot, options, showLabels, destination, onNavigate, onDestination }: { snapshot: OpenWorldRenderSnapshot; options: OpenWorldViewOptions; showLabels: boolean; destination: WorldPoint | null; onNavigate: (point: WorldPoint) => void; onDestination: (point: WorldPoint | null) => void }) {
+function Scene({ snapshot, options, showLabels, destination, onNavigate, onDestination, commands }: { commands: ViewCommands; snapshot: OpenWorldRenderSnapshot; options: OpenWorldViewOptions; showLabels: boolean; destination: WorldPoint | null; onNavigate: (point: WorldPoint) => void; onDestination: (point: WorldPoint | null) => void }) {
   const atlas = getWorldAtlas(snapshot.regionId ?? 'kanto');
   const sceneId = snapshot.sceneId ?? surfaceSceneId(atlas.id), cave = getCaveScene(sceneId);
   const sample = cave?.sample ?? atlas.sample;
   const groundMaterial = useSurfaceMaterial({ surface: 'ground', vertexColors: true });
+  const waterMaterials = useWaterMaterials({ center: [0, 0], extent: [1000, 1000] });
   // Fixed daytime presentation: never rebuild lighting or sky for a world clock tick.
   const daylight = 1;
   const skyColor = useMemo(() => new Color(cave ? '#182326' : '#afcfc1'), [cave]);
@@ -927,7 +933,7 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
       {cave && <pointLight position={[snapshot.player.x, 5, snapshot.player.z]} color="#ffdda6" intensity={35} distance={28} decay={1.4} />}
       <Physics gravity={[0, -18, 0]} timeStep="vary">
         {cave ? <CaveInterior cave={cave} player={snapshot.player} mobile={windowState.mobile} onNavigate={onNavigate} /> : <>
-          <group key={`terrain:${sceneId}`}>{chunks.map(chunk => <Terrain key={`${chunk.key}:${chunk.segments}`} sampleWorld={sample} atlas={atlas} chunk={chunk} material={groundMaterial} onNavigate={onNavigate} />)}</group>
+          <group key={`terrain:${sceneId}`}>{chunks.map(chunk => <Terrain key={`${chunk.key}:${chunk.segments}`} sampleWorld={sample} atlas={atlas} chunk={chunk} material={groundMaterial} waterMaterial={waterMaterials[chunk.distance <= (windowState.mobile ? 24 : 40) ? 'detailed' : 'simple']} onNavigate={onNavigate} />)}</group>
           <Nature key={`nature:${sceneId}`} sampleWorld={sample} player={snapshot.player} atlas={atlas} isVisible={windowState.visible} />
           <TrailAndWater key={`water:${sceneId}`} sampleWorld={sample} player={snapshot.player} atlas={atlas} gyms={snapshot.gyms} visible={windowState.visible} badges={snapshot.badges ?? 0} mobile={windowState.mobile} />
         </>}
@@ -944,14 +950,15 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
         {options.props?.filter(item => Math.hypot(item.x - snapshot.player.x, item.z - snapshot.player.z) < 85 && windowState.visible(item.x, item.y ?? 0, item.z, 8)).map(item => <StaticModel key={item.id} item={item} />)}
         <FoodInstances foods={snapshot.foods} sampleWorld={sample} />
       </Physics>
-      {snapshot.guide && <FlyGuide guide={snapshot.guide} sample={sample} />}
+      {snapshot.guide && <DestinationPointer guide={snapshot.guide} sample={sample} />}
+      <TargetRoute snapshot={snapshot} destination={destination} sample={sample} />
       <ScenePortals sceneId={sceneId} regionId={atlas.id} player={snapshot.player} sample={sample} onNavigate={onNavigate} onPortal={() => options.onPortal?.('nearest')} />
       {visible.map(({ creature, distance, model }) => <Creature key={creature.id} creature={creature} selected={creature.id === snapshot.selectedWildId} showLabels={showLabels} distance={distance} model={model} options={worldOptions} />)}
       {destination && <group position={[destination.x, terrainSurfaceHeight(sample, destination.x, destination.z) + .08, destination.z]}>
         <mesh rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[.42, .62, 28]} /><meshBasicMaterial color="#ffe27a" transparent opacity={.9} /></mesh>
         <mesh position={[0, .08, 0]} rotation={[-Math.PI / 2, 0, 0]}><circleGeometry args={[.13, 20]} /><meshBasicMaterial color="#fff4b8" /></mesh>
       </group>}
-      <PlayerCamera key={sceneId} snapshot={snapshot} options={worldOptions} destination={destination} onDestination={onDestination} />
+      <PlayerCamera commands={commands} key={sceneId} snapshot={snapshot} options={worldOptions} destination={destination} onDestination={onDestination} />
     </>
   );
 }
@@ -967,7 +974,7 @@ function ActiveWorld({ lifetime, children }: { lifetime: ViewLifetime; children:
   return lifetime.active ? children : null;
 }
 
-function OpenWorldApp({ store, options, lifetime }: { store: SnapshotStore; options: OpenWorldViewOptions; lifetime: ViewLifetime }) {
+function OpenWorldApp({ store, options, lifetime, commands }: { commands: ViewCommands; store: SnapshotStore; options: OpenWorldViewOptions; lifetime: ViewLifetime }) {
   const snapshot = useSyncExternalStore(store.subscribe, store.get, store.get);
   const renderPaused = useSyncExternalStore(onRenderSuspension, renderingSuspended, renderingSuspended);
   const runtime = useMemo(() => createGaesupRuntime({ plugins: [createCameraPlugin()], pluginRuntime: 'client' }), []);
@@ -982,9 +989,10 @@ function OpenWorldApp({ store, options, lifetime }: { store: SnapshotStore; opti
   }, []);
   useEffect(() => { setDestination(null); }, [snapshot.regionId, snapshot.sceneId]);
   const navigate = useCallback((point: WorldPoint) => {
-    if (options.onNavigationStart?.() === false) return;
-    setDestination(point);
+    if (![point.x, point.z].every(Number.isFinite) || options.onNavigationStart?.() === false) return false;
+    setDestination(point); return true;
   }, [options]);
+  useEffect(() => { commands.navigateTo = navigate; return () => { delete commands.navigateTo; }; }, [commands, navigate]);
   useEffect(() => {
     let active = true;
     runtime.setup().then(() => { if (active) setReady(true); });
@@ -1014,7 +1022,7 @@ function OpenWorldApp({ store, options, lifetime }: { store: SnapshotStore; opti
         <SaveRenderBudget />
         {new URLSearchParams(location.search).has('renderProbe') && <RenderProbe />}
         <group name="gaesup-world">
-          <Scene snapshot={snapshot} options={options} showLabels={showLabels} destination={destination} onNavigate={navigate} onDestination={setDestination} />
+          <Scene commands={commands} snapshot={snapshot} options={options} showLabels={showLabels} destination={destination} onNavigate={navigate} onDestination={setDestination} />
         </group>
         </ActiveWorld>
       </Canvas>
@@ -1031,13 +1039,16 @@ export function mountOpenWorld(host: HTMLElement, options: OpenWorldViewOptions)
   const store = new SnapshotStore(initial);
   const root: Root = createRoot(host);
   const lifetime: ViewLifetime = { active: true, host };
+  const commands: ViewCommands = {};
   host.classList.add('choketmon-openworld');
   // Gaesup's plugin registry rejects concurrent duplicate setup. The view owns
   // one runtime lifecycle, so avoid React development StrictMode's effect replay.
-  root.render(<OpenWorldApp store={store} options={options} lifetime={lifetime} />);
+  root.render(<OpenWorldApp store={store} options={options} lifetime={lifetime} commands={commands} />);
   const poll = window.setInterval(() => store.set(options.getSnapshot()), 100);
   return {
     update(snapshot = options.getSnapshot()) { store.set(snapshot); },
+    navigateTo(point) { return commands.navigateTo?.(point) ?? false; },
+    setCameraHeading(radians) { commands.setCameraHeading?.(radians); },
     destroy() {
       lifetime.active = false;
       window.clearInterval(poll);

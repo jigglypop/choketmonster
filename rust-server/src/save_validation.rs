@@ -386,6 +386,30 @@ fn validate_brain(brain: &Value) -> Result<(), &'static str> {
     Ok(())
 }
 
+fn validate_nursery(game: &Value, ids: &mut HashSet<String>) -> Result<(), &'static str> {
+    let Some(value) = game.get("nursery") else { return Ok(()); };
+    let eggs = value.as_array().filter(|eggs| eggs.len() <= 6).ok_or("알 보관함이 올바르지 않습니다.")?;
+    for egg in eggs {
+        let egg_id = egg.get("eggId").and_then(Value::as_str)
+            .filter(|id| id.starts_with("egg-") && id.len() <= 120 && id.bytes().all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b)))
+            .ok_or("알 ID가 올바르지 않습니다.")?;
+        if !ids.insert(egg_id.to_owned()) { return Err("알 ID가 중복되었습니다."); }
+        let species_id = integer(egg.get("speciesId"), 1, MAX_SAFE_INTEGER)?;
+        if !catalog().species.contains_key(&species_id) { return Err("알의 포켓몬 종이 올바르지 않습니다."); }
+        let parents = egg.get("parentIds").and_then(Value::as_array).filter(|items| items.len() == 2)
+            .ok_or("알의 부모 기록이 올바르지 않습니다.")?;
+        let first = parents[0].as_str().filter(|id| !id.is_empty() && id.len() <= 120).ok_or("알의 부모 기록이 올바르지 않습니다.")?;
+        let second = parents[1].as_str().filter(|id| !id.is_empty() && id.len() <= 120).ok_or("알의 부모 기록이 올바르지 않습니다.")?;
+        if first == second { return Err("알의 부모 기록이 올바르지 않습니다."); }
+        let required = integer(egg.get("requiredSteps"), 256, 65_536)?;
+        if required % 256 != 0 { return Err("알의 부화 걸음이 올바르지 않습니다."); }
+        integer(egg.get("steps"), 0, required)?;
+        integer(egg.get("createdAtStep"), 1, MAX_SAFE_INTEGER)?;
+        validate_brain(egg.get("brain").ok_or("알의 회로 상태가 없습니다.")?)?;
+    }
+    Ok(())
+}
+
 fn validate_monster(
     monster: &Value,
     ids: &mut HashSet<String>,
@@ -587,8 +611,8 @@ const WORLD_MAPS: [(&str, &str); 10] = [
     ("hoenn", "hoenn-authored-v1"),
     ("sinnoh", "sinnoh-authored-v1"),
     ("unova", "unova-authored-v1"),
-    ("kalos", "kalos-atlas-v1"),
-    ("alola", "alola-atlas-v1"),
+    ("kalos", "kalos-authored-v1"),
+    ("alola", "alola-authored-v1"),
     ("galar", "galar-atlas-v1"),
     ("hisui", "hisui-atlas-v1"),
     ("paldea", "paldea-atlas-v1"),
@@ -737,7 +761,7 @@ fn validate_open_world(view: Option<&Value>) -> Result<(), &'static str> {
             .ok_or("오픈월드 출현표 버전이 올바르지 않습니다.")?;
         let expected = match region {
             Some("johto") => "gold-v1",
-            Some("hoenn" | "sinnoh" | "unova") => "expansion-v1",
+            Some("hoenn" | "sinnoh" | "unova" | "kalos" | "alola") => "expansion-v1",
             _ => "red-v1",
         };
         if layout != expected
@@ -745,7 +769,7 @@ fn validate_open_world(view: Option<&Value>) -> Result<(), &'static str> {
         {
             return Err("오픈월드 출현표 버전이 지역과 일치하지 않습니다.");
         }
-    } else if matches!(region, Some("hoenn" | "sinnoh" | "unova"))
+    } else if matches!(region, Some("hoenn" | "sinnoh" | "unova" | "kalos" | "alola"))
         && !is_legacy_expansion_map(region, map_version)
     {
         return Err("추가 지방 오픈월드 출현표 버전이 필요합니다.");
@@ -920,10 +944,10 @@ fn validate_campaign(
     if let Some(value) = campaign.get("expansion") {
         let regions = value
             .as_object()
-            .filter(|regions| regions.len() <= 3)
+            .filter(|regions| regions.len() <= 5)
             .ok_or("추가 지방 진행 형식이 올바르지 않습니다.")?;
         for (region, value) in regions {
-            if !matches!(region.as_str(), "hoenn" | "sinnoh" | "unova") {
+            if !matches!(region.as_str(), "hoenn" | "sinnoh" | "unova" | "kalos" | "alola") {
                 return Err("추가 지방 진행 형식이 올바르지 않습니다.");
             }
             let progress = value
@@ -958,6 +982,14 @@ fn validate_campaign(
         || progressed("unova")
             && expansion
                 .get("sinnoh")
+                .map_or(true, |value| value.league < 5)
+        || progressed("kalos")
+            && expansion
+                .get("unova")
+                .map_or(true, |value| value.league < 5)
+        || progressed("alola")
+            && expansion
+                .get("kalos")
                 .map_or(true, |value| value.league < 5)
     {
         return Err("추가 지방 캠페인 진행 순서가 올바르지 않습니다.");
@@ -1037,7 +1069,7 @@ fn validate_battle_progress(
     };
     let campaign_region = campaign_region
         .as_str()
-        .filter(|region| matches!(*region, "johto" | "kanto" | "hoenn" | "sinnoh" | "unova"))
+        .filter(|region| matches!(*region, "johto" | "kanto" | "hoenn" | "sinnoh" | "unova" | "kalos" | "alola"))
         .ok_or("캠페인 전투 지역이 올바르지 않습니다.")?;
     let campaign = campaign.ok_or("캠페인 전투 진행이 올바르지 않습니다.")?;
     if campaign_region == "kanto" && campaign.start_region == "johto" && campaign.johto_league < 5 {
@@ -1054,6 +1086,10 @@ fn validate_battle_progress(
                 .expansion
                 .get("sinnoh")
                 .map_or(true, |progress| progress.league < 5)
+        || campaign_region == "kalos"
+            && campaign.expansion.get("unova").map_or(true, |progress| progress.league < 5)
+        || campaign_region == "alola"
+            && campaign.expansion.get("kalos").map_or(true, |progress| progress.league < 5)
     {
         return Err("이전 지방 리그 완료 전에 추가 지방 전투를 저장할 수 없습니다.");
     }
@@ -1147,6 +1183,14 @@ fn validate_battle_progress(
                         "unova-marshal",
                         "unova-alder",
                     ],
+                ),
+                "kalos" => (
+                    campaign.expansion.get("kalos").map_or(0, |progress| progress.league),
+                    ["kalos-malus","kalos-siebold","kalos-wikstrom","kalos-drashna","kalos-diantha"],
+                ),
+                "alola" => (
+                    campaign.expansion.get("alola").map_or(0, |progress| progress.league),
+                    ["alola-molayne","alola-olivia","alola-acerola","alola-kahili","alola-champion"],
                 ),
                 _ => return Err("캠페인 리그 지역이 올바르지 않습니다."),
             };
@@ -1275,6 +1319,7 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
     for monster in team.iter().chain(box_monsters) {
         validate_monster(monster, &mut ids, true, &mut owned_species)?;
     }
+    validate_nursery(game, &mut ids)?;
     if let Some(offer) = game.get("captureOffer") {
         validate_monster(offer, &mut ids, false, &mut owned_species)?;
         if offer.get("hp").and_then(Value::as_i64) != Some(0) || game.get("battle").is_some() {
@@ -1370,7 +1415,7 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
     }
     let maximum_generated_id = ids
         .iter()
-        .filter_map(|id| id.strip_prefix("mon-")?.parse::<i64>().ok())
+        .filter_map(|id| id.strip_prefix("mon-").or_else(|| id.strip_prefix("egg-"))?.parse::<i64>().ok())
         .max()
         .unwrap_or(0);
     if next_instance_id <= maximum_generated_id {
@@ -1703,7 +1748,7 @@ mod tests {
         assert!(validate_save(&premature_unova).is_err());
 
         for expansion in [
-            serde_json::json!({"kalos":{"badges":[],"league":0}}),
+            serde_json::json!({"galar":{"badges":[],"league":0}}),
             serde_json::json!({"hoenn":{"badges":[1,3],"league":0}}),
             serde_json::json!({"hoenn":{"badges":[],"league":1}}),
             serde_json::json!({"hoenn":{"badges":[],"league":0,"extra":true}}),

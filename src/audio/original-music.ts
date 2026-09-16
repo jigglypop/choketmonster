@@ -9,8 +9,8 @@ const SELECT_EVENT = 'choketmon:music-select';
 const REMOVE_EVENT = 'choketmon:music-remove';
 const QUERY_EVENT = 'choketmon:music-query';
 const STATUS_EVENT = 'choketmon:music-status';
-const DEFAULT_TRACK_URL = (import.meta.env.VITE_DEFAULT_BGM_URL as string | undefined) ?? '/audio/other-center.mp4';
-const DEFAULT_TRACK_NAME = (import.meta.env.VITE_DEFAULT_BGM_NAME as string | undefined) ?? 'Other Center · Chris Murphy.mp4';
+const DEFAULT_TRACK_URL = (import.meta.env.VITE_DEFAULT_BGM_URL as string | undefined) ?? '/audio/bgm.mp3';
+const DEFAULT_TRACK_NAME = (import.meta.env.VITE_DEFAULT_BGM_NAME as string | undefined) ?? 'bgm.mp3';
 
 type StoredTrack = { blob: Blob; name: string; type: string; size: number; lastModified: number };
 type MusicStatus = { message: string; hasFile: boolean; name?: string; playing: boolean; state: 'empty' | 'loading' | 'ready' | 'playing' | 'paused' | 'blocked' | 'error' };
@@ -77,7 +77,7 @@ function validateAudio(url: string): Promise<void> {
   });
 }
 
-/** Local selection overrides a configured, licensed default track. Blobs are never uploaded. */
+/** Local selection overrides the configured default track. Blobs are never uploaded. */
 export function mountOriginalMusic(button: HTMLButtonElement): { open(): void; destroy(): void } {
   const input = document.createElement('input');
   input.id = 'game-music-file'; input.type = 'file'; input.accept = 'audio/*,video/mp4,.mp4,.mp3,.m4a,.aac,.ogg,.wav,.flac'; input.hidden = true;

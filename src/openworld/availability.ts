@@ -5,7 +5,7 @@ import { EXPANSION_ASSET_AUDIT } from '../data/expansion-asset-availability';
 // Atlas definitions also decode old saves. They are not a list of shipped maps.
 // Public map facts may be reconstructed with our own 3D terrain and cleared assets.
 // Only regions with a verified geometry, traversal and encounter implementation ship.
-const playableRegions = new Set<WorldRegionId>(['kanto', 'johto', 'hoenn', 'sinnoh', 'unova']);
+const playableRegions = new Set<WorldRegionId>(['kanto', 'johto', 'hoenn', 'sinnoh', 'unova', 'kalos', 'alola']);
 export const PLAYABLE_WORLDS = WORLDS.filter(world => playableRegions.has(world.id));
 const expansionNatives = Object.entries(EXPANSION_ASSET_AUDIT.regions).filter(([region]) => playableRegions.has(region as WorldRegionId))
   .flatMap(([, { nationalDex: [first, last] }]) => Array.from({ length: last - first + 1 }, (_, index) => first + index));

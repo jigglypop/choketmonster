@@ -6,7 +6,7 @@ import type { FieldPolicy } from '../src/game/field.ts';
 import { OPEN_WORLD_MODEL, OpenWorldSimulation, movementSpeed, regionalEncounters, restoreOpenWorld, sampleWorld, serializeOpenWorld } from '../src/openworld/simulation.ts';
 import { KANTO_LOCATIONS, KANTO_START } from '../src/openworld/kanto.ts';
 import { getWorldAtlas } from '../src/openworld/atlas.ts';
-import { regionalSourcePools, supplementalEncounterRules } from '../src/data/regional-encounters.ts';
+import { regionalRuntimePools, supplementalEncounterRules } from '../src/data/regional-encounters.ts';
 import { regionalWildLevels } from '../src/game/campaign.ts';
 
 const loadGraph = async () => JSON.parse(await readFile(new URL('../public/data/connectome.json', import.meta.url), 'utf8')) as Graph;
@@ -19,11 +19,17 @@ const forceRight = (source: FieldPolicy): FieldPolicy => {
   return policy;
 };
 
-const REMOTE_FIXTURE_POINTS = [
-  { x: 8, z: -15 }, { x: 8, z: 15 }, { x: 8, z: 44 }, { x: 48, z: 15 }, { x: -25, z: 15 },
-  { x: 3, z: 70 }, { x: 24, z: 67 }, { x: -68, z: 96 }, { x: -68, z: 50 }, { x: -68, z: -7 },
-  { x: 8, z: -32 }, { x: 65, z: -28 }, { x: -99, z: -18 }, { x: -34, z: 96 },
-].map(point => ({ x: point.x * 2, z: point.z * 2 }));
+const atlas = getWorldAtlas('kanto');
+const REMOTE_FIXTURE_POINTS = atlas.locations.filter(location => location.kind !== 'town')
+  .map(location => atlas.nearestWalkable(location.x, location.z, 8)!)
+  .filter(point => point && atlas.locationAt(point.x, point.z).kind !== 'town' && Math.hypot(point.x + 90, point.z + 24) > 60);
+
+function engageWildAtLocation(world: OpenWorldSimulation, id: string) {
+  const target = world.entities.find(entity => entity.id === id)!;
+  world.player = { x: target.x, z: target.z, heading: 0 };
+  Object.assign(world.entities.find(entity => entity.kind === 'companion')!, world.player);
+  return world.startEncounter(id);
+}
 
 describe('connectome open world', () => {
   it('runs 15 autonomous wild brains in deterministic local Kanto encounter tables', async () => {
@@ -38,9 +44,9 @@ describe('connectome open world', () => {
       const location = getWorldAtlas('kanto').locationAt(entity.x, entity.z);
       expect(regionalEncounters(location.id, game.player.badges, 'kanto')).toContain(entity.speciesId);
       const biome = getWorldAtlas('kanto').sample(entity.x, entity.z).biome;
-      const sourceSlots = regionalSourcePools('kanto', location.id, world.dayPeriod, biome).flatMap(pool => pool.slots).filter(slot => slot.speciesId === entity.speciesId);
+      const sourceSlots = regionalRuntimePools('kanto', location.id, world.dayPeriod, biome).flatMap(pool => pool.slots).filter(slot => slot.speciesId === entity.speciesId);
       const balanced=regionalWildLevels(game,'kanto',location);
-      const supplemental = Number(entity.id.slice(5)) % 20 === 0 && supplementalEncounterRules('kanto').some(rule => rule.speciesId === entity.speciesId && rule.locationId === location.id && rule.period === world.dayPeriod && rule.biome === biome && rule.requiredBadges <= game.player.badges);
+      const supplemental = Number(entity.id.slice(5)) % 20 === 0 && supplementalEncounterRules('kanto').some(rule => rule.speciesId === entity.speciesId && rule.locationId === location.id && rule.biome === biome && rule.requiredBadges <= game.player.badges);
       expect((sourceSlots.length>0&&entity.level>=balanced.minLevel&&entity.level<=balanced.maxLevel) || supplemental).toBe(true);
     }
     const replay = new OpenWorldSimulation(graph, createGame(1, 'open-world-roster'), 1001, undefined, policy);
@@ -76,12 +82,12 @@ describe('connectome open world', () => {
     game.player.team.push(createMonster(game, 4, 5), createMonster(game, 7, 5));
     const world = new OpenWorldSimulation(graph, game, 93_112, undefined, policy);
     const wilds = world.entities.filter(entity => entity.kind === 'wild');
-    expect(world.startEncounter(wilds[0].id)).toBe(true);
+    expect(engageWildAtLocation(world, wilds[0].id)).toBe(true);
     expect(game.battle?.player.activeIndex).toBe(0);
     expect(world.snapshot().nextBattleTeamIndex).toBe(1);
     game.battle!.enemy.team[0].hp = 0;
     world.step({ deltaSeconds: 1, learning: false });
-    expect(world.startEncounter(wilds[1].id)).toBe(true);
+    expect(engageWildAtLocation(world, wilds[1].id)).toBe(true);
     expect(game.battle?.player.activeIndex).toBe(1);
     const restored = restoreOpenWorld(graph, serializeOpenWorld(game, world), policy);
     expect(restored.simulation.nextBattleTeamIndex).toBe(2);
@@ -103,11 +109,11 @@ describe('connectome open world', () => {
     expect(short.entities.find(entity => entity.id === tracked.id)!.x - shortBefore).toBeCloseTo(movementSpeed(tracked.speciesId) * .1, 8);
     expect(long.entities.find(entity => entity.id === tracked.id)!.x - longBefore).toBeCloseTo(movementSpeed(tracked.speciesId) * .2, 8);
 
-    tracked.x = -150.2; tracked.z = 156;
+    tracked.x = -136; tracked.z = 132;
     const blocked = new OpenWorldSimulation(graph, createGame(1, 'open-world-speed'), 440, structuredClone(checkpoint), policy);
     blocked.step({ deltaSeconds: 5 });
     const stopped = blocked.entities.find(entity => entity.id === tracked.id)!;
-    expect(stopped.x).toBeCloseTo(-150.2); expect(stopped.z).toBe(156); expect(stopped.collisions).toBeGreaterThan(tracked.collisions);
+    expect(stopped.x).toBeCloseTo(-136); expect(stopped.z).toBe(132); expect(stopped.collisions).toBeGreaterThan(tracked.collisions);
   });
 
   it('loads new local individuals only after traveling without changing surviving brains', async () => {
@@ -191,7 +197,7 @@ describe('connectome open world', () => {
     brain.state.readout.forEach((row, action) => { row.fill(0); for (let i = 12; i < row.length; i++) row[i] = action === 2 ? 1 : -1; });
     player.brain = brain.snapshot();
     const world = new OpenWorldSimulation(graph, game, 912, undefined, policy), target = world.entities.find(entity => entity.kind === 'wild')!;
-    world.startEncounter(target.id);
+    engageWildAtLocation(world, target.id);
     const form = createMonster(game, 7, 16), transformedMoves = [{ moveId: 45, pp: 0 }, { moveId: 39, pp: 0 }, { moveId: 14, pp: 0 }];
     game.battle!.transformations = { [player.instanceId]: { speciesId: form.speciesId, stats: form.stats, moves: transformedMoves } };
     const automatic = world.step({ deltaSeconds: 1, learning: true }).events.find(event => event.type === 'battle-turn');
@@ -229,7 +235,7 @@ describe('connectome open world', () => {
     const world = new OpenWorldSimulation(graph, game, 9, undefined, policy);
     const target = world.entities.filter(entity => entity.kind === 'wild').sort((a, b) => a.level - b.level)[0];
     const beforeXp = game.player.team[0].xp, beforeMoney = game.player.money;
-    expect(world.startEncounter(target.id)).toBe(true);
+    expect(engageWildAtLocation(world, target.id)).toBe(true);
     expect(game.player.team[0].moves).toHaveLength(4);
     game.player.team[0].hp -= 5; const potionBefore = game.inventory.potion;
     expect(world.requestAction({ type: 'item', item: 'potion' })).toBe(true);
@@ -248,7 +254,7 @@ describe('connectome open world', () => {
     const graph = await loadGraph(), policy = await loadPolicy(), game = createGame(7, 'open-world-catch');
     const world = new OpenWorldSimulation(graph, game, 345, undefined, policy);
     const target = world.entities.find(entity => entity.kind === 'wild')!, targetSpecies = target.speciesId;
-    expect(world.startEncounter(target.id)).toBe(true);
+    expect(engageWildAtLocation(world, target.id)).toBe(true);
     let outcome: string | undefined;
     for (let attempt = 0; attempt < 8 && game.battle; attempt++) {
       expect(world.requestCapture('poke-ball')).toBe(true);
@@ -346,7 +352,7 @@ describe('connectome open world', () => {
   it('round-trips a graph-deduplicated save and replays exactly during battle', async () => {
     const graph = await loadGraph(), policy = await loadPolicy(), game = createGame(4, 'open-world-replay');
     const world = new OpenWorldSimulation(graph, game, 8080, undefined, policy), target = world.entities.find(entity => entity.kind === 'wild')!;
-    world.selectWild(target.id); world.startEncounter(target.id); world.step({ deltaSeconds: .4 }); world.requestAction({ type: 'move', index: 0 });
+    world.selectWild(target.id); engageWildAtLocation(world, target.id); world.step({ deltaSeconds: .4 }); world.requestAction({ type: 'move', index: 0 });
     const json = serializeOpenWorld(game, world);
     expect(json).not.toContain('"edges"'); expect(JSON.parse(json).world.model).toBe(OPEN_WORLD_MODEL);
     const a = restoreOpenWorld(graph, json, policy), b = restoreOpenWorld(graph, json, policy);
