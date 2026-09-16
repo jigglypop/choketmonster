@@ -11,7 +11,7 @@ export const ALOLA_LOCATIONS:readonly KantoLocation[]=[
  l('alola-route-5','5번도로',28,5,'route',[15,27]),l('brooklet-hill','잔잔한물가언덕',38,15,'sea',[17,29]),l('lush-jungle','셰이드정글',38,-3,'forest',[19,31]),l('wela-volcano-park','벨라화산공원',25,-15,'cave',[20,33]),l('konikoni-city','코니코니시티',10,-22,'town',[22,35]),
  l('alola-route-8','8번도로',-3,-13,'route',[23,37]),l('malie-city','말리에시티',-20,-28,'town',[25,39]),l('malie-garden','말리에정원',-32,-18,'forest',[26,41]),l('alola-route-10','10번도로',-42,-32,'route',[28,43]),l('mount-hokulani','호쿠라니큰산',-52,-45,'cave',[30,45]),
  l('blush-mountain','화끈산',-30,-52,'cave',[31,47]),l('tapu-village','카푸마을',-8,-48,'town',[33,49]),l('alola-route-14','14번도로',7,-54,'sea',[34,51]),l('alola-route-15','15번수로',22,-47,'sea',[35,52]),l('alola-route-17','17번도로',38,-42,'route',[37,54]),
- l('seafolk-village','바다민족의마을',45,-37,'town',[38,55]),l('poni-wilds','포니들판',53,-28,'route',[39,56]),l('ancient-poni-path','포니옛길',64,-15,'route',[40,58]),l('vast-poni-canyon','포니대협곡',76,-3,'cave',[43,61],8),l('mount-lanakila','라나키라마운틴',82,18,'cave',[47,64],8),l('alola-pokemon-league','알로라리그',91,34,'special',[52,68],8),
+ l('seafolk-village','바다민족의마을',45,-37,'town',[38,55]),l('poni-wilds','포니들판',53,-28,'route',[39,56]),l('ancient-poni-path','포니옛길',64,-15,'route',[40,58]),l('vast-poni-canyon','포니대협곡',76,-3,'cave',[43,61],7),l('mount-lanakila','라나키라마운틴',82,18,'cave',[47,64],8),l('alola-pokemon-league','알로라리그',91,34,'special',[52,68],8),
 ];
 export const ALOLA_CONNECTIONS:ReadonlyArray<readonly[string,string]>=ALOLA_LOCATIONS.slice(1).map((item,index)=>[ALOLA_LOCATIONS[index].id,item.id] as const);
 export const ALOLA_GATES:readonly KantoGate[]=[];

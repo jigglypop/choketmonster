@@ -53,9 +53,11 @@ import { createGLTFLoader } from '../three/gltf-loader';
 import { creatureLods, terrainChunks, TERRAIN_CHUNK_SIZE, type TerrainChunk, type VisibilityTest } from './lod';
 import { initialYaw, movementYaw, turnTowards } from './motion';
 import { normalizePokemonModel } from './model-normalization';
+import { createTerrainSurface } from './terrain-surface';
+import { getSpecies } from '../data/pokemon';
 import './view.css';
 import { RenderProbe } from './render-probe';
-import { SkyLighting, SurfaceMaterial, regionTrailColor, useSurfaceMaterial, useWaterMaterials, worldSurfaceColor } from './materials';
+import { SkyLighting, SurfaceMaterial, regionTrailColor, useTerrainMaterials, normalizeStandardMaterial } from './materials';
 import { AdaptiveResolution } from './adaptive-resolution';
 import { MAX_CAMERA_DISTANCE, MIN_CAMERA_DISTANCE } from './camera-navigation';
 import { findWorldPath, headingForStep } from './navigation';
@@ -241,48 +243,10 @@ function fallbackSample(x: number, z: number): WorldSample {
 }
 
 const Terrain = memo(function Terrain({ sampleWorld, chunk, atlas, material, waterMaterial, onNavigate }: { sampleWorld: (x: number, z: number) => WorldSample; chunk: TerrainChunk; atlas: WorldAtlas; material: Material; waterMaterial: Material; onNavigate?: (point: WorldPoint) => void }) {
-  const { geometry, skirt } = useMemo(() => {
-    const n = chunk.segments, stride = n + 1;
-    const vertices: number[] = [], colors: number[] = [], indices: number[] = [];
-    for (let iz = 0; iz <= n; iz++) for (let ix = 0; ix <= n; ix++) {
-      const x = chunk.x - 20 + ix * TERRAIN_CHUNK_SIZE / n, z = chunk.z - 20 + iz * TERRAIN_CHUNK_SIZE / n;
-      const sample = sampleWorld(x, z), color = worldSurfaceColor(atlas, sample, x, z);
-      vertices.push(x, terrainSurfaceHeight(sampleWorld, x, z), z);
-      color.offsetHSL(0, .01, Math.sin(x * .12 + z * .07) * .035);
-      colors.push(color.r, color.g, color.b);
-      if (ix < n && iz < n) { const a = iz * stride + ix, b = a + stride; indices.push(a, b, a + 1, b, b + 1, a + 1); }
-    }
-    const geometry = new BufferGeometry();
-    geometry.setAttribute('position', new Float32BufferAttribute(vertices, 3));
-    geometry.setAttribute('color', new Float32BufferAttribute(colors, 3));
-    geometry.setAttribute('uv', new Float32BufferAttribute(vertices.flatMap((_, index) => index % 3 === 0 ? [vertices[index] * .045, vertices[index + 2] * .045] : []), 2));
-    geometry.setIndex(indices); geometry.computeVertexNormals();
-    for (let index = 0; index < indices.length; index += 3) {
-      const a = indices[index] * 3, b = indices[index + 1] * 3, c = indices[index + 2] * 3;
-      const x = (vertices[a] + vertices[b] + vertices[c]) / 3, z = (vertices[a + 2] + vertices[b + 2] + vertices[c + 2]) / 3;
-      const materialIndex = sampleWorld(x, z).biome === 'lake' ? 1 : 0;
-      const previous = geometry.groups.at(-1);
-      if (previous?.materialIndex === materialIndex) previous.count += 3;
-      else geometry.addGroup(index, 3, materialIndex);
-    }
-    // Separate skirts close coarse/fine seams without bending the ground normals.
-    const skirtVertices: number[] = [], skirtColors: number[] = [], skirtIndices: number[] = [];
-    const edges = [Array.from({ length: stride }, (_, i) => i), Array.from({ length: stride }, (_, i) => i * stride + n),
-      Array.from({ length: stride }, (_, i) => n * stride + n - i), Array.from({ length: stride }, (_, i) => (n - i) * stride)];
-    for (const edge of edges) for (let i = 0; i < n; i++) {
-      const start = skirtVertices.length / 3;
-      for (const vertex of [edge[i], edge[i + 1]]) for (const depth of [0, 4]) {
-        skirtVertices.push(vertices[vertex * 3], vertices[vertex * 3 + 1] - depth, vertices[vertex * 3 + 2]);
-        skirtColors.push(...colors.slice(vertex * 3, vertex * 3 + 3));
-      }
-      skirtIndices.push(start, start + 1, start + 2, start + 1, start + 3, start + 2, start + 2, start + 1, start, start + 2, start + 3, start + 1);
-    }
-    const skirt = new BufferGeometry(); skirt.setAttribute('position', new Float32BufferAttribute(skirtVertices, 3));
-    skirt.setAttribute('color', new Float32BufferAttribute(skirtColors, 3)); skirt.setIndex(skirtIndices); skirt.computeVertexNormals();
-    return { geometry, skirt };
-  }, [chunk.x, chunk.z, chunk.segments, sampleWorld, atlas]);
+  const { geometry, skirt } = useMemo(() => createTerrainSurface(chunk, sampleWorld, atlas),
+    [chunk.x, chunk.z, chunk.segments, sampleWorld, atlas]);
   useEffect(() => () => { geometry.dispose(); skirt.dispose(); }, [geometry, skirt]);
-  const surface = <mesh geometry={geometry} material={[material, waterMaterial]} dispose={null} receiveShadow name={`terrain-chunk:${chunk.key}:${chunk.segments}`} onClick={event => {
+  const surface = <mesh geometry={geometry} material={geometry.userData.waterVertices ? waterMaterial : material} dispose={null} receiveShadow name={`terrain-chunk:${chunk.key}:${chunk.segments}`} onClick={event => {
     event.stopPropagation(); if (event.button === 0 && event.delta <= 5) onNavigate?.({ x: event.point.x, z: event.point.z });
   }} />;
   return <group>
@@ -335,7 +299,7 @@ function InstancedAsset({ url, placements, shadows = false }: { url: string; pla
     gltf.scene.traverse(object => {
       if (!(object instanceof Mesh)) return;
       const source = Array.isArray(object.material) ? object.material : [object.material];
-      const normalized = source.map(material => material.clone());
+      const normalized = source.map(material => material instanceof MeshStandardMaterial ? normalizeStandardMaterial(material) : material.clone());
       meshes.push({ geometry: object.geometry, material: Array.isArray(object.material) ? normalized : normalized[0], matrix: object.matrixWorld.clone() });
     });
     return meshes;
@@ -493,6 +457,7 @@ function TrailAndWater({ sampleWorld, player, badges, atlas, visible, mobile, gy
     }
     const geometry = new BufferGeometry();
     geometry.setAttribute('position', new Float32BufferAttribute(vertices, 3));
+    geometry.setAttribute('uv', new Float32BufferAttribute(vertices.flatMap((_, index) => index % 3 === 0 ? [vertices[index] * .28, vertices[index + 2] * .28] : []), 2));
     geometry.setIndex(indices);
     geometry.computeVertexNormals();
     return geometry;
@@ -584,8 +549,8 @@ function PokemonModel({ creature, url }: { creature: WorldCreature; url: string 
         object.receiveShadow = true;
       }
     });
-    return normalizePokemonModel(scene, gltf.animations, creature.displayHeight ?? 1.2);
-  }, [creature.displayHeight, gltf]);
+    return normalizePokemonModel(scene, gltf.animations, creature.displayHeight ?? 1.2, { speciesId: creature.speciesId, types: getSpecies(creature.speciesId).types });
+  }, [creature.displayHeight, creature.speciesId, gltf]);
   useFrame(({ clock }, delta) => {
     mixer.current?.update(Math.min(delta, .05) * (creature.action === 'walk' ? MathUtils.clamp((creature.movementSpeed ?? 2.4) / 2.4, .65, 1.8) : 1));
     if (!root.current) return;
@@ -977,8 +942,8 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
   const atlas = getWorldAtlas(snapshot.regionId ?? 'kanto');
   const sceneId = snapshot.sceneId ?? surfaceSceneId(atlas.id), cave = getCaveScene(sceneId);
   const sample = cave?.sample ?? atlas.sample;
-  const groundMaterial = useSurfaceMaterial({ surface: 'ground', vertexColors: true });
-  const waterMaterials = useWaterMaterials({ center: [0, 0], extent: [1000, 1000] });
+  const waterMaterials = useTerrainMaterials(atlas.palette.water);
+  const groundMaterial = waterMaterials.ground;
   // Fixed daytime presentation: never rebuild lighting or sky for a world clock tick.
   const daylight = 1;
   const skyColor = useMemo(() => new Color(cave ? '#182326' : '#afcfc1'), [cave]);

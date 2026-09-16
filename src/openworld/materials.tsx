@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { Color, DataTexture, EquirectangularReflectionMapping, FloatType, LinearSRGBColorSpace, MeshStandardMaterial, PMREMGenerator, RepeatWrapping, RGBAFormat, SRGBColorSpace, Texture, TextureLoader } from 'three';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
 import {
-  abs, color, cos, dot, float, instanceIndex, length, materialColor, materialRoughness, max, min, mix, normalMap, normalView, normalize,
+  abs, attribute, color, cos, dot, float, instanceIndex, length, materialColor, materialRoughness, max, min, mix, normalMap, normalView, normalize,
   positionLocal, positionViewDirection, positionWorld, pow, sin, smoothstep, texture, timerLocal, vec2, vec3,
 } from 'three/tsl';
 import { distanceToWaterSurface, selectWaterLod, type WaterLod, type WaterLodPlayer } from './water-lod';
@@ -124,7 +124,7 @@ export function detailSurface(material: MeshStandardMaterial, textures: SurfaceT
         ${surface === 'path' ? 'diffuseColor.rgb = mix(diffuseColor.rgb, owTexel * vec3(1.05, 0.94, 0.78), 0.5);' : ''}
       `)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-        roughnessFactor = clamp(owArmValue.g * roughness, 0.42, 1.0);
+        roughnessFactor = clamp(owArmValue.g * roughness, ${surface === 'rock' ? '0.82' : '0.88'}, 1.0);
       `)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         vec3 owMapNormal = normalize(texture2D(owDetailNormal, owUv).xyz * 2.0 - 1.0);
@@ -136,7 +136,7 @@ export function detailSurface(material: MeshStandardMaterial, textures: SurfaceT
         reflectedLight.indirectDiffuse *= mix(1.0, owArmValue.r, 0.75);
       `);
   };
-  material.customProgramCacheKey = () => `ow-surface-${surface}-v2`;
+  material.customProgramCacheKey = () => `ow-surface-${surface}-v3`;
   material.needsUpdate = true;
 }
 
@@ -152,7 +152,8 @@ function applySurfaceNodes(material: MeshStandardNodeMaterial, textures: Surface
     : surface === 'path' ? mix(vec3(1), albedo.rgb.mul(vec3(1.05, .94, .78)), .5)
       : vec3(1);
   material.colorNode = materialColor.rgb.mul(contrast).mul(tint);
-  material.roughnessNode = arm.g.mul(materialRoughness).clamp(.42, 1);
+  material.roughnessNode = arm.g.mul(materialRoughness).clamp(surface === 'rock' ? .82 : .88, 1);
+  if (surface !== 'rock') material.normalNode = normalMap(texture(textures.normal, detailUv).rgb, vec2(.15, .15));
   material.userData.openWorldNodeEffect = `surface:${surface}`;
 }
 
@@ -183,6 +184,7 @@ export function normalizeStandardMaterial(source: MeshStandardMaterial, options:
   const material = copyStandardAppearance(source);
   material.metalness = 0;
   if (!material.roughnessMap) material.roughness = .95;
+  material.envMapIntensity = Math.min(material.envMapIntensity, .35);
   if (options.surface && options.textures) applySurfaceNodes(material, options.textures, options.surface);
   else if (options.canopy) {
     const crown = smoothstep(1, 5.5, positionLocal.y);
@@ -210,7 +212,7 @@ export function createWaterNodeMaterial({
   waterNormals,
 }: WaterMaterialOptions = {}): MeshStandardNodeMaterial {
   const material = new MeshStandardNodeMaterial({
-    color: '#237f9c', roughness: .28, metalness: 0, envMapIntensity: .9,
+    color: '#237f9c', roughness: .44, metalness: 0, envMapIntensity: .45,
   });
   const clock = timerLocal();
   const waveA = sin(positionWorld.x.mul(.23).add(positionWorld.z.mul(.17)).add(clock.mul(.35)));
@@ -220,7 +222,7 @@ export function createWaterNodeMaterial({
   const flowA = positionWorld.xz.mul(.045).add(vec2(clock.mul(.007), clock.mul(.004)));
   const flowB = positionWorld.zx.mul(.061).sub(vec2(clock.mul(.003), clock.mul(.006)));
   const waveNormal = waterNormals
-    ? normalMap(texture(waterNormals, flowA).rgb.add(texture(waterNormals, flowB).rgb).mul(.5), vec2(.35, .35))
+    ? normalMap(texture(waterNormals, flowA).rgb.add(texture(waterNormals, flowB).rgb).mul(.5), vec2(.18, .18))
     : normalize(normalView.add(vec3(waveA.mul(.025), 0, waveB.mul(.025))));
   const delta = positionWorld.xz.sub(vec2(center[0], center[1]));
   const shore = lake
@@ -257,6 +259,63 @@ export function useSurfaceMaterial({ surface, color, vertexColors = false, visib
 
 export function SurfaceMaterial(options: SurfaceMaterialOptions) {
   return <primitive object={useSurfaceMaterial(options)} attach="material" />;
+}
+
+/** A continuous shore field replaces per-triangle water/land material switches. */
+export function createTerrainMaterial(textures: SurfaceTextures, waterNormals: Texture, waterColor: string, detailed = true) {
+  const material = new MeshStandardNodeMaterial({ roughness: .94, metalness: 0, envMapIntensity: .4 });
+  applySurfaceNodes(material, textures, 'ground');
+  const groundColor = vec3(material.colorNode!).mul(attribute('color', 'vec3'));
+  const groundRoughness = material.roughnessNode!;
+  const groundNormal = material.normalNode!;
+  const coverage = attribute('waterCoverage', 'float');
+  const irregular = sin(positionWorld.x.mul(1.7).add(sin(positionWorld.z.mul(1.13))))
+    .mul(cos(positionWorld.z.mul(1.43))).mul(.055);
+  const edge = coverage.add(irregular);
+  const wet = smoothstep(.28, .74, edge);
+  const shallows = float(1).sub(smoothstep(.62, .98, coverage));
+  const bank = smoothstep(.05, .42, coverage).mul(float(1).sub(wet));
+  const earth = mix(groundColor, color('#9d9c72').mul(.84), bank.mul(.65));
+  let water = mix(color(waterColor).mul(.76), color('#72aaa0'), shallows.mul(.65));
+  const clock = timerLocal();
+  const a = positionWorld.xz.mul(.07).add(vec2(clock.mul(.003), clock.mul(.002)));
+  const b = positionWorld.zx.mul(.093).sub(vec2(clock.mul(.002), clock.mul(.003)));
+  const waterSample = texture(waterNormals, a).rgb.add(texture(waterNormals, b).rgb).mul(.5);
+  const waterNormal = detailed
+    ? normalMap(waterSample, vec2(.22, .22))
+    : normalView;
+  if (detailed) {
+    const ripple = sin(positionWorld.x.mul(.7).add(positionWorld.z.mul(.5)).sub(clock.mul(.55)));
+    const reflection = pow(float(1).sub(max(dot(waterNormal, positionViewDirection), 0)), 3);
+    water = mix(water.mul(waterSample.r.sub(.5).mul(.16).add(1)), color('#a7c9cc'), reflection.mul(.18));
+    const foam = smoothstep(.38, .5, edge).mul(float(1).sub(smoothstep(.58, .75, edge)))
+      .mul(smoothstep(.1, .85, ripple)).mul(.16);
+    water = mix(water, color('#d1e0cc'), foam);
+  }
+  material.colorNode = mix(earth, water, wet);
+  material.roughnessNode = mix(groundRoughness, float(detailed ? .48 : .58), wet);
+  material.normalNode = normalize(mix(groundNormal, waterNormal, wet));
+  material.userData.openWorldNodeEffect = 'terrain:continuous-shore';
+  material.userData.openWorldWaterLod = detailed ? 'detailed' : 'simple';
+  return material;
+}
+
+/** All chunks share three materials and one texture set; no per-frame allocations. */
+export function useTerrainMaterials(waterColor: string) {
+  const textures = useSurfaceTextures('ground');
+  const waterNormals = useMemo(() => {
+    const texture = new TextureLoader().load('/textures/water/three-waternormals.jpg');
+    texture.wrapS = texture.wrapT = RepeatWrapping;
+    return texture;
+  }, []);
+  const materials = useMemo(() => {
+    const ground = new MeshStandardNodeMaterial({ vertexColors: true, roughness: .94, metalness: 0, envMapIntensity: .35 });
+    applySurfaceNodes(ground, textures, 'ground');
+    return { ground, detailed: createTerrainMaterial(textures, waterNormals, waterColor), simple: createTerrainMaterial(textures, waterNormals, waterColor, false) };
+  }, [textures, waterNormals, waterColor]);
+  useEffect(() => () => { Object.values(materials).forEach(material => material.dispose()); }, [materials]);
+  useEffect(() => () => waterNormals.dispose(), [waterNormals]);
+  return materials;
 }
 
 /** Detailed shoreline water nearby, with a stable simple material outside the LOD boundary. */

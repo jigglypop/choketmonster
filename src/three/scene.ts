@@ -8,6 +8,8 @@ import type { GameState } from '../game/engine';
 import type { MapPosition } from '../game/map';
 import { pokemonModelUrl } from '../game/assets';
 import { selectPokemonMotionClip, type PokemonMotionKind } from '../data/model-motion';
+import { getSpecies } from '../data/pokemon';
+import { normalizePokemonMaterials } from '../openworld/pokemon-materials';
 
 type Actor = { group: THREE.Group; model: THREE.Object3D; mixer: THREE.AnimationMixer; clips: THREE.AnimationClip[]; action?: THREE.AnimationAction; target: THREE.Vector3; heading: number; restingY: number; id: number };
 type SceneMode = 'map' | 'battle' | 'specimen';
@@ -225,6 +227,7 @@ export class PokemonScene {
       void load(url).then(asset => {
         if (this.disposed || this.pending.get(key)?.token !== token || this.desired.get(key)?.id !== spec.id) { this.trimCache(); return; }
         const model = clone(asset.scene), group = new THREE.Group(); group.add(model);
+        if (spec.id) normalizePokemonMaterials(model, { speciesId: spec.id, types: getSpecies(spec.id).types });
         model.traverse(obj => { if (obj instanceof THREE.Mesh) { obj.castShadow = true; obj.receiveShadow = true; obj.frustumCulled = false; } });
         const mixer = new THREE.AnimationMixer(model);
         const { clip } = selectPokemonMotionClip(asset.animations, 'idle');

@@ -1,4 +1,5 @@
 import { AnimationMixer, Box3, Group, Object3D, SkinnedMesh, Vector3, type AnimationClip } from 'three';
+import { normalizePokemonMaterials, type PokemonMaterialContext } from './pokemon-materials';
 
 export type NormalizedPokemonModel = {
   visual: Group;
@@ -12,7 +13,9 @@ export function normalizePokemonModel(
   model: Object3D,
   animations: readonly AnimationClip[],
   displayHeight: number,
+  materialContext: PokemonMaterialContext = {},
 ): NormalizedPokemonModel {
+  normalizePokemonMaterials(model, materialContext);
   const idle = animations.find(clip => /idle|wait|stand/i.test(clip.name)) ?? animations[0];
   const clips = [...new Set([idle, animations.find(clip => /walk|run/i.test(clip.name)), animations.find(clip => /attack|bite|skill/i.test(clip.name))].filter((clip): clip is AnimationClip => !!clip))];
   const skins: SkinnedMesh[] = [];

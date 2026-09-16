@@ -1,0 +1,41 @@
+import { chromium, expect } from '@playwright/test';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { createGame } from '../src/game/engine';
+import { defaultView, packSave } from '../src/game/storage';
+import { OpenWorldSimulation } from '../src/openworld/simulation';
+
+const output = 'artifacts/shoreline-review';
+await mkdir(output, { recursive: true });
+const graph = JSON.parse(await readFile('public/data/connectome.json', 'utf8'));
+const policy = JSON.parse(await readFile('public/data/openworld-policy.json', 'utf8'));
+const game = createGame(152, 'shoreline-review');
+const world = new OpenWorldSimulation(graph, game, 20260916, undefined, policy);
+world.player = { x: 70, z: -101, heading: 0 };
+Object.assign(world.entities.find(entity => entity.kind === 'companion')!, world.player);
+const save = packSave(game, graph, { ...defaultView(), openWorld: world.snapshot(), openWorldPaused: true });
+const browser = await chromium.launch({ args: ['--enable-unsafe-webgpu', '--mute-audio'] });
+const errors: string[] = [], failed: string[] = [];
+try {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+  page.on('requestfailed', request => { if (/\.(glb|webp|jpg)/.test(request.url())) failed.push(request.url()); });
+  await page.route('**/api/auth/me', route => route.fulfill({ json: { user: null } }));
+  await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
+  await page.routeWebSocket('**/api/realtime*', socket => socket.close());
+  await page.goto('http://127.0.0.1:5173/?renderProbe');
+  await page.locator('[data-starter="152"]').click();
+  await page.locator('#import-file').setInputFiles({ name: 'shoreline.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(save)) });
+  await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 90_000 });
+  await expect.poll(() => page.evaluate(() => (window as any).__renderProbe?.read().loadedPokemon.length ?? 0), { timeout: 90_000 }).toBeGreaterThan(0);
+  await expect.poll(() => page.evaluate(() => (window as any).__renderProbe?.read().water.length ?? 0), { timeout: 30_000 }).toBeGreaterThan(0);
+  await page.addStyleTag({ content: '.topbar,.adventure > :not(#ow-host),.ow-camera-controls,.ow-creature-label,.ow-help,#toast{visibility:hidden!important}' });
+  await expect.poll(() => page.evaluate(() => (window as any).__renderProbe.read().samples.length), { timeout: 30_000 }).toBeGreaterThan(15);
+  const result = await page.evaluate(() => (window as any).__renderProbe.read());
+  await page.screenshot({ path: `${output}/lake-desktop.png` });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: `${output}/lake-mobile.png` });
+  await writeFile(`${output}/report.json`, JSON.stringify({ errors, failed, result }, null, 2));
+  console.log(JSON.stringify({ errors, failed, backend: result.backend, loadedPokemon: result.loadedPokemon, terrainMaterials: result.terrainMaterials, water: result.water.length }));
+  if (errors.length || failed.length) process.exitCode = 1;
+} finally { await browser.close(); }
