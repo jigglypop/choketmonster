@@ -717,7 +717,10 @@ function PlayerCamera({ snapshot, options, destination, onDestination, commands 
 
   useEffect(() => {
     path.current = destination ? findWorldPath(position.current, destination, sample) : [];
-    if (destination && !path.current.length) onDestination(null);
+    if (destination && !path.current.length) {
+      onDestination(null);
+      if (!keys.current.size) { movementActive.current = false; options.onMovementEnd?.(); }
+    }
     else if (destination) {
       const resolved = path.current[path.current.length - 1];
       if (Math.hypot(resolved.x - destination.x, resolved.z - destination.z) > .01) onDestination(resolved);
@@ -790,6 +793,7 @@ function PlayerCamera({ snapshot, options, destination, onDestination, commands 
     let forwardAxis = Number(pressed.has('KeyW') || pressed.has('ArrowUp')) - Number(pressed.has('KeyS') || pressed.has('ArrowDown'));
     let sideAxis = Number(pressed.has('KeyD') || pressed.has('ArrowRight')) - Number(pressed.has('KeyA') || pressed.has('ArrowLeft'));
     const target = position.current;
+    let routeDistance = Infinity;
     if (!forwardAxis && !sideAxis && path.current.length) {
       const waypoint = path.current[0];
       const dx = waypoint.x - target.x, dz = waypoint.z - target.z, remaining = Math.hypot(dx, dz);
@@ -797,6 +801,7 @@ function PlayerCamera({ snapshot, options, destination, onDestination, commands 
         path.current.shift();
         if (!path.current.length) onDestination(null);
       } else {
+        routeDistance = remaining;
         forwardAxis = dz / remaining;
         sideAxis = dx / remaining;
         movement.current.set(dx / remaining, 0, dz / remaining);
@@ -813,7 +818,8 @@ function PlayerCamera({ snapshot, options, destination, onDestination, commands 
         right.current.set(-forward.current.z, 0, forward.current.x);
         movement.current.copy(forward.current).multiplyScalar(forwardAxis).addScaledVector(right.current, sideAxis).normalize();
       }
-      movement.current.multiplyScalar(Math.min(delta, .1) * (snapshot.entities.find(entity => entity.id.startsWith('companion:'))?.movementSpeed ?? 2.2));
+      // Stop at the waypoint even when a slow frame would step past it.
+      movement.current.multiplyScalar(Math.min(routeDistance, Math.min(delta, .1) * (snapshot.entities.find(entity => entity.id.startsWith('companion:'))?.movementSpeed ?? 2.2)));
       const x = MathUtils.clamp(target.x + movement.current.x, WORLD_MIN, WORLD_MAX);
       const z = MathUtils.clamp(target.z + movement.current.z, WORLD_MIN, WORLD_MAX);
       const terrain = sample(x, z);

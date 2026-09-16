@@ -38,6 +38,7 @@ export class OpenWorldPanel {
   private attacks = new Map<string, { start: number; end: number; type: string }>();
   private tickPending = false;
   private manualIdleSeconds = 0;
+  private manualMovementActive = false;
   private serverRequest?: Promise<void>;
   private pausedBeforeBox = false;
   private multiplayer?: MultiplayerSession;
@@ -127,7 +128,10 @@ export class OpenWorldPanel {
       onReady: () => { this.ready = true; const canvasHost = this.host?.querySelector<HTMLElement>('#ow-host'); if (canvasHost) canvasHost.dataset.ready = 'true'; },
       onNavigationStart: () => this.noteManualInput(),
       onMovementInput: () => this.noteManualInput(),
-      onMovementEnd: () => { if (this.simulation.controlMode === 'manual' && this.canAcceptMovement()) this.changeMode('auto'); },
+      onMovementEnd: () => {
+        this.manualMovementActive = false;
+        if (this.simulation.controlMode === 'manual' && this.canAcceptMovement()) this.changeMode('auto');
+      },
       onPlayerMove: next => {
         if (!this.noteManualInput()) return false;
         const accepted = this.simulation.movePartner(next);
@@ -261,6 +265,7 @@ export class OpenWorldPanel {
 
   private noteManualInput(): boolean {
     if (!this.canAcceptMovement()) return false;
+    this.manualMovementActive = true;
     this.manualIdleSeconds = 0;
     if (this.simulation.controlMode !== 'manual') this.changeMode('manual');
     return true;
@@ -341,9 +346,9 @@ export class OpenWorldPanel {
     if (this.paused || document.hidden || document.querySelector('dialog[open]')) { this.manualIdleSeconds = 0; return; }
     this.tickPending = true;
     try {
-    // Count active exploration time only. Input also resets this when a wall
-    // blocks movement, so held controls never hand the partner back to AI.
-    if (this.simulation.controlMode === 'manual' && this.canAcceptMovement()) {
+    // A route or held key owns control until the renderer reports movement end.
+    // Fixed simulation ticks must not expire that ownership between render frames.
+    if (this.simulation.controlMode === 'manual' && !this.manualMovementActive && this.canAcceptMovement()) {
       this.manualIdleSeconds += .25;
       if (this.manualIdleSeconds >= MANUAL_IDLE_SECONDS) this.changeMode('auto');
     } else this.manualIdleSeconds = 0;
@@ -751,5 +756,5 @@ export class OpenWorldPanel {
   private html(selector: string, value: string): void { const node = this.host?.querySelector(selector); if (node && this.htmlCache.get(node) !== value) { node.innerHTML = value; this.htmlCache.set(node, value); } }
   private button(selector: string): HTMLButtonElement { return this.host!.querySelector(selector)!; }
   private input(selector: string): HTMLInputElement { return this.host!.querySelector(selector)!; }
-  unmount(): void { window.removeEventListener('keydown', this.hotkeys); this.compactViewport.removeEventListener('change', this.onViewportChange); this.multiplayer?.close(); this.multiplayer = undefined; this.renderer?.destroy(); this.renderer = undefined; this.host = undefined; this.ready = false; }
+  unmount(): void { this.manualMovementActive = false; window.removeEventListener('keydown', this.hotkeys); this.compactViewport.removeEventListener('change', this.onViewportChange); this.multiplayer?.close(); this.multiplayer = undefined; this.renderer?.destroy(); this.renderer = undefined; this.host = undefined; this.ready = false; }
 }
