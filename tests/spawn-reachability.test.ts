@@ -41,7 +41,7 @@ describe('actual open-world supplemental reachability',()=>{
       world.sceneId=CAVE_SCENES.find(scene=>scene.regionId===region&&scene.encounterLocationId===rule.locationId)?.sceneId??`surface:${region}`;
       const key=`${rule.locationId}:${rule.biome}`,point=points.get(key)??walkablePoint(world,rule.locationId,rule.biome);points.set(key,point);
       world.worldClockSeconds=phaseSeconds[rule.period];
-      const local=rules.filter(item=>item.locationId===rule.locationId&&item.period===rule.period&&item.biome===rule.biome&&item.requiredBadges<=8);
+      const local=rules.filter(item=>item.locationId===rule.locationId&&item.biome===rule.biome&&item.requiredBadges<=8);
       const index=local.findIndex(item=>item.speciesId===rule.speciesId);
       (world as any).spawnSerial=(index+1)*20;
       const entity=(world as any).spawnWildAt(point);spawned.add(entity.speciesId);

@@ -23,7 +23,7 @@ describe('expanded collection and individual lifecycle', () => {
       expect([...encounters].sort((a, b) => a - b), version.id).toEqual([...version.speciesIds].sort((a, b) => a - b));
     }
     expect(versionEncounters('pallet', 'gold', 8)).toEqual(versionEncounters('pallet', 'red', 8));
-    expect(getPlayableSpeciesIds('national')).toHaveLength(649);
+    expect(getPlayableSpeciesIds('national')).toHaveLength(809);
   });
 
   it('limits playable collection changes while retaining the partner and separate collection records', () => {

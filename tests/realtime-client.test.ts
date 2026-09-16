@@ -59,15 +59,16 @@ describe('RealtimeClient', () => {
   it('accepts expansion-region rooms and rejects cross-region scenes or unsupported species', () => {
     const socket = new FakeSocket(); const client = new RealtimeClient({ url: 'ws://test/api/realtime', ticket: 'test-ticket', createSocket: () => socket as unknown as WebSocket, visible: () => true });
     let latest = client.snapshot(); client.subscribe(view => { latest = view; });
-    const presence: Presence = { ...base, region: 'hoenn', sceneId: 'surface:hoenn', speciesId: 252 };
+    const presence: Presence = { ...base, region: 'galar', sceneId: 'surface:galar', speciesId: 810 };
     client.join(presence); socket.open();
-    socket.message({ type: 'welcome', id: 'self', region: 'hoenn', sceneId: 'surface:hoenn', tickRate: 10,
+    socket.message({ type: 'welcome', id: 'self', region: 'galar', sceneId: 'surface:galar', tickRate: 10,
       players: [
-        { ...presence, id: 'valid', name: '호연', updatedAt: 1 },
+        { ...presence, id: 'valid', name: '가라르', updatedAt: 1 },
+        { ...presence, id: 'max', name: '전국도감', speciesId: 1025, updatedAt: 1 },
         { ...presence, id: 'cross', name: 'wrong', sceneId: 'surface:sinnoh', updatedAt: 1 },
-        { ...presence, id: 'future', name: 'future', speciesId: 650, updatedAt: 1 },
+        { ...presence, id: 'future', name: 'future', speciesId: 1026, updatedAt: 1 },
       ], history: [] });
-    expect(latest.players.map(player => player.id)).toEqual(['valid']);
+    expect(latest.players.map(player => player.id).sort()).toEqual(['max','valid']);
     client.close();
   });
 

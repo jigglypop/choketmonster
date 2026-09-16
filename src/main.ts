@@ -422,7 +422,7 @@ function renderSelectedDetail() {
       const confirmed = await confirmAction({
         title: '모두 합치기',
         message: `${selected.nickname} (Lv.${selected.level} · ${selected.instanceId}) 한 마리를 남깁니다. 모든 참여 개체의 최고 레벨 기준선 Lv.${plan.baselineLevel}에 5% 보너스 ${plan.bonusLevels}레벨을 한 번 더해 Lv.${plan.toLevel}이 됩니다(현재보다 +${plan.gainedLevels}).`,
-        detail: `합친 ${plan.count}마리는 팀·박스에서 떠납니다. 여러 마리를 보내도 보상이 중첩되지 않으며 남긴 포켓몬의 회로 기억과 학습 기록은 유지합니다.${plan.excessLevels ? ` 레벨 100 상한으로 초과 ${plan.excessLevels}레벨은 사라집니다.` : ''}`,
+        detail: `합친 ${plan.count}마리는 팀·박스에서 떠납니다. 여러 마리를 보내도 보상이 중첩되지 않으며 남긴 포켓몬의 회로 기억과 학습 기록은 유지합니다.${plan.movesToTeam ? ' 남길 포켓몬은 박스에서 팀으로 이동합니다.' : ''}${plan.excessLevels ? ` 레벨 100 상한으로 초과 ${plan.excessLevels}레벨은 사라집니다.` : ''}`,
         confirmLabel: `${plan.count}마리 합치기`,
       });
       if (!confirmed) return;

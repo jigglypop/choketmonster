@@ -85,7 +85,10 @@ test('bounded duplicate levels and release use cancellable app modals, with read
   await expect(page.locator('#toast')).toContainText('놓아주었습니다');
   await expect(page.locator('[data-monster="mon-3"]')).toHaveCount(0);
   await expect(page.locator('#release-monster')).toBeDisabled();
-  await page.reload(); await page.locator('[data-tab="team"]').click();
+  await page.reload();
+  await expect(page.locator('[data-tab="team"]')).toBeEnabled({ timeout: 30_000 });
+  await page.locator('[data-tab="team"]').click();
+  await expect(page.locator('.team-page')).toBeVisible({ timeout: 30_000 });
   await expect(page.locator('.count-chip')).toContainText('박스 0', { timeout: 30_000 });
   await expect(page.locator('.detail-title > p')).not.toContainText('Lv.5');
   expect(browserDialogs).toEqual([]);

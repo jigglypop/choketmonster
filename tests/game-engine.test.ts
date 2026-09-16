@@ -210,7 +210,7 @@ describe('전체 포켓몬 로컬 게임 엔진', () => {
 
     const battle = wildBattle(state, 4, 5);
     const defeated = battle.enemy.team[0];
-    const fullAmount = Math.max(1, Math.floor(getSpecies(defeated.speciesId).baseExperience * defeated.level / 7));
+    const fullAmount = Math.max(1, Math.floor(getSpecies(defeated.speciesId).baseExperience * defeated.level * 1.5 / 7));
     bench.xp = experienceAtLevel(bench.level + 1, getSpecies(bench.speciesId).growthRate) - fullAmount;
     const before = { active: active.xp, activeLevel: active.level, bench: bench.xp, fainted: fainted.xp, boxed: boxed.xp };
     defeated.hp = 0;

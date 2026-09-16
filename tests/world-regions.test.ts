@@ -11,6 +11,12 @@ import { getPlayableSpeciesIds, isPlayableSpecies } from '../src/openworld/avail
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
 
+function enterWildRoute(world: OpenWorldSimulation) {
+  const wild = world.entities.find(entity => entity.kind === 'wild')!;
+  world.player = { x: wild.x, z: wild.z, heading: 0 };
+  Object.assign(world.entities.find(entity => entity.kind === 'companion')!, world.player);
+}
+
 function moveCheckpointToRegion(world: OpenWorldSimulation, regionId: 'paldea') {
   const checkpoint = world.snapshot(), atlas = getWorldAtlas(regionId), points: Array<{ x: number; z: number }> = [];
   for (let x = -118; x <= 118 && points.length < checkpoint.entities.length + checkpoint.foods.length; x++) {
@@ -68,6 +74,7 @@ describe('regional open worlds', () => {
     game.dex.seen.push(25); game.dex.caught.push(25); game.versionCaught = { red: [1], national: [25] };
     const source = new OpenWorldSimulation(graph, game, 73010);
     const wilds = source.entities.filter(entity => entity.kind === 'wild');
+    enterWildRoute(source);
     wilds[0].speciesId = 25; expect(source.startEncounter(wilds[0].id)).toBe(true);
     const battle = structuredClone(game.battle), history = structuredClone(game.versionCaught), snapshot = source.snapshot();
     delete snapshot.encounterLayout;
@@ -103,7 +110,7 @@ describe('regional open worlds', () => {
     const atlas = getWorldAtlas('paldea');
     const encountered = new Set(atlas.locations.flatMap(location => versionEncounters(location.id, 'scarlet', 8, 'paldea')));
     expect([...encountered]).toEqual([]);
-    expect(getPlayableSpeciesIds('national')).toEqual(Array.from({ length: 649 }, (_, index) => index + 1));
+    expect(getPlayableSpeciesIds('national')).toEqual(Array.from({ length: 809 }, (_, index) => index + 1));
     expect(getPlayableSpeciesIds('red')).toEqual(Array.from({ length: 151 }, (_, index) => index + 1));
     expect(getPlayableSpeciesIds('gold')).toEqual(Array.from({ length: 251 }, (_, index) => index + 1));
     expect(getPlayableSpeciesIds('missing')).toEqual([]);
@@ -136,6 +143,7 @@ describe('regional open worlds', () => {
     const game = createGame(1, 'removed-region-battle');
     const world = new OpenWorldSimulation(graph, game, 73_002);
     const target = world.entities.find(entity => entity.kind === 'wild')!;
+    enterWildRoute(world);
     expect(world.startEncounter(target.id)).toBe(true);
     game.adventureVersion = 'scarlet'; game.versionCaught ??= {}; game.versionCaught.scarlet = [1];
     const checkpoint = moveCheckpointToRegion(world, 'paldea');
@@ -175,6 +183,7 @@ describe('regional open worlds', () => {
     game.versionCaught ??= {};
     game.versionCaught.scarlet ??= [];
     const target = world.entities.find(entity => entity.kind === 'wild')!;
+    enterWildRoute(world);
     expect(world.startEncounter(target.id)).toBe(true);
     const checkpoint = world.snapshot();
     const targetMemory = structuredClone(checkpoint.entities.find(entity => entity.id === target.id)!.brain);

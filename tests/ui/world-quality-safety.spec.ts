@@ -12,6 +12,7 @@ test.beforeAll(() => mkdirSync(output, { recursive: true }));
 
 async function load(page: Page, water = false) {
   const errors: string[] = [];
+  await page.routeWebSocket(url => url.pathname === '/' && url.searchParams.has('token'), () => {});
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error' && /THREE|shader|WebGPU|WGSL/i.test(message.text())) errors.push(message.text()); });
   await page.route('**/api/auth/me', route => route.fulfill({ json: { user: null } }));

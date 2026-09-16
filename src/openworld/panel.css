@@ -405,3 +405,4 @@
 @media(max-width:1000px){.world-next-guide{top:158px;left:16px;transform:none;width:260px}}
 @media(max-width:720px){.world-next-guide{top:150px;left:10px;width:calc(100% - 120px);max-width:310px;padding:8px 10px;gap:7px}.world-next-guide strong{font-size:12px}.world-next-guide small,.world-next-guide span>span{font-size:10px}.world-guide-symbol{font-size:20px}.adventure:has(.world-explore-panel[open]) .world-next-guide{display:none}}
 .world-map-point.traversable{pointer-events:bounding-box}.world-map-player,.world-map-compass,.world-map-legend,.world-map-roads,#world-map-content svg>rect{pointer-events:none}
+.world-map-label.secondary{opacity:0}.world-map-point:hover .world-map-label.secondary,.world-map-point:focus .world-map-label.secondary{opacity:1}

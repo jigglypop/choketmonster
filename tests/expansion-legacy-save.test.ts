@@ -75,6 +75,8 @@ describe('legacy expansion atlas saves', () => {
     game.versionCaught ??= {}; game.versionCaught.platinum = [393];
     const source = new OpenWorldSimulation(graph, game, 81_002);
     const wild = source.entities.find(entity => entity.kind === 'wild')!;
+    source.player = { x: wild.x, z: wild.z, heading: 0 };
+    Object.assign(source.entities.find(entity => entity.kind === 'companion')!, source.player);
     expect(source.startEncounter(wild.id)).toBe(true);
     const snapshot = moveToLegacyAtlas(source.snapshot(), 'sinnoh', 2);
     snapshot.visitedTownIds = ['twinleaf', 'oreburgh'];

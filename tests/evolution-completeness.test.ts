@@ -80,6 +80,17 @@ describe('complete source-backed evolution reachability', () => {
     expect(game.inventory['friendship-treat']).toBe(0);
   });
 
+  it('normalizes fixed-gender evolution species while preserving individual identity and brain', () => {
+    const game = ownedFixture(281), kirlia = game.player.team[0], instanceId = kirlia.instanceId, brain = kirlia.brain;
+    kirlia.gender = 'female'; evolutionProgress(kirlia).gender = 'female';
+    game.inventory['evolution-catalyst'] = 1;
+    evolve(game, instanceId, { targetId: 475, item: 'evolution-catalyst' });
+    expect(kirlia).toMatchObject({ instanceId, speciesId: 475, gender: 'male' });
+    expect(evolutionProgress(kirlia).gender).toBe('male');
+    expect(kirlia.brain).toBe(brain);
+    expect(restoreGame(serializeGame(game)).player.team[0]).toMatchObject({ instanceId, speciesId: 475, gender: 'male' });
+  });
+
   it('enforces known move, gender, equal Tyrogue stats, party, and walking predicates', () => {
     const tangela = ownedFixture(114), tangelaMon = tangela.player.team[0], ancientPower = sourceEvolutionRules(114, 465)[0];
     tangelaMon.moves = tangelaMon.moves.filter(move => move.moveId !== 246);

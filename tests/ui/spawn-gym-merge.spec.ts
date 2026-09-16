@@ -22,6 +22,7 @@ async function load(page: Page, save: SaveEnvelope) {
   await page.goto('/');
   await expect(page.locator('[data-starter="152"]')).toBeVisible({ timeout: 30000 });
   await page.locator('[data-starter="152"]').click();
+  await expect.poll(() => page.locator('#import-file').evaluate(input => typeof (input as HTMLInputElement).onchange === 'function'), { timeout: 30_000 }).toBe(true);
   await page.locator('#import-file').setInputFiles({ name: 'flow.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(save)) });
   await expect(page.locator('#toast')).toContainText('불러왔습니다');
   await openExplorePanel(page);

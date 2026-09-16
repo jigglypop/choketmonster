@@ -15,6 +15,7 @@ import {
   CanvasTexture,
   Color,
   DirectionalLight,
+  DoubleSide,
   Float32BufferAttribute,
   Frustum,
   Sphere,
@@ -478,10 +479,20 @@ function TrailAndWater({ sampleWorld, player, badges, atlas, visible, mobile, gy
           <mesh position={[.82, .35, 0]}><boxGeometry args={[.16, 1.1, .16]} /><meshStandardMaterial color="#6b4b2c" /></mesh>
         </group>
       </group>)}
-      {atlas.locations.filter(item => item.kind === 'cave' && !isRegionalLeagueLocation(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) <= 80 && visible(item.x, 3, item.z, 8)).map(cave => <group key={cave.id} position={[cave.x, terrainSurfaceHeight(sampleWorld, cave.x, cave.z), cave.z]}>
-        <mesh position={[0, 1.3, 0]} castShadow><dodecahedronGeometry args={[2.8, 0]} /><meshStandardMaterial color="#5f615f" roughness={1} /></mesh>
-        <mesh position={[0, .8, -2.15]}><circleGeometry args={[1.05, 24]} /><meshBasicMaterial color="#171b1c" /></mesh>
-      </group>)}
+      {atlas.locations.filter(item => item.kind === 'cave' && !isRegionalLeagueLocation(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) <= 80 && visible(item.x, 3, item.z, 16)).map(cave => {
+        // The location center is a walking/arrival point, so solid scenery belongs beyond the path.
+        const candidates = [8, 12, 16, 22].flatMap(radius => [0, -.8, .8, -1.6, 1.6, Math.PI].map(angle => ({ x: cave.x + Math.sin(angle) * radius, z: cave.z - Math.cos(angle) * radius })));
+        const point = candidates.find(point => [-3.8, 0, 3.8].every(dx => [-1.8, 0, 1.8].every(dz => sampleWorld(point.x + dx, point.z + dz).blocked)));
+        if (!point) return null;
+        return <group key={cave.id} name={`cave-entrance:${cave.id}`} position={[point.x, terrainSurfaceHeight(sampleWorld, point.x, point.z), point.z]}>
+          {[-1, 1].map(side => <group key={side} position={[side * 2.65, 0, 0]}>
+            <mesh position={[0, 1.35, 0]} scale={[1.1, 1.6, .9]} rotation={[.1, side * .2, side * .15]} castShadow receiveShadow><dodecahedronGeometry args={[1.35, 1]} /><SurfaceMaterial surface="rock" color="#74766b" /></mesh>
+            <mesh position={[-side * .9, 3.05, -.2]} scale={[1.35, .75, .95]} rotation={[0, 0, side * -.3]} castShadow receiveShadow><dodecahedronGeometry args={[1.45, 1]} /><SurfaceMaterial surface="rock" color="#686b61" /></mesh>
+          </group>)}
+          <mesh position={[0, 3.6, -.35]} scale={[1.3, .6, 1]} castShadow receiveShadow><dodecahedronGeometry args={[1.4, 1]} /><SurfaceMaterial surface="rock" color="#7b7c70" /></mesh>
+          <mesh position={[0, 1.5, -1.2]}><circleGeometry args={[1.7, 24]} /><meshBasicMaterial color="#171b1c" side={DoubleSide} /></mesh>
+        </group>;
+      })}
       {atlas.gates.filter(gate => gate.visible !== false).map(gate => {
         const from = locations.get(gate.from)!, to = locations.get(gate.to)!;
         const x = (from.x + to.x) / 2, z = (from.z + to.z) / 2;

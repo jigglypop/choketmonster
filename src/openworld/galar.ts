@@ -33,10 +33,9 @@ export const GALAR_CONNECTIONS: ReadonlyArray<readonly[string,string]> = [
 export const GALAR_GATES: readonly KantoGate[] = [];
 export const GALAR_GYMS: readonly KantoGym[] = [
   {locationId:'turffield',badge:1,badgeName:'풀배지',name:'아킬',speciesId:830,level:20}, {locationId:'hulbury',badge:2,badgeName:'물배지',name:'야청',speciesId:834,level:24},
-  {locationId:'motostoke',badge:3,badgeName:'불꽃배지',name:'순무',speciesId:851,level:29}, {locationId:'stow-on-side',badge:4,badgeName:'격투배지',name:'채두',speciesId:865,level:36},
+  {locationId:'motostoke',badge:3,badgeName:'불꽃배지',name:'순무',speciesId:324,level:29}, {locationId:'stow-on-side',badge:4,badgeName:'격투배지',name:'채두',speciesId:865,level:36},
   {locationId:'ballonlea',badge:5,badgeName:'페어리배지',name:'포플러',speciesId:869,level:38}, {locationId:'circhester',badge:6,badgeName:'바위배지',name:'마쿠와',speciesId:839,level:42},
   {locationId:'spikemuth',badge:7,badgeName:'악배지',name:'두송',speciesId:862,level:46}, {locationId:'hammerlocke',badge:8,badgeName:'드래곤배지',name:'금랑',speciesId:884,level:50},
 ];
 const runtime=createAuthoredRegionSampler({id:'galar',locations:GALAR_LOCATIONS,connections:GALAR_CONNECTIONS});
 export const galarLocationAt=runtime.locationAt,distanceToGalarPath=runtime.distanceToPath,sampleGalarWorld=runtime.sample,evaluateGalarTraversal=runtime.evaluate,safeGalarArrival=runtime.safeArrival,nearestGalarWalkable=runtime.nearestWalkable,galarBuildingOffsets=runtime.buildingOffsets;
-

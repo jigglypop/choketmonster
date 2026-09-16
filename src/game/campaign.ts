@@ -74,9 +74,9 @@ export const CAMPAIGN_TRAINERS: readonly CampaignTrainer[] = [
   {id:'alola-acerola',name:'사천왕 아세로라',region:'alola',locationId:'alola-pokemon-league',kind:'elite',team:[[354,66],[478,66],[426,66],[781,67],[778,68]]},
   {id:'alola-kahili',name:'사천왕 카일리',region:'alola',locationId:'alola-pokemon-league',kind:'elite',team:[[628,66],[741,66],[227,66],[630,67],[733,68]]},
   {id:'alola-champion',name:'알로라 챔피언',region:'alola',locationId:'alola-pokemon-league',kind:'champion',team:[[745,68],[784,68],[730,68],[724,68],[791,69],[800,70]]},
-  {id:'galar-marnie',name:'챔피언컵 마리',region:'galar',locationId:'galar-pokemon-league',kind:'elite',team:[[510,66],[454,66],[560,67],[877,67],[861,68]]},
+  {id:'galar-marnie',name:'챔피언컵 마리',region:'galar',locationId:'galar-pokemon-league',kind:'elite',team:[[510,66],[454,66],[560,67],[877,67],[262,68]]},
   {id:'galar-hop',name:'챔피언컵 호브',region:'galar',locationId:'galar-pokemon-league',kind:'elite',team:[[832,67],[823,67],[855,68],[143,68],[818,69]]},
-  {id:'galar-bede',name:'챔피언컵 비트',region:'galar',locationId:'galar-pokemon-league',kind:'elite',team:[[879,68],[282,68],[858,69],[869,70]]},
+  {id:'galar-bede',name:'챔피언컵 비트',region:'galar',locationId:'galar-pokemon-league',kind:'elite',team:[[208,68],[282,68],[858,69],[869,70]]},
   {id:'galar-raihan',name:'챔피언컵 금랑',region:'galar',locationId:'galar-pokemon-league',kind:'elite',team:[[526,69],[330,69],[844,70],[884,71]]},
   {id:'galar-leon',name:'챔피언 단델',region:'galar',locationId:'galar-pokemon-league',kind:'champion',team:[[681,70],[887,70],[812,71],[464,71],[537,72],[6,74]]},
   // Legends: Arceus has no regional League. These are authored Survey Corps final trials.
@@ -85,11 +85,11 @@ export const CAMPAIGN_TRAINERS: readonly CampaignTrainer[] = [
   {id:'hisui-adaman',name:'조사대 결승 찬석',region:'hisui',locationId:'temple-of-sinnoh',kind:'elite',team:[[134,69],[197,69],[470,70],[901,72]]},
   {id:'hisui-kamado',name:'조사대 결승 전목',region:'hisui',locationId:'temple-of-sinnoh',kind:'elite',team:[[143,70],[462,70],[628,71],[901,73]]},
   {id:'hisui-volo',name:'신오신전 월로',region:'hisui',locationId:'temple-of-sinnoh',kind:'champion',team:[[442,72],[407,72],[468,73],[448,73],[350,73],[445,75]]},
-  {id:'paldea-rika',name:'사천왕 칠리',region:'paldea',locationId:'paldea-pokemon-league',kind:'elite',team:[[980,68],[51,68],[323,69],[340,69],[977,70]]},
-  {id:'paldea-poppy',name:'사천왕 뽀삐',region:'paldea',locationId:'paldea-pokemon-league',kind:'elite',team:[[879,69],[823,69],[437,70],[863,70],[959,71]]},
-  {id:'paldea-larry',name:'사천왕 청목',region:'paldea',locationId:'paldea-pokemon-league',kind:'elite',team:[[357,70],[741,70],[334,71],[973,71],[931,72]]},
-  {id:'paldea-hassel',name:'사천왕 팔자크',region:'paldea',locationId:'paldea-pokemon-league',kind:'elite',team:[[1011,71],[691,71],[715,72],[612,72],[998,73]]},
-  {id:'paldea-geeta',name:'톱 챔피언 테사',region:'paldea',locationId:'paldea-pokemon-league',kind:'champion',team:[[956,72],[673,72],[975,73],[983,73],[991,74],[970,76]]},
+  {id:'paldea-rika',name:'사천왕 칠리',region:'paldea',locationId:'paldea-pokemon-league',kind:'elite',team:[[980,68],[51,68],[323,69],[340,69],[340,70]]},
+  {id:'paldea-poppy',name:'사천왕 뽀삐',region:'paldea',locationId:'paldea-pokemon-league',kind:'elite',team:[[208,69],[823,69],[437,70],[53,70],[959,71]]},
+  {id:'paldea-larry',name:'사천왕 청목',region:'paldea',locationId:'paldea-pokemon-league',kind:'elite',team:[[357,70],[741,70],[334,71],[973,71],[18,72]]},
+  {id:'paldea-hassel',name:'사천왕 팔자크',region:'paldea',locationId:'paldea-pokemon-league',kind:'elite',team:[[691,71],[691,71],[715,72],[612,72],[998,73]]},
+  {id:'paldea-geeta',name:'톱 챔피언 테사',region:'paldea',locationId:'paldea-pokemon-league',kind:'champion',team:[[576,72],[673,72],[975,73],[983,73],[454,74],[452,76]]},
 ];
 
 export function campaignProgress(game: GameState): CampaignProgress {

@@ -146,6 +146,7 @@ export function hatchEgg(state: GameState, eggId: string): Monster {
   const monster: Monster = { instanceId: `mon-${state.nextInstanceId++}`, speciesId: egg.speciesId, nickname: species.name,
     gender: genderFor(egg.speciesId, egg.eggId), level: 1, xp: 0, hp: stats.hp, stats, moves, brain: egg.brain };
   monster.evolutionProgress = initialEvolutionProgress(monster);
+  monster.evolutionProgress.gender = monster.gender!;
   if (state.player.team.length < 6) state.player.team.push(monster); else state.player.box.push(monster);
   state.nursery!.splice(index, 1);
   state.dex.seen = [...new Set([...state.dex.seen, monster.speciesId])].sort((a, b) => a - b);

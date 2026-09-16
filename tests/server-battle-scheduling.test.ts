@@ -12,7 +12,8 @@ function fixture() {
   const game = createGame(1, 'server-clock'), world = new OpenWorldSimulation(graph, game, 123);
   const wild = world.entities.find(entity => entity.kind === 'wild')!;
   const companion = world.entities.find(entity => entity.kind === 'companion')!;
-  wild.x = companion.x + 1; wild.z = companion.z;
+  world.player = { x: wild.x, z: wild.z, heading: 0 };
+  Object.assign(companion, world.player);
   expect(world.startEncounter(wild.id)).toBe(true);
   return world;
 }

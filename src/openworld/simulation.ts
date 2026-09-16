@@ -300,7 +300,7 @@ export class OpenWorldSimulation {
     const travelReason = campaignTravelReason(game, this.regionId);
     // Provisional expansion saves may predate campaign travel locks. Validate
     // their old coordinate space first, then return them to an available start.
-    if (travelReason && !legacyExpansionAtlas) throw new Error(travelReason);
+    if (travelReason && !legacyExpansionAtlas && !(checkpoint && !isPlayableWorldRegion(this.regionId))) throw new Error(travelReason);
     this.player = { ...this.atlas.start, heading: 0 };
     this.spawnAnchor = { ...this.player };
     this.visitedTownIds = this.initialVisitedTowns(this.atlas);
@@ -911,7 +911,7 @@ export class OpenWorldSimulation {
     for (const _pending of ready) this.spawnWild();
   }
 
-  /** Old saves keep their individuals and brain state; only illegal town positions move. */
+  /** Preserve saved identity and brain state while remapping illegal town spawns to a route pool. */
   private relocateTownWilds(): void {
     for (const entity of this.wildEntities()) {
       if (entity.id === this.battleWildId || !this.isSafeTown(entity.x, entity.z)) continue;

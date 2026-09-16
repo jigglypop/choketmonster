@@ -17,11 +17,18 @@ function setup(seed = 38211) {
   world.setControlMode('manual'); world.setAutoCapture(false); return { game, world };
 }
 function prepareWin(world: OpenWorldSimulation) {
+  enterWildRoute(world);
   world.startEncounter(world.entities.find(entity => entity.kind === 'wild')!.id);
   const battle = world.game.battle!;
   battle.player.team[0].moves = [{ moveId: 33, pp: 35 }];
   battle.enemy.team[0].hp = 1; battle.enemy.team[0].status = 'sleep'; battle.enemy.team[0].statusTurns = 3;
   world.requestAction({ type: 'move', index: 0 });
+}
+
+function enterWildRoute(world: OpenWorldSimulation) {
+  const wild = world.entities.find(entity => entity.kind === 'wild')!;
+  world.player = { x: wild.x, z: wild.z, heading: 0 };
+  Object.assign(world.entities.find(entity => entity.kind === 'companion')!, world.player);
 }
 
 describe('Kanto player flows', () => {
@@ -48,6 +55,7 @@ describe('Kanto player flows', () => {
     expect({ x: partner.x, z: partner.z }).toEqual({ x: before.x, z: before.z });
     expect(partner.brain).toEqual(before.brain);
     expect(game.battle).toBeUndefined();
+    enterWildRoute(world);
     world.startEncounter(world.entities.find(entity => entity.kind === 'wild')!.id);
     const battleBefore = structuredClone(game.battle);
     for (let i = 0; i < 4; i++) world.step({ deltaSeconds: 5, learning: true });
@@ -79,9 +87,9 @@ describe('Kanto player flows', () => {
     world.setControlMode('auto'); prepareWin(world); world.step({ deltaSeconds: 1 });
     expect(game.battle).toBeUndefined(); expect(game.captureOffer).toBeUndefined();
     expect(world.autoHunt).toBe(true); expect(world.controlMode).toBe('auto');
+    expect(game.logs.at(-1)).toContain('놓아주었습니다');
     world.step({ deltaSeconds: .25 });
     expect(world.selectedWildId).toBeDefined();
-    expect(game.logs.at(-1)).toContain('놓아주었습니다');
   });
 
   it('does not leave a blocking victory offer in manual mode without a ball', () => {
@@ -105,6 +113,7 @@ describe('Kanto player flows', () => {
 
   it('continues a normal battle if a queued capture loses its last ball', () => {
     const { game, world } = setup(38218);
+    enterWildRoute(world);
     const target = world.entities.find(entity => entity.kind === 'wild')!;
     expect(world.startEncounter(target.id)).toBe(true);
     expect(world.requestCapture('poke-ball')).toBe(true);

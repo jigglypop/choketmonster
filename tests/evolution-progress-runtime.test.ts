@@ -56,4 +56,22 @@ describe('evolution growth from real engine events', () => {
       expect(() => validateGame(value)).toThrow(/진화 성장 기록/);
     }
   });
+
+  it('migrates missing monster gender from valid legacy progress and keeps saved battle copies canonical', () => {
+    const state = createGame(1, 'legacy-gender'), owned = state.player.team[0], enemy = createMonster(state, 19, 5);
+    const preserved = owned.gender === 'male' ? 'female' : 'male';
+    evolutionProgress(owned).gender = preserved;
+    delete owned.gender;
+    state.battle = { kind: 'wild', regionId: state.regionId, player: { team: structuredClone(state.player.team), activeIndex: 0 },
+      enemy: { team: [enemy], activeIndex: 0 }, turn: 1, canRun: true };
+    const migrated = validateGame(structuredClone(state));
+    expect(migrated.player.team[0].gender).toBe(preserved);
+    expect(migrated.player.team[0].evolutionProgress?.gender).toBe(preserved);
+    expect(migrated.battle?.player.team).toBe(migrated.player.team);
+
+    const fixed = createGame(1, 'legacy-fixed-gender'), gallade = createMonster(fixed, 475, 30);
+    fixed.player.team = [gallade]; gallade.gender = undefined; evolutionProgress(gallade).gender = 'female';
+    validateGame(fixed);
+    expect(gallade.gender).toBe('male'); expect(evolutionProgress(gallade).gender).toBe('male');
+  });
 });

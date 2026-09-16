@@ -67,6 +67,8 @@ describe('Kanto navigation state', () => {
   it('rejects teleport while a battle or capture decision is active', () => {
     const battling = setup(41_003);
     const target = battling.world.entities.find(entity => entity.kind === 'wild')!;
+    battling.world.player = { x: target.x, z: target.z, heading: 0 };
+    Object.assign(battling.world.entities.find(entity => entity.kind === 'companion')!, battling.world.player);
     expect(battling.world.startEncounter(target.id)).toBe(true);
     const battlePosition = structuredClone(battling.world.player);
     expect(battling.world.teleportToTown('pallet')).toBe(false);

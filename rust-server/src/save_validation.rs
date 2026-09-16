@@ -1454,6 +1454,16 @@ mod tests {
         })
     }
 
+    fn valid_brain_checkpoint() -> Value {
+        let node_count = expected_graph()["nodes"].as_array().unwrap().len();
+        serde_json::json!({
+            "schema":1, "seed":7, "rng":9, "updates":0, "action":0,
+            "inputWeights":vec![vec![0.0; 12]; node_count],
+            "readout":vec![vec![0.0; node_count + 12]; 5],
+            "activity":vec![0.0; node_count], "previous":null, "sensoryBypass":false
+        })
+    }
+
     fn set_kanto_badges(save: &mut Value, count: i64) {
         save["game"]["player"]["badges"] = Value::from(count);
         save["game"]["defeatedGyms"] = Value::Array((1..=count).map(Value::from).collect());
@@ -1519,6 +1529,25 @@ mod tests {
     #[test]
     fn accepts_consistent_save() {
         validate_save(&valid_save()).unwrap();
+    }
+
+    #[test]
+    fn validates_persistent_egg_brain_and_generated_id() {
+        let mut save = valid_save();
+        save["game"]["nextInstanceId"] = Value::from(3);
+        save["game"]["nursery"] = serde_json::json!([{
+            "eggId":"egg-2", "speciesId":1, "parentIds":["mon-1","former-parent"],
+            "steps":400, "requiredSteps":5376, "createdAtStep":2,
+            "brain":valid_brain_checkpoint()
+        }]);
+        validate_save(&save).unwrap();
+
+        let mut stale_id = save.clone();
+        stale_id["game"]["nextInstanceId"] = Value::from(2);
+        assert!(validate_save(&stale_id).is_err());
+
+        save["game"]["nursery"][0]["brain"]["sensoryBypass"] = Value::Bool(true);
+        assert!(validate_save(&save).is_err());
     }
 
     #[test]

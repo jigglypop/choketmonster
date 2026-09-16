@@ -5,6 +5,7 @@ import { getSpecies } from '../src/data/pokemon';
 import { advanceEggProgress, breedingCompatibility, createEgg, hatchEgg } from '../src/game/breeding';
 import { actBattle, createGame, createMonster, experienceAtLevel, mergeDuplicateMonsters, previewDuplicateMerge, releaseMonster, restoreGame, serializeGame, validateGame } from '../src/game/engine';
 import { defaultView, packSave, unpackSave } from '../src/game/storage';
+import { evolutionProgress } from '../src/game/evolution-progress';
 
 const graph = JSON.parse(readFileSync(new URL('../public/data/connectome.json', import.meta.url), 'utf8')) as Graph;
 
@@ -52,6 +53,7 @@ describe('교배, 알, 전투 중 컬렉션 규칙', () => {
     restored.versionCaught = { red: [] };
     const child = hatchEgg(restored, egg.eggId);
     expect(child).toMatchObject({ speciesId: 1, level: 1, xp: 0 });
+    expect(evolutionProgress(child).gender).toBe(child.gender);
     expect(child.brain?.seed).toBe(seed); expect(child.brain?.seed).not.toBe(first.brain?.seed);
     expect(restored.nursery).toEqual([]); expect(restored.dex.caught).toContain(1);
     expect(restored.versionCaught.red).toContain(1);

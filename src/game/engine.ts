@@ -303,6 +303,7 @@ export function createMonster(state: Pick<GameState, 'nextInstanceId'>, speciesI
     moves: knownMoves(species, normalizedLevel),
   };
   monster.evolutionProgress = initialEvolutionProgress(monster);
+  monster.evolutionProgress.gender = monster.gender!;
   return monster;
 }
 
@@ -938,6 +939,8 @@ function applyEvolution(state: GameState, monster: Monster, evolution: Evolution
   }
   const oldMax = monster.stats.hp;
   monster.speciesId = evolution.target; monster.nickname = getSpecies(evolution.target).name;
+  if (!isValidGender(monster.speciesId, monster.gender)) monster.gender = genderFor(monster.speciesId, monster.instanceId);
+  evolutionProgress(monster).gender = monster.gender!;
   monster.stats = statsFor(getSpecies(evolution.target), monster.level);
   monster.hp = Math.min(monster.stats.hp, monster.hp + monster.stats.hp - oldMax);
   for (const learned of knownMoves(getSpecies(evolution.target), monster.level)) {
@@ -1248,10 +1251,15 @@ export function validateGame(value: unknown): GameState {
   for (const monster of monsters) {
     if (!monster || typeof monster.instanceId !== 'string' || !/^mon-[1-9]\d*$/.test(monster.instanceId) || ids.has(monster.instanceId)) throw new Error('개체 ID가 없거나 중복되었습니다.');
     ids.add(monster.instanceId); const species = getSpecies(monster.speciesId);
-    monster.gender ??= genderFor(monster.speciesId, monster.instanceId);
+    if (monster.evolutionProgress !== undefined) validateEvolutionProgress(monster.evolutionProgress);
+    if (monster.gender === undefined) {
+      const legacyGender = monster.evolutionProgress?.gender;
+      monster.gender = legacyGender !== undefined && isValidGender(monster.speciesId, legacyGender)
+        ? legacyGender : genderFor(monster.speciesId, monster.instanceId);
+    }
     if (!isValidGender(monster.speciesId, monster.gender)) throw new Error('개체 성별이 원본 종 데이터와 맞지 않습니다.');
     if (monster.evolutionProgress === undefined) monster.evolutionProgress = initialEvolutionProgress(monster);
-    else validateEvolutionProgress(monster.evolutionProgress);
+    monster.evolutionProgress.gender = monster.gender;
     const match = /^mon-(\d+)$/.exec(monster.instanceId); if (match) maximumGeneratedId = Math.max(maximumGeneratedId, Number(match[1]));
     if (typeof monster.nickname !== 'string' || !monster.nickname || monster.nickname.length > 40 || !Number.isInteger(monster.level) || monster.level < 1 || monster.level > 100 || !Number.isSafeInteger(monster.xp) || monster.xp < experienceAtLevel(monster.level, species.growthRate) || (monster.level < 100 && monster.xp >= experienceAtLevel(monster.level + 1, species.growthRate))) throw new Error('이름/레벨/경험치가 잘못되었습니다.');
     const expectedStats = statsFor(species, monster.level);
@@ -1309,8 +1317,12 @@ export function validateGame(value: unknown): GameState {
       if (battle.regionId !== state.regionId || battleRegion.minBadges > state.player.badges) throw new Error('전투 지역이 손상되었습니다.');
     } else if (battle.regionId !== (battle.kind === 'red' ? 'mt-silver' : 'pokemon-league')) throw new Error('리그 전투 지역이 손상되었습니다.');
     if (Array.isArray(battle.player.team)) for (const member of battle.player.team) {
-      if (member && member.evolutionProgress === undefined && state.player.team.some(owned => owned.instanceId === member.instanceId && owned.speciesId === member.speciesId)) member.evolutionProgress = initialEvolutionProgress(member);
-      if (member && member.gender === undefined && state.player.team.some(owned => owned.instanceId === member.instanceId && owned.speciesId === member.speciesId)) member.gender = genderFor(member.speciesId, member.instanceId);
+      const owned = member && state.player.team.find(candidate => candidate.instanceId === member.instanceId && candidate.speciesId === member.speciesId);
+      if (member && owned) {
+        if (member.evolutionProgress === undefined) member.evolutionProgress = structuredClone(owned.evolutionProgress);
+        if (member.gender === undefined) member.gender = owned.gender;
+        if (member.evolutionProgress) member.evolutionProgress.gender = member.gender!;
+      }
     }
     if (!Array.isArray(battle.player.team) || JSON.stringify(battle.player.team) !== JSON.stringify(state.player.team)) throw new Error('전투 팀과 플레이어 팀이 일치하지 않습니다.');
     if (battle.awaitingSwitch !== undefined && battle.awaitingSwitch !== 'player') throw new Error('강제 교체 상태가 손상되었습니다.');
