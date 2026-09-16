@@ -220,6 +220,12 @@ export function experienceAtLevel(level: number, growthRate: string): number {
 }
 
 const ENGINE_DAMAGE_MOVE_IDS = new Set([12, 32, 49, 69, 82, 90, 101, 149, 162]);
+const PRE_EVOLUTIONS = new Map<number, number[]>();
+for (const species of POKEMON) for (const evolution of species.evolutions) {
+  const parents = PRE_EVOLUTIONS.get(evolution.target);
+  if (parents) parents.push(species.id);
+  else PRE_EVOLUTIONS.set(evolution.target, [species.id]);
+}
 
 function canDealEngineDamage(moveId: number): boolean {
   const move = getMove(moveId);
@@ -251,7 +257,7 @@ export function availableMonsterMoveIds(monster: Pick<Monster, 'speciesId' | 'le
     visited.add(form);
     const species = getSpecies(form);
     for (const learned of species.moves) if (learned.level <= monster.level) entries.push({ ...learned, order: order++ });
-    for (const candidate of POKEMON) if (candidate.evolutions.some((evolution) => evolution.target === form)) forms.push(candidate.id);
+    forms.push(...(PRE_EVOLUTIONS.get(form) ?? []));
   }
   entries.sort((a, b) => a.level - b.level || a.order - b.order);
   return [...new Set(entries.map((entry) => entry.moveId))];
@@ -272,10 +278,11 @@ function storeMovePp(monster: Monster, slot: MonsterMove): void {
 }
 
 function knownMoves(species: PokemonSpecies, level: number): MonsterMove[] {
+  const seen = new Set<number>();
   const learned = species.moves
     .filter((entry) => entry.level <= level)
     .sort((a, b) => a.level - b.level)
-    .filter((entry, index, entries) => entries.findIndex((other) => other.moveId === entry.moveId) === index);
+    .filter((entry) => !seen.has(entry.moveId) && Boolean(seen.add(entry.moveId)));
   const selected = learned.slice(-4);
   if (selected.length && !selected.some((entry) => canDealEngineDamage(entry.moveId))) {
     const damaging = learned.findLast((entry) => canDealEngineDamage(entry.moveId));

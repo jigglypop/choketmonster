@@ -4,9 +4,9 @@ import type { Graph } from '../src/core/brain';
 import { hasPokemonModel } from '../src/data/pokemon-models';
 import { createGame, createMonster } from '../src/game/engine';
 import { VERSIONS } from '../src/data/pokemon-versions';
-import { KANTO_LOCATIONS, encountersForLocation } from '../src/openworld/kanto';
+import { KANTO_LOCATIONS } from '../src/openworld/kanto';
 import { getWorldAtlas } from '../src/openworld/atlas';
-import { OpenWorldSimulation, biomeForSpecies, restoreOpenWorld, serializeOpenWorld, versionEncounters, redEncounters, regionalEncounters, RED_ENCOUNTER_LAYOUT } from '../src/openworld/simulation';
+import { OpenWorldSimulation, biomeForSpecies, versionEncounters, redEncounters, regionalEncounters, RED_ENCOUNTER_LAYOUT } from '../src/openworld/simulation';
 import { getPlayableSpeciesIds, getRegionalNativeSpeciesIds, isPlayableSpecies } from '../src/openworld/availability';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;

@@ -99,7 +99,7 @@ export function getRegionalBadges(game: GameState, region: string): number {
   if (isExpansionCampaignRegion(region)) return campaignProgress(game).expansion?.[region]?.badges.length ?? 0;
   return region === 'johto' ? campaignProgress(game).johtoBadges.length : game.player.badges;
 }
-export function getCampaignGyms(game: GameState, region: string): readonly KantoGym[] {
+export function getCampaignGyms(_game: GameState, region: string): readonly KantoGym[] {
   if (region === 'hoenn') return HOENN_GYMS;
   if (region === 'sinnoh') return SINNOH_GYMS;
   if (region === 'unova') return UNOVA_GYMS;

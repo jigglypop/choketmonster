@@ -42,6 +42,8 @@ for (const viewport of [{ name: 'desktop', width: 1440, height: 1000 }, { name: 
     await page.setViewportSize(viewport);
     await start(page);
     await page.waitForTimeout(500);
+    await expect(page.locator('.topbar .brand')).toHaveText('');
+    await expect(page.locator('.topbar .brand')).toHaveAccessibleName('초켓몬스터 홈');
 
     await expect(page.locator('[data-tab="lab"]')).toHaveCount(0);
     await page.locator('[data-tab="dex"]').click();

@@ -4,7 +4,7 @@ import { Color, DataTexture, EquirectangularReflectionMapping, FloatType, Linear
 import { MeshStandardNodeMaterial } from 'three/webgpu';
 import {
   abs, attribute, color, cos, dot, float, instanceIndex, length, materialColor, materialRoughness, max, min, mix, normalMap, normalView, normalize,
-  positionLocal, positionViewDirection, positionWorld, pow, sin, smoothstep, texture, timerLocal, vec2, vec3,
+  positionLocal, positionViewDirection, positionWorld, pow, sin, smoothstep, texture, time, vec2, vec3,
 } from 'three/tsl';
 import { distanceToWaterSurface, selectWaterLod, type WaterLod, type WaterLodPlayer } from './water-lod';
 import type { WorldAtlas } from './atlas';
@@ -198,7 +198,7 @@ export function normalizeStandardMaterial(source: MeshStandardMaterial, options:
   if (options.wind) {
     const tip = smoothstep(.04, .7, positionLocal.y);
     const phase = positionLocal.x.mul(2.1).add(positionLocal.z.mul(1.7)).add(instanceIndex.mul(.618));
-    const clock = timerLocal();
+    const clock = time;
     const swayX = sin(clock.mul(1.35).add(phase)).mul(.035).mul(tip);
     const swayZ = cos(clock.mul(1.05).add(phase)).mul(.022).mul(tip);
     material.positionNode = positionLocal.add(vec3(swayX, 0, swayZ));
@@ -218,7 +218,7 @@ export function createWaterNodeMaterial({
   const material = new MeshStandardNodeMaterial({
     color: '#237f9c', roughness: .44, metalness: 0, envMapIntensity: .45,
   });
-  const clock = timerLocal();
+  const clock = time;
   const waveA = sin(positionWorld.x.mul(.23).add(positionWorld.z.mul(.17)).add(clock.mul(.35)));
   const waveB = cos(positionWorld.x.mul(.19).sub(positionWorld.z.mul(.21)).sub(clock.mul(.28)));
   // Two slowly crossing normal-map samples avoid the old high-frequency grid
@@ -282,7 +282,7 @@ export function createTerrainMaterial(textures: SurfaceTextures, waterNormals: T
   const bank = smoothstep(.05, .42, coverage).mul(float(1).sub(wet));
   const earth = mix(groundColor, color('#9d9c72').mul(.84), bank.mul(.65));
   let water = mix(color(waterColor).mul(.76), color('#72aaa0'), shallows.mul(.65));
-  const clock = timerLocal();
+  const clock = time;
   const a = positionWorld.xz.mul(.07).add(vec2(clock.mul(.003), clock.mul(.002)));
   const b = positionWorld.zx.mul(.093).sub(vec2(clock.mul(.002), clock.mul(.003)));
   const waterSample = texture(waterNormals, a).rgb.add(texture(waterNormals, b).rgb).mul(.5);
@@ -384,9 +384,7 @@ export function WaterMaterial({ player, mobile = false, ...shape }: WaterMateria
 
 /** Prefilter a small procedural daylight sky once, for PBR ambient reflections.
  * No screen-space effects, per-frame render targets or simulation random state. */
-export function SkyLighting() {
-  const { gl, scene } = useThree();
-  useEffect(() => {
+export function createDaylightEnvironment() {
     const width = 64, height = 32, pixels = new Float32Array(width * height * 4);
     for (let y = 0; y < height; y++) {
       const elevation = Math.cos(Math.PI * (y + .5) / height);
@@ -402,6 +400,13 @@ export function SkyLighting() {
     const source = new DataTexture(pixels, width, height, RGBAFormat, FloatType);
     source.mapping = EquirectangularReflectionMapping;
     source.colorSpace = LinearSRGBColorSpace; source.needsUpdate = true;
+    return source;
+}
+
+export function SkyLighting() {
+  const { gl, scene } = useThree();
+  useEffect(() => {
+    const source = createDaylightEnvironment();
     const previous = scene.environment, intensity = scene.environmentIntensity;
     scene.environmentIntensity = .32;
     if ((gl as unknown as { isWebGPURenderer?: boolean }).isWebGPURenderer) {

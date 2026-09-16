@@ -16,7 +16,22 @@ struct FieldTrainerRecord {
 }
 fn field_trainer_catalog() -> &'static Vec<FieldTrainerRecord> {
     static TRAINERS: OnceLock<Vec<FieldTrainerRecord>> = OnceLock::new();
-    TRAINERS.get_or_init(|| serde_json::from_str(include_str!("../../src/data/trainer-battle-catalog.json")).expect("checked trainer catalog"))
+    TRAINERS.get_or_init(|| {
+        serde_json::from_str(include_str!("../../src/data/trainer-battle-catalog.json"))
+            .expect("checked trainer catalog")
+    })
+}
+fn field_trainer(id: &str) -> Option<&'static FieldTrainerRecord> {
+    static TRAINER_INDEX: OnceLock<HashMap<String, usize>> = OnceLock::new();
+    let trainers = field_trainer_catalog();
+    let index = TRAINER_INDEX.get_or_init(|| {
+        trainers
+            .iter()
+            .enumerate()
+            .map(|(index, trainer)| (trainer.id.clone(), index))
+            .collect()
+    });
+    index.get(id).map(|index| &trainers[*index])
 }
 const REQUIRED_INVENTORY_ITEMS: [&str; 12] = [
     "poke-ball",
@@ -294,10 +309,7 @@ fn validate_individual_traits(monster: &Value, species_id: i64) -> Result<[i64; 
         || ability.get("englishName").and_then(Value::as_str) != Some(source.english_name.as_str()) {
         return Err("특성 원본 정보가 변조되었습니다.");
     }
-    let implemented = ["overgrow", "blaze", "torrent", "swarm", "levitate", "sturdy", "water-absorb", "volt-absorb"];
-    let partial = ["flash-fire", "lightning-rod", "motor-drive", "sap-sipper", "storm-drain", "dry-skin"];
-    let expected_effect = if implemented.contains(&source.slug.as_str()) { "implemented" }
-        else if partial.contains(&source.slug.as_str()) { "partial" } else { "display-only" };
+    let expected_effect = ability_effect(&source.slug);
     if ability.get("effect").and_then(Value::as_str) != Some(expected_effect)
         || ability.get("description").and_then(Value::as_str).is_none_or(|text| text.is_empty() || text.chars().count() > 240) {
         return Err("특성 효과 표시가 올바르지 않습니다.");
@@ -309,6 +321,17 @@ fn finite_number(value: &Value, absolute_maximum: f64) -> bool {
     value
         .as_f64()
         .is_some_and(|number| number.is_finite() && number.abs() <= absolute_maximum)
+}
+
+fn ability_effect(slug: &str) -> &'static str {
+    match slug {
+        "overgrow" | "blaze" | "torrent" | "swarm" | "levitate" | "sturdy"
+        | "water-absorb" | "volt-absorb" => "implemented",
+        "flash-fire" | "lightning-rod" | "motor-drive" | "sap-sipper" | "storm-drain"
+        | "dry-skin" | "insomnia" | "vital-spirit" | "comatose" | "soundproof"
+        | "good-as-gold" => "partial",
+        _ => "display-only",
+    }
 }
 
 fn validate_evolution_progress(monster: &Value) -> Result<(), &'static str> {
@@ -1214,7 +1237,7 @@ fn validate_battle_progress(
     match kind {
         "trainer" => {
             let trainer = trainer_id.and_then(Value::as_str)
-                .and_then(|id| field_trainer_catalog().iter().find(|trainer| trainer.id == id))
+                .and_then(field_trainer)
                 .ok_or("트레이너 정보가 올바르지 않습니다.")?;
             let enemy_team = battle.get("enemy").and_then(|enemy| enemy.get("team")).and_then(Value::as_array)
                 .ok_or("트레이너 편성이 올바르지 않습니다.")?;
@@ -1440,7 +1463,7 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
             let id = trainer
                 .as_str()
                 .filter(|id| {
-                    (id.starts_with("crystal-") || field_trainer_catalog().iter().any(|trainer| trainer.id == *id))
+                    (id.starts_with("crystal-") || field_trainer(id).is_some())
                         && id.len() <= 100
                         && id
                             .bytes()
@@ -1588,6 +1611,40 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ability_effects_match_the_client_runtime_categories() {
+        assert_eq!(ability_effect("overgrow"), "implemented");
+        for slug in ["insomnia", "vital-spirit", "comatose", "soundproof", "good-as-gold"] {
+            assert_eq!(ability_effect(slug), "partial");
+        }
+        assert_eq!(ability_effect("run-away"), "display-only");
+    }
+
+    #[test]
+    fn accepts_a_client_canonicalized_insomnia_save() {
+        let (&species_id, source) = abilities()
+            .iter()
+            .find_map(|(species_id, entries)| entries.iter().find(|entry| entry.slug == "insomnia").map(|entry| (species_id, entry)))
+            .expect("fixture species with insomnia");
+        let species = &catalog().species[&species_id];
+        let level = 5;
+        let learned = species.moves.iter().find(|entry| entry.level <= level).unwrap();
+        let pp = catalog().moves[&learned.move_id].pp;
+        let ivs = [0; 6];
+        let stats = expected_stats_with_ivs(species, level, ivs);
+        let mut save = valid_save();
+        save["game"]["player"]["team"][0] = serde_json::json!({
+            "instanceId":"mon-1", "speciesId":species_id, "nickname":"fixture", "level":level,
+            "xp":experience_at_level(species, level).unwrap(), "hp":stats[0],
+            "stats":{"hp":stats[0],"attack":stats[1],"defense":stats[2],"specialAttack":stats[3],"specialDefense":stats[4],"speed":stats[5]},
+            "ivs":{"hp":0,"attack":0,"defense":0,"specialAttack":0,"specialDefense":0,"speed":0},
+            "ability":{"id":source.id,"slot":source.slot,"hidden":source.hidden,"slug":source.slug,
+                "name":source.name,"englishName":source.english_name,"effect":"partial","description":"수면 관련 효과 일부 적용"},
+            "moves":[{"moveId":learned.move_id,"pp":pp}]
+        });
+        validate_save(&save).unwrap();
+    }
 
     fn valid_monster() -> Value {
         let species = catalog().species.get(&1).unwrap();

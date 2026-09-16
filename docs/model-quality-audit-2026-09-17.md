@@ -2,6 +2,8 @@
 
 This receipt separates immutable source defects from runtime correction. It does not claim that a structural or deformation pass is a human visual review of every silhouette.
 
+Follow-up: the Corviknight report exposed a gap in this structural audit. See [the pixel and runtime appearance audit](model-texture-pixel-audit-2026-09-17.md) for the repaired alpha/metal defects and the still-unresolved visual/source findings. The mechanical 1,025/1,025 result below must not be read as visual approval.
+
 ## Full source inventory
 
 `scripts/audit-model-quality.ts` read the GLB JSON chunk of all 1,025 locally pinned regular-species models without rewriting source bytes: 971 primary models and 54 research-only HOME fallbacks. The complete per-species receipt is `artifacts/research/model-quality/full-model-quality-audit.json`.

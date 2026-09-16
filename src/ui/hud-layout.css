@@ -11,7 +11,7 @@
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
-.topbar .brand { flex: 0 0 auto; }
+.topbar .brand { display: flex; align-items: center; justify-content: center; flex: 0 0 44px; width: 44px; height: 44px; }
 .topbar nav { flex-shrink: 0; }
 .topbar .trainer-summary { flex: 1 1 auto; justify-content: flex-end; flex-wrap: wrap; min-width: 0; max-width: 100%; }
 .topbar .trainer-summary > * { flex-shrink: 0; }
@@ -22,7 +22,6 @@
 .topbar.map-overlay nav button { color: var(--ui-hud-muted); }
 .topbar.map-overlay nav button.active { color: var(--ui-hud-text); background: #ffffff16; }
 .topbar #game-sound-toggle { background: var(--ui-accent-soft); color: var(--ui-accent-hover); border-color: var(--ui-border); }
-.topbar .brand-ball { flex-shrink: 0; }
 .world-cave-exits { position: fixed; z-index: 25; top: calc(var(--app-header-height) + 92px); left: 20px; display: flex; flex-wrap: wrap; gap: 6px; max-width: min(300px, calc(100vw - 160px)); }
 .world-cave-exits[hidden] { display: none; }
 .world-cave-exits button, .world-cave-exits select { min-height: 42px; max-width: 100%; padding: 8px 12px; background: var(--ui-hud); color: var(--ui-hud-text); border: 1px solid var(--ui-hud-line); border-radius: 9px; }

@@ -24,12 +24,13 @@ function disposeTree(root: Object3D): void {
     for (const material of Array.isArray(object.material) ? object.material : [object.material]) materials.add(material);
   });
   for (const material of materials) { for (const value of Object.values(material)) if (value instanceof Texture) textures.add(value); material.dispose(); }
-  const images = new Set<ImageBitmap>();
   for (const texture of textures) {
-    if (typeof ImageBitmap !== 'undefined' && texture.source.data instanceof ImageBitmap) images.add(texture.source.data);
+    // WebGPU can defer copyExternalImageToTexture until after Texture.dispose().
+    // Closing the shared ImageBitmap here detaches that pending upload and poisons
+    // the whole command buffer. Dropping the cache reference lets the browser
+    // reclaim the source after every renderer has finished with it.
     texture.dispose();
   }
-  images.forEach(image => image.close());
   geometry.forEach(buffer => buffer.dispose());
 }
 
@@ -47,6 +48,16 @@ function pruneModelCache(): void {
     if (entry.gltf) disposeTree(entry.gltf.scene);
     modelCache.delete(url);
   }
+}
+
+let pruneScheduled = false;
+function scheduleModelCachePrune(): void {
+  if (pruneScheduled || modelCache.size <= MODEL_CACHE_LIMIT) return;
+  pruneScheduled = true;
+  // React effect replacement releases the old lease before acquiring the new
+  // one. Deferring eviction one microtask prevents a still-rendered clone from
+  // losing shared geometry during that handoff.
+  queueMicrotask(() => { pruneScheduled = false; pruneModelCache(); });
 }
 
 type LoadTask = { url: string; entry: CachedModel; resolve(value: GLTF): void; reject(error: unknown): void };
@@ -94,7 +105,7 @@ function drainModelQueue(): void {
       failedModels.set(task.url, performance.now());
       if (modelCache.get(task.url) === task.entry) modelCache.delete(task.url);
       task.reject(error);
-    }).finally(() => { clearTimeout(timeout); activeLoads--; pruneModelCache(); drainModelQueue(); });
+    }).finally(() => { clearTimeout(timeout); activeLoads--; scheduleModelCachePrune(); drainModelQueue(); });
   }
 }
 
@@ -120,7 +131,7 @@ export function acquireModel(url: string): { promise: Promise<GLTF>; release(): 
     if (released) return; released = true;
     acquired.refs = Math.max(0, acquired.refs - 1);
     acquired.lastUsed = performance.now();
-    pruneModelCache();
+    scheduleModelCachePrune();
   } };
 }
 

@@ -6,6 +6,8 @@ type ReplayStep = { requestId: string; episodeId: string; inputs: number[]; avai
 type LocalBrain = { checkpoint?: string; checkpointId?: string; history: ReplayStep[]; lastRequestId: string; decision: ServerDecision };
 export type TransferableServerBrain = { schema: 1; graphId: string; gameScope: string; state: LocalBrain };
 const lastReceipts = new Map<string, ServerBrainReceipt>();
+// Hints only: IndexedDB still owns the full durable checkpoint and replay log.
+const remoteHeads = new Map<string, string>();
 export const lastServerDecision = (id: string) => lastReceipts.get(id);
 let enabled = false, graphId = '', scope = 'default';
 let connection: Promise<IDBDatabase> | undefined;
@@ -97,6 +99,13 @@ const validateLocalBrain = (value: unknown): LocalBrain => {
   };
 };
 
+/** A checkpoint and its head ID are one atomic durable lineage. */
+function assertCompleteLineage(state: LocalBrain | undefined): void {
+  if (state && (state.checkpoint === undefined) !== (state.checkpointId === undefined)) {
+    throw new Error('개체의 회로 체크포인트 기록이 불완전합니다. 기존 기억을 보존했으며 자동으로 초기화하지 않았습니다.');
+  }
+}
+
 /** Exports this device's complete checkpoint and bounded replay history for one individual. */
 export function exportTransferableServerBrain(instanceId: string): Promise<TransferableServerBrain | null> {
   const selectedScope = scope, selectedGraph = graphId;
@@ -107,6 +116,7 @@ export function exportTransferableServerBrain(instanceId: string): Promise<Trans
     const key = clientId + ':' + instanceId, saved = (await readBrains([key]))[0];
     if (!saved) return null;
     let state = validateLocalBrain(saved);
+    assertCompleteLineage(state);
     if (!state.checkpoint || state.history.length) {
       const response = await fetch('/api/local-brains/checkpoint', { method: 'POST', credentials: 'omit', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ clientId, creatureId: instanceId, lastRequestId: state.lastRequestId, checkpoint: state.checkpoint,
@@ -133,6 +143,7 @@ export function importTransferableServerBrain(instanceId: string, value: unknown
     if (!transfer || transfer.schema !== 1 || transfer.graphId !== selectedGraph || typeof transfer.gameScope !== 'string' || transfer.gameScope.length > 300
       || !scopeSeed(transfer.gameScope) || (!receiptId && scopeSeed(transfer.gameScope) !== scopeSeed(selectedScope))) throw new Error('현재 모험 범위와 맞지 않는 회로 기억입니다.');
     const state = validateLocalBrain(transfer.state), clientId = await digest(await deviceId() + ':' + selectedScope + ':' + selectedGraph), key = clientId + ':' + instanceId;
+    assertCompleteLineage(state);
     if (state.decision.graphId !== selectedGraph) throw new Error('현재 커넥톰과 맞지 않는 회로 기억입니다.');
     const db = await database(), receiptKey = receiptId ? `${clientId}:trade-receipt:${receiptId}` : undefined;
     await new Promise<void>((resolve, reject) => {
@@ -154,10 +165,14 @@ export function importTransferableServerBrain(instanceId: string, value: unknown
   });
   operationQueue = operation; return operation;
 }
-async function sendBatch(fullBody: { clientId: string; steps: ({ checkpoint?: string } & Record<string, unknown>)[] }) {
-  // Warm-cache turns send only the checkpoint ID and short replay log. Restore the
-  // large checkpoint once only when the server explicitly reports an evicted cache.
-  let body = { ...fullBody, steps: fullBody.steps.map(({ checkpoint: _checkpoint, ...step }) => step) };
+async function sendBatch(fullBody: { clientId: string; steps: (ReplayStep & { creatureId: string; checkpoint?: string; checkpointId?: string; history: ReplayStep[]; returnCheckpoint: boolean })[] }) {
+  // A reload cannot assume the server still owns this device's checkpoint.
+  // Send it on the first turn, then omit it only for an acknowledged warm head.
+  let body = { ...fullBody, steps: fullBody.steps.map(({ checkpoint, ...step }) => {
+    const head = step.history.at(-1)?.requestId ?? step.checkpointId;
+    return checkpoint && remoteHeads.get(fullBody.clientId + ':' + step.creatureId) !== head
+      ? { ...step, checkpoint } : step;
+  }) };
   let restored = false;
   for (let attempt = 0; ; attempt++) {
     const response = await fetch('/api/local-brains/step-batch', { method: 'POST', credentials: 'omit',
@@ -168,6 +183,11 @@ async function sendBatch(fullBody: { clientId: string; steps: ({ checkpoint?: st
     }
     if (response.status === 429 && attempt < 3) { await new Promise(resolve => setTimeout(resolve, 120 * (attempt + 1))); continue; }
     if (!response.ok) throw new Error(value.message ?? '서버 회로 오류 (' + response.status + ')');
+    for (const step of fullBody.steps) {
+      const key = fullBody.clientId + ':' + step.creatureId;
+      remoteHeads.delete(key); remoteHeads.set(key, step.requestId);
+    }
+    while (remoteHeads.size > 256) remoteHeads.delete(remoteHeads.keys().next().value!);
     return value as { decisions: { creatureId: string; requestId: string; decision: ServerDecision; checkpoint?: string }[] };
   }
 }
@@ -187,6 +207,7 @@ export function chooseServerBrains(controller: ConnectomeController, choices: Se
     })));
     const missing = choices.map((_, index) => index).filter(index => saved[index]?.lastRequestId !== requests[index].requestId);
     if (missing.length) {
+      saved.forEach(assertCompleteLineage);
       const response = await sendBatch({ clientId, steps: missing.map(index => ({
         creatureId: choices[index].self.instanceId, ...requests[index], checkpoint: saved[index]?.checkpoint,
         checkpointId: saved[index]?.checkpointId, history: saved[index]?.history ?? [],

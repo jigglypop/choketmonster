@@ -67,6 +67,11 @@ describe('shared model cache ownership', () => {
     const revisit = acquireModel('/test/shared.glb');
     expect(await revisit.promise).toBe(asset);
     revisit.release(); specimen.release();
+    // Effect replacement releases the previous lease before acquiring its
+    // successor in the same task. The deferred prune must preserve that handoff.
+    const handoff = acquireModel('/test/shared.glb');
+    expect(await handoff.promise).toBe(asset);
+    handoff.release();
     for (let i = 25; i < 50; i++) { const lease = acquireModel(`/test/${i}.glb`); await lease.promise; lease.release(); }
     expect(disposed).toHaveBeenCalledTimes(1);
     expect(modelCacheStats().cachedModels).toBe(24);

@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { renderingSuspended } from './render-budget';
-import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { acquireModel, modelCacheStats } from './model-cache';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
@@ -50,8 +49,6 @@ export class PokemonScene {
   private then = 0;
   private observer: ResizeObserver;
   private marker: THREE.Mesh;
-  private game?: GameState;
-  private position: MapPosition = { x: 12, y: 10, steps: 0 };
   private hitTime = 0;
   private lastTurn = -1;
   private lastHp = new Map<string, number>();
@@ -67,6 +64,7 @@ export class PokemonScene {
   private leafMaterial = new THREE.MeshStandardMaterial({ color: '#4b9464' });
   private pointerStart = { x: 0, y: 0 };
   private followingField = false;
+  private followOffset = new THREE.Vector3();
 
   constructor() {
     this.canvas = document.createElement('canvas'); this.canvas.className = 'game-webgl';
@@ -130,7 +128,7 @@ export class PokemonScene {
   showMap(host: HTMLElement, game: GameState, position: MapPosition, field?: FieldScene) {
     host.querySelector('canvas:not(.game-webgl)')?.remove();
     this.field = field;
-    this.attach(host, 'map', `map-${game.regionId}`); this.game = game; this.position = { ...position };
+    this.attach(host, 'map', `map-${game.regionId}`);
     this.desired.clear();
     const lead = game.player.team[0], pos = new THREE.Vector3(position.x - 11.5, .03, position.y - 7);
     this.want('trainer', 0, pos, 0, 1.25);
@@ -151,7 +149,7 @@ export class PokemonScene {
   showBattle(host: HTMLElement, game: GameState) {
     if (!game.battle) return;
     const b = game.battle, self = b.player.team[b.player.activeIndex], enemy = b.enemy.team[b.enemy.activeIndex];
-    this.attach(host, 'battle', `battle-${b.kind}-${b.enemy.team[0].instanceId}`); this.game = game;
+    this.attach(host, 'battle', `battle-${b.kind}-${b.enemy.team[0].instanceId}`);
     this.desired.clear();
     const species = (id: string, original: number) => b.transformations?.[id]?.speciesId ?? original;
     this.want('player', species(self.instanceId, self.speciesId), new THREE.Vector3(-2.15, .01, 1), 2, 1.95);
@@ -166,7 +164,7 @@ export class PokemonScene {
     this.synchronize();
   }
   showSpecimen(host: HTMLElement, id: number) {
-    this.attach(host, 'specimen', `specimen-${id}`); this.game = undefined;
+    this.attach(host, 'specimen', `specimen-${id}`);
     this.desired.clear(); this.want('specimen', id, new THREE.Vector3(0, .01, 0), .25, 2.1); this.synchronize();
   }
   detach() { this.host = undefined; this.observer.disconnect(); this.canvas.remove(); this.notice.remove(); }
@@ -274,8 +272,9 @@ export class PokemonScene {
       const selected = this.actors.get(`field-${this.field.selectedId}`);
       if (selected) this.marker.position.set(selected.group.position.x, .04, selected.group.position.z);
       if (selected && this.followingField) {
-        const offset = selected.group.position.clone().add(new THREE.Vector3(0, .7, 0)).sub(this.controls.target).multiplyScalar(Math.min(1, delta * 5));
-        this.controls.target.add(offset); this.camera.position.add(offset);
+        this.followOffset.copy(selected.group.position); this.followOffset.y += .7;
+        this.followOffset.sub(this.controls.target).multiplyScalar(Math.min(1, delta * 5));
+        this.controls.target.add(this.followOffset); this.camera.position.add(this.followOffset);
       }
       this.marker.scale.setScalar(1.2 + Math.sin(now / 280) * .08);
     }

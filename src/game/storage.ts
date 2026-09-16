@@ -107,13 +107,6 @@ async function readLocal(key: string): Promise<unknown | undefined> {
     tx.oncomplete = () => resolve(request.result); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
   });
 }
-async function writeLocal(key: string, save: unknown) {
-  const db = await database();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readwrite'); tx.objectStore(STORE).put(structuredClone(save), key);
-    tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
-  });
-}
 async function updateSync(key: string, update: (value: SyncRecord | undefined) => SyncRecord | undefined): Promise<SyncRecord | undefined> {
   const db = await database();
   return new Promise((resolve, reject) => {

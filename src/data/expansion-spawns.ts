@@ -39,10 +39,13 @@ export function expansionRuntimePools(region: ExpansionRegion, locationId: strin
   return combineEncounterPeriods(expansionEncounterPools(region,locationId,method),period);
 }
 
-export function expansionEncounterSpecies(region: ExpansionRegion, locationId: string, badges: number, period?: EncounterPeriod, biome?: string): number[] {
+/** Without serial this is the complete habitat catalog; spawning passes its exact rare-cycle serial. */
+export function expansionEncounterSpecies(region: ExpansionRegion, locationId: string, badges: number, period?: EncounterPeriod, biome?: string, serial?: number): number[] {
   const method = biome === undefined ? undefined : biome === 'lake' ? 'surf' : 'walk';
   const source = method ? expansionRuntimePools(region, locationId, method, period ?? 'day').flatMap(pool => pool.slots.map(slot => slot.speciesId)) : ['walk','surf'].flatMap(value=>expansionRuntimePools(region,locationId,value as 'walk'|'surf',period??'day')).flatMap(pool=>pool.slots.map(slot=>slot.speciesId));
-  const added = expansionSupplementalRules(region).filter(rule => rule.locationId === locationId && rule.requiredBadges <= badges && (!biome || rule.biome === biome)).map(rule => rule.speciesId);
+  const added = serial === undefined || serial % 20 === 0
+    ? expansionSupplementalRules(region).filter(rule => rule.locationId === locationId && rule.requiredBadges <= badges && (!biome || rule.biome === biome)).map(rule => rule.speciesId)
+    : [];
   return [...new Set([...source, ...added])].sort((a, b) => a - b);
 }
 

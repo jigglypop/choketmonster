@@ -1,0 +1,4 @@
+{
+  "entry": ["scripts/**/*.{ts,mjs}", "tests/**/*.test.ts", "tests/ui/**/*.spec.ts", "tests/ui/helpers/*.ts", "*.config.ts"],
+  "project": ["src/**/*.{ts,tsx}", "server/**/*.ts", "scripts/**/*.{ts,mjs}", "tests/**/*.ts", "*.config.ts"]
+}

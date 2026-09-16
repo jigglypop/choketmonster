@@ -1,4 +1,4 @@
-import { AnimationClip, AnimationMixer, Box3, Mesh, Object3D, SkinnedMesh, Vector3 } from 'three';
+import { AnimationClip, AnimationMixer, Box3, Object3D, SkinnedMesh, Vector3 } from 'three';
 
 export interface AnimationDeformationResult {
   name: string;

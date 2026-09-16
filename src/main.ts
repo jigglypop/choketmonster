@@ -81,7 +81,7 @@ let autoBattle = false, brainTurnPending = false, lastDecision = '회로 대기 
 let serverConnectome: { available: boolean; graphId?: string; kind?: string; nodes?: number; edges?: number; activeEdges?: number } | null = null;
 
 app.innerHTML = `
-  <header class="topbar"><a class="brand" href="#"><span class="brand-ball"></span><span>초켓몬스터</span><small>OPEN WORLD ADVENTURE</small></a>
+  <header class="topbar"><a class="brand" href="#" aria-label="초켓몬스터 홈" title="초켓몬스터"></a>
     <nav aria-label="주 메뉴"><button data-tab="map" class="active">모험</button><button data-tab="team">팀 · 박스</button><button data-tab="dex">도감</button><button data-tab="shop">상점</button><button data-tab="ranked">랭크전</button></nav>
     <div class="trainer-summary"><span id="money">₩0</span><span id="badges">도감 0/${PLAYABLE_SPECIES_IDS.length}</span><span id="save-state" class="save-state" data-state="local" aria-live="polite"><i></i> 이 기기에 저장됨</span><button id="save-now" class="quiet">지금 저장</button><span class="device-storage">이 기기에 저장</span><span id="account-controls"></span><button id="open-interface-settings" class="interface-settings-trigger" aria-label="화면 설정" title="화면 설정"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3" fill="var(--ui-surface, white)"/><circle cx="15" cy="17" r="3" fill="var(--ui-surface, white)"/></svg><span>화면 설정</span></button></div></header>
   <main id="screen" tabindex="-1"><section class="loading"><span class="spinner"></span><h1>실제 커넥톰을 불러오는 중</h1><p>Male CNS 부분 회로를 확인하고 있습니다.</p></section></main>

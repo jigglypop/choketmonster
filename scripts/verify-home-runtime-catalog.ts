@@ -1,7 +1,7 @@
 import { chromium } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { HOME_RUNTIME_MODEL_IDS, HOME_RUNTIME_MODEL_SOURCES } from '../src/data/pokemon-home-runtime-sources';
+import { HOME_RUNTIME_MODEL_IDS } from '../src/data/pokemon-home-runtime-sources';
 import { getPokemonModelSource, hasPokemonModel } from '../src/data/pokemon-models';
 
 const localManifest=JSON.parse(readFileSync('src/data/pokemon-home-research-manifest.json','utf8')) as {result:{inspections:Array<{id:number;localPath:string;sha256:string}>}};

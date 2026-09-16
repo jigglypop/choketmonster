@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { Graph } from '../src/core/brain';
 import { ConnectomeController } from '../src/game/connectome';
-import { ITEM_PRICES, duplicateMergeValue, captureDefeatedWild, createGame, createMonster, experienceAtLevel, mergeDuplicateMonster, mergeDuplicateMonsters, previewDuplicateMerge, releaseMonster, replenishBalls, validateGame } from '../src/game/engine';
+import { ITEM_PRICES, captureDefeatedWild, createGame, createMonster, experienceAtLevel, mergeDuplicateMonster, mergeDuplicateMonsters, previewDuplicateMerge, releaseMonster, replenishBalls, validateGame } from '../src/game/engine';
 import { POKEMON } from '../src/data/pokemon';
 import { hasPokemonModel } from '../src/data/pokemon-models';
 import { KANTO_LOCATIONS } from '../src/openworld/kanto';

@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { CatmullRomCurve3, Vector3 } from 'three';
+import { useEffect, useMemo } from 'react';
+import { CatmullRomCurve3, TubeGeometry, Vector3 } from 'three';
 import { terrainSurfaceHeight } from './grounding';
 import { findWorldPath } from './navigation';
 import type { OpenWorldRenderSnapshot, WorldPoint, WorldSample } from './types';
@@ -12,14 +12,17 @@ export function TargetRoute({ snapshot, destination, sample }: { snapshot: OpenW
   const points = useMemo(() => targetX !== undefined && targetZ !== undefined
     ? findWorldPath({ x, z }, { x: targetX, z: targetZ }, sample)
     : snapshot.guide?.points ?? [], [x, z, targetX, targetZ, sample, snapshot.guide?.points]);
-  const curve = useMemo(() => {
+  const geometry = useMemo(() => {
     if (!points.length) return null;
     const nearby = [{ x, z }, ...points.slice(0, 100)];
-    return new CatmullRomCurve3(nearby.map(point => new Vector3(point.x, terrainSurfaceHeight(sample, point.x, point.z) + .12, point.z)), false, 'centripetal');
+    const curve = new CatmullRomCurve3(nearby.map(point => new Vector3(point.x, terrainSurfaceHeight(sample, point.x, point.z) + .12, point.z)), false, 'centripetal');
+    return new TubeGeometry(curve, Math.min(200, points.length * 2 + 2), .045, 4, false);
   }, [points, x, z, sample]);
-  if (!curve) return null;
-  return <mesh name="world-target-route" renderOrder={3}>
-    <tubeGeometry args={[curve, Math.min(200, points.length * 2 + 2), .045, 4, false]} />
+  useEffect(() => () => geometry?.dispose(), [geometry]);
+  if (!geometry) return null;
+  // r178 WebGPU retains vertex-buffer bindings when only mesh.geometry changes.
+  // Give each route geometry a fresh render object before retiring the old one.
+  return <mesh key={geometry.uuid} geometry={geometry} name="world-target-route" renderOrder={3}>
     <meshBasicMaterial color={target ? '#8cf4f7' : '#ffdf79'} transparent opacity={.9} depthWrite={false} />
   </mesh>;
 }

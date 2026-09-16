@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AnimationClip, Bone, BoxGeometry, BufferAttribute, Mesh, MeshBasicMaterial, NumberKeyframeTrack, Skeleton, SkinnedMesh } from 'three';
+import { AnimationClip, Bone, BoxGeometry, BufferAttribute, MeshBasicMaterial, NumberKeyframeTrack, Skeleton, SkinnedMesh } from 'three';
 import { inspectAnimationDeformation } from '../scripts/animation-deformation';
 
 describe('inspectAnimationDeformation', () => {

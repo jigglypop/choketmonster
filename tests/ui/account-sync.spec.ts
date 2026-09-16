@@ -117,7 +117,7 @@ test('a late checkpoint response cannot clear or overwrite a newer local save', 
     await storage.writeSave(payload as never);
     (window as typeof window & { checkpoint?: Promise<unknown> }).checkpoint = storage.checkpointSave('manual');
   }, save('old'));
-  await firstArrived;
+  await arrived;
   await page.evaluate(async payload => { const modulePath = '/src/game/storage.ts', storage = await import(/* @vite-ignore */ modulePath); await storage.writeSave(payload as never); }, save('new'));
   releaseFirst();
   await page.evaluate(async () => { await (window as typeof window & { checkpoint?: Promise<unknown> }).checkpoint; const modulePath = '/src/game/storage.ts', storage = await import(/* @vite-ignore */ modulePath); await storage.checkpointSave('auto'); });

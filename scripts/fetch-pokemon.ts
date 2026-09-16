@@ -125,7 +125,6 @@ const moveMeta = new Map(table('move_meta.csv').map(row => [Number(row.move_id),
 const ailments = byId(table('move_meta_ailments.csv'));
 const stats = byId(table('stats.csv'));
 const types = byId(table('types.csv'));
-const versionGroups = byId(table('version_groups.csv'));
 const typeRows = groupBy(table('pokemon_types.csv').filter(row => defaultIds.has(Number(row.pokemon_id))), row => Number(row.pokemon_id));
 const statRows = groupBy(table('pokemon_stats.csv').filter(row => defaultIds.has(Number(row.pokemon_id))), row => Number(row.pokemon_id));
 const allLearnRows = table('pokemon_moves.csv').filter(row => defaultIds.has(Number(row.pokemon_id)) && row.pokemon_move_method_id === '1');

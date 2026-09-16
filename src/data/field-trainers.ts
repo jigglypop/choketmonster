@@ -26,6 +26,7 @@ const authoredRoster: FieldTrainer[] = authoredTrainers.map(trainer => ({ ...tra
   team: trainer.team.map(([speciesId, level]) => [speciesId, level] as const),
 }));
 export const FIELD_TRAINERS: readonly FieldTrainer[] = [...sourceTrainers, ...supplementalTrainers, ...authoredRoster];
+const FIELD_TRAINER_BY_ID = new Map(FIELD_TRAINERS.map(trainer => [trainer.id, trainer]));
 
 export function availableFieldTrainer(region: string, locationId: string, defeated: readonly string[] = []): FieldTrainer | undefined {
   return fieldTrainersAt(region, locationId).find(trainer => !defeated.includes(trainer.id));
@@ -37,4 +38,4 @@ export function fieldTrainersAt(region: string, locationId: string): FieldTraine
   return FIELD_TRAINERS.filter(trainer => trainer.region === region && matches(trainer.locationId))
     .sort((a, b) => Math.max(...a.team.map(([, level]) => level)) - Math.max(...b.team.map(([, level]) => level)));
 }
-export function getFieldTrainer(id: string): FieldTrainer | undefined { return FIELD_TRAINERS.find(trainer => trainer.id === id); }
+export function getFieldTrainer(id: string): FieldTrainer | undefined { return FIELD_TRAINER_BY_ID.get(id); }

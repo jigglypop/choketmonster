@@ -106,10 +106,12 @@ export function supplementalEncounterRules(region: EncounterRegion): Supplementa
     ['ilex-forest','forest',2],['national-park','forest',3],['route-40','lake',4],['lake-of-rage','lake',6],
     ['union-cave','rock',1],['slowpoke-well','rock',2],['whirl-islands','rock',4],['mt-mortar','rock',5],['ice-path','rock',7],['dragons-den','rock',8],['mt-silver','rock',8],
   ].map(([locationId,biome,badge])=>({locationId:locationId as string,biome:biome as Anchor['biome'],badge:badge as number}));
-  const rules: SupplementalEncounterRule[] = supplementalSpeciesIds(region).map((speciesId, index): SupplementalEncounterRule => {
+  const speciesIds = supplementalSpeciesIds(region);
+  const speciesPerBadge = Math.max(1, Math.ceil(speciesIds.length / 8));
+  const rules: SupplementalEncounterRule[] = speciesIds.map((speciesId, index): SupplementalEncounterRule => {
     const types=getSpecies(speciesId).types;
     const biome: SupplementalEncounterRule['biome'] = types.includes('water') ? 'lake' : types.some(type=>type==='rock'||type==='ground') ? 'rock' : types.some(type=>type==='bug'||type==='grass') ? 'forest' : 'meadow';
-    const progressionBadge = SPECIAL_LATE.has(speciesId) ? 8 : STARTERS.has(speciesId) ? 4 : Math.min(7, Math.floor(index / Math.max(1, Math.ceil(supplementalSpeciesIds(region).length / 8))));
+    const progressionBadge = SPECIAL_LATE.has(speciesId) ? 8 : STARTERS.has(speciesId) ? 4 : Math.min(7, Math.floor(index / speciesPerBadge));
     const forced = region==='kanto' && [144,146].includes(speciesId) ? anchors.find(anchor=>anchor.locationId===(speciesId===144?'seafoam-islands':'victory-road'))
       : region==='kanto' && [145,150,151].includes(speciesId) ? anchors.find(anchor=>anchor.locationId===(speciesId===145?'power-plant':'cerulean-cave'))
       : region==='johto' && speciesId===249 ? anchors.find(anchor=>anchor.locationId==='whirl-islands')

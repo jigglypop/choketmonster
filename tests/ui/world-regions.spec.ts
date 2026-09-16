@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createGame, createMonster } from '../../src/game/engine';
 import { defaultView, packSave } from '../../src/game/storage';
 import { OpenWorldSimulation } from '../../src/openworld/simulation';
-import { getWorldAtlas, getLegacyJohtoAtlas } from '../../src/openworld/atlas';
+import { getLegacyJohtoAtlas } from '../../src/openworld/atlas';
 import type { Graph } from '../../src/core/brain';
 
 const model152 = readFileSync('data/local/pokemon-models-expanded/429de1288cea0d43f5b4f56305d2276e94239d65/152.glb');

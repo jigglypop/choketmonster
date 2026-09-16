@@ -4,7 +4,7 @@ import { Brain, type Graph } from '../src/core/brain.ts';
 import { createGame, createMonster } from '../src/game/engine.ts';
 import type { FieldPolicy } from '../src/game/field.ts';
 import { OPEN_WORLD_MODEL, OpenWorldSimulation, movementSpeed, regionalEncounters, restoreOpenWorld, sampleWorld, serializeOpenWorld } from '../src/openworld/simulation.ts';
-import { KANTO_LOCATIONS, KANTO_START } from '../src/openworld/kanto.ts';
+import { KANTO_START } from '../src/openworld/kanto.ts';
 import { getWorldAtlas } from '../src/openworld/atlas.ts';
 import { regionalRuntimePools, supplementalEncounterRules } from '../src/data/regional-encounters.ts';
 import { regionalWildLevels } from '../src/game/campaign.ts';

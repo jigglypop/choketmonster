@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { BoxGeometry, Mesh, MeshStandardMaterial, Object3D } from 'three';
+import { BoxGeometry, Float32BufferAttribute, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, Texture } from 'three';
 import { disposeNormalizedPokemonMaterials, normalizePokemonMaterials } from '../src/openworld/pokemon-materials';
 
 describe('Pokemon runtime material normalization', () => {
@@ -36,6 +36,13 @@ describe('Pokemon runtime material normalization', () => {
     expect(normalizedEye).toMatchObject({ metalness: 0, roughness: .1 });
   });
 
+  it('preserves deliberately fractional metallic coatings without requiring a material name', () => {
+    const material = new MeshStandardMaterial({ metalness: .839096, roughness: .22 }); material.name = 'Material.004';
+    const root = new Object3D(); root.add(new Mesh(new BoxGeometry(), material));
+    expect(normalizePokemonMaterials(root, { speciesId: 379 }).metalnessAdjusted).toBe(0);
+    expect((root.children[0] as Mesh).material).toBe(material);
+  });
+
   it('keeps named metal and glossy eyes on non-steel species', () => {
     const blade = new MeshStandardMaterial({ metalness: 1, roughness: .1 }); blade.name = 'gold_armor';
     const eye = new MeshStandardMaterial({ metalness: 0, roughness: .1 }); eye.name = 'cornea';
@@ -56,6 +63,52 @@ describe('Pokemon runtime material normalization', () => {
     expect(report.transparencyAdjusted).toBe(1);
     expect(normalized).toMatchObject({ transparent: false, opacity: 1, depthWrite: true });
     expect(material).toMatchObject({ transparent: true, depthWrite: false });
+  });
+
+  it('repairs audited Corviknight alpha without replacing maps or removing its metal armor', () => {
+    const map = new Texture(), geometry = new BoxGeometry();
+    const material = new MeshStandardMaterial({ map, metalness: 1, roughness: .8586, transparent: true });
+    material.name = 'BodyA';
+    const root = new Object3D(); root.add(new Mesh(geometry, material));
+    const uv = geometry.getAttribute('uv');
+    const report = normalizePokemonMaterials(root, { speciesId: 823 });
+    const normalized = (root.children[0] as Mesh).material as MeshStandardMaterial;
+    expect(report.transparencyAdjusted).toBe(1);
+    expect(normalized).toMatchObject({ map, metalness: 1, roughness: .8586, transparent: false, depthWrite: true });
+    expect(material.transparent).toBe(true);
+    expect(geometry.getAttribute('uv')).toBe(uv);
+  });
+
+  it('corrects audited unlit GLB surfaces without converting their shading model', () => {
+    const material = new MeshBasicMaterial({ map: new Texture(), transparent: true }); material.name = 'body_a_01';
+    const root = new Object3D(); root.add(new Mesh(new BoxGeometry(), material));
+    expect(normalizePokemonMaterials(root, { speciesId: 726 }).transparencyAdjusted).toBe(1);
+    const normalized = (root.children[0] as Mesh).material as MeshBasicMaterial;
+    expect(normalized).toBeInstanceOf(MeshBasicMaterial);
+    expect(normalized.map).toBe(material.map);
+    expect(normalized.transparent).toBe(false);
+  });
+
+  it('preserves unreviewed maps, explicit opacity and alpha maps even on an audited species', () => {
+    const materials = [
+      new MeshStandardMaterial({ map: new Texture(), transparent: true }),
+      new MeshStandardMaterial({ map: new Texture(), transparent: true, opacity: .5 }),
+      new MeshStandardMaterial({ map: new Texture(), alphaMap: new Texture(), transparent: true }),
+    ];
+    materials[0].name = 'Unreviewed'; materials[1].name = materials[2].name = 'BodyA';
+    const root = new Object3D(); root.add(new Mesh(new BoxGeometry(), materials));
+    expect(normalizePokemonMaterials(root, { speciesId: 823 }).transparencyAdjusted).toBe(0);
+    for (const material of (root.children[0] as Mesh).material as MeshStandardMaterial[]) expect(material.transparent).toBe(true);
+  });
+
+  it.each([undefined, new Texture()])('preserves actual vertex alpha with or without a base map', map => {
+    const geometry = new BoxGeometry();
+    const colors = new Float32Array(geometry.getAttribute('position').count * 4).fill(1); colors[3] = .5;
+    geometry.setAttribute('color', new Float32BufferAttribute(colors, 4));
+    const material = new MeshStandardMaterial({ map, vertexColors: true, transparent: true }); material.name = 'BodyA';
+    const root = new Object3D(); root.add(new Mesh(geometry, material));
+    expect(normalizePokemonMaterials(root, { speciesId: 823 }).transparencyAdjusted).toBe(0);
+    expect(((root.children[0] as Mesh).material as MeshStandardMaterial).transparent).toBe(true);
   });
 
   it('disposes only corrected per-instance clones', () => {

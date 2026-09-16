@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
 import { availableMonsterMoveIds, createGame, createMonster, reorderMonsterMoves, replaceMonsterMove, type GameState } from '../src/game/engine.ts';
 import { defaultView, packSave } from '../src/game/storage.ts';
+import { speciesAbilities } from '../src/game/individual-traits.ts';
 import type { Graph } from '../src/core/brain.ts';
 
 type Check = { name: string; passed: boolean; detail: string; status?: number; elapsedMs: number };
@@ -63,9 +64,17 @@ async function main() {
   const game = createGame(1, `rust-api-${suffix}`);
   const starter = game.player.team[0], customized = createMonster(game, 54, 39);
   game.player.team = [customized]; game.player.box = [starter];
-  game.dex.seen = [...new Set([...game.dex.seen, customized.speciesId])].sort((a, b) => a - b);
-  game.dex.caught = [...new Set([...game.dex.caught, customized.speciesId])].sort((a, b) => a - b);
-  game.versionCaught!.red = [...new Set([...(game.versionCaught!.red ?? []), customized.speciesId])].sort((a, b) => a - b);
+  // Canonical partial abilities used to be rejected by stale server validation.
+  for (const [id, slug] of [[163, 'insomnia'], [293, 'soundproof']] as const) {
+    const monster = createMonster(game, id, 5);
+    monster.ability = speciesAbilities(id).find(ability => ability.slug === slug)!;
+    if (!monster.ability) throw new Error(`Missing canonical ability fixture: ${slug}`);
+    game.player.box.push(monster);
+  }
+  const ownedSpecies = [...game.player.team, ...game.player.box].map(monster => monster.speciesId);
+  game.dex.seen = [...new Set([...game.dex.seen, ...ownedSpecies])].sort((a, b) => a - b);
+  game.dex.caught = [...new Set([...game.dex.caught, ...ownedSpecies])].sort((a, b) => a - b);
+  game.versionCaught!.red = [...new Set([...(game.versionCaught!.red ?? []), ...ownedSpecies])].sort((a, b) => a - b);
   customized.moves[1].pp -= 2;
   const replacementMoveId = availableMonsterMoveIds(customized).find(moveId => !customized.moves.some(slot => slot.moveId === moveId));
   if (replacementMoveId === undefined) throw new Error('PP reserve fixture requires an unequipped legal move');

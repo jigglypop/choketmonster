@@ -10,7 +10,7 @@ export class MultiplayerSession {
   private unsubscribe?: () => void;
   private unsubscribeAccount?: () => void;
 
-  constructor(private readonly changed: () => void, client = new RealtimeClient()) {
+  constructor(changed: () => void, client = new RealtimeClient()) {
     this.client = client;
     this.unsubscribe = client.subscribe(view => { this.view = view; changed(); });
     this.unsubscribeAccount = onAccountChange(user => client.accountChanged(user !== null));

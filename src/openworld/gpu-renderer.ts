@@ -32,7 +32,9 @@ export async function createOpenWorldRenderer(
     // The world always owns the full viewport. Keep its clear pixels opaque so
     // the page fallback gradient cannot replace the cave background.
     alpha: false,
-    powerPreference: defaults.powerPreference === 'default' ? undefined : defaults.powerPreference ?? 'high-performance',
+    // Chromium ignores this adapter hint on Windows and warns on every init.
+    powerPreference: typeof navigator !== 'undefined' && /Windows/.test(navigator.userAgent)
+      ? undefined : defaults.powerPreference === 'default' ? undefined : defaults.powerPreference ?? 'high-performance',
     forceWebGL: options.forceWebGL ?? false,
   }) as TaggedRenderer;
   const originalDeviceLost = renderer.onDeviceLost.bind(renderer);

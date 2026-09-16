@@ -350,7 +350,7 @@ function RegionalLandmark({ region, x, y, z }: { region: string; x: number; y: n
   </group>;
 }
 
-function TrailAndWater({ sampleWorld, player, badges, atlas, visible, mobile, gyms = atlas.gyms }: { sampleWorld: (x: number, z: number) => WorldSample; player: { x: number; z: number }; badges: number; atlas: WorldAtlas; visible: VisibilityTest; mobile: boolean; gyms?: WorldAtlas['gyms'] }) {
+function TrailAndWater({ sampleWorld, player, badges, atlas, visible, gyms = atlas.gyms }: { sampleWorld: (x: number, z: number) => WorldSample; player: { x: number; z: number }; badges: number; atlas: WorldAtlas; visible: VisibilityTest; gyms?: WorldAtlas['gyms'] }) {
   const locations = useMemo(() => new Map(atlas.locations.map(item => [item.id, item])), [atlas]);
   const trail = useMemo(() => {
     const vertices: number[] = [];
@@ -888,13 +888,21 @@ function FoodInstances({ foods, sampleWorld }: { foods: OpenWorldRenderSnapshot[
 function useViewWindow() {
   const { camera, size } = useThree();
   const [windowState, setWindowState] = useState<{ frustum: Frustum | null; mobile: boolean }>({ frustum: null, mobile: size.width <= 720 });
-  const elapsed = useRef(1), previous = useRef('');
+  const elapsed = useRef(1);
+  const previous = useRef({ px: NaN, py: NaN, pz: NaN, qx: NaN, qy: NaN, qz: NaN, qw: NaN, width: NaN, height: NaN });
   useFrame((_, delta) => {
     elapsed.current += delta;
     if (elapsed.current < .16) return;
     elapsed.current = 0;
-    const key = [...camera.position.toArray(), ...camera.quaternion.toArray()].map(n => n.toFixed(2)).join(':') + `:${size.width}:${size.height}`;
-    if (previous.current === key) return; previous.current = key;
+    const next = {
+      px: Math.round(camera.position.x * 100), py: Math.round(camera.position.y * 100), pz: Math.round(camera.position.z * 100),
+      qx: Math.round(camera.quaternion.x * 100), qy: Math.round(camera.quaternion.y * 100), qz: Math.round(camera.quaternion.z * 100), qw: Math.round(camera.quaternion.w * 100),
+      width: size.width, height: size.height,
+    };
+    const prior = previous.current;
+    if (next.px === prior.px && next.py === prior.py && next.pz === prior.pz && next.qx === prior.qx && next.qy === prior.qy
+      && next.qz === prior.qz && next.qw === prior.qw && next.width === prior.width && next.height === prior.height) return;
+    previous.current = next;
     camera.updateMatrixWorld();
     setWindowState({ frustum: new Frustum().setFromProjectionMatrix(new Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)), mobile: size.width <= 720 });
   });
@@ -961,7 +969,7 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
         {cave ? <CaveInterior cave={cave} player={snapshot.player} mobile={windowState.mobile} onNavigate={onNavigate} /> : <>
           <group key={`terrain:${sceneId}`}>{chunks.map(chunk => <Terrain key={`${chunk.key}:${chunk.segments}`} sampleWorld={sample} atlas={atlas} chunk={chunk} material={groundMaterial} waterMaterial={waterMaterials[chunk.distance <= (windowState.mobile ? 24 : 40) ? 'detailed' : 'simple']} onNavigate={onNavigate} />)}</group>
           <Nature key={`nature:${sceneId}`} sampleWorld={sample} player={snapshot.player} atlas={atlas} isVisible={windowState.visible} />
-          <TrailAndWater key={`water:${sceneId}`} sampleWorld={sample} player={snapshot.player} atlas={atlas} gyms={snapshot.gyms} visible={windowState.visible} badges={snapshot.badges ?? 0} mobile={windowState.mobile} />
+          <TrailAndWater key={`water:${sceneId}`} sampleWorld={sample} player={snapshot.player} atlas={atlas} gyms={snapshot.gyms} visible={windowState.visible} badges={snapshot.badges ?? 0} />
         </>}
         {options.terrainUrl && <StaticModel item={{
           id: 'openworld-terrain',

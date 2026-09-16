@@ -663,6 +663,7 @@ export class OpenWorldSimulation {
   snapshot(): OpenWorldSnapshot {
     this.syncCompanion();
     this.visitedTownsByRegion[this.regionId] = [...this.visitedTownIds];
+    const rewardOwners = this.rewardOwnerIds();
     const pack = (entity: OpenWorldEntity): OpenWorldEntitySnapshot => { const { brain: _brain, ...rest } = entity; return { ...structuredClone(rest), brain: stripGraph(this.brain(entity.id).state) }; };
     return { schema: 1, model: OPEN_WORLD_MODEL, graphId: this.graph.id, seed: this.seed, rng: this.rng.state, tick: this.tick,
       serverFinalizations: this.serverFinalizations.length ? structuredClone(this.serverFinalizations) : undefined,
@@ -671,7 +672,7 @@ export class OpenWorldSimulation {
       pendingAction: structuredClone(this.pendingAction), manualControlRemaining: this.manualControlRemaining, nextBattleTeamIndex: this.nextBattleTeamIndex,
       encounterLayout: this.regionId === 'johto' ? GOLD_ENCOUNTER_LAYOUT : isExpansionRegion(this.regionId) ? EXPANSION_ENCOUNTER_LAYOUT : RED_ENCOUNTER_LAYOUT, spawnAnchor: { ...this.spawnAnchor }, controlMode: this.controlMode, regionId: this.regionId, sceneId: this.sceneId, surfaceReturn: this.surfaceReturn ? { ...this.surfaceReturn } : undefined, mapVersion: this.atlas.mapVersion,
       selectionPinned: this.selectionPinned, trackingSelected: this.trackingSelected, visitedTownIds: [...this.visitedTownIds], visitedTownsByRegion: structuredClone(this.visitedTownsByRegion),
-      rewardLedgers: structuredClone(Object.fromEntries(Object.entries(this.rewardLedgers).filter(([id]) => this.rewardOwnerIds().has(id)))),
+      rewardLedgers: structuredClone(Object.fromEntries(Object.entries(this.rewardLedgers).filter(([id]) => rewardOwners.has(id)))),
       spawnSerial: this.spawnSerial, nextFoodId: this.nextFoodId, foods: structuredClone(this.foods), respawnQueue: structuredClone(this.respawnQueue), entities: this.entities.map(pack), companionMemories: [...this.companionMemories.values()].map(pack) };
   }
 
@@ -683,7 +684,8 @@ export class OpenWorldSimulation {
     const occupied: Array<{ x: number; z: number }> = [];
     for (const entity of this.entities) {
       const target = this.targetFor(entity); entity.target = target;
-      const before = target ? distance(entity, target) : 0; entity.observation = this.observe(entity, target, occupied, deltaSeconds);
+      const speed = movementSpeed(entity.speciesId, entity.level);
+      const before = target ? distance(entity, target) : 0; entity.observation = this.observe(entity, target, occupied, speed * deltaSeconds);
       if (this.modelStatus(entity.id)) {
         entity.action = 4; entity.reward = 0; occupied.push({ x: entity.x, z: entity.z });
         events.push({ type: 'wait', entityId: entity.id, x: entity.x, z: entity.z, reward: 0 }); continue;
@@ -695,14 +697,14 @@ export class OpenWorldSimulation {
       const brain = this.brain(entity.id), action = brain.act(entity.observation, this.tick ? entity.reward : null, learning, epsilon, 4);
       let reward = -.005, type: 'move' | 'wait' | 'collision' | 'food' = 'wait';
       if (action < 4 && deltaSeconds > 0) {
-        const direction = DIRECTIONS[action as 0 | 1 | 2 | 3], stepDistance = movementSpeed(entity.speciesId, entity.level) * deltaSeconds;
+        const direction = DIRECTIONS[action as 0 | 1 | 2 | 3], stepDistance = speed * deltaSeconds;
         const x = entity.x + direction.x * stepDistance, z = entity.z + direction.z * stepDistance;
         entity.heading = action;
         if (this.pathBlocked(entity, x, z, occupied)) { reward -= .2; entity.collisions++; type = 'collision'; }
         else { if (entity.kind === 'companion') this.recordEvolutionWalk(stepDistance); entity.x = x; entity.z = z; entity.energy = Math.max(0, entity.energy - .035 * stepDistance); type = 'move'; }
       } else entity.energy = Math.min(100, entity.energy + .025);
       if (target) {
-        const maxProgress = movementSpeed(entity.speciesId, entity.level) * deltaSeconds;
+        const maxProgress = speed * deltaSeconds;
         reward += clamp(before - distance(entity, target), -maxProgress, maxProgress) * .05;
       }
       if (entity.kind === 'wild') {
@@ -889,7 +891,7 @@ export class OpenWorldSimulation {
     const version = this.game.adventureVersion ?? 'red';
     const caught = this.game.versionCaught?.[version] ?? this.game.dex.caught;
     const encounterRegion = this.regionId === 'johto' ? 'johto' : 'kanto';
-    const candidates = isExpansionRegion(this.regionId) ? expansionEncounterSpecies(this.regionId, locationId, this.regionalBadges, this.dayPeriod, biome)
+    const candidates = isExpansionRegion(this.regionId) ? expansionEncounterSpecies(this.regionId, locationId, this.regionalBadges, this.dayPeriod, biome, this.spawnSerial)
       : biome === undefined ? regionalEncounters(locationId, this.regionalBadges, this.regionId)
       : [...regionalRuntimePools(encounterRegion, locationId, this.dayPeriod, biome).flatMap(pool => pool.slots.map(slot => slot.speciesId)),
         ...(this.spawnSerial % 20 === 0 ? supplementalEncounterRules(encounterRegion).filter(rule => rule.locationId === locationId && rule.biome === biome && rule.requiredBadges <= this.regionalBadges).map(rule => rule.speciesId) : [])];
@@ -1029,8 +1031,15 @@ export class OpenWorldSimulation {
       if (this.controlMode === 'auto' && !this.selectionPinned) return this.explorationTarget(entity);
       return { kind: 'player', id: 'player', x: this.player.x, z: this.player.z };
     }
-    const food = this.foods.filter(food => !this.isSafeTown(food.x, food.z)).sort((a, b) => distance(entity, a) - distance(entity, b) || a.id - b.id)[0];
-    return food ? { kind: 'food', id: String(food.id), x: food.x, z: food.z } : undefined;
+    let nearestFood: WorldFood | undefined, nearestDistance = Infinity;
+    for (const food of this.foods) {
+      if (this.isSafeTown(food.x, food.z)) continue;
+      const candidateDistance = distance(entity, food);
+      if (candidateDistance < nearestDistance || candidateDistance === nearestDistance && food.id < nearestFood!.id) {
+        nearestFood = food; nearestDistance = candidateDistance;
+      }
+    }
+    return nearestFood ? { kind: 'food', id: String(nearestFood.id), x: nearestFood.x, z: nearestFood.z } : undefined;
   }
 
   /** Game-designed waypoints feed the existing sensory inputs. The circuit
@@ -1050,10 +1059,9 @@ export class OpenWorldSimulation {
     return { kind: 'player', id: 'player', x: entity.x, z: entity.z };
   }
 
-  private observe(entity: OpenWorldEntity, target: WorldTarget | undefined, occupied: Array<{ x: number; z: number }>, deltaSeconds: number): number[] {
+  private observe(entity: OpenWorldEntity, target: WorldTarget | undefined, occupied: Array<{ x: number; z: number }>, lookahead: number): number[] {
     const dx = target ? target.x - entity.x : 0, dz = target ? target.z - entity.z : 0;
     const blocked = DIRECTIONS.map(direction => {
-      const lookahead = movementSpeed(entity.speciesId, entity.level) * deltaSeconds;
       const x = entity.x + direction.x * lookahead, z = entity.z + direction.z * lookahead;
       return this.pathBlocked(entity, x, z, occupied) ? 1 : 0;
     });
@@ -1068,18 +1076,6 @@ export class OpenWorldSimulation {
       if (this.sampleWorld(px, pz).blocked || from.kind === 'wild' && this.isSafeTown(px, pz) || occupied.some(point => Math.hypot(point.x - px, point.z - pz) < 1)) return true;
     }
     return false;
-  }
-
-  private openPosition(biome: WorldBiome, awayFromPlayer: number): { x: number; z: number } {
-    const cave = getCaveScene(this.sceneId);
-    const minX = cave ? -cave.width / 2 : WORLD_MIN, maxX = cave ? cave.width / 2 : WORLD_MAX;
-    const minZ = cave ? -cave.depth / 2 : WORLD_MIN, maxZ = cave ? cave.depth / 2 : WORLD_MAX;
-    for (let attempt = 0; attempt < 3000; attempt++) {
-      const x = minX + 1 + this.rng.next() * (maxX - minX - 2), z = minZ + 1 + this.rng.next() * (maxZ - minZ - 2);
-      const sample = this.sampleWorld(x, z);
-      if (!sample.blocked && sample.biome === biome && Math.hypot(x - this.player.x, z - this.player.z) >= awayFromPlayer && !this.entities.some(entity => Math.hypot(entity.x - x, entity.z - z) < 3) && !this.foods.some(food => Math.hypot(food.x - x, food.z - z) < 2)) return { x, z };
-    }
-    throw new Error(`No open ${biome} position`);
   }
 
   private companionPosition(): { x: number; z: number } {
@@ -1102,7 +1098,19 @@ export class OpenWorldSimulation {
 
   private brain(id: string): Brain { const brain = this.brains.get(id); if (!brain) throw new Error(`Missing open-world brain ${id}`); return brain; }
   private wildEntities(): OpenWorldEntity[] { return this.entities.filter(entity => entity.kind === 'wild'); }
-  private nearestWildToCompanion(): OpenWorldEntity | undefined { const companion = this.entities.find(entity => entity.kind === 'companion'); return companion ? [...this.wildEntities()].sort((a, b) => distance(a, companion) - distance(b, companion) || a.id.localeCompare(b.id))[0] : undefined; }
+  private nearestWildToCompanion(): OpenWorldEntity | undefined {
+    const companion = this.entities.find(entity => entity.kind === 'companion');
+    if (!companion) return undefined;
+    let nearest: OpenWorldEntity | undefined, nearestDistance = Infinity;
+    for (const entity of this.entities) {
+      if (entity.kind !== 'wild') continue;
+      const candidateDistance = distance(entity, companion);
+      if (candidateDistance < nearestDistance || candidateDistance === nearestDistance && entity.id.localeCompare(nearest!.id) < 0) {
+        nearest = entity; nearestDistance = candidateDistance;
+      }
+    }
+    return nearest;
+  }
   private cheapestBall(): BallItem | undefined { return (['poke-ball'] as BallItem[]).find(ball => this.game.inventory[ball] > 0); }
   private bestBall(): BallItem | undefined { return (['poke-ball'] as BallItem[]).find(ball => this.game.inventory[ball] > 0); }
   private validRequestedAction(action: BattleAction): boolean {

@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { calculateDamage } from '../src/game/battle.ts';
-import { getMove, getSpecies, getTypeEffectiveness } from '../src/data/pokemon.ts';
+import { getMove, getSpecies } from '../src/data/pokemon.ts';
 import { ConnectomeController } from '../src/game/connectome.ts';
 import {
   actBattle, availableEvolutions, buyItem, challengeChampion, challengeGym, createGame, depositMonster, evolve, explore, heal,
@@ -61,7 +61,7 @@ function captureMove(attacker: Monster, defender: Monster): number | undefined {
   return candidates[0]?.index;
 }
 
-function bestBall(state: GameState, enemy: Monster): BallItem | undefined {
+function bestBall(state: GameState): BallItem | undefined {
   return state.inventory['poke-ball'] > 0 ? 'poke-ball' : undefined;
 }
 
@@ -125,7 +125,7 @@ function choosePlayerAction(state: GameState, wantCapture: boolean): BattleActio
     if (replacement >= 0) return { type: 'switch', index: replacement };
   }
   if (wantCapture) {
-    const ball = bestBall(state, enemy);
+    const ball = bestBall(state);
     if (!ball) return { type: 'run' };
     if (enemy.hp / enemy.stats.hp <= 0.25 || player.hp / player.stats.hp < 0.35) return { type: 'catch', ball };
     const move = captureMove(player, enemy);

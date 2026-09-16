@@ -8,7 +8,6 @@ type Manifest = { resolvedCommit: string; csvFiles: Array<{ file: string; sha256
 const root = resolve(import.meta.dirname, '..'), cache = resolve(root, 'src/data/.cache/pokeapi');
 const revision = '8fe210b21c9abbe73de93670f3d5a346c80a3625';
 const read = (path: string) => readFileSync(path);
-const rows = (path: string) => parse(read(path), { columns: true, skip_empty_lines: true }) as Row[];
 const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 const manifest = JSON.parse(read(resolve(root, 'src/data/source-manifest.json')).toString()) as Manifest;
 if (manifest.resolvedCommit !== revision) throw new Error(`Expected pinned PokeAPI ${revision}, received ${manifest.resolvedCommit}`);
