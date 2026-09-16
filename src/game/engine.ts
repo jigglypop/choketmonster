@@ -939,7 +939,7 @@ export function useItem(state: GameState, item: InventoryItem, targetInstanceId?
 
 export function evolve(state: GameState, instanceId: string, option: { targetId?: number; item?: InventoryItem } = {}): Monster {
   const monster = findOwned(state, instanceId);
-  if (isMonsterInBattle(state, instanceId)) throw new Error('전투에 참가 중인 포켓몬은 진화할 수 없습니다.');
+  if (isMonsterInBattle(state, instanceId)) throw new Error('전투 중에는 참가 포켓몬을 진화시킬 수 없습니다.');
   const evolutions = getSpecies(monster.speciesId).evolutions.filter((evolution) => option.targetId === undefined || evolution.target === option.targetId);
   const evolution = evolutions.find((candidate) => evolutionReady(state, monster, candidate, option.item));
   if (!evolution) throw new Error('현재 조건으로 가능한 진화가 없습니다.');
