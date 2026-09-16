@@ -8,6 +8,7 @@ import { buyItem, depositMonster, experienceAtLevel, firstUsableRegionalTeamInde
 import { REGIONAL_STARTERS, regionalLevelCap } from '../game/regional-policy';
 import { CAMPAIGN_TRAINERS, campaignTravelReason, getCampaignGyms, getNextCampaignTrainer, getRegionalBadges, regionalWildLevels, type CampaignRegion } from '../game/campaign';
 import { getWorldAtlas } from './atlas';
+import { progressionRequirement } from './progression-gates';
 import { PLAYABLE_WORLDS, getRegionalNativeSpeciesIds, isPlayableSpecies } from './availability';
 import type { FieldPolicy } from '../game/field';
 import { movementSpeed, OpenWorldSimulation, regionalEncounters, type OpenWorldSnapshot } from './simulation';
@@ -697,7 +698,8 @@ export class OpenWorldPanel {
   private bindMapNavigation(): void {
     const svg = this.host?.querySelector<SVGSVGElement>('#world-map-content svg'); if (!svg) return;
     const navigate = (target: Element) => {
-      const marker = target.closest<SVGGElement>('.world-map-point.traversable'); if (!marker) return;
+      const marker = target.closest<SVGGElement>('.world-map-point'); if (!marker) return;
+      if (marker.dataset.lockReason) { this.options.notify(marker.dataset.lockReason); return; }
       const x = Number(marker.dataset.mapX), z = Number(marker.dataset.mapZ);
       if (![x, z].every(Number.isFinite) || this.options.game.battle || this.options.game.captureOffer) return;
       const cave = getCaveScene(this.simulation.sceneId), badges = getRegionalBadges(this.options.game, this.simulation.regionId as CampaignRegion);
@@ -906,11 +908,27 @@ export class OpenWorldPanel {
     const fullPoint=(x:number,z:number)=>rotateMapPoint(120+(x-centerX)*fitScale,120+(z-centerZ)*fitScale,240,cameraMapRotation(this.cameraHeading));
     const lines = this.simulation.atlas.connections.map(([from, to], index) => { const a = this.simulation.atlas.locations.find(item => item.id === from)!, b = this.simulation.atlas.locations.find(item => item.id === to)!, start = fullPoint(a.x, a.z), end = fullPoint(b.x, b.z), bridge = a.kind === 'sea' || b.kind === 'sea'; return `<line class="world-map-road-shadow" x1="${start.x}" y1="${start.y}" x2="${end.x}" y2="${end.y}"/><line class="world-map-road ${bridge ? 'bridge' : ''}" x1="${start.x}" y1="${start.y}" x2="${end.x}" y2="${end.y}" marker-end="url(#road-arrow-${index % 2})"/>`; }).join('');
     const currentLocationId=this.simulation.locationAt(world.player.x,world.player.z).id;
-    const locations = this.simulation.atlas.locations.map((item,index) => { const marker = fullPoint(item.x, item.z), traversable = item.requiredBadges <= badges && Boolean(world.atlas.nearestWalkable(item.x, item.z, badges)); const prominent=item.id===currentLocationId||item.id===destinationId||item.kind==='special'||(item.kind==='town'&&index%4===0); return `<g class="world-map-point ${traversable ? 'traversable' : 'blocked'} kind-${item.kind}" data-map-x="${item.x}" data-map-z="${item.z}" data-location-id="${item.id}" ${traversable ? `tabindex="0" role="button" aria-label="${escape(item.name)}까지 걸어가기"` : `aria-label="${escape(item.name)} · 현재 이동 불가"`}><circle cx="${marker.x}" cy="${marker.y}" r="${item.kind === 'town' ? 4 : item.kind === 'special' ? 4.5 : 2.7}"/><text class="world-map-symbol" x="${marker.x}" y="${marker.y + 1.6}">${mapKindSymbol(item.kind)}</text><text class="world-map-label${prominent?'':' secondary'}" x="${marker.x + 5}" y="${marker.y - 4}">${escape(item.name)}</text><title>${escape(item.name)} · ${mapKindLabel(item.kind)}${traversable ? ' · 클릭해 길찾기' : ' · 현재 이동 불가'}</title></g>`; }).join('');
+    const badgeLabel = region === 'hisui' ? '조사증' : '배지';
+    const lockReasons = new Map(world.atlas.locations.map(item => [item.id, item.requiredBadges > badges
+      ? progressionRequirement(item.requiredBadges, badges, world.atlas.gyms, badgeLabel) : '']));
+    const locations = world.atlas.locations.map((item, index) => {
+      const marker = fullPoint(item.x, item.z), reason = lockReasons.get(item.id)!;
+      const prominent = item.id === currentLocationId || item.id === destinationId || item.kind === 'special' || (item.kind === 'town' && index % 4 === 0);
+      return `<g class="world-map-point ${reason ? 'blocked' : 'traversable'} kind-${item.kind}" data-map-x="${item.x}" data-map-z="${item.z}" data-location-id="${item.id}" data-lock-reason="${escape(reason)}" tabindex="0" role="button" aria-label="${escape(item.name)} · ${escape(reason || '클릭해 길찾기')}"><circle cx="${marker.x}" cy="${marker.y}" r="${item.kind === 'town' ? 4 : item.kind === 'special' ? 4.5 : 2.7}"/><text class="world-map-symbol" x="${marker.x}" y="${marker.y + 1.6}">${reason ? '🔒' : mapKindSymbol(item.kind)}</text><text class="world-map-label${prominent ? '' : ' secondary'}" x="${marker.x + 5}" y="${marker.y - 4}">${escape(item.name)}</text><title>${escape(item.name)} · ${escape(reason || '클릭해 길찾기')}</title></g>`;
+    }).join('');
     const player = fullPoint(world.player.x, world.player.z), destinationPoint = destination ? fullPoint(destination.x, destination.z) : undefined;
     this.html('#world-map-content', `<svg viewBox="0 0 260 240" role="img" aria-label="${world.atlas.name} 도로·다리·특별 지점 지도"><defs><marker id="road-arrow-0" markerUnits="userSpaceOnUse" markerWidth="4" markerHeight="4" refX="3.6" refY="2" orient="auto"><path fill="#8c7656" d="M0,0 L4,2 L0,4 z"/></marker><marker id="road-arrow-1" markerUnits="userSpaceOnUse" markerWidth="4" markerHeight="4" refX="3.6" refY="2" orient="auto-start-reverse"><path fill="#8c7656" d="M0,0 L4,2 L0,4 z"/></marker></defs><rect width="260" height="240" rx="8" fill="#bed5c0"/><g class="world-map-roads">${lines}</g><g class="world-map-locations">${locations}</g><g id="world-map-peers">${this.mapPeers(fullPoint)}</g>${destinationPoint ? `<circle cx="${destinationPoint.x}" cy="${destinationPoint.y}" r="6" fill="none" stroke="#d19c00" stroke-width="2"/><text x="${destinationPoint.x + 7}" y="${destinationPoint.y + 8}">다음</text>` : ''}<path class="world-map-player" transform="translate(${player.x} ${player.y})" d="M0,-6 L4,5 L0,3 L-4,5 Z"/>${this.mapCompass(240)}<text class="world-map-legend" x="8" y="232">◆ 도시 · ● 도로 · ≈ 수로/다리 · ★ 특별 지점</text></svg><div class="kanto-zone-list">${this.simulation.atlas.locations.map(item => { const levels = regionalWildLevels(game, region, item), encounterIds = regionalEncounters(item.id, getRegionalBadges(game, region), region); const traversable = item.requiredBadges <= badges && Boolean(world.atlas.nearestWalkable(item.x, item.z, badges)); return `<button data-map-list-location="${item.id}" ${traversable ? '' : 'disabled'} class="${this.simulation.locationAt(world.player.x, world.player.z).id === item.id ? 'current' : ''}${destination?.id === item.id ? ' destination' : ''}"><strong>${mapKindSymbol(item.kind)} ${item.name}${destination?.id === item.id ? ' · 다음 목적지' : ''}</strong><small>${mapKindLabel(item.kind)} · ${encounterIds.length ? `Lv.${levels.minLevel}–${levels.maxLevel} · ${encounterIds.slice(0, 4).map(id => getSpecies(id).name).join(' / ')}` : '연결 거점'}${item.requiredBadges ? ` · 배지 ${item.requiredBadges}개` : ''}</small></button>`; }).join('')}</div>`);
     this.bindMapNavigation();
-    this.host!.querySelectorAll<HTMLButtonElement>('[data-map-list-location]').forEach(button => button.onclick = () => this.host!.querySelector<SVGGElement>(`[data-location-id="${CSS.escape(button.dataset.mapListLocation!)}"]`)?.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    this.host!.querySelectorAll<HTMLButtonElement>('[data-map-list-location]').forEach(button => {
+      const reason = lockReasons.get(button.dataset.mapListLocation!)!;
+      if (reason) {
+        button.disabled = false;
+        button.classList.add('locked');
+        button.querySelector('strong')!.prepend('🔒 ');
+        button.querySelector('small')!.textContent = reason;
+      }
+      button.onclick = () => this.host!.querySelector<SVGGElement>(`[data-location-id="${CSS.escape(button.dataset.mapListLocation!)}"]`)?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
   }
 
   private minimap(): void {

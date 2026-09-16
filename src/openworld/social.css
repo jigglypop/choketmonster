@@ -85,6 +85,9 @@
 .world-portal-label { min-width:120px; max-width:210px; padding:7px 12px; color:#f3fff8; background:#183c36ed; border:1px solid #a6e2cb; border-radius:8px; box-shadow:0 3px 12px #0b241b66; cursor:pointer; text-align:center; white-space:nowrap; }
 .world-portal-label strong { display:block; font-size:13px; line-height:1.4; }
 .world-portal-label span { display:block; color:#baf1dc; font-size:11px; line-height:1.5; }
+.world-gate-label { min-width:180px; max-width:260px; white-space:normal; }
+.world-gate-label.locked { color:#fff5d8; background:#531f17f5; border:2px solid #ffce68; box-shadow:0 3px 14px #160b08aa; }
+.world-gate-label.locked span { color:#ffe2a1; }
 .world-trainer-label { min-width:86px; padding:5px 9px; border:1px solid #e6d3a2; border-radius:7px; background:#3b3929e8; color:#fff8dd; cursor:pointer; white-space:nowrap; text-align:center; }
 .world-trainer-label strong,.world-trainer-label span { display:block; }
 .world-trainer-label strong { font-size:12px; }

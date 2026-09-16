@@ -9,7 +9,7 @@ import * as galarMap from './galar';
 import * as hisuiMap from './hisui';
 import * as paldeaMap from './paldea';
 import { CAVE_SCENES, getCaveScene, type CaveScene } from './caves';
-import { WORLD_SCALE, surfaceSceneId } from './world-space';
+import { WORLD_SCALE, scaleWorldDistance, surfaceSceneId } from './world-space';
 import {
   KANTO_CONNECTIONS, KANTO_GATES, KANTO_GYMS, KANTO_LOCATIONS, KANTO_MAP_VERSION, KANTO_START, KANTO_SURFACE_CONNECTIONS,
   distanceToKantoPath, encountersForLocation, evaluateKantoTraversal, kantoGateHalfWidth, kantoTravelPoint, locationAt,
@@ -220,6 +220,7 @@ const expandedAtlas = (base: WorldAtlas, data: {
   ...base, ...data, surfaceConnections: data.connections,
   defaultVersion: base.id === 'hoenn' ? 'emerald' : base.id === 'sinnoh' ? 'platinum' : base.id === 'unova' ? 'black' : base.id === 'kalos' ? 'x' : base.id === 'alola' ? 'ultra-moon' : base.defaultVersion,
   buildingOffsets: data.buildingOffsets,
+  gateHalfWidth: () => scaleWorldDistance(3),
   nearestWalkable: (x, z, badges = 0) => {
     if (data.evaluateTraversal({ x, z }, { x, z }, badges).allowed) return { x, z };
     for (const location of [...data.locations].sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z))) {

@@ -42,7 +42,7 @@ export function GymEntranceStatus({ gym, badges, showLabel }: { gym: KantoGym; b
 export function ProgressGate({ gate, from, to, y, halfWidth, badges, showLabel }: {
   gate: KantoGate; from: KantoLocation; to: KantoLocation; y: number; halfWidth: number; badges: number; showLabel: boolean;
 }) {
-  const x = (from.x + to.x) / 2, z = (from.z + to.z) / 2;
+  const x = gate.position?.x ?? (from.x + to.x) / 2, z = gate.position?.z ?? (from.z + to.z) / 2;
   const rotationY = Math.atan2(to.x - from.x, to.z - from.z);
   const state = gateVisualState(gate.requiredBadges, badges);
   const width = Math.max(2.4, halfWidth * 2);
@@ -60,15 +60,20 @@ export function ProgressGate({ gate, from, to, y, halfWidth, badges, showLabel }
       </mesh>;
     })}
     {state.locked && <>
-      <RigidBody type="fixed" colliders="cuboid" position={[0, .82, 0]}>
-        <mesh castShadow><boxGeometry args={[width, 1.35, .32]} /><meshStandardMaterial color="#944137" roughness={.88} /></mesh>
-      </RigidBody>
+      {gate.terrainBoundary
+        ? <mesh position={[0, .82, 0]} castShadow><boxGeometry args={[width, 1.35, .32]} /><meshStandardMaterial color="#c54628" roughness={.88} /></mesh>
+        : <RigidBody type="fixed" colliders="cuboid" position={[0, .82, 0]}>
+          <mesh castShadow><boxGeometry args={[width, 1.35, .32]} /><meshStandardMaterial color="#c54628" roughness={.88} /></mesh>
+        </RigidBody>}
       {[-.33, 0, .33].map((ratio, index) => <mesh key={index} position={[ratio * width, .82, -.2]} rotation={[0, 0, index % 2 ? -.22 : .22]} castShadow>
-        <boxGeometry args={[.13, 1.7, .14]} /><meshStandardMaterial color="#d8b353" metalness={.2} roughness={.62} />
+        <boxGeometry args={[.3, 1.7, .46]} /><meshStandardMaterial color="#ffe375" emissive="#806015" emissiveIntensity={.25} roughness={.62} />
       </mesh>)}
     </>}
-    {showLabel && <Html center position={[0, 3.65, 0]} zIndexRange={[10, 9]} style={{ pointerEvents: 'none' }}>
-      <div className="world-portal-label"><strong>{state.locked ? `배지 ${state.required}개 필요` : '관문 통과 가능'}</strong></div>
+    {showLabel && <Html center calculatePosition={gateScreenPosition} position={[0, 3.65, 0]} zIndexRange={[10, 9]} style={{ pointerEvents: 'none' }}>
+      <div className={`world-portal-label world-gate-label ${state.locked ? 'locked' : 'open'}`} data-gate-id={gate.id} data-gate-state={state.locked ? 'locked' : 'open'}>
+        <strong>{state.locked ? `🔒 통행 잠김 · ${gate.badgeLabel ?? '배지'} ${state.earned}/${state.required}` : '✓ 관문 개방'}</strong>
+        {state.locked && <span>{gate.reason}</span>}
+      </div>
     </Html>}
   </group>;
 }
@@ -99,6 +104,14 @@ function portalScreenPosition(object: Object3D, camera: Camera, size: { width: n
   // NaN deltas would otherwise prevent updates until the camera moves.
   if (!Number.isFinite(portalProjection.x) || !Number.isFinite(portalProjection.y)) return [-1000, -1000];
   return [(portalProjection.x + 1) * size.width / 2, (1 - portalProjection.y) * size.height / 2];
+}
+
+function gateScreenPosition(object: Object3D, camera: Camera, size: { width: number; height: number }): [number, number] {
+  const [x, y] = portalScreenPosition(object, camera, size);
+  // Nearby locks still need a readable condition when their world anchor falls
+  // beyond the edge of a narrow mobile camera. Leave room for the bottom HUD.
+  const marginX = Math.min(140, size.width / 2), top = Math.min(180, size.height * .3);
+  return [Math.max(marginX, Math.min(size.width - marginX, x)), Math.max(top, Math.min(size.height - 220, y))];
 }
 
 function tileUvs(geometry: BoxGeometry) {

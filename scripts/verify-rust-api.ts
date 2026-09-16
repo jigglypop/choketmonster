@@ -74,7 +74,9 @@ async function main() {
   const ownedSpecies = [...game.player.team, ...game.player.box].map(monster => monster.speciesId);
   game.dex.seen = [...new Set([...game.dex.seen, ...ownedSpecies])].sort((a, b) => a - b);
   game.dex.caught = [...new Set([...game.dex.caught, ...ownedSpecies])].sort((a, b) => a - b);
-  game.versionCaught!.red = [...new Set([...(game.versionCaught!.red ?? []), ...ownedSpecies])].sort((a, b) => a - b);
+  // The boxed ability fixtures were received, not captured in Generation I.
+  // Later-generation species cannot be written into Red's historical dex.
+  game.versionCaught!.red = [...new Set([...(game.versionCaught!.red ?? []), customized.speciesId])].sort((a, b) => a - b);
   customized.moves[1].pp -= 2;
   const replacementMoveId = availableMonsterMoveIds(customized).find(moveId => !customized.moves.some(slot => slot.moveId === moveId));
   if (replacementMoveId === undefined) throw new Error('PP reserve fixture requires an unequipped legal move');
@@ -125,7 +127,8 @@ async function main() {
     const requestId = crypto.randomUUID(), initialBody = JSON.stringify({ save, revision: 0, requestId });
     call = await request(`/api/saves/${encodeURIComponent(slot)}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: initialBody }, first);
     const initialPut = await json(call.response), revision = Number(initialPut.revision);
-    record('create game save', call.response.status === 200 && Number.isSafeInteger(revision) && revision > 0, 'PUT stores a packSave fixture and returns a revision', call.elapsedMs, call.response.status);
+    record('create game save', call.response.status === 200 && Number.isSafeInteger(revision) && revision > 0,
+      call.response.ok ? 'PUT stores a packSave fixture and returns a revision' : `PUT rejected: ${String(initialPut.error ?? initialPut.message ?? 'unknown error')}`, call.elapsedMs, call.response.status);
 
     call = await request(`/api/saves/${encodeURIComponent(slot)}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: initialBody }, first);
     const retry = await json(call.response);

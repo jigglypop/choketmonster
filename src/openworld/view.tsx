@@ -418,10 +418,10 @@ function TrailAndWater({ sampleWorld, player, badges, atlas, visible, gyms = atl
       })}
       {atlas.gates.filter(gate => gate.visible !== false).map(gate => {
         const from = locations.get(gate.from)!, to = locations.get(gate.to)!;
-        const x = (from.x + to.x) / 2, z = (from.z + to.z) / 2;
+        const x = gate.position?.x ?? (from.x + to.x) / 2, z = gate.position?.z ?? (from.z + to.z) / 2;
         const y = terrainSurfaceHeight(sampleWorld, x, z);
         const halfWidth = atlas.gateHalfWidth(gate);
-        return <ProgressGate key={gate.id} gate={gate} from={from} to={to} y={y} halfWidth={halfWidth} badges={badges} showLabel={Math.hypot(x - player.x, z - player.z) <= 14} />;
+        return <ProgressGate key={gate.id} gate={gate} from={from} to={to} y={y} halfWidth={halfWidth} badges={badges} showLabel={Math.hypot(x - player.x, z - player.z) <= (badges < gate.requiredBadges ? 26 : 14)} />;
       })}
       {atlas.locations.filter(item => (item.kind === 'town' || item.kind === 'cave') && Math.hypot(item.x - player.x, item.z - player.z) <= 12)
         .map(item => <WorldLabel key={`label:${item.id}`} name={item.name} x={item.x} y={terrainSurfaceHeight(sampleWorld, item.x, item.z) + (item.kind === 'town' ? 1.85 : 3.2)} z={item.kind === 'town' ? item.z - 6 : item.z} />)}

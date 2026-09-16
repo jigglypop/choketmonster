@@ -18,7 +18,13 @@ export type KantoLocation = {
 };
 
 export type KantoGym = { locationId: string; badge: number; badgeName: string; name: string; speciesId: number; level: number };
-export type KantoGate = { id: string; from: string; to: string; requiredBadges: number; reason: string; visible?: boolean };
+export type KantoGate = {
+  id: string; from: string; to: string; requiredBadges: number; reason: string; visible?: boolean;
+  position?: { x: number; z: number };
+  /** The atlas already owns this terrain boundary; do not add a second physics wall. */
+  terrainBoundary?: boolean;
+  badgeLabel?: string;
+};
 export type KantoTraversal = { allowed: boolean; location: KantoLocation; gate?: KantoGate; reason?: string };
 
 export const KANTO_MAP_VERSION = 'kanto-v3' as const;

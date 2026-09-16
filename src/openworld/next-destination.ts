@@ -25,7 +25,7 @@ export function regionalItinerary(atlas: WorldAtlas, from: string, to: string, b
       const next = edge[0] === current ? edge[1] : edge[1] === current ? edge[0] : undefined;
       if (!next) continue;
       const point = locations.get(next)!, origin = locations.get(current)!;
-      if (point.requiredBadges > badges || atlas.gates.some(gate => gate.requiredBadges > badges &&
+      if (point.requiredBadges > badges || atlas.gates.some(gate => !gate.terrainBoundary && gate.requiredBadges > badges &&
         ((gate.from === current && gate.to === next) || (gate.to === current && gate.from === next)))) continue;
       const cost = costs.get(current)! + Math.hypot(point.x - origin.x, point.z - origin.z);
       if (cost >= (costs.get(next) ?? Infinity)) continue;
