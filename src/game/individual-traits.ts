@@ -29,6 +29,11 @@ const ABILITY_RULES: Readonly<Record<string, AbilityRule>> = {
   'sap-sipper': { effect: 'partial', description: '풀타입 공격은 무효화합니다. 공격 상승은 아직 적용하지 않습니다.' },
   'storm-drain': { effect: 'partial', description: '물타입 공격은 무효화합니다. 특수공격 상승과 공격 유도는 아직 적용하지 않습니다.' },
   'dry-skin': { effect: 'partial', description: '물타입 공격을 무효화하고 최대 HP의 1/4을 회복합니다. 날씨와 불꽃 약점 효과는 아직 적용하지 않습니다.' },
+  insomnia: { effect: 'partial', description: '잠자기 사용을 막습니다. 상대 기술에 의한 수면 면역은 아직 적용하지 않습니다.' },
+  'vital-spirit': { effect: 'partial', description: '잠자기 사용을 막습니다. 상대 기술에 의한 수면 면역은 아직 적용하지 않습니다.' },
+  comatose: { effect: 'partial', description: '잠자기 사용을 막습니다. 그 밖의 절대안깸 효과는 아직 적용하지 않습니다.' },
+  soundproof: { effect: 'partial', description: '다른 팀원의 치료방울을 받지 않습니다. 그 밖의 소리 기술 면역은 아직 적용하지 않습니다.' },
+  'good-as-gold': { effect: 'partial', description: '다른 팀원의 치료방울을 받지 않습니다. 그 밖의 변화 기술 면역은 아직 적용하지 않습니다.' },
 };
 
 function hash(text: string): number {

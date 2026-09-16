@@ -40,7 +40,13 @@ export function RenderProbe() {
         }),
         creatures: scene.getObjectsByProperty('type', 'Group')
           .filter(object => object.name.startsWith('creature:'))
-          .map(object => ({ id: object.name.slice('creature:'.length), position: object.position.toArray(), yaw: object.rotation.y })),
+          .map(object => {
+            const meshes: Mesh[] = [];
+            object.traverse(child => { if (child instanceof Mesh && child.userData.pokemonDrawCount !== undefined) meshes.push(child); });
+            return { id: object.name.slice('creature:'.length), position: object.position.toArray(), yaw: object.rotation.y,
+              drawnModelMeshes: meshes.length, modelDrawCalls: meshes.reduce((sum, mesh) => sum + mesh.userData.pokemonDrawCount, 0),
+              hasNameplate: !!object.getObjectByName('creature-nameplate') };
+          }),
         nameplates: scene.getObjectsByProperty('name', 'creature-nameplate').length,
         domNameplates: gl.domElement.parentElement?.querySelectorAll('.ow-creature-label').length ?? 0,
         labelMechanism: 'drei-html-dom',

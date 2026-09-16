@@ -95,6 +95,8 @@ export type OpenWorldViewOptions = {
   sampleWorld?: (x: number, z: number) => WorldSample;
   /** Fired once keyboard listeners are installed and the Canvas has rendered a frame. */
   onReady?: () => void;
+  /** GPU/context loss invalidates all model readiness until a new renderer draws them. */
+  onRendererLost?: () => void;
   terrainUrl?: string;
   terrainTransform?: Partial<Pick<OpenWorldProp, 'x' | 'y' | 'z' | 'rotationY' | 'scale'>>;
   props?: readonly OpenWorldProp[];

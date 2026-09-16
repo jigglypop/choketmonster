@@ -5,7 +5,8 @@
 //! the original monsters' HP, experience, memories, or save revision. The bundled catalog is
 //! generated from the repository's pinned PokeAPI data. General move metadata (damage, healing,
 //! drain, stat stages, common ailments and multi-hit ranges) and the battle engine's implemented
-//! ability rules are resolved here; move-specific scripted effects remain outside this core.
+//! ability rules are resolved here, together with explicit fixed-damage, recovery, cleansing,
+//! stat-reset and Rapid Spin rules. Other move-specific scripts remain outside this core.
 
 use crate::api::{ApiError, AppState, decompress, profile_user, rate_limit};
 use axum::{
@@ -597,6 +598,7 @@ fn apply_switch(side: &mut Side, index: usize) -> Result<(), ApiError> {
     if index >= side.team.len() || side.team[index].hp <= 0 || index == side.active_index {
         return Err(invalid("교체할 수 없는 포켓몬입니다."));
     }
+    side.team[side.active_index].stages.clear();
     side.active_index = index;
     Ok(())
 }
@@ -758,7 +760,7 @@ fn self_target(mv: &Move) -> bool {
     matches!(mv.target_id.unwrap_or(10), 4 | 7 | 13 | 15)
 }
 fn self_stat_target(mv: &Move) -> bool {
-    self_target(mv) || mv.meta_category == Some(8)
+    self_target(mv) || mv.meta_category == Some(8) || mv.id == 229
 }
 fn roll(id: Uuid, turn: i32, salt: u8) -> i64 {
     (deterministic(id, turn, salt) % 100) as i64
@@ -767,17 +769,19 @@ fn can_act(id: Uuid, turn: i32, p1: bool, side: &mut Side, events: &mut Vec<Stri
     let monster = &mut side.team[side.active_index];
     if monster.status.as_deref() == Some("sleep") {
         let left = monster.status_turns.unwrap_or(1);
-        monster.status_turns = Some(left - 1);
-        events.push(format!("{}은(는) 잠들어 있습니다.", monster.nickname));
-        if left <= 1 {
-            monster.status = None;
-            monster.status_turns = None;
+        if left > 1 {
+            monster.status_turns = Some(left - 1);
+            events.push(format!("{}은(는) 잠들어 있습니다.", monster.nickname));
+            return false;
         }
-        return false;
+        monster.status = None;
+        monster.status_turns = None;
+        events.push(format!("{}은(는) 잠에서 깨어났습니다.", monster.nickname));
     }
     if monster.status.as_deref() == Some("freeze") {
         if roll(id, turn, if p1 { 31 } else { 32 }) < 20 {
             monster.status = None;
+            monster.status_turns = None;
             events.push(format!("{}의 얼음이 녹았습니다.", monster.nickname));
         } else {
             events.push(format!(
@@ -797,6 +801,83 @@ fn can_act(id: Uuid, turn: i32, p1: bool, side: &mut Side, events: &mut Vec<Stri
         return false;
     }
     true
+}
+fn support_move(
+    attacker: &mut Side,
+    defender: &mut Side,
+    mv: &Move,
+    events: &mut Vec<String>,
+) -> bool {
+    match mv.id {
+        114 => {
+            attacker.team[attacker.active_index].stages.clear();
+            defender.team[defender.active_index].stages.clear();
+            events.push(format!(
+                "{}: 양쪽 포켓몬의 능력치 변화가 사라졌습니다.",
+                mv.name
+            ));
+        }
+        150 => events.push(format!("{}: 아무 일도 일어나지 않았습니다.", mv.name)),
+        156 => {
+            let actor = &mut attacker.team[attacker.active_index];
+            if actor.hp == actor.max_hp
+                || matches!(
+                    actor.ability.as_deref(),
+                    Some("insomnia" | "vital-spirit" | "comatose")
+                )
+            {
+                events.push(format!("{}을(를) 사용할 수 없었습니다.", mv.name));
+            } else {
+                actor.hp = actor.max_hp;
+                actor.status = Some("sleep".into());
+                actor.status_turns = Some(3);
+                events.push(format!(
+                    "{}은(는) 잠들어 완전히 회복했습니다.",
+                    actor.nickname
+                ));
+            }
+        }
+        215 | 312 => {
+            let mut cured = false;
+            for (index, ally) in attacker.team.iter_mut().enumerate() {
+                if ally.hp <= 0
+                    || !matches!(
+                        ally.status.as_deref(),
+                        Some("sleep" | "freeze" | "paralysis" | "poison" | "burn")
+                    )
+                {
+                    continue;
+                }
+                if mv.id == 215
+                    && index != attacker.active_index
+                    && matches!(ally.ability.as_deref(), Some("soundproof" | "good-as-gold"))
+                {
+                    continue;
+                }
+                ally.status = None;
+                ally.status_turns = None;
+                cured = true;
+                events.push(format!(
+                    "{}: {}의 상태이상이 나았습니다.",
+                    mv.name, ally.nickname
+                ));
+            }
+            if !cured {
+                events.push(format!("{}: 치료할 상태이상이 없었습니다.", mv.name));
+            }
+        }
+        _ => return false,
+    }
+    true
+}
+fn fixed_damage(mv: &Move, attacker: &Fighter, defender: &Fighter) -> Option<i64> {
+    match mv.id {
+        49 => Some(20),
+        82 => Some(40),
+        69 | 101 => Some(attacker.level),
+        162 => Some((defender.hp / 2).max(1)),
+        _ => None,
+    }
 }
 fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
     let (attacker, defender) = if p1 {
@@ -823,9 +904,21 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
         ));
         return;
     }
-    let immunity = ability_immunity(active(defender).ability.as_deref(), &mv.move_type);
+    if support_move(attacker, defender, mv, &mut battle.events) {
+        return;
+    }
+    let immunity = if self_target(mv) {
+        None
+    } else {
+        ability_immunity(active(defender).ability.as_deref(), &mv.move_type)
+    };
     let mut total_damage = 0;
     let mut type_mult = effectiveness(&mv.move_type, &active(defender).types);
+    // Ordinary status moves are not damaging type matchups. Thunder Wave still
+    // respects Ground immunity; ailment-specific immunities are checked below.
+    if mv.damage_class == "status" && (self_target(mv) || mv.move_type != "electric") {
+        type_mult = 1.0;
+    }
     if let Some(heal) = immunity {
         type_mult = 0.0;
         if heal {
@@ -836,6 +929,25 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
             "{}의 특성이 {}을(를) 막았습니다.",
             active(defender).nickname,
             mv.name
+        ));
+    } else if let Some(mut damage) = fixed_damage(mv, active(attacker), active(defender)) {
+        let target = &mut defender.team[defender.active_index];
+        if type_mult == 0.0 {
+            damage = 0;
+        }
+        if target.ability.as_deref() == Some("sturdy")
+            && target.hp == target.max_hp
+            && damage >= target.hp
+        {
+            damage = (target.hp - 1).max(0);
+        }
+        total_damage = damage.min(target.hp);
+        target.hp -= total_damage;
+        battle.events.push(format!(
+            "{}의 {}: {} 피해.",
+            active(attacker).nickname,
+            mv.name,
+            total_damage
         ));
     } else if mv.power > 0 && mv.damage_class != "status" {
         let hits = match (mv.min_hits, mv.max_hits) {
@@ -886,8 +998,9 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
             {
                 damage = (target.hp - 1).max(0);
             }
-            target.hp = (target.hp - damage).max(0);
-            total_damage += damage;
+            let dealt = damage.min(target.hp);
+            target.hp -= dealt;
+            total_damage += dealt;
         }
         battle.events.push(format!(
             "{}의 {}: {} 피해.",
@@ -913,6 +1026,23 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
             .events
             .push(format!("{}의 HP가 회복되었습니다.", actor.nickname));
     }
+    if mv.id == 499 && total_damage > 0 {
+        let target = &mut defender.team[defender.active_index];
+        target.stages.clear();
+        battle
+            .events
+            .push(format!("{}의 능력치 변화가 사라졌습니다.", target.nickname));
+    }
+    if mv.id == 229 && total_damage > 0 {
+        let actor = &mut attacker.team[attacker.active_index];
+        if matches!(actor.status.as_deref(), Some("trap" | "leech-seed")) {
+            actor.status = None;
+            actor.status_turns = None;
+            battle
+                .events
+                .push(format!("{}은(는) 속박에서 벗어났습니다.", actor.nickname));
+        }
+    }
     let stat_chance = mv
         .stat_chance
         .filter(|v| *v > 0)
@@ -922,7 +1052,10 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
             mv.effect_chance
         })
         .unwrap_or(100);
-    if !mv.stat_changes.is_empty() && roll(id, turn, if p1 { 51 } else { 52 }) < stat_chance {
+    if type_mult > 0.0
+        && !mv.stat_changes.is_empty()
+        && roll(id, turn, if p1 { 51 } else { 52 }) < stat_chance
+    {
         let target = if self_stat_target(mv) {
             &mut attacker.team[attacker.active_index]
         } else {
@@ -953,7 +1086,7 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
                 || (ailment == "burn" && target.types.iter().any(|t| t == "fire"))
                 || (ailment == "freeze" && target.types.iter().any(|t| t == "ice"))
                 || (ailment == "paralysis" && target.types.iter().any(|t| t == "electric"));
-            if target.status.is_none() && !immune {
+            if target.hp > 0 && target.status.is_none() && !immune {
                 target.status = Some(ailment.into());
                 target.status_turns = if ailment == "sleep" {
                     Some(2 + (deterministic(id, turn, 71) % 3) as i8)
@@ -969,7 +1102,7 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
     }
 }
 fn residual(side: &mut Side, events: &mut Vec<String>) {
-    if !alive(side) {
+    if active(side).hp <= 0 {
         return;
     }
     let target = &mut side.team[side.active_index];
@@ -1203,6 +1336,133 @@ mod tests {
         sturdy.player2.team[0].max_hp = 1;
         attack(Uuid::nil(), 1, &mut sturdy, true, &catalog().moves[&63]);
         assert_eq!(active(&sturdy.player2).hp, 1);
+    }
+
+    #[test]
+    fn fixed_damage_respects_immunity_sturdy_and_current_hp() {
+        for (move_id, target_species, expected) in
+            [(69, 143, 50), (101, 25, 50), (69, 94, 0), (101, 143, 0)]
+        {
+            let mut b = battle(
+                fighter(68, move_id, None),
+                fighter(target_species, 33, None),
+            );
+            let before = active(&b.player2).hp;
+            attack(Uuid::nil(), 1, &mut b, true, &catalog().moves[&move_id]);
+            assert_eq!(before - active(&b.player2).hp, expected);
+        }
+        let mut b = battle(fighter(20, 162, None), fighter(143, 33, None));
+        b.player2.team[0].hp = 55;
+        attack(Uuid::nil(), 1, &mut b, true, &catalog().moves[&162]);
+        assert_eq!(active(&b.player2).hp, 28);
+        b.player2.team[0].hp = 30;
+        b.player2.team[0].max_hp = 30;
+        b.player2.team[0].ability = Some("sturdy".into());
+        attack(Uuid::nil(), 1, &mut b, true, &catalog().moves[&69]);
+        assert_eq!(active(&b.player2).hp, 1);
+    }
+
+    #[test]
+    fn rest_heals_then_blocks_two_actions_even_after_serialization() {
+        let mut b = battle(fighter(143, 156, None), fighter(197, 33, None));
+        b.player1.team[0].hp = 10;
+        b.player1.team[0].status = Some("poison".into());
+        attack(Uuid::nil(), 1, &mut b, true, &catalog().moves[&156]);
+        assert_eq!(active(&b.player1).hp, active(&b.player1).max_hp);
+        assert_eq!(active(&b.player1).status.as_deref(), Some("sleep"));
+        let mut b: Battle = serde_json::from_value(serde_json::to_value(b).unwrap()).unwrap();
+        for turn in 2..=3 {
+            assert!(!can_act(
+                Uuid::nil(),
+                turn,
+                true,
+                &mut b.player1,
+                &mut b.events
+            ));
+        }
+        assert!(can_act(Uuid::nil(), 4, true, &mut b.player1, &mut b.events));
+        assert!(active(&b.player1).status.is_none());
+        attack(Uuid::nil(), 5, &mut b, true, &catalog().moves[&156]);
+        assert!(active(&b.player1).status.is_none()); // full HP fails
+        b.player1.team[0].hp = 10;
+        b.player1.team[0].ability = Some("insomnia".into());
+        attack(Uuid::nil(), 6, &mut b, true, &catalog().moves[&156]);
+        assert_eq!(active(&b.player1).hp, 10);
+        assert!(active(&b.player1).status.is_none());
+    }
+
+    #[test]
+    fn team_cures_do_not_cure_foes_binding_or_soundproof_teammates() {
+        for move_id in [215, 312] {
+            let mut b = battle(
+                fighter(143, move_id, None),
+                fighter(197, 33, Some("sap-sipper")),
+            );
+            b.player1.team[0].status = Some("burn".into());
+            let mut reserve = fighter(100, 33, Some("soundproof"));
+            reserve.status = Some("sleep".into());
+            reserve.status_turns = Some(3);
+            b.player1.team.push(reserve);
+            let mut bound = fighter(7, 33, None);
+            bound.status = Some("trap".into());
+            b.player1.team.push(bound);
+            b.player2.team[0].status = Some("poison".into());
+            attack(Uuid::nil(), 1, &mut b, true, &catalog().moves[&move_id]);
+            assert!(active(&b.player1).status.is_none());
+            assert_eq!(
+                b.player1.team[1].status.as_deref(),
+                if move_id == 215 { Some("sleep") } else { None }
+            );
+            assert_eq!(b.player1.team[2].status.as_deref(), Some("trap"));
+            assert_eq!(active(&b.player2).status.as_deref(), Some("poison"));
+        }
+    }
+
+    #[test]
+    fn haze_and_clear_smog_reset_the_correct_stages() {
+        let mut b = battle(fighter(143, 114, None), fighter(143, 33, None));
+        b.player1.team[0].stages.insert("attack".into(), 2);
+        b.player2.team[0].stages.insert("defense".into(), -3);
+        attack(Uuid::nil(), 1, &mut b, true, &catalog().moves[&114]);
+        assert!(active(&b.player1).stages.is_empty());
+        assert!(active(&b.player2).stages.is_empty());
+        for species in [143, 208] {
+            let mut b = battle(fighter(143, 499, None), fighter(species, 33, None));
+            b.player2.team[0].stages.insert("attack".into(), 4);
+            attack(Uuid::nil(), 1, &mut b, true, &catalog().moves[&499]);
+            assert_eq!(active(&b.player2).stages.is_empty(), species != 208);
+        }
+    }
+
+    #[test]
+    fn rapid_spin_effects_need_a_hit_and_switching_clears_stages() {
+        for species in [143, 94] {
+            let mut b = battle(fighter(143, 229, None), fighter(species, 33, None));
+            b.player1.team[0].status = Some("leech-seed".into());
+            attack(Uuid::nil(), 1, &mut b, true, &catalog().moves[&229]);
+            assert_eq!(
+                active(&b.player1).stages.get("speed"),
+                if species == 94 { None } else { Some(&1) }
+            );
+            assert!(active(&b.player2).stages.is_empty());
+            assert_eq!(active(&b.player1).status.is_none(), species != 94);
+            b.player1.team.push(fighter(7, 33, None));
+            apply_switch(&mut b.player1, 1).unwrap();
+            apply_switch(&mut b.player1, 0).unwrap();
+            assert!(active(&b.player1).stages.is_empty());
+        }
+    }
+
+    #[test]
+    fn status_moves_ignore_damage_type_chart_but_immune_hits_do_not_debuff() {
+        let mut b = battle(fighter(143, 14, None), fighter(94, 33, None));
+        attack(Uuid::nil(), 1, &mut b, true, &catalog().moves[&14]);
+        assert_eq!(active(&b.player1).stages["attack"], 2);
+        attack(Uuid::nil(), 1, &mut b, true, &catalog().moves[&39]);
+        assert_eq!(active(&b.player2).stages["defense"], -1);
+        b.player2.team[0] = fighter(208, 33, None);
+        attack(Uuid::nil(), 1, &mut b, true, &catalog().moves[&491]); // Acid Spray vs Steel
+        assert!(active(&b.player2).stages.is_empty());
     }
 
     fn test_save(species_id: i64, move_id: i64) -> Value {

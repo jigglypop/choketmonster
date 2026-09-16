@@ -112,7 +112,7 @@ export function mountRankedPanel(options: RankedPanelOptions) {
         ${me?.queued ? `<button data-ranked-cancel ${busy ? 'disabled' : ''}>매칭 취소</button>` : ''}<small>턴마다 90초 · 동시에 행동 선택 · 팀 최대 6마리</small></section>
         <section class="ranked-board"><header><h2>${leagueCopy[league].name} 순위</h2><button data-ranked-refresh>새로고침</button></header>
           <ol>${(view?.leaderboard ?? []).map(row => `<li><span>${row.rank}</span><strong class="ranked-trainer rank-tier-${row.tier}">${escape(row.username)}<small>${tierName[row.tier]}</small></strong><b>${row.rating}</b><small>${row.wins}승 ${row.losses}패</small></li>`).join('') || '<li class="ranked-empty">아직 순위 기록이 없습니다.</li>'}</ol></section></div>`}
-      <p class="ranked-boundary">일반 위력·회복·흡수·능력치·상태·연속기 메타데이터를 서버가 판정합니다. 기술별 전용 연출·일부 특수 스크립트는 아직 적용되지 않습니다.</p>
+      <p class="ranked-boundary">피해·회복·상태 판정과 지구던지기·나이트헤드·분노의앞니, 잠자기·흑안개·클리어스모그·치료방울·아로마테라피·고속스핀 효과를 서버가 처리합니다. 그 밖의 일부 특수 규칙·전용 연출은 아직 적용되지 않습니다.</p>
     </section>`;
     bind(); updateDeadline();
   };

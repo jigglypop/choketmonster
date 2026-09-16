@@ -74,15 +74,15 @@ const NATURE_VISIBLE_RADIUS = 94;
 const DEFAULT_CAMERA_OFFSET = new Vector3(5.6, 7.6, 8.8);
 
 const MODEL_RETRY_EVENT = 'choketmon-retry-world-models';
-function useModelStatus(url: string): { url: string; gltf: GLTF | null; failed: boolean } {
+function useModelStatus(url: string, renderFailed = false): { url: string; gltf: GLTF | null; failed: boolean } {
   const [state, setState] = useState({ url, gltf: null as GLTF | null, failed: false });
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    if (!state.failed) return;
+    if (!state.failed && !renderFailed) return;
     const retry = () => setAttempt(value => value + 1);
     window.addEventListener(MODEL_RETRY_EVENT, retry);
     return () => window.removeEventListener(MODEL_RETRY_EVENT, retry);
-  }, [state.failed]);
+  }, [state.failed, renderFailed]);
   useEffect(() => {
     let active = true;
     setState({ url, gltf: null, failed: false });
@@ -446,7 +446,9 @@ function StaticModel({ item }: { item: OpenWorldProp }) {
 }
 
 function PokemonModel({ creature, url, onStatus }: { creature: WorldCreature; url: string; onStatus?: OpenWorldViewOptions['onModelStatus'] }) {
-  const { gltf, failed } = useModelStatus(url);
+  const [renderFailed, setRenderFailed] = useState(false);
+  const { gltf, failed } = useModelStatus(url, renderFailed);
+  const [drawnModel, setDrawnModel] = useState<Object3D | null>(null);
   const root = useRef<Group>(null);
   const mixer = useRef<AnimationMixer | null>(null);
   const activeAction = useRef<AnimationAction | undefined>(undefined);
@@ -461,11 +463,37 @@ function PokemonModel({ creature, url, onStatus }: { creature: WorldCreature; ur
         object.receiveShadow = true;
       }
     });
-    return normalizePokemonModel(scene, gltf.animations, creature.displayHeight ?? 1.2, { speciesId: creature.speciesId, types: getSpecies(creature.speciesId).types }, gltf.scene);
+    try {
+      return normalizePokemonModel(scene, gltf.animations, creature.displayHeight ?? 1.2, { speciesId: creature.speciesId, types: getSpecies(creature.speciesId).types }, gltf.scene);
+    } catch {
+      const skeletons = new Set<SkinnedMesh['skeleton']>();
+      scene.traverse(object => { if (object instanceof SkinnedMesh) skeletons.add(object.skeleton); });
+      skeletons.forEach(skeleton => skeleton.dispose());
+      return null;
+    }
   }, [creature.displayHeight, creature.speciesId, gltf]);
-  const status = normalized ? 'ready' : failed ? 'failed' : 'loading';
+  const status = failed || renderFailed || (gltf && !normalized) ? 'failed' : normalized && drawnModel === normalized.visual ? 'ready' : 'loading';
   useLayoutEffect(() => { onStatus?.(creature.id, status, creature.speciesId); }, [creature.id, creature.speciesId, onStatus, status]);
   useLayoutEffect(() => () => onStatus?.(creature.id, 'untracked', creature.speciesId), [creature.id, creature.speciesId, onStatus]);
+  useLayoutEffect(() => {
+    setRenderFailed(!!gltf && !normalized);
+    if (!normalized) return;
+    let active = true, drawn = false;
+    const deadline = window.setTimeout(() => { if (active && !drawn) setRenderFailed(true); }, 45_000);
+    const restore: Array<() => void> = [];
+    normalized.visual.traverse(object => {
+      if (!(object instanceof Mesh)) return;
+      const previous = object.onAfterRender;
+      object.onAfterRender = function (...args) {
+        previous.apply(this, args);
+        if (!active) return;
+        object.userData.pokemonDrawCount = (object.userData.pokemonDrawCount ?? 0) + 1;
+        if (!drawn) { drawn = true; clearTimeout(deadline); setRenderFailed(false); setDrawnModel(normalized.visual); }
+      };
+      restore.push(() => { object.onAfterRender = previous; });
+    });
+    return () => { active = false; clearTimeout(deadline); restore.forEach(reset => reset()); };
+  }, [gltf, normalized]);
   useFrame(({ clock }, delta) => {
     mixer.current?.update(Math.min(delta, .05) * (creature.action === 'walk' ? MathUtils.clamp((creature.movementSpeed ?? 2.4) / 2.4, .65, 1.8) : 1));
     if (!root.current) return;
@@ -516,8 +544,8 @@ function PokemonModel({ creature, url, onStatus }: { creature: WorldCreature; ur
     activeAction.current = next;
   }, [creature.action, gltf, normalized]);
 
-  if (!normalized) return <ModelStatus name={failed ? '3D 불러오기 실패' : '3D 불러오는 중'} />;
-  return <group ref={root} name={`pokemon-model:${creature.speciesId}`}><primitive object={normalized.visual} /></group>;
+  if (!normalized || renderFailed) return <ModelStatus name={status === 'failed' ? '3D 불러오기 실패' : '3D 불러오는 중'} />;
+  return <group ref={root} name={`pokemon-model:${creature.speciesId}`} dispose={null}><primitive object={normalized.visual} /></group>;
 }
 
 function ModelStatus({ name }: { name: string }) {
@@ -574,6 +602,12 @@ function Creature({ creature, selected, distance, options, showLabels, model }: 
   options: OpenWorldViewOptions;
 }) {
   const supportedModel = hasPokemonModel(creature.speciesId);
+  const [modelState, setModelState] = useState<{ speciesId: number; status: string }>({ speciesId: creature.speciesId, status: 'loading' });
+  const onModelStatus = useCallback<NonNullable<OpenWorldViewOptions['onModelStatus']>>((id, status, speciesId) => {
+    setModelState(previous => previous.speciesId === speciesId && previous.status === status ? previous : { speciesId, status });
+    options.onModelStatus?.(id, status, speciesId);
+  }, [options.onModelStatus]);
+  const modelReady = model && modelState.speciesId === creature.speciesId && modelState.status === 'ready';
   useEffect(() => {
     if (supportedModel) return;
     options.onModelStatus?.(creature.id, 'failed', creature.speciesId);
@@ -600,6 +634,9 @@ function Creature({ creature, selected, distance, options, showLabels, model }: 
   }, [creature.x, creature.z, y]);
   useFrame((_, delta) => {
     if (!root.current) return;
+    // Remote-player snapshots also move independently of our simulation gate.
+    // Do not interpolate an empty actor while its model is still unavailable.
+    if (!modelReady) return;
     const remaining = visual.current.distanceTo(target.current);
     const speed = MathUtils.clamp(creature.movementSpeed ?? 2.4, .5, 16);
     const step = Math.max(speed * Math.min(delta, .05) * 1.2, remaining * Math.min(1, delta * 4));
@@ -618,11 +655,11 @@ function Creature({ creature, selected, distance, options, showLabels, model }: 
       onDoubleClick={event => { event.stopPropagation(); if (!creature.remotePlayer) options.onInteract?.(creature.id); }}
     >
       {model && supportedModel
-        ? <PokemonModel creature={creature} url={(options.modelUrl ?? (id => `/models/pokemon/${id}.glb`))(creature.speciesId)} onStatus={options.onModelStatus} />
+        ? <PokemonModel creature={creature} url={(options.modelUrl ?? (id => `/models/pokemon/${id}.glb`))(creature.speciesId)} onStatus={onModelStatus} />
         : !supportedModel ? <ModelStatus name="3D 미지원 · 이동 중지" /> : null}
       {(selected || creature.inBattle) && <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, .04, 0]}><ringGeometry args={[1.1, 1.34, 40]} /><meshBasicMaterial color={creature.inBattle ? '#f09155' : '#f6dd67'} transparent opacity={.86} /></mesh>}
-      <AttackEffect active={creature.action === 'attack'} moveType={creature.moveType} />
-      {showLabels && (distance <= 28 || selected || creature.inBattle || creature.remotePlayer) && <CreatureBillboard creature={creature} hp={hp} distance={distance} emphasized={selected || !!creature.inBattle || !!creature.remotePlayer} />}
+      <AttackEffect active={modelReady && creature.action === 'attack'} moveType={creature.moveType} />
+      {modelReady && showLabels && (distance <= 28 || selected || creature.inBattle || creature.remotePlayer) && <CreatureBillboard creature={creature} hp={hp} distance={distance} emphasized={selected || !!creature.inBattle || !!creature.remotePlayer} />}
     </group>
   );
 }
@@ -951,12 +988,23 @@ function OpenWorldApp({ store, options, lifetime, commands }: { commands: ViewCo
   const [ready, setReady] = useState(false);
   const [renderDpr, setRenderDpr] = useState(() => Math.min(window.devicePixelRatio || 1, 1.5));
   const [showLabels, setShowLabels] = useState(true);
+  const [rendererGeneration, setRendererGeneration] = useState(0);
+  const [rendererLost, setRendererLost] = useState(false);
+  const rendererEpoch = useRef(0);
   const toggleLabels = () => setShowLabels(previous => !previous);
   const [destination, setDestination] = useState<WorldPoint | null>(null);
   const createRenderer = useMemo(() => {
     let pending: ReturnType<typeof createOpenWorldRenderer> | undefined;
-    return (defaults: Parameters<typeof createOpenWorldRenderer>[0]) => pending ??= createOpenWorldRenderer(defaults, { forceWebGL: new URLSearchParams(location.search).get('renderer') === 'webgl' });
-  }, []);
+    return (defaults: Parameters<typeof createOpenWorldRenderer>[0]) => pending ??= createOpenWorldRenderer(defaults, {
+      forceWebGL: new URLSearchParams(location.search).get('renderer') === 'webgl',
+      onDeviceLost: () => {
+        if (!lifetime.active || rendererEpoch.current !== rendererGeneration) return;
+        rendererEpoch.current++;
+        options.onRendererLost?.();
+        setRendererLost(true);
+      },
+    });
+  }, [rendererGeneration, lifetime, options]);
   useEffect(() => { setDestination(null); }, [snapshot.regionId, snapshot.sceneId]);
   const navigate = useCallback((point: WorldPoint) => {
     if (![point.x, point.z].every(Number.isFinite) || options.onNavigationStart?.() === false) return false;
@@ -978,11 +1026,18 @@ function OpenWorldApp({ store, options, lifetime, commands }: { commands: ViewCo
       enablePhysics
       gravity={[0, -18, 0]}
     >
-      <Canvas eventSource={lifetime.host} frameloop={renderPaused ? 'never' : 'always'} shadows="percentage" dpr={renderDpr} camera={{ position: [12, 18, 16], fov: 48, near: .1, far: 160 }} gl={defaults => createRenderer({ ...defaults, canvas: defaults.canvas as HTMLCanvasElement })} onPointerMissed={() => options.onSelect(null)} onCreated={state => {
+      {rendererLost ? <div className="ow-loading ow-render-error" role="alert">
+        <p>그래픽 연결이 끊겨 이동·배틀을 멈췄습니다. 진행 상태는 유지됩니다.</p>
+        <button type="button" data-world-renderer-retry onClick={() => {
+          rendererEpoch.current++;
+          setRendererGeneration(rendererEpoch.current);
+          setRendererLost(false);
+        }}>3D 화면 다시 시작</button>
+      </div> : <Canvas key={rendererGeneration} eventSource={lifetime.host} frameloop={renderPaused ? 'never' : 'always'} shadows="percentage" dpr={renderDpr} camera={{ position: [12, 18, 16], fov: 48, near: .1, far: 160 }} gl={defaults => createRenderer({ ...defaults, canvas: defaults.canvas as HTMLCanvasElement })} onPointerMissed={() => options.onSelect(null)} onCreated={state => {
         // Canvas can finish its async WebGPU setup after logout or a tab change.
         // Keep the event target valid, then retire that stale R3F root before it
         // can render or install scene controls for the previous adventure.
-        if (!lifetime.active) {
+        if (!lifetime.active || rendererEpoch.current !== rendererGeneration) {
           state.setFrameloop('never');
           queueMicrotask(() => unmountComponentAtNode(state.gl.domElement));
         }
@@ -995,7 +1050,7 @@ function OpenWorldApp({ store, options, lifetime, commands }: { commands: ViewCo
           <Scene commands={commands} snapshot={snapshot} options={options} showLabels={showLabels} destination={destination} onNavigate={navigate} onDestination={setDestination} />
         </group>
         </ActiveWorld>
-      </Canvas>
+      </Canvas>}
       {!ready && <div className="ow-loading">Gaesup World 준비 중…</div>}
       <div className="ow-camera-controls" aria-label="이름과 체력 표시">
         <button type="button" id="world-nameplates" className="ow-camera-reset" aria-label="포켓몬 이름·HP 표시" aria-pressed={showLabels} onClick={toggleLabels}>이름·HP</button>

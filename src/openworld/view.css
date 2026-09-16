@@ -161,6 +161,9 @@
   pointer-events: none;
 }
 
+.ow-render-error { z-index: 8; align-content: center; gap: 1rem; padding: 1.5rem; background: #10251f; text-align: center; pointer-events: auto; }
+.ow-render-error button { min-height: 2.7rem; padding: .6rem 1rem; border: 1px solid #98bea7; border-radius: .5rem; background: #e8f4cf; color: #173c2c; font-weight: 700; cursor: pointer; }
+
 .world-recovery { position: absolute; z-index: 9; top: calc(var(--app-header-height, 76px) + 12px); left: 50%; transform: translateX(-50%); width: min(27rem, calc(100% - 2rem)); padding: .7rem .9rem; border: 1px solid #6e8e7b; border-radius: .8rem; background: #10251ff2; color: #f3f4dc; box-shadow: 0 .3rem 1.2rem #0004; }
 .world-recovery[hidden] { display: none; }
 .world-recovery p { margin: 0 0 .5rem; font-size: .8rem; line-height: 1.5; overflow-wrap: anywhere; }

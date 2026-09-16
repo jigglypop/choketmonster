@@ -7,6 +7,7 @@ import { OpenWorldSimulation } from '../../src/openworld/simulation';
 
 test('a failed server turn remains intact and resumes from the visible recovery button', async ({ page }) => {
   test.setTimeout(120_000);
+  await page.routeWebSocket(url => url.pathname === '/' && url.searchParams.has('token'), () => {});
   const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
   const game = createGame(1, 'server-recovery-ui'), world = new OpenWorldSimulation(graph, game, 918);
   const wild = world.entities.find(entity => entity.kind === 'wild')!;

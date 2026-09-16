@@ -529,6 +529,12 @@ function changeStage(battle: BattleState, monster: Monster, stat: BattleStat, ch
   battle.statStages ??= {}; const stages = battle.statStages[monster.instanceId] ??= {};
   const before = stages[stat] ?? 0; stages[stat] = Math.max(-6, Math.min(6, before + change)); return stages[stat]! - before;
 }
+function clearStages(battle: BattleState, monster: Monster): number {
+  const delta = Object.values(battle.statStages?.[monster.instanceId] ?? {}).reduce((sum, value) => sum + Math.abs(value), 0);
+  if (battle.statStages) delete battle.statStages[monster.instanceId];
+  return delta;
+}
+const CURABLE_AILMENTS = new Set(['sleep', 'freeze', 'paralysis', 'poison', 'burn']);
 function fixedMoveDamage(moveId: number, attacker: Monster, defender: Monster): number | undefined {
   if (moveId === 49) return 20; // Sonic Boom
   if (moveId === 82) return 40; // Dragon Rage
@@ -590,6 +596,40 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
     return;
   }
 
+  // These effects cannot be inferred from the source's generic move metadata.
+  if ([114, 150, 156, 215, 312].includes(move.id)) {
+    let cured = false, failed = false;
+    if (move.id === 114) {
+      statStageDelta = clearStages(battle, attacker) + clearStages(battle, defender);
+      events.push(event(battle, `${move.name}: 양쪽 포켓몬의 능력치 변화가 사라졌다.`, 'status'));
+    } else if (move.id === 156) {
+      failed = attacker.hp === attacker.stats.hp || ['insomnia', 'vital-spirit', 'comatose'].includes(attacker.ability?.slug ?? '');
+      if (!failed) {
+        hpRecovered = attacker.stats.hp - attacker.hp; attacker.hp = attacker.stats.hp;
+        attacker.status = 'sleep'; attacker.statusTurns = 3; ailmentApplied = true;
+        events.push(event(battle, `${attacker.nickname}은(는) 잠들어 완전히 회복했다.`, 'status'));
+      } else events.push(event(battle, `${move.name}을(를) 사용할 수 없었다.`, 'status'));
+    } else if (move.id === 150) {
+      events.push(event(battle, `${attacker.nickname}은(는) 튀어올랐다. 아무 일도 일어나지 않았다.`));
+    } else {
+      const side = battle.player.team.includes(attacker) ? battle.player : battle.enemy;
+      for (const ally of side.team) {
+        if (ally.hp <= 0 || !CURABLE_AILMENTS.has(ally.status ?? '')) continue;
+        if (move.id === 215 && ally !== attacker && ['soundproof', 'good-as-gold'].includes(ally.ability?.slug ?? '')) continue;
+        ally.status = undefined; ally.statusTurns = undefined; cured = true;
+        events.push(event(battle, `${move.name}: ${ally.nickname}의 상태이상이 나았다.`, 'status'));
+      }
+      failed = !cured;
+      if (failed) events.push(event(battle, `${move.name}: 치료할 상태이상이 없었다.`, 'status'));
+    }
+    executedMoves.push({ actorInstanceId: attacker.instanceId, targetInstanceId: attacker.instanceId,
+      moveId: move.id, moveType: move.type, damageClass: move.damageClass, damagingMove: false,
+      executed: true, hit: true, typeMultiplier: 1, damage: 0, category: move.id === 156 ? 'healing' : 'status',
+      hpRecovered, statStageDelta, ailmentApplied, strategicEffect: hpRecovered > 0 || statStageDelta > 0 || cured,
+      result: failed ? 'failed' : 'status' });
+    return;
+  }
+
   let totalDamage = 0; let multiplier = 1; let activatedAbility: 'immunity' | 'absorb' | 'sturdy' | undefined;
   const isOhko = [12, 32, 90].includes(move.id);
   let fixed = fixedMoveDamage(move.id, attacker, defender);
@@ -641,13 +681,21 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
     const amount = Math.max(1, Math.floor(attacker.stats.hp * move.healing / 100)); const before = attacker.hp; attacker.hp = Math.min(attacker.stats.hp, attacker.hp + amount); hpRecovered += attacker.hp - before;
     events.push(event(battle, `${attacker.nickname}의 HP가 회복되었다.`, 'status'));
   }
-  if (move.id === 156) { const before = attacker.hp; attacker.hp = attacker.stats.hp; hpRecovered += attacker.hp - before; attacker.status = 'sleep'; attacker.statusTurns = 3; events.push(event(battle, `${attacker.nickname}은(는) 잠들어 완전히 회복했다.`, 'status')); }
+  let clearedBinding = false;
+  if (move.id === 499 && totalDamage > 0) {
+    statStageDelta += clearStages(battle, defender);
+    events.push(event(battle, `${defender.nickname}의 능력치 변화가 사라졌다.`, 'status'));
+  }
+  if (move.id === 229 && totalDamage > 0 && ['trap', 'leech-seed'].includes(attacker.status ?? '')) {
+    attacker.status = undefined; attacker.statusTurns = undefined; clearedBinding = true;
+    events.push(event(battle, `${attacker.nickname}은(는) 속박에서 벗어났다.`, 'status'));
+  }
 
-  const selfByCategory = move.metaCategory === 8;
+  const selfByCategory = move.metaCategory === 8 || move.id === 229;
   const foeByCategory = move.metaCategory === 7;
   const stageTarget = selfByCategory ? attacker : foeByCategory ? defender : SELF_TARGETS.has(move.targetId ?? 10) ? attacker : defender;
   const statChance = move.statChance && move.statChance > 0 ? move.statChance : move.damageClass === 'status' ? 100 : move.effectChance ?? 100;
-  if ((multiplier > 0 || stageTarget === attacker) && move.statChanges?.length && random(state) * 100 < statChance) for (const change of move.statChanges) {
+  if ((multiplier > 0 || (!damagingMove && stageTarget === attacker)) && move.statChanges?.length && random(state) * 100 < statChance) for (const change of move.statChanges) {
     const stat = battleStat(change.stat); if (!stat) continue;
     const applied = changeStage(battle, stageTarget, stat, change.change);
     statStageDelta += Math.abs(applied);
@@ -662,17 +710,17 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
     if (immune) events.push(event(battle, `${ailmentTarget.nickname}에게는 상태이상이 통하지 않았다.`, 'status'));
     else { ailmentTarget.status = move.ailment; ailmentTarget.statusTurns = move.ailment === 'sleep' ? 2 + Math.floor(random(state) * 3) : move.ailment === 'confusion' || move.ailment === 'trap' ? 2 + Math.floor(random(state) * 4) : undefined; ailmentApplied = true; events.push(event(battle, `${ailmentTarget.nickname}은(는) ${move.ailment} 상태가 되었다.`, 'status')); }
   }
-  if (!totalDamage && !move.statChanges?.length && !move.healing && !move.ailment && move.id !== 144) events.push(event(battle, `${move.name}의 특수 효과는 이 로컬 규칙에서 축약되어 변화가 없었다.`));
+  if (!damagingMove && !move.statChanges?.length && !move.healing && !move.ailment) events.push(event(battle, `${move.name}의 특수 효과는 이 로컬 규칙에서 축약되어 변화가 없었다.`));
   const failed = isOhko && attacker.level < defender.level;
   const defenderGrowth = evolutionProgress(defender);
   defenderGrowth.damageTaken = defender.hp > 0 ? Math.min(1e9, defenderGrowth.damageTaken + totalDamage) : 0;
   if (defender.hp <= 0) defenderGrowth.recoilDamage = 0;
-  const hasHealing = !!((move.healing ?? 0) > 0 || (move.drain ?? 0) > 0 || move.id === 156), hasBuff = !!move.statChanges?.length, hasStatus = !!(move.ailment && move.ailment !== 'none');
+  const hasHealing = !!((move.healing ?? 0) > 0 || (move.drain ?? 0) > 0), hasBuff = !!move.statChanges?.length || move.id === 499, hasStatus = !!(move.ailment && move.ailment !== 'none');
   const category = damagingMove && (hasHealing || hasBuff || hasStatus) ? 'mixed' : hasHealing ? 'healing' : hasBuff ? 'buff' : hasStatus || move.damageClass === 'status' ? 'status' : 'damage';
   executedMoves.push({ actorInstanceId: attacker.instanceId, targetInstanceId: defender.instanceId,
     moveId: move.id, moveType: move.type, damageClass: move.damageClass, damagingMove,
     executed: true, hit: true, typeMultiplier: multiplier, damage: totalDamage, category, hpRecovered, statStageDelta, ailmentApplied,
-    strategicEffect: hpRecovered > 0 || statStageDelta > 0 || ailmentApplied || !!activatedAbility || move.id === 144,
+    strategicEffect: hpRecovered > 0 || statStageDelta > 0 || ailmentApplied || !!activatedAbility || clearedBinding,
     result: multiplier === 0 ? 'immune' : failed ? 'failed' : damagingMove ? 'hit' : 'status' });
 }
 

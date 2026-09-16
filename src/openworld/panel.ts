@@ -151,6 +151,7 @@ export class OpenWorldPanel {
     this.renderer = mountOpenWorld(host.querySelector('#ow-host')!, {
       getSnapshot: () => this.renderSnapshot(), sampleWorld: (x, z) => this.simulation.sampleWorld(x, z), modelUrl: pokemonModelUrl, spriteUrl: pokemonSpriteUrl,
       onReady: () => { this.ready = true; this.refreshRecovery(); },
+      onRendererLost: () => { this.ready = false; this.paused = true; this.simulation.requireReadyModels(); this.refresh(); },
       onNavigationStart: () => this.noteManualInput(),
       onMovementInput: () => this.noteManualInput(),
       onMovementEnd: () => {

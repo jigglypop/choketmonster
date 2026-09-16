@@ -24,7 +24,7 @@ const rendererInfo = new WeakMap<object, { backend: OpenWorldRendererBackend; in
  */
 export async function createOpenWorldRenderer(
   defaults: OpenWorldRendererDefaults,
-  options: { forceWebGL?: boolean } = {},
+  options: { forceWebGL?: boolean; onDeviceLost?: () => void } = {},
 ): Promise<WebGLRenderer> {
   const renderer = new WebGPURenderer({
     canvas: defaults.canvas,
@@ -35,6 +35,11 @@ export async function createOpenWorldRenderer(
     powerPreference: defaults.powerPreference === 'default' ? undefined : defaults.powerPreference ?? 'high-performance',
     forceWebGL: options.forceWebGL ?? false,
   }) as TaggedRenderer;
+  const originalDeviceLost = renderer.onDeviceLost.bind(renderer);
+  renderer.onDeviceLost = info => {
+    originalDeviceLost(info);
+    options.onDeviceLost?.();
+  };
   await renderer.init();
   const backend: OpenWorldRendererBackend = (renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend === true ? 'webgpu' : 'webgl2-fallback';
   const initializedAt = performance.now();

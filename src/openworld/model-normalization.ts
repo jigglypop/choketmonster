@@ -15,8 +15,19 @@ type ModelProfile = { size: Vector3; origin: Vector3; grounding: ReadonlyMap<Buf
 const profiles = new WeakMap<Object3D, ModelProfile>();
 const preparing = new WeakMap<Object3D, Promise<void>>();
 
+function assertVisibleGeometry(model: Object3D): void {
+  let renderable = false;
+  model.traverseVisible(object => {
+    if (!(object instanceof Mesh) || (object.geometry.getAttribute('position')?.count ?? 0) < 3 || object.geometry.drawRange.count < 3) return;
+    const materials = Array.isArray(object.material) ? object.material : [object.material];
+    if (materials.some(material => material.visible && material.colorWrite && (!material.transparent || material.opacity > 0))) renderable = true;
+  });
+  if (!renderable) throw new Error('Pokemon model has no visible geometry');
+}
+
 /** Prepare each cached asset once, yielding between poses so new models do not stall input. */
 export function preparePokemonModel(source: Object3D, animations: readonly AnimationClip[]): Promise<void> {
+  try { assertVisibleGeometry(source); } catch (error) { return Promise.reject(error); }
   if (profiles.has(source)) return Promise.resolve();
   const pending = preparing.get(source);
   if (pending) return pending;
@@ -49,7 +60,12 @@ export function normalizePokemonModel(
   materialContext: PokemonMaterialContext = {},
   source: Object3D = model,
 ): NormalizedPokemonModel {
+  assertVisibleGeometry(model);
   normalizePokemonMaterials(model, materialContext);
+  // Creature LOD already bounds distance, frustum and instance count. Imported
+  // skin bounds can remain at the bind pose after bones/root transforms move;
+  // a second per-mesh cull can then hide the body while its HTML label survives.
+  model.traverse(object => { if (object instanceof Mesh) object.frustumCulled = false; });
   let profile = profiles.get(source);
   if (!profile) {
     const iterator = measureModel(model, animations);
