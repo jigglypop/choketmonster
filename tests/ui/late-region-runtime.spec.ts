@@ -9,7 +9,7 @@ import { OpenWorldSimulation } from '../../src/openworld/simulation';
 
 const graph=JSON.parse(readFileSync('public/data/connectome.json','utf8')) as Graph;
 const policy=JSON.parse(readFileSync('public/data/openworld-policy.json','utf8')) as FieldPolicy;
-const cases=[['galar',850,'HOME'],['hisui',899,'primary'],['paldea',936,'HOME']] as const;
+const cases=[['galar',850,'HOME'],['hisui',899,'primary'],['paldea',936,'HOME'],['hisui',399,'primary']] as const;
 const badges=[1,2,3,4,5,6,7,8];
 
 test.use({launchOptions:{args:['--mute-audio','--enable-unsafe-webgpu']}});
@@ -51,7 +51,7 @@ async function expectNoRuntimeErrors(page:Page,errors:string[]){
   expect(errors,'page, WebGPU, or model-request errors').toEqual([]);
 }
 
-for(const [region,partner,source] of cases)test(`${region} loads exact ${source} partner, walks by map, and restores the model`,async({page},testInfo:TestInfo)=>{
+for(const [region,partner,source] of cases)test(`${region} loads exact ${source} partner ${partner}, walks by map, and restores the model`,async({page},testInfo:TestInfo)=>{
   test.skip(!isPlayableWorldRegion(region),`${region} remains behind the verified runtime asset gate`);
   const errors:string[]=[];await preparePage(page,errors);await importRegion(page,region,partner);await expectExactModel(page,partner);await expectNoRuntimeErrors(page,errors);
   mkdirSync('artifacts/late-region-runtime',{recursive:true});await page.screenshot({path:`artifacts/late-region-runtime/${region}-loaded-${partner}.png`,fullPage:true});

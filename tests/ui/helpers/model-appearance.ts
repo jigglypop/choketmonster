@@ -1,12 +1,12 @@
-import { AnimationMixer, Box3, Color, DirectionalLight, HemisphereLight, Mesh, MeshBasicMaterial, MeshStandardMaterial, PerspectiveCamera, Scene, SkinnedMesh, Vector3 } from 'three';
+import { AnimationMixer, Box3, Color, DirectionalLight, HemisphereLight, Mesh, MeshBasicMaterial, MeshStandardMaterial, PerspectiveCamera, Scene, SkinnedMesh, Vector3, type BufferGeometry } from 'three';
 import { createGLTFLoader } from '../../../src/three/gltf-loader';
 import { normalizePokemonMaterials } from '../../../src/openworld/pokemon-materials';
-import { createOpenWorldRenderer } from '../../../src/openworld/gpu-renderer';
+import { createOpenWorldRenderer, getOpenWorldRendererInfo } from '../../../src/openworld/gpu-renderer';
 import { createDaylightEnvironment } from '../../../src/openworld/materials';
 import { selectPokemonMotionClip } from '../../../src/data/model-motion';
 
-export async function inspectAppearance(url: string, speciesId: number, normalize = true) {
-  const asset = await createGLTFLoader().loadAsync(url);
+export async function inspectAppearance(url: string, speciesId: number, normalize = true, smoothNormals = true) {
+  const asset = await createGLTFLoader({ smoothNormals }).loadAsync(url);
   const rows: unknown[] = [];
   asset.scene.traverse(object => {
     if (!(object instanceof Mesh)) return;
@@ -41,6 +41,46 @@ export async function inspectAppearance(url: string, speciesId: number, normaliz
     }
   });
   const report = normalize ? normalizePokemonMaterials(asset.scene, { speciesId }) : undefined;
+  const digest = async (array: ArrayBufferView) => {
+    const bytes = new Uint8Array(new Uint8Array(array.buffer, array.byteOffset, array.byteLength));
+    return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))).map(byte => byte.toString(16).padStart(2, '0')).join('');
+  };
+  const geometryContracts: Promise<unknown>[] = [];
+  asset.scene.traverse(object => {
+    if (!(object instanceof Mesh)) return;
+    const geometry: BufferGeometry = object.geometry;
+    geometryContracts.push((async () => ({ name: object.name,
+      attributes: Object.fromEntries(await Promise.all(Object.entries(geometry.attributes).filter(([name]) => name !== 'normal').map(async ([name, attribute]) => [name, await digest(attribute.array)]))),
+      index: geometry.index ? await digest(geometry.index.array) : null,
+      morphs: Object.fromEntries(await Promise.all(Object.entries(geometry.morphAttributes).map(async ([name, attributes]) => [name, await Promise.all(attributes!.map(attribute => digest(attribute.array)))]))),
+    }))());
+  });
+  const geometryContract = await Promise.all(geometryContracts);
+  const motionContract = await digest(new TextEncoder().encode(JSON.stringify(asset.animations.map(clip => ({ name: clip.name, duration: clip.duration,
+    tracks: clip.tracks.map(track => ({ name: track.name, times: Array.from(track.times), values: Array.from(track.values) })) })))));
+  const bodyMeshes: Mesh[] = [], eyeMeshes: Mesh[] = [];
+  asset.scene.traverse(object => {
+    if (!(object instanceof Mesh)) return;
+    const names = (Array.isArray(object.material) ? object.material : [object.material]).map(material => material.name).join(' ');
+    (/eye/i.test(names) ? eyeMeshes : bodyMeshes).push(object);
+  });
+  const eyeSeams = [399, 393, 573].includes(speciesId) ? eyeMeshes.map(eye => {
+    const p = eye.geometry.getAttribute('position'), n = eye.geometry.getAttribute('normal');
+    const distances: number[] = [], dots: number[] = [];
+    for (let i = 0; i < p.count; i++) {
+      let distance = Infinity, dot = 0;
+      for (const body of bodyMeshes) {
+        const bp = body.geometry.getAttribute('position'), bn = body.geometry.getAttribute('normal');
+        if (!bn || !n) continue;
+        for (let j = 0; j < bp.count; j++) {
+          const d = Math.hypot(p.getX(i) - bp.getX(j), p.getY(i) - bp.getY(j), p.getZ(i) - bp.getZ(j));
+          if (d < distance) { distance = d; dot = n.getX(i) * bn.getX(j) + n.getY(i) * bn.getY(j) + n.getZ(i) * bn.getZ(j); }
+        }
+      }
+      distances.push(distance); dots.push(dot);
+    }
+    return { name: eye.name, vertices: p.count, distance: { min: Math.min(...distances), max: Math.max(...distances) }, normalDot: { min: Math.min(...dots), max: Math.max(...dots) } };
+  }) : [];
   const surfaces: { name: string; transparent: boolean; textured: boolean; metalness?: number }[] = [];
   asset.scene.traverse(object => {
     if (!(object instanceof Mesh)) return;
@@ -69,7 +109,15 @@ export async function inspectAppearance(url: string, speciesId: number, normaliz
   const gpuErrors: string[] = [];
   const device = (renderer as unknown as { backend: { device?: { addEventListener: (name: string, listener: (event: any) => void) => void } } }).backend.device;
   device?.addEventListener('uncapturederror', event => gpuErrors.push(event.error.message));
+  // Warm up environment/pipelines, then count only the stable scene. WebGPU's
+  // animation scheduler resets frame stats even without our own animation loop.
   renderer.render(scene, camera);
+  renderer.info.autoReset = false;
+  renderer.info.reset();
+  renderer.render(scene, camera);
+  const frame = getOpenWorldRendererInfo(renderer)!;
+  const render = { calls: frame.render.drawCalls, triangles: frame.render.triangles };
   await new Promise(resolve => setTimeout(resolve, 300));
-  return { speciesId, rows, report, surfaces, gpuErrors, pose: idle?.name ?? 'bind' };
+  return { speciesId, rows, report, surfaces, gpuErrors, pose: idle?.name ?? 'bind', normalRepair: asset.scene.userData.choketmonSmoothNormals, eyeSeams,
+    render, smoothNormals, geometryContract, motionContract };
 }
