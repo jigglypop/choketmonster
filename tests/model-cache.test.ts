@@ -6,6 +6,25 @@ vi.mock('../src/three/gltf-loader', () => ({ createGLTFLoader: () => ({ loadAsyn
 import { acquireModel, modelCacheStats, retryFailedModels } from '../src/three/model-cache';
 
 describe('shared model cache ownership', () => {
+  it('keeps remote-source priority while draining a burst without re-sorting it', async () => {
+    loading.load.mockImplementation(async () => ({ scene: new Group(), animations: [] }));
+    const leases = [
+      acquireModel('/test/queue-local-a.glb'),
+      acquireModel('/test/queue-local-b.glb'),
+      acquireModel('https://raw.githubusercontent.com/example/models/main/priority.glb'),
+      acquireModel('/test/queue-local-c.glb'),
+    ];
+    await Promise.all(leases.map(lease => lease.promise));
+    expect(loading.load.mock.calls.map(([url]) => url)).toEqual([
+      'https://raw.githubusercontent.com/example/models/main/priority.glb',
+      '/test/queue-local-a.glb',
+      '/test/queue-local-b.glb',
+      '/test/queue-local-c.glb',
+    ]);
+    leases.forEach(lease => lease.release());
+    loading.load.mockClear();
+  });
+
   it('allows an explicit retry immediately after a failed request', async () => {
     loading.load.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({ scene: new Group(), animations: [] });
     const first = acquireModel('/test/retry.glb');

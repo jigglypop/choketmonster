@@ -52,6 +52,7 @@ import { acquireModel, modelCacheStats, retryFailedModels } from '../three/model
 import { creatureLods, terrainChunks, TERRAIN_CHUNK_SIZE, type TerrainChunk, type VisibilityTest } from './lod';
 import { initialYaw, movementYaw, turnTowards } from './motion';
 import { normalizePokemonModel } from './model-normalization';
+import { disposeNormalizedPokemonMaterials } from './pokemon-materials';
 import { createTerrainSurface } from './terrain-surface';
 import { getSpecies } from '../data/pokemon';
 import './view.css';
@@ -466,6 +467,7 @@ function PokemonModel({ creature, url, onStatus }: { creature: WorldCreature; ur
     try {
       return normalizePokemonModel(scene, gltf.animations, creature.displayHeight ?? 1.2, { speciesId: creature.speciesId, types: getSpecies(creature.speciesId).types }, gltf.scene);
     } catch {
+      disposeNormalizedPokemonMaterials(scene);
       const skeletons = new Set<SkinnedMesh['skeleton']>();
       scene.traverse(object => { if (object instanceof SkinnedMesh) skeletons.add(object.skeleton); });
       skeletons.forEach(skeleton => skeleton.dispose());
@@ -511,6 +513,7 @@ function PokemonModel({ creature, url, onStatus }: { creature: WorldCreature; ur
   useEffect(() => { ground.current = undefined; }, [normalized]);
   useEffect(() => () => {
     if (!normalized) return;
+    disposeNormalizedPokemonMaterials(normalized.animatedRoot);
     const skeletons = new Set<SkinnedMesh['skeleton']>();
     normalized.animatedRoot.traverse(object => { if (object instanceof SkinnedMesh) skeletons.add(object.skeleton); });
     skeletons.forEach(skeleton => skeleton.dispose());
@@ -914,7 +917,8 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
   const worldOptions = useMemo(() => ({ ...options, sampleWorld: sample }), [options, sample]);
   const windowState = useViewWindow();
   const chunks = useMemo(() => terrainChunks(snapshot.player, windowState.visible), [snapshot.player.x, snapshot.player.z, windowState.visible]);
-  const visible = useMemo(() => creatureLods(snapshot.entities, snapshot.player, windowState.visible, windowState.mobile, snapshot.selectedWildId), [snapshot, windowState]);
+  const visible = useMemo(() => creatureLods(snapshot.entities, snapshot.player, windowState.visible, windowState.mobile, snapshot.selectedWildId),
+    [snapshot.entities, snapshot.player.x, snapshot.player.z, snapshot.selectedWildId, windowState.mobile, windowState.visible]);
   const labelIds = useMemo(() => {
     if (!showLabels) return new Set<string>();
     const priority = (item: typeof visible[number]) => item.creature.id === snapshot.selectedWildId ? 0
@@ -930,8 +934,23 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
     scene.background = skyColor; scene.fog = null;
     return () => { scene.background = previousBackground; scene.fog = previousFog; };
   }, [scene, skyColor]);
-  useFrame(() => { scene.userData.streaming = { region: atlas.id, sceneId, daylight, player: { x: snapshot.player.x, z: snapshot.player.z }, terrainChunks: cave ? 0 : chunks.length, terrainTotal: ((WORLD_MAX - WORLD_MIN) / TERRAIN_CHUNK_SIZE) ** 2, highDetailChunks: chunks.filter(c => c.segments === 12).length,
-    visibleCreatures: visible.length, detailedCreatures: visible.filter(v => v.model && hasPokemonModel(v.creature.speciesId)).length, ...modelCacheStats(), modelLimit: windowState.mobile ? 4 : 8 }; });
+  const streaming = useMemo(() => {
+    let highDetailChunks = 0, detailedCreatures = 0;
+    for (const chunk of chunks) if (chunk.segments === 12) highDetailChunks++;
+    for (const item of visible) if (item.model && hasPokemonModel(item.creature.speciesId)) detailedCreatures++;
+    return { region: atlas.id, sceneId, daylight, player: { x: snapshot.player.x, z: snapshot.player.z }, terrainChunks: cave ? 0 : chunks.length,
+      terrainTotal: ((WORLD_MAX - WORLD_MIN) / TERRAIN_CHUNK_SIZE) ** 2, highDetailChunks, visibleCreatures: visible.length,
+      detailedCreatures, modelLimit: windowState.mobile ? 4 : 8 };
+  }, [atlas.id, cave, chunks, sceneId, snapshot.player.x, snapshot.player.z, visible, windowState.mobile]);
+  const streamingElapsed = useRef(1);
+  useFrame((_, delta) => {
+    // Probe metadata does not affect rendering. Refreshing it four times a second
+    // keeps async cache counters useful without allocating and filtering per frame.
+    streamingElapsed.current += delta;
+    if (streamingElapsed.current < .25) return;
+    streamingElapsed.current = 0;
+    scene.userData.streaming = { ...streaming, ...modelCacheStats() };
+  });
   return (
     <>
       <hemisphereLight color={cave ? '#b9cbd1' : '#d9eeed'} groundColor="#434f3f" intensity={cave ? .85 : 1.1} />

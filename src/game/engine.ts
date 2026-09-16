@@ -13,7 +13,7 @@ import { initialEvolutionProgress, evolutionProgress, validateEvolutionProgress,
 import { feedEvolutionTreat, naturalEvolution, needsSpecialEvolution, sourceEvolutionItems, sourceEvolutionRules, specialEvolutionLevel } from './evolution-conditions';
 import { getFieldTrainer, type FieldTrainer } from '../data/field-trainers';
 import { genderFor, isValidGender, validateEgg, type Egg, type MonsterGender } from './breeding';
-import { abilityForSpecies, abilityImmunity, createIndividualTraits, hasSturdy, isValidAbility, isValidIndividualValues,
+import { abilityForSpecies, abilityImmunity, canonicalAbility, createIndividualTraits, hasSturdy, isValidIndividualValues,
   legacyIndividualTraits, statsWithIndividualValues, type IndividualValues, type MonsterAbility } from './individual-traits';
 import { REGIONAL_STARTERS, claimedRegionalStarters, isCampaignRegion, monsterRegionalUseReason, needsRegionalStarter, regionalLevelCap } from './regional-policy';
 export { duplicateMergeValue } from './growth';
@@ -1404,7 +1404,11 @@ export function validateGame(value: unknown): GameState {
     if (monster.ivs === undefined && monster.ability === undefined) Object.assign(monster, legacyIndividualTraits(monster.instanceId, monster.speciesId));
     else if (monster.ivs === undefined || monster.ability === undefined) throw new Error('개체값/특성 데이터가 일부만 있습니다.');
     if (!isValidIndividualValues(monster.ivs)) throw new Error('개체값이 잘못되었습니다.');
-    if (!isValidAbility(monster.ability, monster.speciesId)) throw new Error('특성이 원본 종/슬롯 데이터와 맞지 않습니다.');
+    const currentAbility = canonicalAbility(monster.ability, monster.speciesId);
+    if (!currentAbility) throw new Error('특성이 원본 종/슬롯 데이터와 맞지 않습니다.');
+    // Source identity is persisted, while labels and implemented-effect notes
+    // are release metadata and must be refreshed without invalidating a save.
+    monster.ability = currentAbility;
     if (monster.evolutionProgress !== undefined) validateEvolutionProgress(monster.evolutionProgress);
     if (monster.gender === undefined) {
       const legacyGender = monster.evolutionProgress?.gender;
@@ -1480,6 +1484,8 @@ export function validateGame(value: unknown): GameState {
         if (member.gender === undefined) member.gender = owned.gender;
         if (member.ivs === undefined) member.ivs = structuredClone(owned.ivs);
         if (member.ability === undefined) member.ability = structuredClone(owned.ability);
+        else if (!canonicalAbility(member.ability, member.speciesId)) throw new Error('전투 특성이 원본 종/슬롯 데이터와 맞지 않습니다.');
+        else member.ability = structuredClone(owned.ability);
         if (member.evolutionProgress) member.evolutionProgress.gender = member.gender!;
       }
     }

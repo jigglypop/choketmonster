@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { getMove, getSpecies } from '../src/data/pokemon';
 import { calculateDamage } from '../src/game/battle';
 import { abilityForSpecies } from '../src/game/individual-traits';
-import { actBattle, createGame, createMonster, evolve, individualValues, mergeDuplicateMonsters, monsterAbility, restoreGame, serializeGame, statsFor, useItem } from '../src/game/engine';
+import { actBattle, challengeGym, createGame, createMonster, evolve, individualValues, mergeDuplicateMonsters, monsterAbility, restoreGame, serializeGame, statsFor, useItem } from '../src/game/engine';
 
 describe('persistent individual values and source abilities', () => {
   it('generates six seeded IVs without consuming the gameplay RNG stream', () => {
@@ -38,6 +38,34 @@ describe('persistent individual values and source abilities', () => {
     expect(migrated.stats).toEqual(oldStats);
     expect(migrated.ivs).toEqual({ hp: 0, attack: 0, defense: 0, specialAttack: 0, specialDefense: 0, speed: 0 });
     expect(restoreGame(serializeGame(restored)).player.team[0].ability).toEqual(migrated.ability);
+  });
+
+  it('refreshes derived ability metadata without rejecting an otherwise valid saved source slot', () => {
+    const game = createGame(1, 'ability-metadata-migration'), monster = game.player.team[0];
+    monster.ability = abilityForSpecies(1, 1);
+    monster.ability.name = '이전 번역';
+    monster.ability.englishName = 'Previous label';
+    monster.ability.effect = 'display-only';
+    monster.ability.description = '이전 릴리스에서 저장한 효과 설명';
+
+    const restored = restoreGame(JSON.stringify(game));
+    expect(restored.player.team[0].ability).toEqual(abilityForSpecies(1, 1));
+  });
+
+  it('refreshes the duplicated active-battle ability metadata with its owned individual', () => {
+    const game = createGame(1, 'battle-ability-metadata-migration');
+    challengeGym(game, 'safari-meadow');
+    game.player.team[0].ability!.description = '이전 릴리스에서 저장한 효과 설명';
+
+    const restored = restoreGame(JSON.stringify(game));
+    expect(restored.battle?.player.team[0].ability).toEqual(restored.player.team[0].ability);
+    expect(restored.player.team[0].ability).toEqual(abilityForSpecies(1, restored.player.team[0].ability!.slot));
+  });
+
+  it('still rejects an ability source identity that does not belong to the species', () => {
+    const game = createGame(1, 'ability-source-mismatch');
+    game.player.team[0].ability = abilityForSpecies(4, 1);
+    expect(() => restoreGame(JSON.stringify(game))).toThrow('특성이 원본 종/슬롯 데이터와 맞지 않습니다.');
   });
 
   it('keeps the selected individual traits when duplicate XP is merged', () => {

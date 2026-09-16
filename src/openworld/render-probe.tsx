@@ -18,16 +18,35 @@ function renderableInventory(scene: Scene) {
   return rows.sort((left, right) => right.triangles - left.triangles).slice(0, 30);
 }
 
+export class FrameSampleRing {
+  private readonly values: Array<Record<string, number> | undefined>;
+  private cursor = 0;
+  private count = 0;
+  constructor(private readonly capacity: number) { this.values = new Array(capacity); }
+  push(value: Record<string, number>): void {
+    this.values[this.cursor] = value;
+    this.cursor = (this.cursor + 1) % this.capacity;
+    this.count = Math.min(this.count + 1, this.capacity);
+  }
+  read(): Array<Record<string, number>> {
+    const result = new Array<Record<string, number>>(this.count);
+    const start = (this.cursor - this.count + this.capacity) % this.capacity;
+    for (let index = 0; index < this.count; index++) result[index] = this.values[(start + index) % this.capacity]!;
+    return result;
+  }
+  reset(): void { this.cursor = 0; this.count = 0; }
+}
+
 /** Opt-in, read-only renderer counters. Never reads or advances simulation RNG. */
 export function RenderProbe() {
   const { gl, scene, camera, get } = useThree();
-  const samples = useRef<Array<Record<string, number>>>([]);
+  const samples = useRef(new FrameSampleRing(900));
   useEffect(() => {
     const backend = getOpenWorldRendererInfo(gl);
     const context = backend ? undefined : gl.getContext(), debug = context?.getExtension('WEBGL_debug_renderer_info');
     const target = window as unknown as { __renderProbe?: { read(): unknown; reset(): void } };
     target.__renderProbe = {
-      read: () => ({ samples: [...samples.current], dpr: gl.getPixelRatio(),
+      read: () => ({ samples: samples.current.read(), dpr: gl.getPixelRatio(),
         streaming: scene.userData.streaming, camera: camera.position.toArray(),
         cameraTarget: (get().controls as unknown as { target?: { toArray(): number[] } } | null)?.target?.toArray(), objects: scene.children.length,
         background: scene.background instanceof Color ? scene.background.getHexString() : null,
@@ -93,7 +112,7 @@ export function RenderProbe() {
         textures: gl.info.memory.textures, geometries: gl.info.memory.geometries,
         trainers: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('field-trainer:')).map(object => object.name),
         programs: gl.info.programs?.length, backend: backend?.backend ?? 'webgl', renderer: backend?.backend ?? (debug ? context?.getParameter(debug.UNMASKED_RENDERER_WEBGL) : context?.getParameter(context!.RENDERER)) }),
-      reset: () => { samples.current = []; },
+      reset: () => { samples.current.reset(); },
     };
     const owner = target.__renderProbe;
     return () => { if (target.__renderProbe === owner) delete target.__renderProbe; };
@@ -101,7 +120,6 @@ export function RenderProbe() {
   useFrame((_, delta) => {
     const counters = getOpenWorldRendererInfo(gl)?.render ?? gl.info.render;
     samples.current.push({ frameMs: delta * 1000, calls: counters.calls, triangles: counters.triangles });
-    if (samples.current.length > 900) samples.current.shift();
   });
   return null;
 }

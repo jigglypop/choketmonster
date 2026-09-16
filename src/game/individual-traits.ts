@@ -107,11 +107,26 @@ export function isValidIndividualValues(value: unknown): value is IndividualValu
 }
 
 export function isValidAbility(value: unknown, speciesId: number): value is MonsterAbility {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const canonical = canonicalAbility(value, speciesId);
+  if (!canonical) return false;
+  const candidate = value as MonsterAbility;
+  return candidate.name === canonical.name && candidate.englishName === canonical.englishName
+    && candidate.effect === canonical.effect && candidate.description === canonical.description;
+}
+
+/**
+ * Resolve persisted source identity to the current runtime description.
+ *
+ * `effect`, descriptions and localized names are derived presentation/runtime
+ * metadata, so they may legitimately change between releases. The immutable
+ * source identity is the species ability id, slot, hidden flag and slug.
+ */
+export function canonicalAbility(value: unknown, speciesId: number): MonsterAbility | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
   const candidate = value as MonsterAbility;
   const canonical = speciesAbilities(speciesId).find(ability => ability.id === candidate.id && ability.slot === candidate.slot);
-  return !!canonical && candidate.hidden === canonical.hidden && candidate.slug === canonical.slug && candidate.name === canonical.name
-    && candidate.englishName === canonical.englishName && candidate.effect === canonical.effect && candidate.description === canonical.description;
+  if (!canonical || candidate.hidden !== canonical.hidden || candidate.slug !== canonical.slug) return undefined;
+  return { ...canonical };
 }
 
 export function lowHpPowerMultiplier(ability: Pick<MonsterAbility, 'slug'> | undefined, hp: number, maxHp: number, type: PokemonType): number {

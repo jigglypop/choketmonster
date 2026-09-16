@@ -9,6 +9,7 @@ import type { FieldPolicy } from '../../src/game/field';
 import { openExplorePanel } from './helpers/explore-panel';
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
 const policy = JSON.parse(readFileSync('public/data/openworld-policy.json', 'utf8')) as FieldPolicy;
+const modelFixture = readFileSync('data/local/pokemon-models-expanded/429de1288cea0d43f5b4f56305d2276e94239d65/152.glb');
 const targetUrl = process.env.KANTO_URL ?? '/';
 // Multiple world rebuilds, screenshots and device-save restores run against
 // the real API. Keep individual assertions bounded while allowing the whole
@@ -19,7 +20,7 @@ test.setTimeout(180000);
 test.beforeEach(async ({ page }) => {
   await page.route(/\.(?:glb|gltf)(?:\?.*)?$/, route => route.abort());
 });
-async function start(page: Page) {
+async function start(page: Page, requireModels = false) {
   await page.goto(targetUrl);
   const starter = page.locator('[data-starter="152"]');
   await expect(starter).toBeVisible({ timeout: 25000 });
@@ -35,7 +36,7 @@ async function start(page: Page) {
   await expect(page.getByRole('status')).toContainText('불러왔습니다');
   await openExplorePanel(page);
   await page.locator('#world-mode-manual').click();
-  await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 25000 });
+  await expect(page.locator('#ow-host')).toHaveAttribute(requireModels ? 'data-ready' : 'data-renderer-ready', 'true', { timeout: 25000 });
 }
 async function exported(page: Page) {
   await page.locator('[data-tab="lab"]').click();
@@ -110,7 +111,10 @@ test('Kanto controls, fixed early encounters, shop, region map and mobile layout
 
 test('inspect a visible wild, pin tracking, teleport and persist experience sharing', async ({ page }) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
-  await start(page);
+  // This control scenario needs selectable targets. A single validated GLB fixture
+  // keeps it deterministic; species-specific model correctness is covered elsewhere.
+  await page.route(/\.(?:glb|gltf)(?:\?.*)?$/, route => route.fulfill({ body: modelFixture, contentType: 'model/gltf-binary' }));
+  await start(page, true);
   await expect(page.locator('#world-exp-share')).toBeChecked();
   await page.locator('#world-exp-share').uncheck();
   await page.locator('.world-objective summary').click();
@@ -122,6 +126,8 @@ test('inspect a visible wild, pin tracking, teleport and persist experience shar
   await page.locator('#world-pause').click();
   await page.locator('#world-target-track').click();
   await expect(page.locator('#world-mode-auto')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#world-target-track')).toHaveText('목표 해제');
+  await expect(page.locator('#world-target-track')).toHaveAttribute('aria-pressed', 'true');
   await page.locator('#world-mode-manual').click();
   await page.screenshot({ path: 'artifacts/kanto-browser/selection.png' });
   await page.locator('#world-map-open').click();
@@ -131,8 +137,8 @@ test('inspect a visible wild, pin tracking, teleport and persist experience shar
   await expect(page.locator('#world-target')).toBeHidden();
   await page.locator('#save-now').click(); await expect(page.getByRole('status')).toContainText('이 기기에 저장했습니다.'); await page.reload();
   await expect(page.locator('#world-exp-share')).not.toBeChecked();
-  await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 25000 });
-  const save = await exported(page);
+  await expect(page.locator('#ow-host')).toHaveAttribute('data-renderer-ready', 'true', { timeout: 25000 });
+  const save = await storedDeviceSave(page) as { game: { experienceShare: boolean }; view: { openWorld: { visitedTownIds: string[] } } };
   expect(save.game.experienceShare).toBe(false);
   expect(save.view.openWorld.visitedTownIds).toContain('pallet');
   expect(errors).toEqual([]);

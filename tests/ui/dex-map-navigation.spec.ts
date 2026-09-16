@@ -8,11 +8,13 @@ import { OpenWorldSimulation } from '../../src/openworld/simulation';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
 const policy = JSON.parse(readFileSync('public/data/openworld-policy.json', 'utf8')) as FieldPolicy;
+const model152 = readFileSync('data/local/pokemon-models-expanded/429de1288cea0d43f5b4f56305d2276e94239d65/152.glb');
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/auth/me', route => route.fulfill({ json: { user: null } }));
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
-  await page.route(/\.(?:glb|gltf)(?:\?.*)?$/, route => route.abort());
+  await page.route(/\.(?:glb|gltf)(?:\?.*)?$/, route => /\/152\.glb(?:\?|$)/.test(route.request().url())
+    ? route.fulfill({ body: model152, contentType: 'model/gltf-binary' }) : route.abort());
 });
 
 async function start(page: Page) {
@@ -48,7 +50,9 @@ for (const viewport of [{ name: 'desktop', width: 1440, height: 1000 }, { name: 
     const dexState = await page.evaluate(() => ({ active: document.querySelector('[data-tab="dex"]')?.className, screen: document.querySelector('#screen')?.firstElementChild?.className, toast: document.querySelector('#toast')?.textContent }));
     expect(dexState.screen, JSON.stringify(dexState)).toContain('dex-page');
     await expect(page.locator('.dex-pagination')).toContainText('처음');
-    await expect(page.locator('.dex-pagination')).toContainText('마지막');
+    await expect(page.locator('.dex-pagination')).toContainText('맨 끝');
+    await expect(page.locator('.dex-card').first().locator('p')).toHaveCount(0);
+    await expect(page.locator('.dex-card').first()).toContainText('상세 보기');
     await page.locator('.dex-card').first().click();
     const dialog = page.locator('.model-dialog');
     await expect(dialog).toBeVisible();
@@ -61,7 +65,22 @@ for (const viewport of [{ name: 'desktop', width: 1440, height: 1000 }, { name: 
     await expect(dialog.locator('.dex-detail-nav span')).toHaveText(/(\d+) \/ \1/);
     await dialog.locator('.model-close').click();
 
+    await page.locator('[data-tab="shop"]').click();
+    const itemDetail = page.locator('.shop-card .item-detail').first();
+    await expect(itemDetail).not.toHaveAttribute('open', '');
+    await itemDetail.locator('summary').click();
+    await expect(itemDetail).toHaveAttribute('open', '');
+
     await page.locator('[data-tab="map"]').click();
+    const radar = page.locator('.world-radar');
+    await expect(radar).toHaveAttribute('data-size', 'medium');
+    const medium = await page.locator('#world-minimap').boundingBox();
+    await page.locator('#world-minimap-larger').click();
+    await expect(radar).toHaveAttribute('data-size', 'large');
+    const large = await page.locator('#world-minimap').boundingBox();
+    expect(large!.width).toBeGreaterThan(medium!.width);
+    await page.locator('#world-minimap-smaller').click();
+    await expect(radar).toHaveAttribute('data-size', 'medium');
     await page.locator('#world-map-open').click();
     await expect(page.locator('#world-map-dialog')).toBeVisible();
     await expect(page.locator('#world-map-content svg')).toHaveAttribute('aria-label', /도로·다리·특별 지점/);

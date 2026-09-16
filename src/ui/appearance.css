@@ -97,7 +97,7 @@ input[type=search], input[type=text], select { border: 1px solid var(--ui-border
 .dex-tools { flex-wrap: wrap; align-items: center; }
 .dex-tools input { background: white; }
 .dex-grid { grid-template-columns: repeat(auto-fill, minmax(175px, 1fr)); gap: 16px; }
-.dex-card { padding: 16px; min-height: 270px; gap: 6px; }
+.dex-card { padding: 16px; min-height: 210px; gap: 6px; }
 .dex-card > span, .dex-card small, .dex-card p { font-size: calc(12px * var(--ui-font-scale)); }
 .dex-card strong { font-size: calc(17px * var(--ui-font-scale)); }
 .collection-note, .center-banner { background: var(--ui-accent-soft); border: 1px solid var(--ui-border); color: var(--ui-text); }

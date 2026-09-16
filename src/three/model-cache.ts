@@ -35,11 +35,15 @@ function disposeTree(root: Object3D): void {
 
 function pruneModelCache(): void {
   if (modelCache.size <= MODEL_CACHE_LIMIT) return;
-  const candidates = [...modelCache.entries()]
-    .filter(([, entry]) => entry.refs === 0 && entry.gltf)
-    .sort((a, b) => a[1].lastUsed - b[1].lastUsed);
-  while (modelCache.size > MODEL_CACHE_LIMIT && candidates.length) {
-    const [url, entry] = candidates.shift()!;
+  while (modelCache.size > MODEL_CACHE_LIMIT) {
+    let oldest: [string, CachedModel] | undefined;
+    for (const candidate of modelCache) {
+      const entry = candidate[1];
+      if (entry.refs !== 0 || !entry.gltf || oldest && oldest[1].lastUsed <= entry.lastUsed) continue;
+      oldest = candidate;
+    }
+    if (!oldest) break;
+    const [url, entry] = oldest;
     if (entry.gltf) disposeTree(entry.gltf.scene);
     modelCache.delete(url);
   }
@@ -48,11 +52,28 @@ function pruneModelCache(): void {
 type LoadTask = { url: string; entry: CachedModel; resolve(value: GLTF): void; reject(error: unknown): void };
 const loadQueue: LoadTask[] = [];
 let activeLoads = 0;
+let drainScheduled = false;
 const failedModels = new Map<string, number>();
 /** Explicit retries bypass the cooldown, without evicting live geometry or in-flight work. */
 export function retryFailedModels(): void { failedModels.clear(); }
+function isPriorityRemote(url: string): boolean { return /raw\.githubusercontent\.com/.test(url); }
+function enqueueLoad(task: LoadTask): void {
+  // Preserve the established remote-source priority without repeatedly sorting
+  // the whole queue when several creatures enter view together.
+  const priority = isPriorityRemote(task.url);
+  let index = loadQueue.length;
+  if (priority) {
+    const firstNormal = loadQueue.findIndex(item => !isPriorityRemote(item.url));
+    if (firstNormal >= 0) index = firstNormal;
+  }
+  loadQueue.splice(index, 0, task);
+}
+function scheduleModelQueueDrain(): void {
+  if (drainScheduled) return;
+  drainScheduled = true;
+  queueMicrotask(() => { drainScheduled = false; drainModelQueue(); });
+}
 function drainModelQueue(): void {
-  loadQueue.sort((a, b) => Number(/raw\.githubusercontent\.com/.test(b.url)) - Number(/raw\.githubusercontent\.com/.test(a.url)));
   while (activeLoads < 3 && loadQueue.length) {
     const task = loadQueue.shift()!;
     if (!task.entry.refs) {
@@ -88,12 +109,12 @@ export function acquireModel(url: string): { promise: Promise<GLTF>; release(): 
     const promise = new Promise<GLTF>((yes, no) => { resolve = yes; reject = no; });
     entry = { promise, refs: 0, lastUsed: performance.now() };
     modelCache.set(url, entry);
-    loadQueue.push({ url, entry, resolve, reject });
+    enqueueLoad({ url, entry, resolve, reject });
   }
   entry.refs++;
   entry.lastUsed = performance.now();
   const acquired = entry;
-  queueMicrotask(drainModelQueue);
+  scheduleModelQueueDrain();
   let released = false;
   return { promise: entry.promise, release() {
     if (released) return; released = true;

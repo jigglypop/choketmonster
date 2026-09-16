@@ -9,7 +9,7 @@ import type { MapPosition } from '../game/map';
 import { pokemonModelUrl } from '../game/assets';
 import { selectPokemonMotionClip, type PokemonMotionKind } from '../data/model-motion';
 import { getSpecies } from '../data/pokemon';
-import { normalizePokemonMaterials } from '../openworld/pokemon-materials';
+import { disposeNormalizedPokemonMaterials, normalizePokemonMaterials } from '../openworld/pokemon-materials';
 
 type Actor = { group: THREE.Group; model: THREE.Object3D; mixer: THREE.AnimationMixer; clips: THREE.AnimationClip[]; action?: THREE.AnimationAction; target: THREE.Vector3; heading: number; restingY: number; id: number };
 type SceneMode = 'map' | 'battle' | 'specimen';
@@ -287,6 +287,7 @@ export class PokemonScene {
   dispose() { this.disposed = true; this.renderer.setAnimationLoop(null); this.observer.disconnect(); this.controls.dispose(); this.clearActors(); for (const lease of this.leases.values()) lease.release(); this.leases.clear(); this.renderer.dispose(); }
   private removeActor(actor: Actor) {
     actor.mixer.stopAllAction(); actor.mixer.uncacheRoot(actor.model); this.scene.remove(actor.group);
+    disposeNormalizedPokemonMaterials(actor.model);
     const skeletons = new Set<THREE.Skeleton>();
     actor.model.traverse(object => { if (object instanceof THREE.SkinnedMesh) skeletons.add(object.skeleton); });
     for (const skeleton of skeletons) skeleton.dispose();

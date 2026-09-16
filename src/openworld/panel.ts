@@ -64,6 +64,7 @@ export class OpenWorldPanel {
   };
   private miniTerrain?: HTMLCanvasElement;
   private miniRegion?: string;
+  private minimapSize: 'small' | 'medium' | 'large' = 'medium';
   private cameraHeading = Math.PI;
   private previousBattle?: GameState['battle'];
   private guideCache?: { key: string; guide: DestinationGuide };
@@ -112,7 +113,7 @@ export class OpenWorldPanel {
       <div class="world-gym" id="world-gym"></div>
       <details class="world-objective"><summary><span>주변 포켓몬 ▾</span><strong id="world-objective">첫 야생 포켓몬 발견하기</strong></summary><small>선택해 정보를 보고 추적·배틀하세요.</small><div id="world-nearby"></div></details>
       </div></details>
-      <aside class="world-radar"><button id="world-map-open" aria-label="지역 전체 지도 열기"><span class="world-minimap-frame"><canvas id="world-minimap" width="180" height="180" aria-label="카메라 방향으로 회전하는 월드 지도"></canvas><b id="world-minimap-heading" aria-hidden="true">북</b></span></button><span id="world-position"></span><small id="world-map-caption">지역 지도 ↗</small></aside>
+      <aside class="world-radar" data-size="${this.minimapSize}"><button id="world-map-open" aria-label="지역 전체 지도 열기"><span class="world-minimap-frame"><canvas id="world-minimap" width="180" height="180" aria-label="카메라 방향으로 회전하는 월드 지도"></canvas><b id="world-minimap-heading" aria-hidden="true">북</b></span></button><div class="world-minimap-controls" role="group" aria-label="미니맵 크기"><button id="world-minimap-smaller" type="button" aria-label="미니맵 축소" ${this.minimapSize === 'small' ? 'disabled' : ''}>−</button><span id="world-minimap-size">${this.minimapSize === 'small' ? '작게' : this.minimapSize === 'large' ? '크게' : '보통'}</span><button id="world-minimap-larger" type="button" aria-label="미니맵 확대" ${this.minimapSize === 'large' ? 'disabled' : ''}>＋</button></div><span id="world-position"></span><small id="world-map-caption">지역 지도 ↗</small></aside>
       <button id="world-next-guide" class="world-next-guide" aria-label="길안내 · 다음 목적지 지도 열기"></button>
       <div id="world-cave-exits" class="world-cave-exits" hidden></div>
       <div class="world-lower-hud">
@@ -203,7 +204,11 @@ export class OpenWorldPanel {
       const lead = game.player.team[firstUsableRegionalTeamIndex(game, this.simulation.regionId)] ?? game.player.team[0];
       this.options.editMoves?.(lead.instanceId);
     };
-    this.button('#world-target-track').onclick = () => { this.simulation.trackSelected(); this.options.changed(); this.refresh(); };
+    this.button('#world-target-track').onclick = () => {
+      if (this.simulation.trackingSelected) this.simulation.selectWild(null);
+      else this.simulation.trackSelected();
+      this.options.changed(); this.refresh();
+    };
     this.button('#world-target-battle').onclick = () => { const id = this.simulation.selectedWildId; if (id) this.encounter(id); };
     this.button('#world-target-clear').onclick = () => { this.simulation.selectWild(null); this.options.changed(); this.refresh(); };
     this.host.querySelector('#world-moves')!.addEventListener('click', event => {
@@ -222,6 +227,8 @@ export class OpenWorldPanel {
       this.options.changed(); this.refresh();
     });
     this.button('#world-map-open').onclick = () => { this.drawRegionMap(); this.host!.querySelector<HTMLDialogElement>('#world-map-dialog')!.showModal(); };
+    this.button('#world-minimap-smaller').onclick = () => this.resizeMinimap(-1);
+    this.button('#world-minimap-larger').onclick = () => this.resizeMinimap(1);
     this.button('#world-next-guide').onclick = () => this.button('#world-map-open').click();
     this.button('#world-map-close').onclick = () => this.host!.querySelector<HTMLDialogElement>('#world-map-dialog')!.close();
     this.host.querySelectorAll<HTMLButtonElement>('[data-map-orientation]').forEach(button => button.onclick = () => {
@@ -663,6 +670,19 @@ export class OpenWorldPanel {
     this.html('#world-minimap-heading', compassLabel(current));
   }
 
+  private resizeMinimap(direction: -1 | 1): void {
+    const sizes = ['small', 'medium', 'large'] as const;
+    const next = Math.max(0, Math.min(sizes.length - 1, sizes.indexOf(this.minimapSize) + direction));
+    this.minimapSize = sizes[next];
+    const radar = this.host?.querySelector<HTMLElement>('.world-radar');
+    if (!radar) return;
+    radar.dataset.size = this.minimapSize;
+    const labels = { small: '작게', medium: '보통', large: '크게' } as const;
+    this.html('#world-minimap-size', labels[this.minimapSize]);
+    this.button('#world-minimap-smaller').disabled = next === 0;
+    this.button('#world-minimap-larger').disabled = next === sizes.length - 1;
+  }
+
   private mapPoint(x: number, z: number, size = 240): { x: number; y: number } {
     return rotateMapPoint(this.mapCoordinate(x, size), this.mapCoordinate(z, size), size, cameraMapRotation(this.cameraHeading));
   }
@@ -831,6 +851,8 @@ export class OpenWorldPanel {
       const modelStatus = world.modelStatus(target.id);
       this.html('#world-target-info', `<strong>${escape(info.name)} · Lv.${target.level}</strong><small><b>${modelStatus === 'failed' ? '모델 오류 · 정지됨' : modelStatus === 'loading' ? '모델 확인 중 · 정지됨' : world.trackingSelected ? '추적 중' : '선택됨'}</b> · ${distance.toFixed(1)}m · HP ${targetHp} / ${targetHp}</small>`);
       this.html('#world-target-detail', `${info.types.map(type => types[type]).join(' / ')} · 이동 ${movementSpeed(target.speciesId, target.level).toFixed(1)}m/s`);
+      this.button('#world-target-track').textContent = world.trackingSelected ? '목표 해제' : '목표로 고정';
+      this.button('#world-target-track').setAttribute('aria-pressed', String(world.trackingSelected));
       this.button('#world-target-track').disabled = Boolean(modelStatus);
       this.button('#world-target-battle').disabled = Boolean(modelStatus);
       this.button('#world-target-battle').textContent = modelStatus ? '모델 확인 필요' : world.canEngageWild(target.id) ? '배틀' : '접근 후 배틀';
@@ -917,7 +939,9 @@ export class OpenWorldPanel {
       ctx.fillStyle = '#45d7ec'; ctx.strokeStyle = '#103b48'; ctx.lineWidth = 1;
       const marker = this.mapPoint(player.x, player.z, size); ctx.beginPath(); ctx.arc(marker.x, marker.y, player.id === this.trackedPlayerId ? 4 : 3, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     }
-    const center = this.mapPoint(this.simulation.player.x, this.simulation.player.z, size); ctx.fillStyle = '#e0543e'; ctx.strokeStyle = '#fff8dd'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(center.x, center.y - 7); ctx.lineTo(center.x + 5, center.y + 5); ctx.lineTo(center.x, center.y + 2); ctx.lineTo(center.x - 5, center.y + 5); ctx.closePath(); ctx.fill(); ctx.stroke();
+    const center = this.mapPoint(this.simulation.player.x, this.simulation.player.z, size);
+    ctx.save(); ctx.shadowColor = '#071f1a'; ctx.shadowBlur = 5; ctx.fillStyle = '#fff'; ctx.strokeStyle = '#173f39'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(center.x, center.y - 9); ctx.lineTo(center.x + 7, center.y + 7); ctx.lineTo(center.x, center.y + 3); ctx.lineTo(center.x - 7, center.y + 7); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
     this.html('#world-minimap-heading', compassLabel(nearestMapOrientation(this.cameraHeading)));
   }
 
