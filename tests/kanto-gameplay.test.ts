@@ -75,43 +75,44 @@ describe('Kanto player flows', () => {
     const loaded = unpackSave(save, graph), restored = new OpenWorldSimulation(graph, loaded.game, world.seed, loaded.view.openWorld, policy);
     const memory = structuredClone(loaded.game.captureOffer!.brain), balls = loaded.game.inventory['poke-ball'];
     expect(restored.captureVictory()).toBe(true); expect(restored.captureVictory()).toBe(false);
-    expect(loaded.game.inventory['poke-ball']).toBe(balls - 1);
+    expect(loaded.game.inventory['poke-ball']).toBe(balls);
     const captured = loaded.game.player.team.find(mon => mon.instanceId === enemyId)!;
     expect(captured.hp).toBe(1); expect(captured.brain).toEqual(memory); expect(loaded.game.captureOffer).toBeUndefined();
     expect(() => validateGame(loaded.game)).not.toThrow();
   });
 
-  it('passes defeated wild Pokemon without a ball and keeps automatic hunting active', () => {
+  it('normalizes a legacy zero stock and auto-catches with the unlimited ball', () => {
     const { game, world } = setup(38217);
     game.inventory['poke-ball'] = 0; game.inventory['great-ball'] = 0; game.inventory['ultra-ball'] = 0;
-    world.setControlMode('auto'); prepareWin(world); world.step({ deltaSeconds: 1 });
+    world.setControlMode('auto'); world.setAutoCapture(true); prepareWin(world); world.step({ deltaSeconds: 1 });
     expect(game.battle).toBeUndefined(); expect(game.captureOffer).toBeUndefined();
     expect(world.autoHunt).toBe(true); expect(world.controlMode).toBe('auto');
-    expect(game.logs.at(-1)).toContain('놓아주었습니다');
+    expect(game.inventory['poke-ball']).toBe(1); expect(game.player.team).toHaveLength(2);
     world.step({ deltaSeconds: .25 });
     expect(world.selectedWildId).toBeDefined();
   });
 
-  it('does not leave a blocking victory offer in manual mode without a ball', () => {
+  it('keeps a manual victory offer capturable after a legacy zero stock', () => {
     const { game, world } = setup(38219);
     game.inventory['poke-ball'] = 0; game.inventory['great-ball'] = 0; game.inventory['ultra-ball'] = 0;
     prepareWin(world); world.step({ deltaSeconds: 1 });
-    expect(game.captureOffer).toBeUndefined(); expect(world.controlMode).toBe('manual');
-    expect(world.startEncounter(world.entities.find(entity => entity.kind === 'wild')!.id)).toBe(true);
+    expect(game.captureOffer).toBeDefined(); expect(world.controlMode).toBe('manual');
+    expect(world.captureVictory()).toBe(true); expect(game.inventory['poke-ball']).toBe(1);
   });
 
-  it('releases a restored victory offer when its last ball is gone', () => {
+  it('keeps a restored victory offer when legacy stock is zero', () => {
     const { game, world } = setup(38220);
     prepareWin(world); world.step({ deltaSeconds: 1 });
     expect(game.captureOffer).toBeDefined();
     const restored = restoreOpenWorld(graph, serializeOpenWorld(game, world), policy);
     restored.game.inventory['poke-ball'] = 0; restored.game.inventory['great-ball'] = 0; restored.game.inventory['ultra-ball'] = 0;
     restored.simulation.step({ deltaSeconds: .25 });
-    expect(restored.game.captureOffer).toBeUndefined();
-    expect(restored.game.logs.at(-1)).toContain('놓아주었습니다');
+    expect(restored.game.captureOffer).toBeDefined();
+    expect(restored.simulation.captureVictory()).toBe(true);
+    expect(restored.game.inventory['poke-ball']).toBe(1);
   });
 
-  it('continues a normal battle if a queued capture loses its last ball', () => {
+  it('continues a queued capture with the unlimited ball after legacy stock reaches zero', () => {
     const { game, world } = setup(38218);
     enterWildRoute(world);
     const target = world.entities.find(entity => entity.kind === 'wild')!;
@@ -120,7 +121,7 @@ describe('Kanto player flows', () => {
     game.inventory['poke-ball'] = 0; game.inventory['great-ball'] = 0; game.inventory['ultra-ball'] = 0;
     const turn = game.battle!.turn, result = world.step({ deltaSeconds: 1 });
     expect(result.events.find(event => event.type === 'battle-turn')?.result.outcome).not.toBe('ran');
-    expect(game.battle?.turn ?? turn + 1).toBe(turn + 1);
+    expect(game.battle?.turn ?? turn + 1).toBe(turn + 1); expect(game.inventory['poke-ball']).toBe(1);
     expect(world.escaping).toBe(false); expect(world.controlMode).toBe('manual');
   });
 
@@ -130,7 +131,7 @@ describe('Kanto player flows', () => {
     game.inventory['ultra-ball'] = 2; const balls = game.inventory['poke-ball'];
     world.setAutoCapture(true); prepareWin(world); world.step({ deltaSeconds: 1 });
     expect(game.captureOffer).toBeUndefined(); expect(game.player.box).toHaveLength(1);
-    expect(game.inventory['poke-ball']).toBe(balls + 2 - 1); expect(game.inventory['ultra-ball']).toBe(0);
+    expect(game.inventory['poke-ball']).toBe(balls + 2); expect(game.inventory['ultra-ball']).toBe(0);
     expect(game.player.box[0].brain?.graph.id).toBe(graph.id);
   });
 

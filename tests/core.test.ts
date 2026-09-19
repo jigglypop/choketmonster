@@ -33,6 +33,18 @@ describe('deterministic simulation and memory', () => {
     expect(brain.state.readout).toEqual(learned.readout);
     expect(brain.state.updates).toBe(learned.updates);
   });
+  it('keeps the complete inference state identical when learning cannot update a decision', () => {
+    const input = Array.from({ length: 12 }, (_, index) => Math.sin(index));
+    for (const pendingDecision of [false, true]) {
+      const original = new Brain(73);
+      if (pendingDecision) original.act(input, null, false, .2, 4);
+      for (const [learning, reward] of [[false, 2], [true, null], ...(!pendingDecision ? [[true, 2]] : [])] as [boolean, number | null][]) {
+        const candidate = Brain.restore(original.snapshot()), reference = Brain.restore(original.snapshot());
+        expect(candidate.act(input, reward, learning, .2, 4)).toBe(reference.act(input, null, false, .2, 4));
+        expect(candidate.snapshot()).toEqual(reference.snapshot());
+      }
+    }
+  });
   it('has no unseeded variation, NaNs, shared creature memory, or mutable terminal worlds', () => {
     const a = new Brain(5), b = new Brain(5);
     expect(train(a, 4, 1000)).toEqual(train(b, 4, 1000));

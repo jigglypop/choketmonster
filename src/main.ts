@@ -25,10 +25,11 @@ import {
   actBattle, buyItem, createGame,
   evolutionItemUses,
   depositMonster, evolve, heal, individualValues, isMonsterInBattle, monsterAbility, mergeDuplicateMonster, mergeDuplicateMonsters, previewDuplicateMerge, releaseMonster, reorderMonsterMoves, availableMonsterMoveIds, replaceMonsterMove, recoverableAttackMoveIds, recoverAttackMove, ITEM_LABELS, ITEM_PRICES, SHOP_ITEMS, useItem, withdrawMonster,
-  type BallItem, type BattleAction, type GameState, type InventoryItem, type Monster,
+  type BattleAction, type GameState, type InventoryItem, type Monster,
 } from './game/engine';
 import { BRAIN_ASSUMPTIONS, ConnectomeController } from './game/connectome';
-import { chooseServerBrains, initializeServerBrain, lastServerDecision, setServerBrainScope, usesServerBrain } from './game/server-brain';
+import { chooseServerBrains, getServerConnectomeInfo, initializeServerBrain, lastServerDecision, setServerBrainScope, usesServerBrain } from './game/server-brain';
+import { startupLoading } from './ui/loading-screen';
 import { CAMPAIGN_TRAINERS } from './game/campaign';
 import { isCampaignRegion, monsterRegionalUseReason, regionalLevelCap } from './game/regional-policy';
 import { defaultView, getSaveStorageStatus, onSaveStorageStatus, packSave, unpackSave, writeSave, type ViewState } from './game/storage';
@@ -253,11 +254,11 @@ function renderBattle() {
   $('#screen').innerHTML = `<div class="battle-page page"><div class="battle-top"><div><span class="kicker">${battle.kind.toUpperCase()} BATTLE · TURN ${battle.turn}</span><h1>${escapeHtml(battleTitle)}</h1></div><div class="brain-controls"><label><input id="learning" type="checkbox" ${view.learning ? 'checked' : ''}> 기술 학습</label><label class="switch"><input id="auto" type="checkbox" ${autoBattle ? 'checked' : ''}><span></span> 커넥톰 자동 배틀</label><button id="brain-turn" class="primary">회로로 한 턴</button></div></div>
     <section class="battle-stage panel"><div class="opponent combatant"><div class="battle-info"><span>Lv.${enemy.level} ${typesHtml(eView.speciesId)}</span><h2>${escapeHtml(enemy.nickname)}</h2><div class="hp"><i style="width:${eHp}%"></i></div><small>HP ${enemy.hp}/${eView.stats.hp}${enemy.status ? ` · ${enemy.status}` : ''}</small></div><img src="${eSpecies.frontSprite}" alt="${eSpecies.name}"></div><div class="battle-ground"></div><div class="player combatant"><img src="${pSpecies.backSprite}" alt="${pSpecies.name} 뒷모습"><div class="battle-info"><span>Lv.${player.level} ${typesHtml(pView.speciesId)}</span><h2>${escapeHtml(player.nickname)}</h2><div class="hp"><i style="width:${pHp}%"></i></div><small>HP ${player.hp}/${pView.stats.hp}${player.status ? ` · ${player.status}` : ''}</small></div></div></section>
     <div class="battle-console"><section class="move-grid">${getMoveLayout({ ...player, moves: pView.moves }).map(slot => { const move = getMove(slot.moveId); return `<button data-battle-move="${slot.sourceIndex}" ${brainTurnPending ? 'disabled' : ''}><span>${typeLabel[move.type]} · ${move.damageClass === 'status' ? '변화' : move.power}</span><strong>${move.name}</strong><small>명중 ${move.accuracy || '—'}</small></button>`; }).join('') || '<button data-battle-wait="1"><strong>기다리기</strong></button>'}</section>
-      <aside class="battle-menu"><div class="ball-row"><select id="ball-select"><option value="poke-ball" ${game.inventory['poke-ball'] <= 0 ? 'disabled' : ''}>${ITEM_LABELS['poke-ball']} ×${game.inventory['poke-ball']}</option></select><button id="catch" ${battle.kind !== 'wild' ? 'disabled' : ''}>잡기</button></div><button id="battle-heal">상처약 사용 ×${game.inventory.potion}</button><button id="switch-mon">포켓몬 교체</button><button id="run" ${!battle.canRun ? 'disabled' : ''}>도망치기</button><p><b>회로:</b> ${escapeHtml(lastDecision)}</p></aside></div>
+      <aside class="battle-menu"><div class="ball-row"><span class="infinite-ball">${ITEM_LABELS['poke-ball']} ∞</span><button id="catch" ${battle.kind !== 'wild' ? 'disabled' : ''}>잡기</button></div><button id="battle-heal">상처약 사용 ×${game.inventory.potion}</button><button id="switch-mon">포켓몬 교체</button><button id="run" ${!battle.canRun ? 'disabled' : ''}>도망치기</button><p><b>회로:</b> ${escapeHtml(lastDecision)}</p></aside></div>
     <section class="battle-log panel">${game.logs.slice(-5).reverse().map(log => `<p>${escapeHtml(log)}</p>`).join('')}</section></div>`;
   document.querySelectorAll<HTMLButtonElement>('[data-battle-move]').forEach(b => b.onclick = () => submitTurn({ type: 'move', index: Number(b.dataset.battleMove) }, false)); const wait = document.querySelector<HTMLButtonElement>('[data-battle-wait]'); if (wait) wait.onclick = () => submitTurn({ type: 'wait' }, false);
   $('#learning').onchange = e => { view.learning = (e.target as HTMLInputElement).checked; queueSave(); }; $('#auto').onchange = e => { autoBattle = (e.target as HTMLInputElement).checked; if (autoBattle) scheduleAutoTurn(); }; $('#brain-turn').onclick = performBrainTurn;
-  $('#catch').onclick = () => submitTurn({ type: 'catch', ball: $<HTMLSelectElement>('#ball-select').value as BallItem }, false); $('#battle-heal').onclick = () => submitTurn({ type: 'item', item: game!.inventory.potion > 0 ? 'potion' : 'super-potion' }, false); $('#run').onclick = () => submitTurn({ type: 'run' }, false); $('#switch-mon').onclick = showSwitchMenu;
+  $('#catch').onclick = () => submitTurn({ type: 'catch', ball: 'poke-ball' }, false); $('#battle-heal').onclick = () => submitTurn({ type: 'item', item: game!.inventory.potion > 0 ? 'potion' : 'super-potion' }, false); $('#run').onclick = () => submitTurn({ type: 'run' }, false); $('#switch-mon').onclick = showSwitchMenu;
   controller.ensure(player); controller.ensure(enemy);
   getPokemonScene().showBattle($('.battle-stage'), game);
 }
@@ -718,18 +719,28 @@ document.querySelectorAll<HTMLButtonElement>('[data-starter]').forEach(b => b.on
 $<HTMLInputElement>('#import-file').onchange = async e => { const input = e.target as HTMLInputElement, file = input.files?.[0]; if (!file) return; try { if (file.size > 20_000_000) throw new Error('저장 파일은 20MB 이하여야 합니다.'); const loaded = unpackSave(await file.text(), controller.graph); captureWorld(); if (game) await writeSave(packSave(game, controller.graph, view), 'backup-before-import'); game = loaded.game; view = { ...loaded.view, rewards: (loaded.view as PersistentView).rewards ?? {} }; selectedMonsterId = game.player.team[0].instanceId; prepareWorld(); tab = 'map'; render(); await saveNow(); notify('저장 파일을 불러왔습니다. 이전 모험은 백업했습니다.'); } catch (error) { notify(error instanceof Error ? error.message : '저장 파일을 읽지 못했습니다.', true); } finally { input.value = ''; } };
 document.addEventListener('visibilitychange', () => { if (document.hidden) void saveNow(); });
 window.addEventListener('pagehide', () => { void saveNow(); });
-async function boot() { try { controller = await ConnectomeController.load();
-  await initializeServerBrain();
-  try { const response = await fetch('/api/connectome', { headers: { accept: 'application/json' }, credentials: 'same-origin' }); if (response.ok) serverConnectome = await response.json() as typeof serverConnectome; } catch { serverConnectome = null; }
-  const policyResponse = await fetch('/data/openworld-policy.json');
-  if (!policyResponse.ok) throw new Error('자율 필드의 신경 정책을 읽지 못했습니다.');
-  fieldPolicy = await policyResponse.json() as FieldPolicy;
-  const originalPolicyResponse = await fetch('/data/field-policy.json');
-  if (!originalPolicyResponse.ok) throw new Error('기존 이동 정책을 확인하지 못했습니다.');
-  originalFieldPolicy = await originalPolicyResponse.json() as FieldPolicy;
-  const legacyPolicyResponse = await fetch('/data/openworld-policy-legacy.json');
-  if (!legacyPolicyResponse.ok) throw new Error('기존 관동 이동 정책을 확인하지 못했습니다.');
-  legacyOpenWorldPolicy = await legacyPolicyResponse.json() as FieldPolicy;
+async function boot() { try {
+  let completed = 0;
+  startupLoading?.status('Male CNS 회로와 이동 정책을 확인하고 있습니다.');
+  const tracked = <T>(task: Promise<T>) => task.then(result => {
+    startupLoading?.stage('connectome', ++completed / 5 * 100, `회로·정책 ${completed} / 5 단계 확인`);
+    return result;
+  });
+  const policy = async (path: string, message: string): Promise<FieldPolicy> => {
+    const response = await fetch(path, { signal: AbortSignal.timeout(20_000) });
+    if (!response.ok) throw new Error(message);
+    return response.json() as Promise<FieldPolicy>;
+  };
+  [controller, fieldPolicy, originalFieldPolicy, legacyOpenWorldPolicy] = await Promise.all([
+    tracked(ConnectomeController.load()),
+    tracked(policy('/data/openworld-policy.json', '자율 필드의 신경 정책을 읽지 못했습니다.')),
+    tracked(policy('/data/field-policy.json', '기존 이동 정책을 확인하지 못했습니다.')),
+    tracked(policy('/data/openworld-policy-legacy.json', '기존 관동 이동 정책을 확인하지 못했습니다.')),
+    tracked(initializeServerBrain()),
+  ]);
+  serverConnectome = getServerConnectomeInfo();
+  startupLoading?.stage('connectome', 100, serverConnectome?.available ? 'Male CNS 부분 회로 · 서버 회로 연결 완료' : 'Male CNS 부분 회로 준비 완료');
+  startupLoading?.status('저장된 모험을 확인하고 있습니다.');
   const runtime = createFieldRuntime(() => { if (!switchingAccount && !trading && tab === 'map') { try { worldPanel?.tick(); } catch (error) { if (worldPanel) worldPanel.paused = true; notify(error instanceof Error ? error.message : '월드 실행 오류', true); } } }, 250);
   await runtime.start();
   accountPanel = mountAccountPanel({ container: $('#account-controls'), notify,
@@ -764,5 +775,6 @@ async function boot() { try { controller = await ConnectomeController.load();
   });
   $<HTMLButtonElement>('[data-load-account]').onclick = () => accountPanel?.open();
   await accountPanel.ready;
-} catch (error) { $('#screen').innerHTML = `<section class="fatal"><span>!</span><h1>게임을 시작할 수 없습니다</h1><p>${escapeHtml(error instanceof Error ? error.message : error)}</p><button onclick="location.reload()">다시 시도</button></section>`; } }
+  startupLoading?.remove();
+} catch (error) { startupLoading?.fail(`게임을 시작할 수 없습니다. ${error instanceof Error ? error.message : String(error)}`); } }
 void boot();

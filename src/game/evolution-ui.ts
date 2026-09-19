@@ -10,7 +10,7 @@ const escapeHtml = (value: unknown) => String(value).replace(/[&<>'"]/g, charact
 function routeButton(state: GameState, monster: Monster, evolution: Evolution, item?: InventoryItem): string {
   const target = getSpecies(evolution.target), route = evolutionRoute(state, monster, evolution, item);
   const requirement = item ? `${ITEM_LABELS[item]} ×1 · 보유 ${state.inventory[item]}개`
-    : route?.shed ? `빈 팀 자리 · 몬스터볼 ×1 · 보유 ${state.inventory['poke-ball']}개`
+    : route?.shed ? '빈 팀 자리 · 몬스터볼 ∞'
       : evolution.method === 'level' ? `Lv.${evolution.level ?? 1} · 도구 소비 없음` : '원본 진화 조건 · 도구 소비 없음';
   return `<button data-evolve="${evolution.target}"${item ? ` data-evolution-item="${item}"` : ''} ${route ? '' : 'disabled'}><img src="${target.frontSprite}" alt=""><span><b>${escapeHtml(target.name)}</b><small>${escapeHtml(requirement)}</small><em>${route ? '준비 완료' : '조건 부족'}</em></span></button>`;
 }

@@ -407,3 +407,34 @@
 .world-map-point.traversable{pointer-events:bounding-box}.world-map-player,.world-map-compass,.world-map-legend,.world-map-roads,#world-map-content svg>rect{pointer-events:none}
 .world-map-label.secondary{opacity:0}.world-map-point:hover .world-map-label.secondary,.world-map-point:focus .world-map-label.secondary{opacity:1}
 .world-map-point.blocked{opacity:1;cursor:help}.world-map-point.blocked circle{fill:#f9c1a6;stroke:#a63726;stroke-width:1.6;stroke-dasharray:2 1}.world-map-point.blocked:focus circle{stroke:#60201a;stroke-width:2.5}.kanto-zone-list>button.locked{background:#fff1e4;border-left:4px solid #b84b2a}.kanto-zone-list>button.locked small{color:#7a3222;font-weight:600}
+
+.world-shop>summary{white-space:nowrap;word-break:keep-all}
+.world-switch{margin:8px 0;border:1px solid rgba(255,255,255,.18);border-radius:9px;background:rgba(9,38,31,.42)}
+.world-switch[hidden]{display:none}.world-switch>summary{padding:8px 10px;cursor:pointer;font-size:calc(12px * var(--ui-font-scale, 1));font-weight:800;color:#ffe5a5}
+#world-switch-options{display:grid;gap:5px;padding:0 7px 7px}
+#world-switch-options button{display:grid;grid-template-columns:36px minmax(0,1fr) auto;align-items:center;gap:7px;min-height:44px;padding:5px 7px;border:1px solid rgba(255,255,255,.18);border-radius:8px;background:rgba(38,82,68,.62);color:#fff8e8;text-align:left}
+#world-switch-options img{width:34px;height:34px;object-fit:contain;image-rendering:pixelated}
+#world-switch-options span,#world-switch-options strong,#world-switch-options small{display:block;min-width:0}
+#world-switch-options strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:calc(12px * var(--ui-font-scale, 1))}
+#world-switch-options small{margin-top:2px;color:#c9ddd4;font-size:calc(11px * var(--ui-font-scale, 1))}
+#world-switch-options b{font-size:calc(11px * var(--ui-font-scale, 1));color:#ffe098;white-space:nowrap}
+#world-switch-options button:disabled{opacity:.62}
+.world-map-zoom{display:flex;gap:4px}.world-map-zoom button{min-width:38px;padding:7px}#world-map-reset{min-width:72px}
+#world-map-content svg{cursor:crosshair;touch-action:none;user-select:none}#world-map-content svg:active{cursor:grabbing}
+@media(max-width:720px){.world-map-zoom{justify-content:center;width:100%}.world-map-zoom button{flex:1}}
+.world-map-roads .world-map-road-hit{pointer-events:stroke;stroke:transparent;stroke-width:10;cursor:pointer}
+
+/* Compact route chip stays beside the radar; one tap reveals the detail on small screens. */
+.adventure #world-next-guide{top:calc(var(--app-header-height,0px) + 16px);left:auto;right:calc(32px + var(--world-radar-width,164px));transform:none;width:min(250px,calc(100vw - var(--world-radar-width,164px) - 380px));max-width:250px;min-width:150px;min-height:44px;padding:7px 9px;gap:7px;border-radius:11px}
+.adventure #world-next-guide .world-guide-symbol{width:20px;height:20px;font-size:18px}
+.adventure #world-next-guide>span:nth-child(2){gap:1px}
+.adventure #world-next-guide small{font-size:calc(10px * var(--ui-font-scale,1));line-height:1.2}
+.adventure #world-next-guide strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:calc(12px * var(--ui-font-scale,1));line-height:1.25}
+.adventure #world-next-guide .world-guide-detail{display:none;font-size:calc(10px * var(--ui-font-scale,1));line-height:1.3;color:#dce8df}
+.adventure #world-next-guide>b{font-size:10px;white-space:nowrap}
+@media(max-width:900px){
+  .adventure #world-next-guide{top:calc(var(--app-header-height,0px) + 12px);right:calc(24px + var(--world-radar-width,126px));width:min(170px,calc(100vw - var(--world-radar-width,126px) - 48px));min-width:120px;max-width:220px;min-height:44px;padding:6px 8px}
+  .adventure #world-next-guide[data-expanded=true]{width:min(220px,calc(100vw - var(--world-radar-width,126px) - 36px));padding-block:8px}
+  .adventure #world-next-guide[data-expanded=true] .world-guide-detail{display:block}
+  .adventure #world-next-guide[data-expanded=true] strong{white-space:normal}
+}

@@ -41,7 +41,13 @@ async function load(page: Page, save: SaveEnvelope, expectedScene: string, expec
   await page.locator('[data-starter="152"]').click();
   await expect(page.locator('#starter-dialog')).not.toBeVisible({ timeout: 15_000 });
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 45_000 });
-  await page.locator('#import-file').setInputFiles({ name: 'cave.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(save)) });
+  const importFile = page.locator('#import-file');
+  await importFile.setInputFiles({ name: 'cave.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(save)) });
+  // A surface save has the same scene id as the starter session. Wait for the
+  // asynchronous backup/import/save transaction itself, rather than letting
+  // the already-matching data-scene attribute race ahead while the old world moves.
+  await expect(importFile).toHaveValue('', { timeout: 120_000 });
+  await expect(page.locator('#toast')).toContainText('저장 파일을 불러왔습니다.');
   await expect(page.locator('#ow-host')).toHaveAttribute('data-scene', expectedScene, { timeout: 45_000 });
   if (expectedPosition) await expect(page.locator('#world-position')).toHaveText(expectedPosition, { timeout: 45_000 });
   await openExplorePanel(page);
@@ -112,7 +118,7 @@ test('cave renders Pokemon and its environment without human field NPCs', async 
   expect(composition.renderer).toMatchObject({ trainers: [] });
   const surfaces = composition.renderer!.caveSurfaces;
   expect(surfaces.map(surface => surface.name).sort()).toEqual(['cave-floor', 'cave-wall:outline']);
-  expect(new Set(surfaces.map(surface => surface.material)).size).toBe(1);
+  expect(new Set(surfaces.map(surface => surface.material)).size).toBe(2);
   expect(surfaces.every(surface => surface.albedoLoaded && surface.normalLoaded && surface.roughnessLoaded && surface.tiled)).toBe(true);
   expect(composition.renderer!.caveGeology).toEqual(expect.arrayContaining([
     expect.objectContaining({ name: 'cave-rock-strata', count: expect.any(Number) }),

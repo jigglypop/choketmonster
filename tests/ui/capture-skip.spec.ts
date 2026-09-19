@@ -6,7 +6,7 @@ import { defaultView, packSave } from '../../src/game/storage';
 import { OpenWorldSimulation } from '../../src/openworld/simulation';
 import { openExplorePanel } from './helpers/explore-panel';
 
-test('an imported zero-ball victory passes immediately and keeps automatic hunting enabled', async ({ page }) => {
+test('an imported legacy zero-ball victory uses the unlimited basic ball and keeps automatic hunting enabled', async ({ page }) => {
   test.setTimeout(120000);
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -28,8 +28,8 @@ test('an imported zero-ball victory passes immediately and keeps automatic hunti
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 60000 });
   await page.locator('#import-file').setInputFiles({ name: 'zero-ball-victory.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(save)) });
   await openExplorePanel(page);
-  await expect(page.locator('#world-ball-stock')).toContainText('볼 0개');
-  await expect(page.locator('#world-feed')).toContainText('놓아주었습니다', { timeout: 20000 });
+  await expect(page.locator('#world-ball-stock')).toContainText('몬스터볼 ∞');
+  await expect(page.locator('#world-feed')).toContainText('잡았습니다', { timeout: 20000 });
   await expect(page.locator('#world-capture-offer')).toBeHidden();
   await expect(page.locator('#world-auto-hunt')).toHaveCount(0);
   await expect(page.locator('#world-mode-auto')).toHaveAttribute('aria-pressed', 'true');
@@ -38,7 +38,7 @@ test('an imported zero-ball victory passes immediately and keeps automatic hunti
   const downloaded = page.waitForEvent('download'); await page.locator('#export-save').click();
   const current = JSON.parse(await readFile((await (await downloaded).path())!, 'utf8'));
   expect(current.game.captureOffer).toBeUndefined();
-  expect(current.game.player.team).toHaveLength(1); expect(current.game.player.box).toHaveLength(0);
+  expect(current.game.player.team).toHaveLength(2); expect(current.game.player.box).toHaveLength(0);
   expect(current.view.openWorld.autoHunt).toBe(true);
   expect(current.view.openWorld.tick).toBeGreaterThan(save.view.openWorld!.tick);
   expect(errors).toEqual([]);

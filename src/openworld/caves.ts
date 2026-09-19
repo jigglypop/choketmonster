@@ -75,8 +75,18 @@ function caveOutline(kind: CaveSilhouette, seed: number, width: number, depth: n
   const points: ScenePoint[] = [], phase = seed * .071, halfWidth = width / 2, halfDepth = depth / 2;
   for (let index = 0; index < 48; index++) {
     const angle = index / 48 * Math.PI * 2, cosine = Math.cos(angle), sine = Math.sin(angle);
-    const rectangleRadius = Math.min(halfWidth / Math.max(Math.abs(cosine), 1e-6), halfDepth / Math.max(Math.abs(sine), 1e-6));
-    const radius = rectangleRadius + silhouetteBonus(kind, angle, phase);
+    // A rounded superellipse preserves the legacy walkable footprint while
+    // avoiding the straight, box-like runs produced by a rectangle ray cast.
+    const exponent = kind === 'hall' ? 2.75 : kind === 'long' ? 2.55 : 2.35;
+    const roundedRadius = 1 / Math.pow(
+      Math.pow(Math.abs(cosine) / halfWidth, exponent) + Math.pow(Math.abs(sine) / halfDepth, exponent),
+      1 / exponent,
+    );
+    const legacyEnvelope = Math.min(halfWidth / Math.max(Math.abs(cosine), 1e-6), halfDepth / Math.max(Math.abs(sine), 1e-6));
+    const erosion = .55 * Math.sin(angle * 5 + phase * 1.9) + .28 * Math.sin(angle * 9 - phase);
+    // Retain every coordinate accepted by older rectangular caves. Blending
+    // the envelope, rather than tracing it directly, rounds their long sides.
+    const radius = roundedRadius * .28 + legacyEnvelope * .72 + silhouetteBonus(kind, angle, phase) + erosion;
     points.push({ x: cosine * radius, z: sine * radius });
   }
   return points;

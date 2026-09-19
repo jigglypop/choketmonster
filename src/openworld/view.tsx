@@ -3,7 +3,7 @@ import { Html, OrbitControls } from '@react-three/drei';
 import { Physics, RigidBody } from '@react-three/rapier';
 import { GaesupWorld, createCameraPlugin } from 'gaesup-world';
 import { createGaesupRuntime } from 'gaesup-world/runtime';
-import { type ReactNode, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { Component, type ReactNode, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import {
   AnimationMixer,
@@ -69,6 +69,7 @@ import { CaveInterior, GymEntranceStatus, ProgressGate, RegionalLeagueLandmark, 
 import { DestinationPointer } from './destination-pointer';
 import { TargetRoute } from './target-route';
 import { createOpenWorldRenderer } from './gpu-renderer';
+import { scenerySeed, townPavingCells, townStyle } from './town-style';
 const NATURE_DETAIL_RADIUS = 68;
 // Bound scenery streaming even though the view no longer uses fog.
 const NATURE_VISIBLE_RADIUS = 94;
@@ -278,19 +279,16 @@ function BuildingSign({ text, color }: { text: string; color: string }) {
   </group>;
 }
 
-function TownPaving({ color }: { color: string }) {
+function TownPaving({ townId }: { townId: string }) {
+  const { color } = townStyle(townId);
   const ref = useRef<InstancedMesh>(null);
-  const tiles = useMemo(() => {
-    const result: Array<[number, number]> = [];
-    for (let x = -7; x <= 7; x++) for (let z = -7; z <= 7; z++) if (Math.hypot(x, z) <= 7.1) result.push([x, z]);
-    return result;
-  }, []);
+  const tiles = useMemo(() => townPavingCells(townId), [townId]);
   useLayoutEffect(() => {
     if (!ref.current) return;
     const matrix = new Matrix4(), base = new Color(color), cream = new Color('#e7dfc9');
-    tiles.forEach(([x, z], index) => {
+    tiles.forEach(([x, z, accent], index) => {
       ref.current!.setMatrixAt(index, matrix.makeTranslation(x * 1.12 * WORLD_SCALE, -.015, z * 1.12 * WORLD_SCALE));
-      ref.current!.setColorAt(index, cream.clone().lerp(base, (x + z) % 2 === 0 ? .34 : .12));
+      ref.current!.setColorAt(index, cream.clone().lerp(base, accent ? .72 : .27));
     });
     ref.current.instanceMatrix.needsUpdate = true;
     if (ref.current.instanceColor) ref.current.instanceColor.needsUpdate = true;
@@ -313,10 +311,28 @@ function TownBuilding({ townId, townColor, index, gym, badges, showGymLabel }: {
   const model = useMemo(() => {
     if (!gltf) return null;
     const clone = cloneSkinned(gltf.scene);
-    clone.traverse(object => { if (object instanceof Mesh) { object.castShadow = true; object.receiveShadow = true; } });
+    const tint = new Color(townColor), ownedMaterials = new Map<Material, Material>();
+    clone.traverse(object => { if (object instanceof Mesh) {
+      object.castShadow = true; object.receiveShadow = true;
+      const recolor = (source: Material) => {
+        let material = ownedMaterials.get(source);
+        if (!material) {
+          material = source.clone();
+          if (material instanceof MeshStandardMaterial) material.color.multiply(new Color('#ffffff').lerp(tint, .32));
+          ownedMaterials.set(source, material);
+        }
+        return material;
+      };
+      object.material = Array.isArray(object.material) ? object.material.map(recolor) : recolor(object.material);
+    } });
     return clone;
-  }, [gltf]);
-  return <group name={`town-building:${townId}:${index}:${model ? 'loaded' : 'fallback'}`}>
+  }, [gltf, townColor]);
+  useEffect(() => () => {
+    const owned = new Set<Material>();
+    model?.traverse(object => { if (object instanceof Mesh) (Array.isArray(object.material) ? object.material : [object.material]).forEach(material => owned.add(material)); });
+    owned.forEach(material => material.dispose());
+  }, [model]);
+  return <group name={`town-building:${townId}:${index}:${model ? 'loaded' : 'fallback'}`} scale={[1, townStyle(townId).height, 1]}>
     {model
       ? <primitive object={model} dispose={null} />
       : <mesh position={[0, 1.05, 0]} castShadow><boxGeometry args={[3.1, 2.1, 2.5]} /><meshStandardMaterial color="#e8dfc7" roughness={.9} /></mesh>}
@@ -359,7 +375,8 @@ function TrailAndWater({ sampleWorld, player, badges, atlas, visible, gyms = atl
       const from = locations.get(fromId)!, to = locations.get(toId)!;
       const dx = to.x - from.x, dz = to.z - from.z, length = Math.hypot(dx, dz) || 1;
       const steps = Math.max(1, Math.ceil(length / 5));
-      const sideX = -dz / length * 2.05 * WORLD_SCALE, sideZ = dx / length * 2.05 * WORLD_SCALE;
+      const width = (1.45 + (scenerySeed(`${fromId}:${toId}`) % 5) * .15) * WORLD_SCALE;
+      const sideX = -dz / length * width, sideZ = dx / length * width;
       const offset = vertices.length / 3;
       for (let step = 0; step <= steps; step += 1) {
         const t = step / steps, x = from.x + dx * t, z = from.z + dz * t;
@@ -381,10 +398,6 @@ function TrailAndWater({ sampleWorld, player, badges, atlas, visible, gyms = atl
     return geometry;
   }, [locations, sampleWorld, atlas]);
   useEffect(() => () => trail.dispose(), [trail]);
-  const townColors: Record<string, string> = {
-    pallet: '#e8dfc5', viridian: '#4d9b61', pewter: '#83858a', cerulean: '#4e94c8', vermilion: '#c5934d',
-    lavender: '#9b77b4', celadon: '#74a86a', saffron: '#d6b54c', fuchsia: '#d87498', cinnabar: '#b84d45',
-  };
   return (
     <group name={`region-landmarks:${atlas.id}`} userData={{ gaesupWorldObject: 'region-landmarks' }}>
       <mesh geometry={trail} receiveShadow><SurfaceMaterial surface="path" color={regionTrailColor(atlas)} /></mesh>
@@ -392,9 +405,9 @@ function TrailAndWater({ sampleWorld, player, badges, atlas, visible, gyms = atl
       {atlas.locations.filter(item => isRegionalLeagueLocation(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) < 100)
         .map(item => <RegionalLeagueLandmark key={item.id} region={atlas.id} x={item.x} y={terrainSurfaceHeight(sampleWorld, item.x, item.z)} z={item.z} />)}
       {atlas.locations.filter(item => item.kind === 'town' && !isRegionalLeagueLocation(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) <= 85 && visible(item.x, 3, item.z, 14 * WORLD_SCALE)).map(town => <group key={town.id} name={`town:${town.id}`} position={[town.x, terrainSurfaceHeight(sampleWorld, town.x, town.z) + .05, town.z]}>
-        <TownPaving color={townColors[town.id] ?? atlas.palette.town} />
+        <TownPaving townId={town.id} />
         {atlas.buildingOffsets(town).map(([x, z], index) => <group key={index} position={[x, 0, z]} scale={WORLD_SCALE}>
-          <TownBuilding townId={town.id} townColor={townColors[town.id] ?? atlas.palette.town} index={index} gym={gyms.find(item => item.locationId === town.id)} badges={badges} showGymLabel={Math.hypot(town.x - player.x, town.z - player.z) <= 14 * WORLD_SCALE} />
+          <TownBuilding townId={town.id} townColor={townStyle(town.id).color} index={index} gym={gyms.find(item => item.locationId === town.id)} badges={badges} showGymLabel={Math.hypot(town.x - player.x, town.z - player.z) <= 14 * WORLD_SCALE} />
         </group>)}
         <group position={[0, 0, -6 * WORLD_SCALE]}>
           <mesh position={[0, .9, 0]} castShadow><boxGeometry args={[2.4, 1.15, .24]} /><meshStandardMaterial color="#eadb9d" /></mesh>
@@ -1008,12 +1021,24 @@ function ActiveWorld({ lifetime, children }: { lifetime: ViewLifetime; children:
   return lifetime.active ? children : null;
 }
 
+class WorldLoadBoundary extends Component<{ children: ReactNode; onError?: (error: unknown) => void }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(error: Error) { this.props.onError?.(error); }
+  render() { return this.state.failed ? null : this.props.children; }
+}
+
 function OpenWorldApp({ store, options, lifetime, commands }: { commands: ViewCommands; store: SnapshotStore; options: OpenWorldViewOptions; lifetime: ViewLifetime }) {
   const snapshot = useSyncExternalStore(store.subscribe, store.get, store.get);
   const renderPaused = useSyncExternalStore(onRenderSuspension, renderingSuspended, renderingSuspended);
   const runtime = useMemo(() => createGaesupRuntime({ plugins: [createCameraPlugin()], pluginRuntime: 'client' }), []);
   const [ready, setReady] = useState(false);
-  const [renderDpr, setRenderDpr] = useState(() => Math.min(window.devicePixelRatio || 1, 1.5));
+  const fixedProbeDpr = useMemo(() => {
+    if (!import.meta.env.DEV) return undefined;
+    const query = new URLSearchParams(location.search), dpr = Number(query.get('fixedDpr'));
+    return query.has('renderProbe') && dpr >= .7 && dpr <= 1.5 ? dpr : undefined;
+  }, []);
+  const [renderDpr, setRenderDpr] = useState(() => fixedProbeDpr ?? Math.min(window.devicePixelRatio || 1, 1.5));
   const [showLabels, setShowLabels] = useState(true);
   const [rendererGeneration, setRendererGeneration] = useState(0);
   const [rendererLost, setRendererLost] = useState(false);
@@ -1040,15 +1065,17 @@ function OpenWorldApp({ store, options, lifetime, commands }: { commands: ViewCo
   useEffect(() => { commands.navigateTo = navigate; return () => { delete commands.navigateTo; }; }, [commands, navigate]);
   useEffect(() => {
     let active = true;
-    runtime.setup().then(() => { if (active) setReady(true); });
+    runtime.setup().then(() => {
+      if (active) { setReady(true); options.onLoadProgress?.(20, '3D 런타임 준비 완료 · 그래픽 장치 연결 중'); }
+    }).catch(error => { if (active) options.onLoadError?.(error); });
     return () => { active = false; void runtime.dispose(); };
-  }, [runtime]);
+  }, [runtime, options]);
   return (
     <GaesupWorld
       runtime={runtime}
       runtimeRevision={ready ? 1 : 0}
       mode={{ type: 'character', controller: 'keyboard', control: 'thirdPerson' }}
-      cameraOption={{ type: 'thirdPerson', distance: 12, height: 5, fov: 48, enableZoom: true, minZoom: 4, maxZoom: 28, enableCollision: true, bounds: { minX: WORLD_MIN, maxX: WORLD_MAX, minZ: WORLD_MIN, maxZ: WORLD_MAX } }}
+      cameraOption={{ type: 'thirdPerson', distance: 12, height: 5, fov: 48, enableZoom: true, minZoom: 4, maxZoom: 28, enableCollision: true }}
       worldSize={{ width: WORLD_MAX - WORLD_MIN, height: 48, depth: WORLD_MAX - WORLD_MIN }}
       enablePhysics
       gravity={[0, -18, 0]}
@@ -1060,25 +1087,26 @@ function OpenWorldApp({ store, options, lifetime, commands }: { commands: ViewCo
           setRendererGeneration(rendererEpoch.current);
           setRendererLost(false);
         }}>3D 화면 다시 시작</button>
-      </div> : <Canvas key={rendererGeneration} eventSource={lifetime.host} frameloop={renderPaused ? 'never' : 'always'} shadows="percentage" dpr={renderDpr} camera={{ position: [12, 18, 16], fov: 48, near: .1, far: 160 }} gl={defaults => createRenderer({ ...defaults, canvas: defaults.canvas as HTMLCanvasElement })} onPointerMissed={() => options.onSelect(null)} onCreated={state => {
+      </div> : <WorldLoadBoundary key={rendererGeneration} onError={options.onLoadError}><Canvas eventSource={lifetime.host} frameloop={renderPaused ? 'never' : 'always'} shadows="percentage" dpr={renderDpr} camera={{ position: [12, 18, 16], fov: 48, near: .1, far: 160 }} gl={defaults => createRenderer({ ...defaults, canvas: defaults.canvas as HTMLCanvasElement })} onPointerMissed={() => options.onSelect(null)} onCreated={state => {
         // Canvas can finish its async WebGPU setup after logout or a tab change.
         // Keep the event target valid, then retire that stale R3F root before it
         // can render or install scene controls for the previous adventure.
         if (!lifetime.active || rendererEpoch.current !== rendererGeneration) {
           state.setFrameloop('never');
           queueMicrotask(() => unmountComponentAtNode(state.gl.domElement));
+          return;
         }
+        options.onLoadProgress?.(45, '그래픽 장치 준비 완료 · 지형과 모델을 불러오는 중');
       }}>
         <ActiveWorld lifetime={lifetime}>
-        <AdaptiveResolution setDpr={setRenderDpr} />
+        {fixedProbeDpr === undefined && <AdaptiveResolution setDpr={setRenderDpr} />}
         <SaveRenderBudget />
         {new URLSearchParams(location.search).has('renderProbe') && <RenderProbe />}
         <group name="gaesup-world">
           <Scene commands={commands} snapshot={snapshot} options={options} showLabels={showLabels} destination={destination} onNavigate={navigate} onDestination={setDestination} />
         </group>
         </ActiveWorld>
-      </Canvas>}
-      {!ready && <div className="ow-loading">Gaesup World 준비 중…</div>}
+      </Canvas></WorldLoadBoundary>}
       <div className="ow-camera-controls" aria-label="이름과 체력 표시">
         <button type="button" id="world-nameplates" className="ow-camera-reset" aria-label="포켓몬 이름·HP 표시" aria-pressed={showLabels} onClick={toggleLabels}>이름·HP</button>
       </div>

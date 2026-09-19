@@ -115,7 +115,7 @@ export class ConnectomeController {
     this.graph = structuredClone(graph);
   }
   static async load() {
-    const response = await fetch('/data/connectome.json');
+    const response = await fetch('/data/connectome.json', { signal: AbortSignal.timeout(20_000) });
     if (!response.ok) throw new Error(`실제 커넥톰을 읽을 수 없습니다 (${response.status}).`);
     return new ConnectomeController(await response.json());
   }

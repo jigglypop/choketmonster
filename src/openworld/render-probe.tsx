@@ -43,6 +43,10 @@ export function RenderProbe() {
   const samples = useRef(new FrameSampleRing(900));
   useEffect(() => {
     const backend = getOpenWorldRendererInfo(gl);
+    // WebGPURenderer's own Animation loop resets info before R3F's frame
+    // callback. The opt-in probe owns reset so it samples completed frames.
+    const previousAutoReset = gl.info.autoReset;
+    gl.info.autoReset = false;
     const context = backend ? undefined : gl.getContext(), debug = context?.getExtension('WEBGL_debug_renderer_info');
     const target = window as unknown as { __renderProbe?: { read(): unknown; reset(): void } };
     target.__renderProbe = {
@@ -73,6 +77,10 @@ export function RenderProbe() {
         loadedPokemon: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('pokemon-model:')).map(object => Number(object.name.slice('pokemon-model:'.length))),
         modelStatuses: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('pokemon-model-status:')).map(object => object.name.slice('pokemon-model-status:'.length)),
         townBuildings: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('town-building:')).map(object => object.name),
+        townPaving: scene.getObjectsByProperty('name', 'town-paving').map(object => {
+          const mesh = object as InstancedMesh;
+          return { town: mesh.parent?.name, instances: mesh.count, colors: Array.from(mesh.instanceColor?.array ?? []).slice(0, 30) };
+        }),
         renderables: renderableInventory(scene),
         // Cave surfaces have few triangles, so they can fall outside the top-30 inventory.
         caveSurfaces: scene.getObjectsByProperty('type', 'Mesh')
@@ -115,11 +123,12 @@ export function RenderProbe() {
       reset: () => { samples.current.reset(); },
     };
     const owner = target.__renderProbe;
-    return () => { if (target.__renderProbe === owner) delete target.__renderProbe; };
+    return () => { gl.info.autoReset = previousAutoReset; if (target.__renderProbe === owner) delete target.__renderProbe; };
   }, [gl, scene, camera]);
   useFrame((_, delta) => {
     const counters = getOpenWorldRendererInfo(gl)?.render ?? gl.info.render;
     samples.current.push({ frameMs: delta * 1000, calls: counters.calls, triangles: counters.triangles });
+    gl.info.reset();
   });
   return null;
 }

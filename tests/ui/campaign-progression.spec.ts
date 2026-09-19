@@ -134,11 +134,11 @@ test('battle keeps the shop and safe box operations available while protecting t
   await started;
 
   await page.locator('.world-shop summary').click();
-  await expect(page.locator('[data-world-buy="poke-ball"]')).toHaveCount(2);
-  await expect(page.locator('[data-world-buy="great-ball"], [data-world-buy="ultra-ball"]')).toHaveCount(0);
+  await expect(page.locator('#world-ball-stock')).toContainText('몬스터볼 ∞');
+  await expect(page.locator('[data-world-buy="poke-ball"], [data-world-buy="great-ball"], [data-world-buy="ultra-ball"]')).toHaveCount(0);
   const money = game.player.money;
-  await page.locator('[data-world-buy="poke-ball"][data-quantity="1"]').click();
-  await expect(page.locator('#world-ball-stock')).toContainText(`₩${(money - ITEM_PRICES['poke-ball']).toLocaleString('ko-KR')}`);
+  await page.locator('[data-world-buy="potion"][data-quantity="1"]').click();
+  await expect(page.locator('#money')).toHaveText(`₩${(money - ITEM_PRICES.potion).toLocaleString('ko-KR')}`);
 
   const opening = page.locator('#world-box-open').click();
   await expect(page.locator('#world-box-dialog')).not.toHaveAttribute('open', '');

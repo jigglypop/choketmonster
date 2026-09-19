@@ -182,7 +182,6 @@ export class OpenWorldSimulation {
   nextFoodId = 1;
   respawnQueue: WorldRespawn[] = [];
   manualControlRemaining = 0;
-  nextBattleTeamIndex = 0;
   private spawnAnchor: { x: number; z: number };
   private pendingCapture = false;
   private pendingBall?: BallItem;
@@ -444,7 +443,7 @@ export class OpenWorldSimulation {
   }
 
   setAutoCapture(enabled: boolean): void { if (typeof enabled !== 'boolean') throw new Error('Auto-capture flag must be boolean'); this.autoCapture = enabled; }
-  get hasBalls(): boolean { return this.bestBall() !== undefined; }
+  get hasBalls(): boolean { return true; }
   get escaping(): boolean { return this.pendingAction?.type === 'run'; }
   setAutoHunt(enabled: boolean): void { if (typeof enabled !== 'boolean') throw new Error('Auto-hunt flag must be boolean'); this.setControlMode(enabled ? 'auto' : 'manual'); }
 
@@ -461,7 +460,7 @@ export class OpenWorldSimulation {
     if (this.game.battle) this.clearPendingLearning(this.game.battle.player.team[this.game.battle.player.activeIndex]);
   }
 
-  captureVictory(ball?: BallItem): boolean { return captureDefeatedWild(this.game, ball ?? this.cheapestBall() ?? 'poke-ball'); }
+  captureVictory(ball?: BallItem): boolean { return captureDefeatedWild(this.game, ball ?? this.cheapestBall()); }
   releaseVictory(): void { if (this.game.captureOffer) { this.game.logs.push(`${this.game.captureOffer.nickname}을(를) 놓아주었습니다.`); this.game.logs = this.game.logs.slice(-200); this.game.captureOffer = undefined; } }
 
   reconcileTeamChange(): void {
@@ -564,7 +563,8 @@ export class OpenWorldSimulation {
 
   requestCapture(ball?: BallItem): boolean {
     if (this.game.battle?.kind !== 'wild' || !this.battleWildId || this.game.battle.awaitingSwitch) return false;
-    const selected = ball ?? this.bestBall(); if (!selected || this.game.inventory[selected] <= 0) return false;
+    if (ball !== undefined && !['poke-ball', 'great-ball', 'ultra-ball'].includes(ball)) return false;
+    const selected = this.bestBall();
     this.pendingCapture = true; this.pendingBall = selected; this.pendingAction = undefined; return true;
   }
 
@@ -589,12 +589,11 @@ export class OpenWorldSimulation {
     const entity = this.entities.find(item => item.kind === 'wild' && item.id === id); if (!entity) return false;
     if (this.modelStatus(id) || !this.modelsReady) return false;
     if (this.isSafeTown(entity.x, entity.z)) return false;
-    const healthy = firstUsableRegionalTeamIndex(this.game, this.regionId, this.nextBattleTeamIndex);
+    const healthy = firstUsableRegionalTeamIndex(this.game, this.regionId);
     if (healthy < 0) return false;
     const wild = createMonster(this.game, entity.speciesId, entity.level, this.regionId);
     this.game.dex.seen = [...new Set([...this.game.dex.seen, entity.speciesId])].sort((a, b) => a - b);
     this.game.battle = { kind: 'wild', regionId: this.game.regionId, policyRegion: this.regionId, player: { team: this.game.player.team, activeIndex: healthy }, enemy: { team: [wild], activeIndex: 0 }, turn: 1, canRun: true };
-    this.nextBattleTeamIndex = (healthy + 1) % this.game.player.team.length;
     this.game.logs.push(`오픈월드에서 ${getSpecies(entity.speciesId).name}을(를) 만났다.`); if (this.game.logs.length > 200) this.game.logs.shift();
     this.battleWildId = id; this.battleElapsed = 0; this.pendingCapture = false; this.pendingBall = undefined; this.pendingAction = undefined; this.lastPlayerReward = null; this.lastEnemyReward = null;
     return true;
@@ -611,8 +610,7 @@ export class OpenWorldSimulation {
     for (const id of this.modelStatuses.keys()) if (this.modelSpecies(id) === undefined) this.modelStatuses.delete(id);
     if (!this.modelsReady) return { tick: this.tick, events, battleActive: !!this.game.battle };
     if (this.game.captureOffer) {
-      if (!this.hasBalls) this.releaseVictory();
-      else { this.tick++; return { tick: this.tick, events, battleActive: false }; }
+      this.tick++; return { tick: this.tick, events, battleActive: false };
     }
     if (!this.game.battle && needsRegionalStarter(this.game, this.regionId)) {
       this.tick++; return { tick: this.tick, events, battleActive: false };
@@ -669,7 +667,7 @@ export class OpenWorldSimulation {
       serverFinalizations: this.serverFinalizations.length ? structuredClone(this.serverFinalizations) : undefined,
       player: structuredClone(this.player), selectedWildId: this.selectedWildId, autoCapture: this.autoCapture, autoHunt: this.autoHunt, battleWildId: this.battleWildId, worldClockSeconds: this.worldClockSeconds,
       battleElapsed: this.battleElapsed, pendingCapture: this.pendingCapture, pendingBall: this.pendingBall, lastPlayerReward: this.lastPlayerReward, lastEnemyReward: this.lastEnemyReward,
-      pendingAction: structuredClone(this.pendingAction), manualControlRemaining: this.manualControlRemaining, nextBattleTeamIndex: this.nextBattleTeamIndex,
+      pendingAction: structuredClone(this.pendingAction), manualControlRemaining: this.manualControlRemaining,
       encounterLayout: this.regionId === 'johto' ? GOLD_ENCOUNTER_LAYOUT : isExpansionRegion(this.regionId) ? EXPANSION_ENCOUNTER_LAYOUT : RED_ENCOUNTER_LAYOUT, spawnAnchor: { ...this.spawnAnchor }, controlMode: this.controlMode, regionId: this.regionId, sceneId: this.sceneId, surfaceReturn: this.surfaceReturn ? { ...this.surfaceReturn } : undefined, mapVersion: this.atlas.mapVersion,
       selectionPinned: this.selectionPinned, trackingSelected: this.trackingSelected, visitedTownIds: [...this.visitedTownIds], visitedTownsByRegion: structuredClone(this.visitedTownsByRegion),
       rewardLedgers: structuredClone(Object.fromEntries(Object.entries(this.rewardLedgers).filter(([id]) => rewardOwners.has(id)))),
@@ -719,8 +717,7 @@ export class OpenWorldSimulation {
   private advanceBattle(learning: boolean, events: OpenWorldEvent[]): Extract<OpenWorldEvent, { type: 'battle-turn' }> | undefined {
     const battle = this.game.battle, entityId = this.battleWildId; if (!battle || !entityId) return undefined;
     const player = battle.player.team[battle.player.activeIndex], enemy = battle.enemy.team[battle.enemy.activeIndex];
-    const captureBall = this.pendingCapture ? (this.pendingBall && this.game.inventory[this.pendingBall] > 0 ? this.pendingBall : this.bestBall()) : undefined;
-    if (this.pendingCapture && !captureBall) { this.pendingCapture = false; this.pendingBall = undefined; }
+    const captureBall = this.pendingCapture ? this.pendingBall ?? this.bestBall() : undefined;
     let action: BattleAction, learnedPlayerAction = false, source: RewardDecisionSource = 'manual';
     if (battle.awaitingSwitch) {
       const requested = this.pendingAction; this.pendingAction = undefined;
@@ -790,8 +787,7 @@ export class OpenWorldSimulation {
       if (result.outcome === 'won' && battle.kind === 'wild') {
         this.game.captureOffer = structuredClone(enemy); this.game.captureOffer.hp = 0;
         this.game.captureOffer.status = undefined; this.game.captureOffer.statusTurns = undefined;
-        if (this.autoCapture && this.hasBalls) this.captureVictory();
-        else if (!this.hasBalls) this.releaseVictory();
+        if (this.autoCapture) this.captureVictory();
       }
       this.battleWildId = undefined; this.selectedWildId = undefined; this.battleElapsed = 0; this.pendingCapture = false; this.pendingBall = undefined; this.lastPlayerReward = null; this.lastEnemyReward = null;
       this.pendingAction = undefined;
@@ -1111,8 +1107,8 @@ export class OpenWorldSimulation {
     }
     return nearest;
   }
-  private cheapestBall(): BallItem | undefined { return (['poke-ball'] as BallItem[]).find(ball => this.game.inventory[ball] > 0); }
-  private bestBall(): BallItem | undefined { return (['poke-ball'] as BallItem[]).find(ball => this.game.inventory[ball] > 0); }
+  private cheapestBall(): BallItem { return 'poke-ball'; }
+  private bestBall(): BallItem { return 'poke-ball'; }
   private validRequestedAction(action: BattleAction): boolean {
     if (!action || typeof action !== 'object') return false;
     if (action.type === 'move') return Number.isInteger(action.index) && action.index >= 0 && action.index < 4;
@@ -1371,7 +1367,7 @@ export class OpenWorldSimulation {
     this.pendingCapture = checkpoint.pendingCapture; this.pendingBall = checkpoint.pendingBall === undefined ? undefined : 'poke-ball'; this.lastPlayerReward = checkpoint.lastPlayerReward; this.lastEnemyReward = checkpoint.lastEnemyReward;
     this.pendingAction = structuredClone(checkpoint.pendingAction);
     if (this.pendingAction?.type === 'catch') this.pendingAction.ball = 'poke-ball';
-    this.spawnSerial = checkpoint.spawnSerial; this.nextFoodId = checkpoint.nextFoodId; this.respawnQueue = structuredClone(respawns); this.manualControlRemaining = checkpoint.manualControlRemaining ?? 0; this.nextBattleTeamIndex = (checkpoint.nextBattleTeamIndex ?? 0) % this.game.player.team.length; this.spawnAnchor = { ...(checkpoint.spawnAnchor ?? checkpoint.player) };
+    this.spawnSerial = checkpoint.spawnSerial; this.nextFoodId = checkpoint.nextFoodId; this.respawnQueue = structuredClone(respawns); this.manualControlRemaining = checkpoint.manualControlRemaining ?? 0; this.spawnAnchor = { ...(checkpoint.spawnAnchor ?? checkpoint.player) };
   }
 }
 

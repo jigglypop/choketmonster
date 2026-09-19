@@ -16,7 +16,16 @@ export function findWorldPath(
   if (![start.x, start.z, destination.x, destination.z].every(Number.isFinite) || maxVisited < 1) return [];
   const originX = Math.round(start.x / NAVIGATION_GRID), originZ = Math.round(start.z / NAVIGATION_GRID);
   let goalX = Math.round(destination.x / NAVIGATION_GRID), goalZ = Math.round(destination.z / NAVIGATION_GRID);
-  const walkable = (x: number, z: number) => !sampleWorld(x * NAVIGATION_GRID, z * NAVIGATION_GRID).blocked;
+  // Neighbors and diagonal corner checks revisit the same cells many times.
+  // Keep this cache local to one search so later world/gate changes are observed.
+  const walkability = new Map<string, boolean>();
+  const walkable = (x: number, z: number) => {
+    const cell = key(x, z), cached = walkability.get(cell);
+    if (cached !== undefined) return cached;
+    const result = !sampleWorld(x * NAVIGATION_GRID, z * NAVIGATION_GRID).blocked;
+    walkability.set(cell, result);
+    return result;
+  };
   if (!walkable(goalX, goalZ)) {
     let replacement: [number, number] | undefined;
     for (let radius = 1; radius <= 16 && !replacement; radius += 1) {

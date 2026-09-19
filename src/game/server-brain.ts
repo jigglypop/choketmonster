@@ -10,15 +10,20 @@ const lastReceipts = new Map<string, ServerBrainReceipt>();
 const remoteHeads = new Map<string, string>();
 export const lastServerDecision = (id: string) => lastReceipts.get(id);
 let enabled = false, graphId = '', scope = 'default';
+export type ServerConnectomeInfo = { available: boolean; graphId?: string; kind?: string; nodes?: number; edges?: number; activeEdges?: number };
+let connectomeInfo: ServerConnectomeInfo | null = null;
+export const getServerConnectomeInfo = () => connectomeInfo;
 let connection: Promise<IDBDatabase> | undefined;
 let operationQueue: Promise<unknown> = Promise.resolve();
 export function setServerBrainScope(gameSeed: string) { scope = gameSeed; lastReceipts.clear(); }
 export async function initializeServerBrain() {
+  connectomeInfo = null;
   try {
     const response = await fetch('/api/connectome', { cache: 'no-store', signal: AbortSignal.timeout(5000) });
     const info = await response.json(); enabled = response.ok && info.available === true;
     graphId = enabled ? info.graphId : '';
-  } catch { enabled = false; }
+    if (response.ok) connectomeInfo = info;
+  } catch { enabled = false; graphId = ''; }
   return enabled;
 }
 export function usesServerBrain() { return enabled; }

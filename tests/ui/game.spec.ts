@@ -99,8 +99,9 @@ test('browser capture, candy, evolution, save/reload and validated import', asyn
   await expect(page.locator('.battle-stage')).toBeVisible();
   await expect(page.locator('#battle-canvas')).toHaveAttribute('data-ready', 'true', { timeout: 20000 });
   await page.screenshot({ path: 'artifacts/ui-battle.png', fullPage: true });
+  await expect(page.locator('.infinite-ball')).toHaveText('몬스터볼 ∞');
   for (let attempt = 0; attempt < 8 && await page.locator('#catch').count(); attempt++) {
-    await page.locator('#ball-select').selectOption('ultra-ball'); await page.locator('#catch').click();
+    await page.locator('#catch').click();
   }
   await expect(page.locator('#ow-host canvas')).toBeVisible(); await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 20000 });
   await page.locator('[data-tab="team"]').click();

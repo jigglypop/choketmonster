@@ -139,7 +139,7 @@ export type GameState = {
   experienceShare?: boolean;
   adventureVersion?: string;
   versionCaught?: Record<string, number[]>;
-  /** Active-play seconds toward one free ball; this is an engineered game rule. */
+  /** Legacy finite refill progress retained for schema-v2 save/server compatibility; runtime resets it to zero. */
   ballRefillSeconds?: number;
   evolutionContext?: EvolutionContext;
   battle?: BattleState;
@@ -165,15 +165,15 @@ export const ITEM_LABELS: Readonly<Record<InventoryItem, string>> = {
   ...EXTRA_EVOLUTION_LABELS,
 };
 const INVENTORY_ITEMS = Object.keys(ITEM_PRICES) as InventoryItem[];
-export const SHOP_ITEMS: readonly InventoryItem[] = INVENTORY_ITEMS.filter(item => item !== 'great-ball' && item !== 'ultra-ball' && item !== 'friendship-treat');
+export const SHOP_ITEMS: readonly InventoryItem[] = INVENTORY_ITEMS.filter(item => !['poke-ball', 'great-ball', 'ultra-ball', 'friendship-treat'].includes(item));
 
-/** Legacy ball counts are conserved, and subsequent saves keep legacy keys at zero. */
+/** Legacy ball counts stay finite for save/server compatibility; one finite token represents unlimited basic balls. */
 export function normalizeBalls(state: GameState): void {
   const balls = ['poke-ball', 'great-ball', 'ultra-ball'] as const;
   if (balls.some(ball => !Number.isSafeInteger(state.inventory[ball]) || state.inventory[ball] < 0)) throw new Error('볼 수량이 올바르지 않습니다.');
   const total = balls.reduce((sum, ball) => sum + state.inventory[ball], 0);
   if (total > 1_000_000_000) throw new Error('볼 수량이 너무 많습니다.');
-  state.inventory['poke-ball'] = total; state.inventory['great-ball'] = 0; state.inventory['ultra-ball'] = 0;
+  state.inventory['poke-ball'] = Math.max(1, total); state.inventory['great-ball'] = 0; state.inventory['ultra-ball'] = 0;
 }
 
 function hashSeed(seed: number | string): number {
@@ -398,7 +398,7 @@ export function explore(state: GameState, regionId: string): ExploreResult {
     return { kind: 'encounter', speciesId, amount: 1, text };
   }
   if (roll < .88) {
-    const available: InventoryItem[] = ['poke-ball', 'potion', 'rare-candy'];
+    const available: InventoryItem[] = ['potion', 'rare-candy'];
     if (state.player.badges >= 3) available.push('super-potion');
     const item = available[Math.floor(random(state) * available.length)];
     state.inventory[item]++;
@@ -860,8 +860,6 @@ export function actBattle(state: GameState, action: BattleAction, aiChoice?: num
   } else if (action.type === 'catch') {
     if (battle.kind !== 'wild') throw new Error('야생 포켓몬만 잡을 수 있습니다.');
     normalizeBalls(state);
-    if (state.inventory['poke-ball'] <= 0) throw new Error('몬스터볼이 없습니다.');
-    state.inventory['poke-ball']--;
     const wild = active(battle.enemy); const species = getSpecies(wild.speciesId);
     const chance = catchProbability(wild.stats.hp, wild.hp, species.catchRate, 1, wild.status);
     if (random(state) < chance) {
@@ -1050,7 +1048,7 @@ export function evolve(state: GameState, instanceId: string, option: { targetId?
   // Shedinja is a second individual: keep Nincada/Ninjask's identity and neural memory.
   if (route.shed) {
     const shed = createMonster(state, 292, monster.level, monster.originRegion);
-    state.player.team.push(shed); state.inventory['poke-ball']--;
+    state.player.team.push(shed);
     const ninjask = getSpecies(monster.speciesId).evolutions.find(candidate => candidate.target === 291)!;
     applyEvolution(state, monster, ninjask);
     state.dex.seen = uniqueSorted([...state.dex.seen, 292]); recordCapture(state, 292);
@@ -1060,7 +1058,7 @@ export function evolve(state: GameState, instanceId: string, option: { targetId?
     && state.player.team.includes(monster) && state.player.team.length < 6 && state.inventory['poke-ball'] > 0;
   if (leaveShell) {
     const shed = createMonster(state, 292, monster.level, monster.originRegion);
-    state.player.team.push(shed); state.inventory['poke-ball']--;
+    state.player.team.push(shed);
     state.dex.seen = uniqueSorted([...state.dex.seen, 292]); recordCapture(state, 292);
     addLog(state, '남은 팀 자리에 껍질몬이 나타났다.');
   }
@@ -1238,16 +1236,13 @@ export function recoverAttackMove(state: GameState, instanceId: string, moveId: 
   if (monster.brain) monster.brain.previous = null;
 }
 
+/** Legacy schema bounds retained while basic balls are unlimited. */
 export const BALL_REFILL_INTERVAL = 30;
 export const BALL_REFILL_CAP = 20;
+/** Validate finite legacy stock/progress without accumulating or persisting Infinity. */
 export function replenishBalls(state: GameState, elapsedSeconds: number): number {
   if (!Number.isFinite(elapsedSeconds) || elapsedSeconds < 0 || elapsedSeconds > 5) throw new Error('보충 시간이 올바르지 않습니다.');
-  if (state.inventory['poke-ball'] >= BALL_REFILL_CAP) { state.ballRefillSeconds = 0; return 0; }
-  state.ballRefillSeconds = (state.ballRefillSeconds ?? 0) + elapsedSeconds;
-  const amount = Math.min(BALL_REFILL_CAP - state.inventory['poke-ball'], Math.floor(state.ballRefillSeconds / BALL_REFILL_INTERVAL));
-  state.inventory['poke-ball'] += amount;
-  state.ballRefillSeconds %= BALL_REFILL_INTERVAL;
-  return amount;
+  normalizeBalls(state); state.ballRefillSeconds = 0; return 0;
 }
 
 function recordCapture(state: GameState, speciesId: number): void {
@@ -1331,19 +1326,18 @@ export function restoreGame(json: string): GameState {
   return validateGame(value);
 }
 
-/** Engineered victory rule: one available ball guarantees this defeated individual. */
+/** Engineered victory rule: the unlimited basic ball guarantees this defeated individual. */
 export function captureDefeatedWild(state: GameState, ball: BallItem): boolean {
   if (!['poke-ball', 'great-ball', 'ultra-ball'].includes(ball)) return false;
   normalizeBalls(state); ball = 'poke-ball';
   const monster = state.captureOffer;
-  if (!monster || state.battle || !['poke-ball', 'great-ball', 'ultra-ball'].includes(ball) || state.inventory[ball] <= 0 || (state.player.team.length >= 6 && state.player.box.length >= 10000)) return false;
-  state.inventory[ball]--;
+  if (!monster || state.battle || !['poke-ball', 'great-ball', 'ultra-ball'].includes(ball) || (state.player.team.length >= 6 && state.player.box.length >= 10000)) return false;
   monster.hp = Math.max(1, monster.hp); monster.status = undefined; monster.statusTurns = undefined;
   if (state.player.team.length < 6) state.player.team.push(monster); else state.player.box.push(monster);
   state.dex.seen = uniqueSorted([...state.dex.seen, monster.speciesId]);
   recordCapture(state, monster.speciesId);
   state.captureOffer = undefined;
-  addLog(state, `${monster.nickname} 포획 성공! ${ITEM_LABELS[ball]} 1개를 사용했다.`);
+  addLog(state, `${monster.nickname} 포획 성공! 무한 ${ITEM_LABELS[ball]}을 사용했다.`);
   return true;
 }
 

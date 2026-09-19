@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { readFile, mkdir } from 'node:fs/promises';
-import { createGame } from '../../src/game/engine';
+import { createGame, createMonster } from '../../src/game/engine';
 import { defaultView, packSave } from '../../src/game/storage';
 import { OpenWorldSimulation, sampleWorld } from '../../src/openworld/simulation';
 import type { Graph } from '../../src/core/brain';
@@ -11,13 +11,14 @@ const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as
 const policy = JSON.parse(readFileSync('public/data/openworld-policy.json', 'utf8')) as FieldPolicy;
 const modelFixture = readFileSync('data/local/pokemon-models-expanded/429de1288cea0d43f5b4f56305d2276e94239d65/152.glb');
 const targetUrl = process.env.KANTO_URL ?? '/';
-// Multiple world rebuilds, screenshots and device-save restores run against
-// the real API. Keep individual assertions bounded while allowing the whole
-// integration flow to finish on headless software WebGL.
+// Exercise world rebuilds and device-save restores with guest auth/API fixtures.
+// Keep assertions bounded while allowing headless software WebGL to initialize.
 test.setTimeout(180000);
-// This suite covers controls and save flows against the real local API.
-// Heavy model loading is verified separately by world-regions.spec.ts.
+// Heavy production model loading is verified separately by world-regions.spec.ts.
 test.beforeEach(async ({ page }) => {
+  await page.routeWebSocket('**', socket => socket.close());
+  await page.route('**/api/auth/me', route => route.fulfill({ json: { user: null } }));
+  await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   await page.route(/\.(?:glb|gltf)(?:\?.*)?$/, route => route.abort());
 });
 async function start(page: Page, requireModels = false) {
@@ -74,13 +75,22 @@ test('Kanto controls, fixed early encounters, shop, region map and mobile layout
   finally { await page.keyboard.up('w'); }
   await page.locator('.world-shop summary').click();
   const money = Number((await page.locator('#money').innerText()).replace(/\D/g, ''));
-  await page.locator('[data-world-buy="poke-ball"][data-quantity="5"]').click();
-  await expect(page.locator('#money')).toHaveText(`₩${(money - 100).toLocaleString('ko-KR')}`);
+  await expect(page.locator('#world-ball-stock')).toContainText('몬스터볼 ∞');
+  await expect(page.locator('[data-world-buy="poke-ball"]')).toHaveCount(0);
+  expect(await page.locator('.world-shop summary').evaluate(node => getComputedStyle(node).whiteSpace)).toBe('nowrap');
+  await page.locator('[data-world-buy="potion"][data-quantity="1"]').click();
+  await expect(page.locator('#money')).toHaveText(`₩${(money - 300).toLocaleString('ko-KR')}`);
   await mkdir('artifacts/kanto-browser', { recursive: true });
   await page.screenshot({ path: 'artifacts/kanto-browser/shop.png' });
   await page.locator('.world-shop summary').click();
   await page.locator('#world-map-open').click();
   await expect(page.locator('#world-map-dialog')).toBeVisible();
+  const initialViewBox = await page.locator('#world-map-content svg').getAttribute('viewBox');
+  await page.locator('#world-map-zoom-in').click();
+  await expect(page.locator('#world-map-reset')).toContainText('%');
+  expect(await page.locator('#world-map-content svg').getAttribute('viewBox')).not.toBe(initialViewBox);
+  await page.locator('#world-map-reset').click();
+  await expect(page.locator('#world-map-content svg')).toHaveAttribute('viewBox', initialViewBox!);
   await expect(page.locator('.kanto-zone-list')).toContainText('상록숲');
   await expect(page.locator('.kanto-zone-list')).toContainText('홍련섬');
   await mkdir('artifacts/kanto-browser', { recursive: true });
@@ -107,6 +117,73 @@ test('Kanto controls, fixed early encounters, shop, region map and mobile layout
   expect(save.view.openWorld.mapVersion).toBe('kanto-v2');
   expect(save.view.openWorld.entities.filter((entity: { kind: string }) => entity.kind === 'wild').length).toBeGreaterThanOrEqual(12);
   expect(errors).toEqual([]);
+});
+
+test('open-world shop and rotated full map expose infinite balls, zoom, pan and road navigation', async ({ page }) => {
+  await page.unroute(/\.(?:glb|gltf)(?:\?.*)?$/);
+  await page.route(/\.(?:glb|gltf)(?:\?.*)?$/, route => route.fulfill({ body: modelFixture, contentType: 'model/gltf-binary' }));
+  await start(page, true);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openExplorePanel(page);
+  await page.locator('.world-shop summary').click();
+  await expect(page.locator('#world-ball-stock')).toContainText('몬스터볼 ∞');
+  await expect(page.locator('[data-world-buy="poke-ball"]')).toHaveCount(0);
+  expect(await page.locator('.world-shop summary').evaluate(node => getComputedStyle(node).whiteSpace)).toBe('nowrap');
+  await page.locator('.world-shop summary').click();
+  expect(await page.locator('.world-shop summary').evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+
+  await page.setViewportSize({ width: 1440, height: 1100 });
+  await page.locator('#world-map-open').click();
+  await page.locator('[data-map-orientation="east"]').click();
+  const svg = page.locator('#world-map-content svg');
+  const initial = await svg.getAttribute('viewBox');
+  await page.locator('#world-map-zoom-in').click();
+  const zoomed = await svg.getAttribute('viewBox');
+  expect(zoomed).not.toBe(initial);
+  const box = (await svg.boundingBox())!;
+  await page.mouse.move(box.x + box.width * .55, box.y + box.height * .55);
+  await page.mouse.down(); await page.mouse.move(box.x + box.width * .42, box.y + box.height * .46, { steps: 4 }); await page.mouse.up();
+  expect(await svg.getAttribute('viewBox')).not.toBe(zoomed);
+  await page.locator('[data-map-orientation="south"]').click();
+  await expect(svg).toHaveAttribute('viewBox', initial!);
+
+  const positionBeforeRoad = await page.locator('#world-position').innerText();
+  const road = page.locator('.world-map-road').first(), roadBox = (await road.boundingBox())!;
+  await page.mouse.click(roadBox.x + roadBox.width / 2, roadBox.y + roadBox.height / 2);
+  await expect(page.locator('#world-map-dialog')).not.toBeVisible();
+  await expect(page.getByRole('status')).toContainText('길찾기를 시작합니다');
+  await expect(page.locator('#world-position')).not.toHaveText(positionBeforeRoad, { timeout: 20000 });
+});
+
+test('open-world battle switches the active partner without reordering the team', async ({ page }) => {
+  await page.unroute(/\.(?:glb|gltf)(?:\?.*)?$/);
+  await page.route(/\.(?:glb|gltf)(?:\?.*)?$/, route => route.fulfill({ body: modelFixture, contentType: 'model/gltf-binary' }));
+  await start(page, true);
+  const game = createGame(1, 'openworld-switch-ui'), second = createMonster(game, 4, 5, 'kanto');
+  game.player.team.push(second);
+  const order = game.player.team.map(monster => monster.instanceId);
+  const world = new OpenWorldSimulation(graph, game, 34418, undefined, policy);
+  world.setControlMode('manual');
+  const target = world.entities.find(entity => entity.kind === 'wild')!;
+  world.player = { x: target.x, z: target.z, heading: 0 };
+  Object.assign(world.entities.find(entity => entity.kind === 'companion')!, world.player);
+  expect(world.startEncounter(target.id)).toBe(true);
+  const save = packSave(game, graph, { ...defaultView(), openWorld: world.snapshot(), openWorldPaused: false });
+  await page.locator('#import-file').setInputFiles({ name: 'openworld-switch.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(save)) });
+  await expect(page.getByRole('status')).toContainText('불러왔습니다');
+  await expect(page.locator('#world-battle-state')).toContainText('턴 1');
+  await page.locator('.world-battle-hud > summary').click();
+  await page.locator('.world-switch > summary').click();
+  await expect(page.locator('[data-world-switch="0"]')).toBeDisabled();
+  await expect(page.locator('[data-world-switch="0"]')).toContainText('현재 출전');
+  await expect(page.locator('[data-world-switch="1"]')).toBeEnabled();
+  await page.locator('[data-world-switch="1"]').click();
+  await expect(page.locator('.world-summary-name')).toContainText(second.nickname, { timeout: 12000 });
+  await page.locator('#save-now').click();
+  await expect(page.getByRole('status')).toContainText('이 기기에 저장했습니다.');
+  const stored = await storedDeviceSave(page) as { game: { player: { team: Array<{ instanceId: string }> }; battle: { player: { activeIndex: number } } } };
+  expect(stored.game.battle.player.activeIndex).toBe(1);
+  expect(stored.game.player.team.map(monster => monster.instanceId)).toEqual(order);
 });
 
 test('inspect a visible wild, pin tracking, teleport and persist experience sharing', async ({ page }) => {
@@ -149,8 +226,7 @@ test('manual battle waits, victory choice survives reload, buying and catching p
   await start(page);
   const game = createGame(1, 'kanto-ui-victory'), world = new OpenWorldSimulation(graph, game, 34415, undefined, policy);
   world.setControlMode('manual'); world.setAutoHunt(false);
-  // A victory with no balls is released immediately by the simulation, so keep
-  // one ball available while verifying that the pending choice survives reload.
+  // Legacy saves keep a finite token, while capture uses the unlimited basic ball.
   game.inventory['poke-ball'] = 1; game.inventory['great-ball'] = 0; game.inventory['ultra-ball'] = 0;
   world.startEncounter(world.entities.find(entity => entity.kind === 'wild')!.id);
   game.player.team[0].moves = [{ moveId: 33, pp: 35 }];
@@ -167,9 +243,6 @@ test('manual battle waits, victory choice survives reload, buying and catching p
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 25000 });
   await openExplorePanel(page);
   await page.screenshot({ path: 'artifacts/kanto-browser/victory-choice.png' });
-  await page.locator('.world-shop summary').click();
-  await page.locator('[data-world-buy="poke-ball"][data-quantity="1"]').click();
-  await page.locator('.world-shop summary').click();
   await page.locator('#world-win-catch').click();
   await expect(page.locator('#world-capture-offer')).toBeHidden();
   // Catching queues an autosave. Wait for that write to settle before

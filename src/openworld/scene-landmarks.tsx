@@ -1,12 +1,11 @@
 import { Html } from '@react-three/drei';
 import { RigidBody } from '@react-three/rapier';
 import { useEffect, useMemo } from 'react';
-import { BoxGeometry, BufferGeometry, Float32BufferAttribute, Matrix4, MeshStandardMaterial, Vector3, type Camera, type Object3D } from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { BufferGeometry, Float32BufferAttribute, MeshStandardMaterial, Vector3, type Camera, type Object3D } from 'three';
 import { CAVE_SCENES, caveContains, getCaveScene, type CaveScene } from './caves';
 import { useSurfaceTextures } from './materials';
 import type { WorldPoint, WorldSample } from './types';
-import { caveVertexHeight } from './cave-relief';
+import { caveFloorShade, caveVertexHeight } from './cave-relief';
 import { CaveDetails } from './cave-details';
 import type { KantoGate, KantoGym, KantoLocation } from './kanto';
 import { LeagueStadium } from './league-stadium';
@@ -114,27 +113,17 @@ function gateScreenPosition(object: Object3D, camera: Camera, size: { width: num
   return [Math.max(marginX, Math.min(size.width - marginX, x)), Math.max(top, Math.min(size.height - 220, y))];
 }
 
-function tileUvs(geometry: BoxGeometry) {
-  const positions = geometry.attributes.position, normals = geometry.attributes.normal, uvs = geometry.attributes.uv;
-  for (let index = 0; index < positions.count; index++) {
-    const x = positions.getX(index), y = positions.getY(index), z = positions.getZ(index);
-    const nx = Math.abs(normals.getX(index)), ny = Math.abs(normals.getY(index));
-    if (nx > ny && nx > Math.abs(normals.getZ(index))) uvs.setXY(index, z / CAVE_TEXTURE_TILE, y / CAVE_TEXTURE_TILE);
-    else if (ny > Math.abs(normals.getZ(index))) uvs.setXY(index, x / CAVE_TEXTURE_TILE, z / CAVE_TEXTURE_TILE);
-    else uvs.setXY(index, x / CAVE_TEXTURE_TILE, y / CAVE_TEXTURE_TILE);
-  }
-  uvs.needsUpdate = true;
-  return geometry;
-}
-
 function createCaveFloor(cave: CaveScene): BufferGeometry {
-  const positions: number[] = [], uvs: number[] = [], indices: number[] = [];
+  const positions: number[] = [], colors: number[] = [], uvs: number[] = [], indices: number[] = [];
   const vertices = new Map<string, number>();
   const vertex = (x: number, z: number) => {
     const key = `${x}:${z}`, existing = vertices.get(key);
     if (existing !== undefined) return existing;
     const index = positions.length / 3;
     positions.push(x, caveVertexHeight(cave.relief, x, z), z);
+    const edge = caveContains(cave.outline, x, z, 4.6) ? 1 : .76;
+    const shade = caveFloorShade(cave.relief, x, z) * edge;
+    colors.push(shade * .94, shade * .98, shade);
     uvs.push(x / CAVE_TEXTURE_TILE, z / CAVE_TEXTURE_TILE);
     vertices.set(key, index);
     return index;
@@ -148,44 +137,62 @@ function createCaveFloor(cave: CaveScene): BufferGeometry {
   }
   const geometry = new BufferGeometry();
   geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new Float32BufferAttribute(colors, 3));
   geometry.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
   geometry.setIndex(indices); geometry.computeVertexNormals();
   return geometry;
 }
 
 function createCaveWalls(cave: CaveScene): BufferGeometry {
-  const parts = cave.wallSegments.map(wall => {
-    const geometry = tileUvs(new BoxGeometry(wall.width, wall.height + 2, wall.depth, Math.max(1, Math.ceil(wall.width / 2)), 2, 1));
-    const positions = geometry.attributes.position;
-    for (let index = 0; index < positions.count; index++) {
-      const x = positions.getX(index), y = positions.getY(index), z = positions.getZ(index);
-      if (y > 0) positions.setY(index, y + .45 * Math.sin((x + wall.x) * .6 + (z + wall.z) * .4 + cave.relief.seed));
+  const positions: number[] = [], uvs: number[] = [], indices: number[] = [];
+  let distance = 0;
+  cave.wallSegments.forEach((wall, wallIndex) => {
+    const tangent = { x: Math.cos(wall.rotationY), z: -Math.sin(wall.rotationY) };
+    const normalA = { x: -tangent.z, z: tangent.x }, normalB = { x: tangent.z, z: -tangent.x };
+    const inward = normalA.x * -wall.x + normalA.z * -wall.z > normalB.x * -wall.x + normalB.z * -wall.z ? normalA : normalB;
+    const ends = [-1, 1], levels = [-.55, 1.05, 2.7, 4.45];
+    const base = positions.length / 3;
+    for (let level = 0; level < levels.length; level++) for (const end of ends) {
+      const vertexIndex = (wallIndex + (end > 0 ? 1 : 0)) % cave.wallSegments.length;
+      const wave = Math.sin(vertexIndex * 1.73 + level * 2.11 + cave.relief.seed * .17) * .18;
+      const inset = [0, .18, .52, .88][level] + wave;
+      const topJitter = level === levels.length - 1 ? .32 * Math.sin(vertexIndex * .91 + cave.relief.seed) : 0;
+      positions.push(wall.x + tangent.x * wall.width / 2 * end + inward.x * inset,
+        levels[level] + topJitter, wall.z + tangent.z * wall.width / 2 * end + inward.z * inset);
+      uvs.push((distance + (end + 1) * wall.width / 2) / CAVE_TEXTURE_TILE, levels[level] / CAVE_TEXTURE_TILE);
     }
-    geometry.computeVertexNormals();
-    const transform = new Matrix4().makeRotationY(wall.rotationY).setPosition(wall.x, wall.height / 2, wall.z);
-    return geometry.applyMatrix4(transform);
+    for (let level = 0; level < levels.length - 1; level++) {
+      const a = base + level * 2, b = a + 1, d = a + 2, c = a + 3;
+      indices.push(a, b, d, b, c, d);
+    }
+    distance += wall.width;
   });
-  const merged = mergeGeometries(parts, false);
-  parts.forEach(part => part.dispose());
-  if (!merged) throw new Error(`Could not merge cave walls: ${cave.id}`);
-  return merged;
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
+  geometry.setIndex(indices); geometry.computeVertexNormals();
+  return geometry;
 }
 
 export function CaveInterior({ cave, player, mobile, onNavigate }: { cave: CaveScene; player: WorldPoint; mobile: boolean; onNavigate(point: WorldPoint): void }) {
   const textures = useSurfaceTextures('rock');
   const material = useMemo(() => {
+    const tint = { limestone: '#9a9485', water: '#697e78', ice: '#a8c5ca', volcanic: '#756861', industrial: '#737b7c' }[cave.relief.theme];
     const result = new MeshStandardMaterial({
-      name: 'cave-rock-pbr', color: cave.id === 'ice-path' ? '#a8c5ca' : '#8a8d82', roughness: .95, metalness: 0,
+      name: 'cave-rock-pbr', color: tint, roughness: cave.relief.theme === 'water' ? .78 : .94, metalness: cave.relief.theme === 'industrial' ? .08 : 0,
       map: textures.diffuse, normalMap: textures.normal, roughnessMap: textures.arm, aoMap: textures.arm,
     });
     result.userData.openWorldSurface = 'cave-rock-uv';
     return result;
-  }, [cave.id, textures]);
+  }, [cave.relief.theme, textures]);
+  const floorMaterial = useMemo(() => {
+    const result = material.clone(); result.name = 'cave-floor-pbr'; result.vertexColors = true; return result;
+  }, [material]);
   const floor = useMemo(() => createCaveFloor(cave), [cave]);
   const walls = useMemo(() => createCaveWalls(cave), [cave]);
-  useEffect(() => () => { material.dispose(); floor.dispose(); walls.dispose(); }, [floor, material, walls]);
+  useEffect(() => () => { floorMaterial.dispose(); material.dispose(); floor.dispose(); walls.dispose(); }, [floor, floorMaterial, material, walls]);
   return <group name={`cave-interior:${cave.id}`} dispose={null}>
-    <mesh name="cave-floor" geometry={floor} material={material} receiveShadow onClick={event => { event.stopPropagation(); if (event.button === 0 && event.delta <= 5) onNavigate({ x: event.point.x, z: event.point.z }); }}>
+    <mesh name="cave-floor" geometry={floor} material={floorMaterial} receiveShadow onClick={event => { event.stopPropagation(); if (event.button === 0 && event.delta <= 5) onNavigate({ x: event.point.x, z: event.point.z }); }}>
     </mesh>
     <mesh name="cave-wall:outline" geometry={walls} material={material} receiveShadow castShadow />
     <CaveDetails cave={cave} material={material} player={player} mobile={mobile} onNavigate={onNavigate} />

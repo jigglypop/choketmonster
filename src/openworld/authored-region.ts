@@ -41,31 +41,48 @@ export function createAuthoredRegionSampler(definition: AuthoredRegionDefinition
   const towns = definition.locations.filter(location => location.kind === 'town');
   const buildingCache = new Map<string, ReadonlyArray<readonly [number, number]>>();
   const buildingCandidates = [[-5,-4],[5,-4],[-5,4],[5,4],[-6,0],[6,0],[0,-6],[0,6]].map(([x,z])=>[x*WORLD_SCALE,z*WORLD_SCALE] as const);
-  const featureAt = (x: number, z: number) => features.map(feature => ({ feature, distance: Math.hypot(x - feature.x, z - feature.z) }))
-    .filter(entry => entry.distance < entry.feature.radius).sort((a, b) => a.distance - b.distance)[0];
-  const featureLift = (x: number, z: number) => {
-    const entry = featureAt(x, z); if (!entry) return 0;
+  const featureAt = (x: number, z: number) => {
+    let nearest: typeof features[number] | undefined, distance = Infinity;
+    for (const feature of features) {
+      const next = Math.hypot(x - feature.x, z - feature.z);
+      if (next < feature.radius && next < distance) { nearest = feature; distance = next; }
+    }
+    return nearest ? { feature: nearest, distance } : undefined;
+  };
+  const featureLift = (entry: ReturnType<typeof featureAt>) => {
+    if (!entry) return 0;
     const t = 1 - entry.distance / entry.feature.radius;
     return entry.feature.elevation * t * t * (3 - 2 * t);
   };
-  const baseHeight = (x: number, z: number) => .18 * Math.sin((x / WORLD_SCALE + definition.id.length * 5) * .08)
-    + .14 * Math.cos((z / WORLD_SCALE - definition.id.length * 3) * .07) + featureLift(x, z);
+  const baseHeight = (x: number, z: number, feature: ReturnType<typeof featureAt>) => .18 * Math.sin((x / WORLD_SCALE + definition.id.length * 5) * .08)
+    + .14 * Math.cos((z / WORLD_SCALE - definition.id.length * 3) * .07) + featureLift(feature);
   const surfaceHeight = (kind: KantoLocationKind, height: number) => kind === 'sea' ? -.68 : height + (kind === 'cave' || kind === 'special' ? .5 : 0);
-  const plateaus = towns.map(town => ({ x: town.x, z: town.z, height: baseHeight(town.x, town.z) }));
-  const nearestLocation = (x: number, z: number) => definition.locations.reduce((best, item) => Math.hypot(x - item.x, z - item.z) < Math.hypot(x - best.x, z - best.z) ? item : best);
-  const nearestSegment = (x: number, z: number) => segments.reduce((best, segment) => {
-    const t = Math.max(0, Math.min(1, ((x - segment.x) * segment.dx + (z - segment.z) * segment.dz) / segment.lengthSquared));
-    const distance = Math.hypot(x - segment.x - segment.dx * t, z - segment.z - segment.dz * t);
-    return distance < best.distance ? { segment, t, distance } : best;
-  }, { segment: segments[0], t: 0, distance: Infinity });
+  const plateaus = towns.map(town => ({ x: town.x, z: town.z, height: baseHeight(town.x, town.z, featureAt(town.x, town.z)) }));
+  const nearestLocation = (x: number, z: number) => {
+    let nearest = definition.locations[0], distance = Infinity;
+    for (const item of definition.locations) {
+      const next = Math.hypot(x - item.x, z - item.z);
+      if (next < distance) { nearest = item; distance = next; }
+    }
+    return nearest;
+  };
+  const nearestSegment = (x: number, z: number) => {
+    let nearest = segments[0], nearestT = 0, distance = Infinity;
+    for (const segment of segments) {
+      const t = Math.max(0, Math.min(1, ((x - segment.x) * segment.dx + (z - segment.z) * segment.dz) / segment.lengthSquared));
+      const next = Math.hypot(x - segment.x - segment.dx * t, z - segment.z - segment.dz * t);
+      if (next < distance) { nearest = segment; nearestT = t; distance = next; }
+    }
+    return { segment: nearest, t: nearestT, distance };
+  };
   const buildingOffsets = (town: KantoLocation): ReadonlyArray<readonly [number, number]> => {
     const cached=buildingCache.get(town.id); if(cached)return cached;
     const offsets=buildingCandidates.filter(([dx,dz])=>nearestSegment(town.x+dx,town.z+dz).distance>scaleWorldDistance(3.5)).slice(0,3);
     buildingCache.set(town.id,offsets);return offsets;
   };
   const sample = (x: number, z: number): WorldSample => {
-    const height = baseHeight(x, z);
-    const terrainFeature = featureAt(x, z)?.feature;
+    const feature = featureAt(x, z), height = baseHeight(x, z, feature);
+    const terrainFeature = feature?.feature;
     if (![x, z].every(Number.isFinite) || Math.abs(x) > WORLD_MAX || Math.abs(z) > WORLD_MAX) return { height, biome: 'rock', blocked: true };
     const nearest = nearestLocation(x, z), path = nearestSegment(x, z), localDistance = Math.hypot(x - nearest.x, z - nearest.z);
     const town=towns.find(item=>Math.hypot(x-item.x,z-item.z)<scaleWorldDistance(8));

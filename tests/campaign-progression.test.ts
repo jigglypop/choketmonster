@@ -97,7 +97,7 @@ describe('regional campaign and growth', () => {
     challengeCampaignTrainer(game, 'kanto');
     game.battle!.player.activeIndex = 2;
     const active = game.player.team[2], saved = structuredClone(active), turn = game.battle!.turn;
-    buyItem(game, 'poke-ball', 5); expect(game.inventory['poke-ball']).toBe(20);
+    expect(() => buyItem(game, 'poke-ball', 5)).toThrow(/판매/); expect(game.inventory['poke-ball']).toBe(15);
     expect(() => buyItem(game, 'ultra-ball')).toThrow();
     depositMonster(game, 0);
     expect(game.battle!.player.activeIndex).toBe(1); expect(game.battle!.player.team[1]).toBe(active);

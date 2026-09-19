@@ -155,7 +155,7 @@ describe('complete source-backed evolution reachability', () => {
     expect(shedinja).not.toBe(nincada);
     expect(shedinja.speciesId).toBe(292);
     expect(native.player.team).toHaveLength(2);
-    expect(native.inventory['poke-ball']).toBe(0);
+    expect(native.inventory['poke-ball']).toBe(1);
 
     const fallback = ownedFixture(290, 20), direct = fallback.player.team[0];
     fallback.inventory['evolution-catalyst'] = 1;
@@ -180,7 +180,7 @@ describe('complete source-backed evolution reachability', () => {
     expect(nincada).toMatchObject({ instanceId, speciesId: 291 });
     expect(nincada.brain).toBe(memory); expect(nincada.ivs).toBe(ivs); expect(nincada.ability).toMatchObject(abilitySlot!);
     expect(game.player.team).toEqual([partner, shedinja]);
-    expect(shedinja.speciesId).toBe(292); expect(game.inventory['poke-ball']).toBe(0);
+    expect(shedinja.speciesId).toBe(292); expect(game.inventory['poke-ball']).toBe(1);
     const restored = restoreGame(serializeGame(game));
     expect(restored.player.box[0]).toMatchObject({ instanceId, speciesId: 291, brain: memory });
     expect(restored.player.team[1].speciesId).toBe(292);

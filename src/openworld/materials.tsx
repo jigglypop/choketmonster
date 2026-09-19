@@ -11,6 +11,9 @@ import type { WorldAtlas } from './atlas';
 import type { WorldSample } from './types';
 import { WORLD_MIN, WORLD_MAX, WORLD_SCALE } from './world-space';
 import { prepareShorelinePixels, SHORELINE_RESOLUTION } from './shoreline-texture';
+import { townStyle } from './town-style';
+
+export const GRASS_TEXTURE_REPEAT = .28;
 
 type Surface = 'ground' | 'rock' | 'path';
 export type SurfaceTextures = { diffuse: Texture; normal: Texture; arm: Texture };
@@ -31,9 +34,12 @@ export function worldSurfaceColor(atlas: WorldAtlas, sample: WorldSample, x: num
   if (sample.biome === 'forest') return new Color(BIOME_COLORS.forest).lerp(new Color(atlas.palette.ground), .16);
   const nearest = atlas.locationAt(x, z);
   const landmarkDistance = Math.hypot(x - nearest.x, z - nearest.z);
-  if (nearest.kind === 'town' && landmarkDistance <= 8.5 * WORLD_SCALE) return new Color(atlas.palette.town).lerp(new Color('#e8dfc5'), .26);
+  if (nearest.kind === 'town' && landmarkDistance <= 8.5 * WORLD_SCALE) return new Color(townStyle(nearest.id).color).lerp(new Color('#e8dfc5'), .38);
   if (atlas.distanceToPath(x, z) <= 3.2 * WORLD_SCALE) return new Color(regionTrailColor(atlas)).lerp(new Color(atlas.palette.ground), .28);
-  return new Color(atlas.palette.ground);
+  // Bake broad variation once per terrain vertex instead of evaluating three
+  // trigonometric functions for every grass fragment on every frame.
+  const variation = Math.sin(x * .19 + Math.sin(z * .11)) * Math.cos(z * .17);
+  return new Color(atlas.palette.ground).multiplyScalar(1 + variation * .065);
 }
 
 export function regionTrailColor(atlas: WorldAtlas): string {
@@ -118,11 +124,11 @@ export function detailSurface(material: MeshStandardMaterial, textures: SurfaceT
         if (owAxis.x > owAxis.y && owAxis.x > owAxis.z) { owUv = owWorld.zy; owU = vec3(0.0, 0.0, 1.0); owV = vec3(0.0, 1.0, 0.0); }
         else if (owAxis.z > owAxis.y) { owUv = owWorld.xy; owU = vec3(1.0, 0.0, 0.0); owV = vec3(0.0, 1.0, 0.0); }
         ` : ''}
-        owUv *= ${surface === 'ground' ? '0.115' : surface === 'path' ? '0.28' : '0.45'};
+        owUv *= ${surface === 'ground' ? GRASS_TEXTURE_REPEAT.toFixed(3) : surface === 'path' ? '0.28' : '0.45'};
         vec3 owTexel = texture2D(owAlbedo, owUv).rgb;
         vec2 owArmValue = texture2D(owArm, owUv).rg;
         float owLuma = dot(owTexel, vec3(0.2126, 0.7152, 0.0722));
-        float owMacro = sin(owWorld.x * 0.19 + sin(owWorld.z * 0.11)) * cos(owWorld.z * 0.17);
+        float owMacro = ${surface === 'ground' ? '0.0' : 'sin(owWorld.x * 0.19 + sin(owWorld.z * 0.11)) * cos(owWorld.z * 0.17)'};
         diffuseColor.rgb *= clamp(0.72 + owLuma * 1.35, 0.68, 1.32) * (1.0 + owMacro * 0.065);
         ${surface === 'ground' ? 'diffuseColor.rgb = mix(diffuseColor.rgb, owTexel * 0.72, 0.22);' : ''}
         ${surface === 'path' ? 'diffuseColor.rgb = mix(diffuseColor.rgb, owTexel * vec3(1.05, 0.94, 0.78), 0.5);' : ''}
@@ -145,11 +151,11 @@ export function detailSurface(material: MeshStandardMaterial, textures: SurfaceT
 }
 
 function applySurfaceNodes(material: MeshStandardNodeMaterial, textures: SurfaceTextures, surface: Surface) {
-  const detailUv = positionWorld.xz.mul(surface === 'ground' ? .115 : surface === 'path' ? .28 : .45);
+  const detailUv = positionWorld.xz.mul(surface === 'ground' ? GRASS_TEXTURE_REPEAT : surface === 'path' ? .28 : .45);
   const albedo = texture(textures.diffuse, detailUv);
   const arm = texture(textures.arm, detailUv);
   const luma = dot(albedo.rgb, vec3(.2126, .7152, .0722));
-  const macro = sin(positionWorld.x.mul(.19).add(sin(positionWorld.z.mul(.11))))
+  const macro = surface === 'ground' ? float(0) : sin(positionWorld.x.mul(.19).add(sin(positionWorld.z.mul(.11))))
     .mul(cos(positionWorld.z.mul(.17)));
   const contrast = luma.mul(1.35).add(.72).clamp(.68, 1.32).mul(macro.mul(.065).add(1));
   const tint = surface === 'ground' ? mix(vec3(1), albedo.rgb.mul(.72), .22)

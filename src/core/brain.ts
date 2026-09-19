@@ -67,9 +67,12 @@ export class Brain {
     if (!Number.isInteger(recurrentSteps) || recurrentSteps < 1 || recurrentSteps > 16) throw new Error('Recurrent steps must be 1–16');
     let features = this.features(input);
     for (let step = 1; step < recurrentSteps; step++) features = this.features(input);
-    const values = this.values(features);
-    if (learning && reward !== null) this.update(reward, Math.max(...values));
-    const current = this.values(features);
+    let current = this.values(features);
+    // Re-evaluate only when a pending decision can change the readout weights.
+    if (learning && reward !== null && this.state.previous !== null) {
+      this.update(reward, Math.max(...current));
+      current = this.values(features);
+    }
     const rng = new Random(this.state.rng);
     let action = current.indexOf(Math.max(...current)) as Action;
     if (epsilon > 0 && rng.next() < epsilon) action = rng.int(OUTPUTS) as Action;

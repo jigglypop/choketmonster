@@ -126,13 +126,13 @@ describe('expanded collection and individual lifecycle', () => {
     validateGame(game);
   });
 
-  it('refills only on active elapsed time with a cap and a replayable partial timer', () => {
+  it('normalizes the unlimited ball to a finite save token without a refill timer', () => {
     const game = createGame(1, 'balls'); game.inventory['poke-ball'] = 0;
     for (let i = 0; i < 5; i++) replenishBalls(game, 5);
-    expect(game.inventory['poke-ball']).toBe(0);
+    expect(game.inventory['poke-ball']).toBe(1);
     const restored = validateGame(structuredClone(game)), rng = game.rngState;
-    expect(replenishBalls(restored, 5)).toBe(1);
-    expect(replenishBalls(game, 5)).toBe(1);
+    expect(replenishBalls(restored, 5)).toBe(0);
+    expect(replenishBalls(game, 5)).toBe(0);
     expect(restored).toEqual(game); expect(game.rngState).toBe(rng);
     game.inventory['poke-ball'] = 20;
     for (let i = 0; i < 12; i++) replenishBalls(game, 5);

@@ -115,20 +115,36 @@ describe('connectome open world', () => {
     expect(world.startEncounter(wild.id)).toBe(true);
   });
 
-  it('rotates healthy team members into automatic wild battles and persists the next slot', async () => {
-    const graph = await loadGraph(), policy = await loadPolicy(), game = createGame(1, 'automatic-team-rotation');
+  it('keeps permanent team order while switches, forced replacement, restore, and later encounters change only activeIndex', async () => {
+    const graph = await loadGraph(), policy = await loadPolicy(), game = createGame(1, 'stable-battle-team-order');
     game.player.team.push(createMonster(game, 4, 5), createMonster(game, 7, 5));
+    const permanentOrder = game.player.team.map(monster => monster.instanceId);
     const world = new OpenWorldSimulation(graph, game, 93_112, undefined, policy);
+    world.setAutoCapture(false);
     const wilds = world.entities.filter(entity => entity.kind === 'wild');
     expect(engageWildAtLocation(world, wilds[0].id)).toBe(true);
     expect(game.battle?.player.activeIndex).toBe(0);
-    expect(world.snapshot().nextBattleTeamIndex).toBe(1);
-    game.battle!.enemy.team[0].hp = 0;
+    world.setControlMode('manual');
+    expect(world.requestAction({ type: 'switch', index: 1 })).toBe(true);
     world.step({ deltaSeconds: 1, learning: false });
-    expect(engageWildAtLocation(world, wilds[1].id)).toBe(true);
     expect(game.battle?.player.activeIndex).toBe(1);
-    const restored = restoreOpenWorld(graph, serializeOpenWorld(game, world), policy);
-    expect(restored.simulation.nextBattleTeamIndex).toBe(2);
+    expect(game.player.team.map(monster => monster.instanceId)).toEqual(permanentOrder);
+
+    game.player.team[1].hp = 0; game.battle!.awaitingSwitch = 'player';
+    expect(world.requestAction({ type: 'switch', index: 2 })).toBe(true);
+    const legacySave = JSON.parse(serializeOpenWorld(game, world)); legacySave.world.nextBattleTeamIndex = 2;
+    const restored = restoreOpenWorld(graph, JSON.stringify(legacySave), policy);
+    restored.simulation.step({ deltaSeconds: 1, learning: false });
+    expect(restored.game.battle?.player.activeIndex).toBe(2);
+    expect(restored.game.player.team.map(monster => monster.instanceId)).toEqual(permanentOrder);
+
+    restored.game.battle!.enemy.team[0].hp = 0;
+    restored.simulation.requestAction({ type: 'wait' }); restored.simulation.step({ deltaSeconds: 1, learning: false });
+    restored.simulation.releaseVictory();
+    const nextWild = restored.simulation.entities.find(entity => entity.kind === 'wild')!;
+    expect(engageWildAtLocation(restored.simulation, nextWild.id)).toBe(true);
+    expect(restored.game.battle?.player.activeIndex).toBe(0);
+    expect(restored.game.player.team.map(monster => monster.instanceId)).toEqual(permanentOrder);
   });
 
   it('maps species Speed to frame-rate independent movement and samples long paths for obstacles', async () => {
@@ -288,7 +304,7 @@ describe('connectome open world', () => {
     expect(game.player.team[0].speciesId).toBe(2); expect(game.player.team[0].moves.length).toBeLessThanOrEqual(4);
   });
 
-  it('captures a wild Pokemon through the engine probability and ball inventory path', async () => {
+  it('captures a wild Pokemon with the unlimited finite-save ball token', async () => {
     const graph = await loadGraph(), policy = await loadPolicy(), game = createGame(7, 'open-world-catch');
     const world = new OpenWorldSimulation(graph, game, 345, undefined, policy);
     const target = world.entities.find(entity => entity.kind === 'wild')!, targetSpecies = target.speciesId;
@@ -298,7 +314,7 @@ describe('connectome open world', () => {
       expect(world.requestCapture('poke-ball')).toBe(true);
       for (const event of world.step({ deltaSeconds: 1 }).events) if (event.type === 'battle-turn') outcome = event.result.outcome ?? outcome;
     }
-    expect(outcome).toBe('caught'); expect(game.dex.caught).toContain(targetSpecies); expect(game.inventory['poke-ball']).toBeLessThan(8);
+    expect(outcome).toBe('caught'); expect(game.dex.caught).toContain(targetSpecies); expect(game.inventory['poke-ball']).toBe(8);
     expect(world.rosterStatus()).toEqual({ alive: 14, pending: 1, total: 15 });
   });
 

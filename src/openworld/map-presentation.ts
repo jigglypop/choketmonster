@@ -36,6 +36,11 @@ export function rotateMapPoint(x: number, y: number, size: number, rotation: num
   return { x: center + dx * cosine - dy * sine, y: center + dx * sine + dy * cosine };
 }
 
+/** Undo a map rotation around its square map center. */
+export function unrotateMapPoint(x: number, y: number, size: number, rotation: number): { x: number; y: number } {
+  return rotateMapPoint(x, y, size, -rotation);
+}
+
 export function mapKindLabel(kind: KantoLocationKind): string {
   return ({ town: '도시', route: '도로', forest: '숲', cave: '동굴', sea: '수로', special: '특별 지점' })[kind];
 }

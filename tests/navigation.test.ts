@@ -19,6 +19,20 @@ describe('click navigation', () => {
     expect(sample(path.at(-1)!.x, path.at(-1)!.z).blocked).toBe(false);
   });
 
+  it('observes changed obstacles on the next search and never crosses diagonal corners', () => {
+    let blocked = true;
+    const terrain = (x: number, z: number): WorldSample => ({
+      height: 0, biome: 'meadow', blocked: blocked && ((x === .75 && z === 0) || (x === 0 && z === .75)),
+    });
+    const start = { x: 0, z: 0 }, goal = { x: .75, z: .75 };
+    const detour = findWorldPath(start, goal, terrain);
+    expect(detour.length).toBeGreaterThan(1);
+    expect(detour[0]).not.toEqual(goal);
+    expect(detour.at(-1)).toEqual(goal);
+    blocked = false;
+    expect(findWorldPath(start, goal, terrain)).toEqual([goal]);
+  });
+
   it('maps travel direction to the simulation heading contract', () => {
     expect([headingForStep(0, -1), headingForStep(1, 0), headingForStep(0, 1), headingForStep(-1, 0)]).toEqual([0, 1, 2, 3]);
   });
