@@ -1,17 +1,13 @@
 import { Brain, validateGraph, type Graph } from '../core/brain';
 import { clamp } from '../core/random';
 import { getMove, getSpecies } from '../data/pokemon';
-import { resolveTeraMove, typeMultiplier } from './battle';
+import { typeMultiplier } from './battle';
 import type { PokemonType } from './contracts';
 import { getCombatForm } from '../data/pokemon-combat-forms';
 
-export type NeuralMonster = { instanceId: string; speciesId: number; level: number; hp: number; stats: { hp: number; attack?: number; defense?: number; specialAttack?: number; specialDefense?: number; speed: number }; moves: { pp: number; moveId?: number }[]; types?: readonly PokemonType[]; teraType?: PokemonType; regionalForm?: string; lockedMoveId?: number; status?: string; brain?: ReturnType<Brain['snapshot']> };
+export type NeuralMonster = { instanceId: string; speciesId: number; level: number; hp: number; stats: { hp: number; attack?: number; defense?: number; specialAttack?: number; specialDefense?: number; speed: number }; moves: { pp: number; moveId?: number }[]; types?: readonly PokemonType[]; regionalForm?: string; lockedMoveId?: number; status?: string; brain?: ReturnType<Brain['snapshot']> };
 const monsterTypes = (monster: NeuralMonster) => monster.types ?? (monster.regionalForm ? getCombatForm(monster.regionalForm)?.types : undefined) ?? getSpecies(monster.speciesId).types;
-const effectiveMove = (monster: NeuralMonster, moveId: number) => resolveTeraMove({
-  level: monster.level, hp: monster.hp,
-  stats: { hp: monster.stats.hp, attack: monster.stats.attack ?? 1, defense: monster.stats.defense ?? 1, specialAttack: monster.stats.specialAttack ?? 1, specialDefense: monster.stats.specialDefense ?? 1, speed: monster.stats.speed },
-  types: monsterTypes(monster), teraType: monster.teraType,
-}, getMove(moveId));
+const effectiveMove = (_monster: NeuralMonster, moveId: number) => getMove(moveId);
 export type BattleSenseContext = {
   selfStatStages?: Readonly<Record<string, number>>;
   otherStatStages?: Readonly<Record<string, number>>;

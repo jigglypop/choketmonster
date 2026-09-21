@@ -17,8 +17,8 @@ async function prepare(context: BrowserContext, index: number) {
   const game = createGame(4, username);
   game.player.team = [createMonster(game, index ? 26 : 6, 50), createMonster(game, 25, 50)];
   if (index) { assignAlolaForm(game, game.player.team[0].instanceId, true); replaceMonsterMove(game, game.player.team[0].instanceId, 0, 851); }
-  assignPreferredTransformation(game, game.player.team[0].instanceId, index ? { kind: 'tera', teraType: 'water' } : { kind: 'mega', formIdentifier: 'charizard-mega-x' });
-  game.player.team[0].heldTool = index ? 'focus-sash' : 'choice-scarf';
+  if (!index) { game.inventory['mega-stone:charizard-mega-x'] = 1; assignPreferredTransformation(game, game.player.team[0].instanceId, { kind: 'mega', formIdentifier: 'charizard-mega-x' }); }
+  if (index) game.player.team[0].heldTool = 'focus-sash';
   game.dex.caught = [...new Set([4, ...game.player.team.map(m => m.speciesId)])].sort((a, b) => a - b);
   game.dex.seen = game.dex.caught.slice();
   const world = new OpenWorldSimulation(graph, game, index + 200);
@@ -31,7 +31,7 @@ async function prepare(context: BrowserContext, index: number) {
   return { context, page, headers, errors };
 }
 
-test('real ranked applies preset Mega and Tera before the first move, then survives reload', async ({ browser }) => {
+test('real ranked applies preset Mega and Alola before the first move, then survives reload', async ({ browser }) => {
   test.setTimeout(120_000);
   const a = await browser.newContext(), b = await browser.newContext();
   try {
@@ -51,28 +51,28 @@ test('real ranked applies preset Mega and Tera before the first move, then survi
     await expect(left.page.locator('.battle-transformation-active')).toHaveText('메가진화');
     await expect(left.page.locator('.ranked-fighter.is-self img')).toHaveAttribute('src', /10034/);
     await expect(left.page.locator('.ranked-fighter.is-self h3')).toHaveText('메가리자몽 X');
-    await expect(right.page.locator('.battle-transformation-active')).toHaveText('물 테라스탈');
+    await expect(right.page.locator('.battle-transformation-active')).toHaveCount(0);
     const status = async () => (await (await a.request.get(`${base}/api/ranked?league=standard`, { headers: left.headers })).json()).currentMatch;
     let match = await status();
     expect(match.turn).toBe(1);
     expect(match.selfSide.team[0].types).toEqual(['fire', 'dragon']);
-    expect(match.opponentSide.team[0].types).toEqual(['water']);
-    expect(match.opponentSide.team[0].moves.find((move: { id: number }) => move.id === 851).type).toBe('water');
-    await expect(right.page.locator('.ranked-moves button').filter({ hasText: '테라버스트' })).toContainText('물');
-    expect(match.selfSide.megaUsed).toBe(true); expect(match.opponentSide.teraUsed).toBe(true);
+    expect(match.opponentSide.team[0].types).toEqual(['electric', 'psychic']);
+    expect(match.opponentSide.team[0].moves.find((move: { id: number }) => move.id === 851).type).toBe('normal');
+    await expect(right.page.locator('.ranked-moves button').filter({ hasText: '테라버스트' })).toContainText('노말');
+    expect(match.selfSide.megaUsed).toBe(true); expect(match.opponentSide.teraUsed).toBe(false);
     const repeated = await a.request.post(`${base}/api/ranked/matches/${match.id}/action`, { headers: left.headers, data: { turn: match.turn, transformation: { kind: 'mega', formIdentifier: 'charizard-mega-x' } } });
     expect(repeated.status()).toBe(422);
     await left.page.reload(); await left.page.locator('[data-tab="ranked"]').click();
     await expect(left.page.locator('.battle-transformation-active')).toHaveText('메가진화');
     const index = match.selfSide.team[0].moves.findIndex((move: { power: number }) => move.power === 0);
-    const selected = Math.max(0, index), moveId = match.selfSide.team[0].moves[selected].id;
+    const selected = Math.max(0, index);
     await left.page.locator(`[data-ranked-move="${selected}"]`).click();
     await right.page.locator('[data-ranked-move="0"]').click();
     await expect.poll(async () => (await status()).turn).toBe(match.turn + 1);
-    match = await status(); expect(match.selfSide.team[0].choiceMove).toBe(moveId);
+    match = await status(); expect(match.selfSide.team[0].choiceMove).toBeNull();
     await expect(left.page.locator('.ranked-wait')).toHaveCount(0);
     await expect(left.page.locator(`[data-ranked-move="${selected}"]`)).toBeEnabled();
-    await expect(left.page.locator(`[data-ranked-move="${(selected + 1) % match.selfSide.team[0].moves.length}"]`)).toBeDisabled();
+    await expect(left.page.locator(`[data-ranked-move="${(selected + 1) % match.selfSide.team[0].moves.length}"]`)).toBeEnabled();
     await left.page.screenshot({ path: 'artifacts/ranked-forms-live.png', fullPage: true });
     expect([...left.errors, ...right.errors]).toEqual([]);
     const surrendered = await a.request.post(`${base}/api/ranked/matches/${match.id}/action`, { headers: left.headers, data: { turn: match.turn, surrender: true } });

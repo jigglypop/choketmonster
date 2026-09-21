@@ -1,44 +1,47 @@
 import fieldItemsJson from '../data/field-items.json' with { type: 'json' };
 
-export type FieldItem = {
-  id: string;
-  name: string;
-  kind: 'held-tool' | 'mega-stone';
-  speciesId?: number;
-};
-
+export type FieldItem = { id: string; name: string; kind: 'held-tool' | 'mega-stone'; formIdentifier?: string; speciesId?: number };
 export type FieldItemDrop = FieldItem & { quantity: 1 };
 
-export const HELD_TOOL_DROP_RATE = .05;
-export const MEGA_STONE_DROP_RATE = .01;
-const TOTAL_DROP_RATE = .06;
+export const HELD_TOOL_CAPTURE_RATE = .12;
+export const MEGA_STONE_CAPTURE_RATE = .04;
 export const FIELD_ITEM_STOCK_LIMIT = 1_000_000_000;
-const PREFERRED_MEGA_RATE = .6;
 
 const catalog = fieldItemsJson as FieldItem[];
-const heldTools = catalog.filter(item => item.kind === 'held-tool');
-const megaStones = catalog.filter(item => item.kind === 'mega-stone');
+const byId = new Map(catalog.map(item => [item.id, item]));
 
-function pick<T>(items: readonly T[], random: () => number): T {
-  return items[Math.min(items.length - 1, Math.floor(random() * items.length))];
+/** Explicit families keep every held tool tied to a recognizable Pokemon source. */
+export const HELD_TOOL_SOURCE_FAMILIES: Readonly<Record<string, readonly number[]>> = {
+  leftovers: [446, 143],
+  'choice-band': [66, 67, 68],
+  'choice-specs': [63, 64, 65],
+  'choice-scarf': [52, 53, 863],
+  'life-orb': [32, 33, 34],
+  'focus-sash': [359],
+};
+
+export function fieldItemCatalog(): readonly FieldItem[] { return catalog; }
+export function getFieldItem(itemId: string): FieldItem | undefined { return byId.get(itemId); }
+
+export function captureItemChances(speciesId: number): Array<FieldItem & { chance: number }> {
+  if (!Number.isInteger(speciesId) || speciesId < 1) return [];
+  const held = catalog.filter(item => item.kind === 'held-tool' && HELD_TOOL_SOURCE_FAMILIES[item.id]?.includes(speciesId));
+  const stones = catalog.filter(item => item.kind === 'mega-stone' && item.speciesId === speciesId);
+  return [
+    ...held.map(item => ({ ...item, chance: HELD_TOOL_CAPTURE_RATE / held.length })),
+    ...stones.map(item => ({ ...item, chance: MEGA_STONE_CAPTURE_RATE / stones.length })),
+  ];
 }
 
-/** Rolls exactly once per defeated wild Pokemon. Selection consumes the saved world RNG. */
-export function rollFieldItemDrop(
-  random: () => number,
-  wildSpeciesId: number,
-  regionalSpeciesIds: readonly number[],
-): FieldItemDrop | undefined {
-  const roll = random();
-  if (roll >= TOTAL_DROP_RATE) return undefined;
-  if (roll >= MEGA_STONE_DROP_RATE) return { ...pick(heldTools, random), quantity: 1 };
-
-  const wildMatches = megaStones.filter(item => item.speciesId === wildSpeciesId);
-  const regional = new Set(regionalSpeciesIds);
-  const regionMatches = megaStones.filter(item => item.speciesId !== undefined && regional.has(item.speciesId));
-  const preferred = wildMatches.length ? wildMatches : regionMatches;
-  const pool = preferred.length && random() < PREFERRED_MEGA_RATE ? preferred : megaStones;
-  return { ...pick(pool, random), quantity: 1 };
+/** Rolls only after a successful capture and can award only that species' declared items. */
+export function rollCapturedSpeciesItem(random: () => number, speciesId: number): FieldItemDrop | undefined {
+  const chances = captureItemChances(speciesId);
+  let roll = random();
+  for (const item of chances) {
+    if (roll < item.chance) { const { chance: _chance, ...source } = item; return { ...source, quantity: 1 }; }
+    roll -= item.chance;
+  }
+  return undefined;
 }
 
 export function grantFieldItem(inventory: Record<string, number>, drop: FieldItemDrop): boolean {
@@ -49,5 +52,5 @@ export function grantFieldItem(inventory: Record<string, number>, drop: FieldIte
 }
 
 export function fieldItemCatalogCounts(): { heldTools: number; megaStones: number } {
-  return { heldTools: heldTools.length, megaStones: megaStones.length };
+  return { heldTools: catalog.filter(item => item.kind === 'held-tool').length, megaStones: catalog.filter(item => item.kind === 'mega-stone').length };
 }

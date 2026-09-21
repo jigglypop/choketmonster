@@ -7,11 +7,12 @@ import { transformationSettingsHtml } from '../src/ui/transformation-settings';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
 function setup() {
-  const game = createGame(4, 'automatic-forms'), lead = createMonster(game, 6, 5), reserve = createMonster(game, 7, 5);
+  const game = createGame(4, 'automatic-forms'), lead = createMonster(game, 6, 5), reserve = createMonster(game, 9, 5);
   game.player.team = [lead, reserve];
   game.inventory['mega-stone:charizard-mega-x'] = 1;
   assignPreferredTransformation(game, lead.instanceId, { kind: 'mega', formIdentifier: 'charizard-mega-x' });
-  assignPreferredTransformation(game, reserve.instanceId, { kind: 'tera', teraType: 'water' });
+  game.inventory['mega-stone:blastoise-mega'] = 1;
+  assignPreferredTransformation(game, reserve.instanceId, { kind: 'mega', formIdentifier: 'blastoise-mega' });
   return { game, lead, reserve };
 }
 
@@ -31,9 +32,9 @@ describe('saved automatic transformations', () => {
     challengeGym(game, 'safari-meadow');
     expect(game.battle!.transformations?.[lead.instanceId]?.kind).toBe('mega');
     actBattle(game, { type: 'switch', index: 1 }, 4);
-    expect(game.battle!.transformations?.[reserve.instanceId]).toMatchObject({ kind: 'tera', teraType: 'water' });
+    expect(game.battle!.transformations?.[reserve.instanceId]).toBeUndefined();
     const loaded = restoreGame(serializeGame(game));
-    expect(loaded.player.team[1].preferredTransformation).toEqual({ kind: 'tera', teraType: 'water' });
+    expect(loaded.player.team[1].preferredTransformation).toEqual({ kind: 'mega', formIdentifier: 'blastoise-mega' });
     const previous = structuredClone(loaded.battle!.transformations);
     actBattle(loaded, { type: 'switch', index: 0 }, 4);
     expect(loaded.battle!.transformations).toEqual(previous);
@@ -48,7 +49,7 @@ describe('saved automatic transformations', () => {
     challengeGym(game, 'safari-meadow');
     lead.hp = 0; game.battle!.awaitingSwitch = 'player';
     actBattle(game, { type: 'switch', index: 1 }, 4);
-    expect(game.battle!.transformations?.[reserve.instanceId]?.teraType).toBe('water');
+    expect(game.battle!.transformations?.[reserve.instanceId]).toBeUndefined();
     actBattle(game, { type: 'switch', index: 2 }, 4);
     expect(game.battle!.transformations?.[other.instanceId]).toBeUndefined();
   });
@@ -71,7 +72,7 @@ describe('saved automatic transformations', () => {
     expect(transformationSettingsHtml(clefable, false)).not.toContain('mega:');
     expect(() => assignPreferredTransformation(game, clefable.instanceId, { kind: 'tera', teraType: 'water', extra: true } as any)).toThrow();
     expect(restoreGame(serializeGame(game)).player.team[0].preferredTransformation).toBeUndefined();
-    assignPreferredTransformation(game, clefable.instanceId, { kind: 'tera', teraType: 'water' });
+    expect(() => assignPreferredTransformation(game, clefable.instanceId, { kind: 'tera', teraType: 'water' } as any)).toThrow();
     assignPreferredTransformation(game, clefable.instanceId);
     expect(clefable.preferredTransformation).toBeUndefined();
   });

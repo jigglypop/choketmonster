@@ -30,9 +30,8 @@ export function battleTransformationsHtml(state: GameState, disabled = false): s
   if (!battle) return '';
   const monster = battle.player.team[battle.player.activeIndex], presentation = pokemonPresentation(monster, battle);
   if (presentation.transformation?.kind === 'mega') return `<div class="battle-transformation-active" data-transformation-active="mega">${escape(presentation.name)}</div>`;
-  if (presentation.transformation?.kind === 'tera') return `<div class="battle-transformation-active" data-transformation-active="tera">${POKEMON_TYPE_LABELS[presentation.transformation.teraType!]} 테라스탈</div>`;
   if (presentation.transformation) return '';
   const blocked = disabled || battle.awaitingSwitch || monster.hp <= 0;
   const megas = getMegaCombatForms(monster.speciesId).filter(form => getPokemonFormModelSource(form.identifier) && monster.heldTool === `mega-stone:${form.identifier}`);
-  return `<div class="battle-transformations">${megas.length ? `<div><select data-mega-form aria-label="메가진화 모습" ${blocked || battle.playerMegaUsed ? 'disabled' : ''}>${megas.map(form => `<option value="${escape(form.identifier)}">${escape(form.name || form.identifier)}</option>`).join('')}</select><button data-battle-transformation="mega" ${blocked || battle.playerMegaUsed ? 'disabled' : ''}>메가진화</button></div>` : ''}<div><select data-tera-type aria-label="테라 타입" ${blocked || battle.playerTeraUsed ? 'disabled' : ''}>${Object.entries(POKEMON_TYPE_LABELS).map(([type, label]) => `<option value="${type}" ${type === presentation.types[0] ? 'selected' : ''}>${label}</option>`).join('')}</select><button data-battle-transformation="tera" ${blocked || battle.playerTeraUsed ? 'disabled' : ''}>테라스탈</button></div></div>`;
+  return megas.length ? `<div class="battle-transformations"><div><select data-mega-form aria-label="메가진화 모습" ${blocked || battle.playerMegaUsed ? 'disabled' : ''}>${megas.map(form => `<option value="${escape(form.identifier)}">${escape(form.name || form.identifier)}</option>`).join('')}</select><button data-battle-transformation="mega" ${blocked || battle.playerMegaUsed ? 'disabled' : ''}>메가진화</button></div></div>` : '';
 }

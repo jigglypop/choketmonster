@@ -6,8 +6,6 @@ export type Combatant = {
   hp: number;
   stats: { hp: number; attack: number; defense: number; specialAttack: number; specialDefense: number; speed: number };
   types: readonly PokemonType[];
-  originalTypes?: readonly PokemonType[];
-  teraType?: PokemonType;
   status?: string;
   ability?: MonsterAbility;
   heldTool?: 'leftovers' | 'choice-band' | 'choice-specs' | 'choice-scarf' | 'life-orb' | 'focus-sash' | `mega-stone:${string}`;
@@ -38,29 +36,16 @@ export function typeMultiplier(attack: PokemonType, defenders: readonly PokemonT
   return defenders.reduce((total, defense) => total * (effectiveness[attack]?.[defense] ?? 1), 1);
 }
 
-export function resolveTeraMove(attacker: Combatant, source: PokemonMove): PokemonMove {
-  if (!attacker.teraType) return source;
-  const type = source.id === 851 ? attacker.teraType : source.type;
-  const damageClass = source.id === 851 && attacker.stats.attack > attacker.stats.specialAttack ? 'physical' : source.damageClass;
-  const multiHit = (source.minHits ?? 0) > 0 && (source.maxHits ?? 0) > 0;
-  const power = type === attacker.teraType && source.power > 0 && source.power < 60 && source.priority <= 0 && !multiHit ? 60 : source.power;
-  return type === source.type && damageClass === source.damageClass && power === source.power
-    ? source : { ...source, type, damageClass, power };
-}
-
 export function calculateDamage(attacker: Combatant, defender: Combatant, move: PokemonMove, randomFactor = 1): {
   damage: number; multiplier: number; abilityActivation?: 'immunity' | 'absorb' | 'sturdy' | 'focus-sash';
 } {
-  move = resolveTeraMove(attacker, move);
   if (move.damageClass === 'status' || move.power <= 0) return { damage: 0, multiplier: 1 };
   const immunity = abilityImmunity(defender.ability, move.type);
   if (immunity) return { damage: 0, multiplier: 0, abilityActivation: immunity.heal ? 'absorb' : 'immunity' };
   const rawAttack = move.damageClass === 'physical' ? attacker.stats.attack : attacker.stats.specialAttack;
   const attack = move.damageClass === 'physical' && attacker.status === 'burn' ? Math.max(1, Math.floor(rawAttack / 2)) : rawAttack;
   const defense = Math.max(1, move.damageClass === 'physical' ? defender.stats.defense : defender.stats.specialDefense);
-  const stab = attacker.teraType === move.type ? (attacker.originalTypes?.includes(move.type) ? 2 : 1.5)
-    : attacker.teraType ? (attacker.originalTypes?.includes(move.type) ? 1.5 : 1)
-      : attacker.types.includes(move.type) ? 1.5 : 1;
+  const stab = attacker.types.includes(move.type) ? 1.5 : 1;
   const multiplier = typeMultiplier(move.type, defender.types);
   if (multiplier === 0) return { damage: 0, multiplier };
   const abilityPower = lowHpPowerMultiplier(attacker.ability, attacker.hp, attacker.stats.hp, move.type);

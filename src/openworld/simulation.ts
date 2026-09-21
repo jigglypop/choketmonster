@@ -23,7 +23,8 @@ import type { FieldPolicy } from '../game/field';
 import type { WorldSample } from './types';
 export type { WorldSample } from './types';
 import { appendReward, emptyRewardLedger, rewardEncounter, rewardBattleTurn, validateRewardLedger, type EngineeredReward, type RewardLedger, type RewardDecisionSource } from '../game/rewards';
-import { grantFieldItem, rollFieldItemDrop } from './field-item-drops';
+import { getFieldItem, grantFieldItem, rollCapturedSpeciesItem, type FieldItemDrop } from './field-item-drops';
+import { activeFieldItemPickups, validateFieldItemPickupStates, FIELD_PICKUP_COLLECT_DISTANCE, FIELD_PICKUP_RESPAWN_SECONDS, type FieldItemPickupState } from './item-sources';
 
 export const OPEN_WORLD_MODEL = 'pokemon-open-world-recurrent-v1' as const;
 export { WORLD_MIN, WORLD_MAX };
@@ -46,6 +47,7 @@ export type OpenWorldSnapshot = {
   serverFinalizations?: ServerFinalization[];
   player: WorldPosition; selectedWildId?: string; autoCapture: boolean; autoHunt?: boolean; battleWildId?: string;
   worldClockSeconds?: number;
+  fieldItemPickupStates?: Record<string, FieldItemPickupState>;
   battleElapsed: number; pendingCapture: boolean; pendingBall?: BallItem; lastPlayerReward: number | null; lastEnemyReward: number | null;
   pendingAction?: BattleAction;
   manualControlRemaining?: number;
@@ -165,6 +167,40 @@ export class OpenWorldSimulation {
   tick = 0;
   player: WorldPosition = { ...KANTO_START, heading: 0 };
   foods: WorldFood[] = [];
+  private fieldItemPickupStates: Record<string, FieldItemPickupState> = {};
+  private pendingItemDropEvents: Extract<OpenWorldEvent, { type: 'item-drop' }>[] = [];
+
+  get fieldPickups() {
+    return this.sceneId === surfaceSceneId(this.regionId)
+      ? activeFieldItemPickups(this.regionId, this.seed, this.fieldItemPickupStates, this.regionalBadges) : [];
+  }
+
+  drainItemDropEvents() { return this.pendingItemDropEvents.splice(0); }
+
+  collectFieldItem(id: string): FieldItemDrop | undefined {
+    if (this.game.battle || this.game.captureOffer) return;
+    const pickup = this.fieldPickups.find(item => item.id === id);
+    if (!pickup || distance(this.player, pickup) > FIELD_PICKUP_COLLECT_DISTANCE) return;
+    const item = getFieldItem(pickup.itemId); if (!item) return;
+    const drop: FieldItemDrop = { ...item, quantity: 1 };
+    if (!this.grantItemDrop(drop, id)) return;
+    this.fieldItemPickupStates[id] = { remainingSeconds: FIELD_PICKUP_RESPAWN_SECONDS,
+      collectedCount: Math.min(1e9, (this.fieldItemPickupStates[id]?.collectedCount ?? 0) + 1) };
+    return drop;
+  }
+
+  private grantItemDrop(drop: FieldItemDrop, entityId: string): boolean {
+    if (!grantFieldItem(this.game.inventory as Record<string, number>, drop)) return false;
+    const message = `${drop.name} +1`;
+    this.game.logs.push(message); this.game.logs = this.game.logs.slice(-200);
+    this.pendingItemDropEvents.push({ type: 'item-drop', entityId, itemId: drop.id, message });
+    return true;
+  }
+
+  private rewardCapture(speciesId: number, entityId: string): void {
+    const drop = rollCapturedSpeciesItem(() => this.rng.next(), speciesId);
+    if (drop) this.grantItemDrop(drop, entityId);
+  }
   entities: OpenWorldEntity[] = [];
   selectedWildId?: string;
   selectionPinned = false;
@@ -462,8 +498,12 @@ export class OpenWorldSimulation {
     if (this.game.battle) this.clearPendingLearning(this.game.battle.player.team[this.game.battle.player.activeIndex]);
   }
 
-  captureVictory(ball?: BallItem): boolean { return captureDefeatedWild(this.game, ball ?? this.cheapestBall()); }
-  transformBattle(kind: 'mega' | 'tera', option: { instanceId?: string; formIdentifier?: string; teraType?: import('../game/contracts').PokemonType } = {}) {
+  captureVictory(ball?: BallItem): boolean {
+    const offer = this.game.captureOffer;
+    if (!offer || !captureDefeatedWild(this.game, ball ?? this.cheapestBall())) return false;
+    this.rewardCapture(offer.speciesId, offer.instanceId); return true;
+  }
+  transformBattle(kind: 'mega', option: { instanceId?: string; formIdentifier?: string } = {}) {
     const transformed = activateBattleTransformation(this.game, kind, option);
     this.serverTurn = undefined;
     this.syncCompanion();
@@ -612,6 +652,7 @@ export class OpenWorldSimulation {
     const deltaSeconds = options.deltaSeconds ?? .25, learning = options.learning ?? false, epsilon = options.epsilon ?? (learning ? .12 : 0);
     if (!finite(deltaSeconds) || deltaSeconds < 0 || deltaSeconds > 5 || typeof learning !== 'boolean' || !finite(epsilon) || epsilon < 0 || epsilon > 1) throw new Error('Invalid open-world step options');
     this.worldClockSeconds = (this.worldClockSeconds + deltaSeconds) % (20 * 60);
+    for (const state of Object.values(this.fieldItemPickupStates)) state.remainingSeconds = Math.max(0, state.remainingSeconds - deltaSeconds);
     replenishBalls(this.game, deltaSeconds);
     const events: OpenWorldEvent[] = [];
     const manualControlActive = this.manualControlRemaining > 0; this.manualControlRemaining = Math.max(0, this.manualControlRemaining - deltaSeconds);
@@ -659,6 +700,7 @@ export class OpenWorldSimulation {
         if (this.controlMode === 'manual') { this.battleElapsed = 0; break; }
       }
     }
+    events.push(...this.drainItemDropEvents());
     this.tick++; return { tick: this.tick, events, battleActive: !!this.game.battle };
   }
 
@@ -674,6 +716,7 @@ export class OpenWorldSimulation {
     const pack = (entity: OpenWorldEntity): OpenWorldEntitySnapshot => { const { brain: _brain, ...rest } = entity; return { ...structuredClone(rest), brain: stripGraph(this.brain(entity.id).state) }; };
     return { schema: 1, model: OPEN_WORLD_MODEL, graphId: this.graph.id, seed: this.seed, rng: this.rng.state, tick: this.tick,
       serverFinalizations: this.serverFinalizations.length ? structuredClone(this.serverFinalizations) : undefined,
+      fieldItemPickupStates: structuredClone(this.fieldItemPickupStates),
       player: structuredClone(this.player), selectedWildId: this.selectedWildId, autoCapture: this.autoCapture, autoHunt: this.autoHunt, battleWildId: this.battleWildId, worldClockSeconds: this.worldClockSeconds,
       battleElapsed: this.battleElapsed, pendingCapture: this.pendingCapture, pendingBall: this.pendingBall, lastPlayerReward: this.lastPlayerReward, lastEnemyReward: this.lastEnemyReward,
       pendingAction: structuredClone(this.pendingAction), manualControlRemaining: this.manualControlRemaining,
@@ -794,15 +837,8 @@ export class OpenWorldSimulation {
       }
       const removed = this.entities.find(entity => entity.id === entityId);
       if (removed) this.removeWild(entityId);
+      if (result.outcome === 'caught' && battle.kind === 'wild') this.rewardCapture(enemy.speciesId, entityId);
       if (result.outcome === 'won' && battle.kind === 'wild') {
-        const location = removed ? this.locationAt(removed.x, removed.z) : this.locationAt(this.player.x, this.player.z);
-        const drop = rollFieldItemDrop(() => this.rng.next(), enemy.speciesId,
-          regionalEncounters(location.id, this.regionalBadges, this.regionId, this.dayPeriod));
-        if (drop && grantFieldItem(this.game.inventory as Record<string, number>, drop)) {
-          const message = `획득 · ${drop.name} +1`;
-          this.game.logs.push(message); this.game.logs = this.game.logs.slice(-200);
-          events.push({ type: 'item-drop', entityId, itemId: drop.id, message });
-        }
         this.game.captureOffer = structuredClone(enemy); this.game.captureOffer.hp = 0;
         this.game.captureOffer.status = undefined; this.game.captureOffer.statusTurns = undefined;
         if (this.autoCapture) this.captureVictory();
@@ -1290,6 +1326,7 @@ export class OpenWorldSimulation {
   }
 
   private restore(checkpoint: OpenWorldSnapshot): void {
+    this.fieldItemPickupStates = validateFieldItemPickupStates(checkpoint?.fieldItemPickupStates);
     checkpoint = structuredClone(checkpoint);
     const legacyKantoMap = this.regionId === 'kanto' && (checkpoint.mapVersion === undefined || checkpoint.mapVersion === 'kanto-v1');
     const legacySurface = !checkpoint.sceneId || checkpoint.sceneId.startsWith('surface:');

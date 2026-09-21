@@ -12,8 +12,8 @@ type League = 'standard' | 'open';
 type Tier = 'bronze' | 'silver' | 'gold' | 'platinum' | 'master';
 type Standing = { rank: number; userId: string; username: string; rating: number; wins: number; losses: number; tier: Tier };
 type RankedMove = { id: number; name: string; type: string; power: number; accuracy: number; damageClass: string };
-type Fighter = { instanceId: string; speciesId: number; nickname: string; level: number; hp: number; maxHp: number; types: string[]; moves: RankedMove[]; regionalForm?: string | null; choiceMove?: number | null; transformationKind?: 'mega' | 'tera' | null; teraType?: string | null; status?: string | null };
-type Side = { userId: string; username: string; activeIndex: number; team: Fighter[]; megaUsed?: boolean; teraUsed?: boolean };
+type Fighter = { instanceId: string; speciesId: number; nickname: string; level: number; hp: number; maxHp: number; types: string[]; moves: RankedMove[]; regionalForm?: string | null; choiceMove?: number | null; transformationKind?: 'mega' | null; status?: string | null };
+type Side = { userId: string; username: string; activeIndex: number; team: Fighter[]; megaUsed?: boolean };
 type RankedMatch = {
   id: string; league: League; status: 'active' | 'completed'; turn: number; deadlineAt: string;
   selfSide: Side; opponentSide: Side; events: string[]; awaitingOpponent: boolean;
@@ -82,9 +82,9 @@ export function mountRankedPanel(options: RankedPanelOptions) {
   };
   const transformations = (side: Side) => {
     const fighter = active(side);
-    if (fighter.transformationKind) return `<div class="battle-transformation-active">${fighter.transformationKind === 'tera' ? `${POKEMON_TYPE_LABELS[fighter.teraType!]} 테라스탈` : '메가진화'}</div>`;
+    if (fighter.transformationKind) return '<div class="battle-transformation-active">메가진화</div>';
     const forms = getMegaCombatForms(fighter.speciesId).filter(form => getPokemonFormModelSource(form.identifier));
-    return `<div class="battle-transformations">${forms.length && !side.megaUsed ? `<div><select data-ranked-mega-form aria-label="메가진화 모습">${forms.map(form => `<option value="${escape(form.identifier)}">${escape(form.name)}</option>`).join('')}</select><button data-ranked-transform="mega">메가진화</button></div>` : ''}${!side.teraUsed ? `<div><select data-ranked-tera-type aria-label="테라 타입">${Object.entries(POKEMON_TYPE_LABELS).map(([type, label]) => `<option value="${type}" ${type === fighter.types[0] ? 'selected' : ''}>${label}</option>`).join('')}</select><button data-ranked-transform="tera">테라스탈</button></div>` : ''}</div>`;
+    return forms.length && !side.megaUsed ? `<div class="battle-transformations"><div><select data-ranked-mega-form aria-label="메가진화 모습">${forms.map(form => `<option value="${escape(form.identifier)}">${escape(form.name)}</option>`).join('')}</select><button data-ranked-transform="mega">메가진화</button></div></div>` : '';
   };
   const battle = (match: RankedMatch) => {
     const self = active(match.selfSide), completed = match.status !== 'active';
@@ -150,7 +150,7 @@ export function mountRankedPanel(options: RankedPanelOptions) {
     }
     finally { busy = false; }
   };
-  const submit = async (body: { turn: number; moveIndex?: number; switchIndex?: number; surrender?: boolean; transformation?: { kind: 'mega' | 'tera'; formIdentifier?: string; teraType?: string } }) => {
+  const submit = async (body: { turn: number; moveIndex?: number; switchIndex?: number; surrender?: boolean; transformation?: { kind: 'mega'; formIdentifier?: string } }) => {
     const match = view?.currentMatch; if (busy || !match || match.status !== 'active') return;
     try {
       const response = await mutate(`/api/ranked/matches/${encodeURIComponent(match.id)}/action`, body) as { match: RankedMatch };
@@ -174,9 +174,7 @@ export function mountRankedPanel(options: RankedPanelOptions) {
       catch (error) { fail(error); render(); }
     })());
     host.querySelectorAll<HTMLButtonElement>('[data-ranked-transform]').forEach(button => button.onclick = () => void submit({ turn: view!.currentMatch!.turn,
-      transformation: { kind: button.dataset.rankedTransform as 'mega' | 'tera',
-        formIdentifier: host!.querySelector<HTMLSelectElement>('[data-ranked-mega-form]')?.value,
-        teraType: host!.querySelector<HTMLSelectElement>('[data-ranked-tera-type]')?.value } }));
+      transformation: { kind: 'mega', formIdentifier: host!.querySelector<HTMLSelectElement>('[data-ranked-mega-form]')?.value } }));
     host.querySelectorAll<HTMLButtonElement>('[data-ranked-move]').forEach(button => button.onclick = () => void submit({ turn: view!.currentMatch!.turn, moveIndex: Number(button.dataset.rankedMove) }));
     host.querySelectorAll<HTMLButtonElement>('[data-ranked-switch]').forEach(button => button.onclick = () => void submit({ turn: view!.currentMatch!.turn, switchIndex: Number(button.dataset.rankedSwitch) }));
     host.querySelector<HTMLButtonElement>('[data-ranked-surrender]')?.addEventListener('click', () => void (async () => {

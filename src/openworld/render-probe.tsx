@@ -71,6 +71,8 @@ export function RenderProbe() {
               hasNameplate: !!object.getObjectByName('creature-nameplate') };
           }),
         nameplates: scene.getObjectsByProperty('name', 'creature-nameplate').length,
+        fieldItems: scene.getObjectsByProperty('name', 'field-item-model').map(object => ({ id: object.parent?.name, itemId: object.parent?.userData.itemId, drawn: object.userData.drawn ?? 0 })),
+        explorationSites: scene.getObjectsByProperty('type', 'Group').filter(object => /^(junction|rest|lookout|bridge):/.test(object.name)).map(object => ({ id: object.name, position: object.parent?.position.toArray() })),
         domNameplates: gl.domElement.parentElement?.querySelectorAll('.ow-creature-label').length ?? 0,
         labelMechanism: 'drei-html-dom',
         targetRoutes: scene.getObjectsByProperty('name', 'world-target-route').length,

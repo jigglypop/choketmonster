@@ -1,11 +1,11 @@
 import { Brain, type BrainState } from '../core/brain';
-import { getMove, getSpecies, POKEMON, TYPE_EFFECTIVENESS } from '../data/pokemon';
+import { getMove, getSpecies, POKEMON } from '../data/pokemon';
 import { getExperienceForLevel, EXPERIENCE_BY_GROWTH_RATE } from '../data/pokemon-experience';
 import { getVersionSpeciesIds } from '../data/pokemon-versions';
 import { getAlolaCombatForm, getCombatForm, getMegaCombatForm, type PokemonCombatFormProfile } from '../data/pokemon-combat-forms';
 import { getPokemonFormModelSource } from '../data/pokemon-form-models';
 import type { BaseStats, Evolution, PokemonMove, PokemonSpecies, PokemonType } from './contracts';
-import { calculateDamage, catchProbability, resolveTeraMove, turnOrder, typeMultiplier } from './battle';
+import { calculateDamage, catchProbability, turnOrder, typeMultiplier } from './battle';
 import { getMoveLayout, reconcileMoveOrder } from './move-layout';
 import { getRegion, REGIONS } from './regions';
 import { CAMPAIGN_REGIONS, CAMPAIGN_TRAINERS, campaignProgress, campaignTravelReason, canChallengeRed, getRegionalBadges, getNextCampaignTrainer, getCampaignGyms, recordCampaignGymVictory, recordCampaignLeagueVictory, validateExpansionCampaign, type CampaignRegion, type CampaignProgress } from './campaign';
@@ -41,7 +41,7 @@ export type BattleKind = 'wild' | 'gym' | 'trainer' | 'champion' | 'elite' | 're
 
 export type MonsterStats = BaseStats;
 export type MonsterMove = { moveId: number; pp: number };
-export type PreferredTransformation = { kind: 'mega'; formIdentifier: string } | { kind: 'tera'; teraType: PokemonType };
+export type PreferredTransformation = { kind: 'mega'; formIdentifier: string };
 export type MoveLearningStat = { choices: number; executed: number; effective: number; reward: number };
 export type Monster = {
   instanceId: string;
@@ -79,7 +79,7 @@ export type Monster = {
 export type BattleSide = { team: Monster[]; activeIndex: number };
 export type BattleStat = 'attack' | 'defense' | 'specialAttack' | 'specialDefense' | 'speed' | 'accuracy' | 'evasion';
 export type BattleStatStages = Partial<Record<BattleStat, number>>;
-export type BattleTransformation = { speciesId: number; stats: MonsterStats; moves: MonsterMove[]; types?: PokemonType[]; ability?: MonsterAbility; kind?: 'transform' | 'mega' | 'tera'; formIdentifier?: string; teraType?: PokemonType; hpAdjusted?: true };
+export type BattleTransformation = { speciesId: number; stats: MonsterStats; moves: MonsterMove[]; types?: PokemonType[]; ability?: MonsterAbility; kind?: 'transform' | 'mega'; formIdentifier?: string; hpAdjusted?: true };
 export type BattleState = {
   kind: BattleKind;
   regionId: string;
@@ -96,7 +96,6 @@ export type BattleState = {
   statStages?: Record<string, BattleStatStages>;
   transformations?: Record<string, BattleTransformation>;
   playerMegaUsed?: boolean;
-  playerTeraUsed?: boolean;
   choiceLocks?: Record<string, number>;
   consumedTools?: string[];
 };
@@ -622,10 +621,8 @@ function effectiveTypes(battle: BattleState, monster: Monster): readonly Pokemon
 function effectiveAbility(battle: BattleState, monster: Monster): MonsterAbility | undefined { return battle.transformations?.[monster.instanceId]?.ability ?? monster.ability; }
 export function battleMonsterTypes(state: GameState, monster: Monster): readonly PokemonType[] { return state.battle ? effectiveTypes(state.battle, monster) : regionalProfile(monster)?.types ?? getSpecies(monster.speciesId).types; }
 export function battleMonsterView(battle: BattleState, monster: Monster) {
-  const transformation = battle.transformations?.[monster.instanceId];
   return { ...monster, speciesId: effectiveSpeciesId(battle, monster), stats: effectiveStats(battle, monster),
     moves: effectiveMoves(battle, monster), types: effectiveTypes(battle, monster), ability: effectiveAbility(battle, monster),
-    teraType: transformation?.kind === 'tera' ? transformation.teraType : undefined,
     lockedMoveId: battle.choiceLocks?.[monster.instanceId] };
 }
 function activeHeldTool(battle: BattleState, monster: Monster): EquippableItem | undefined {
@@ -634,7 +631,6 @@ function activeHeldTool(battle: BattleState, monster: Monster): EquippableItem |
 function stageMultiplier(stage = 0): number { return stage >= 0 ? (2 + stage) / 2 : 2 / (2 - stage); }
 function combatant(monster: Monster, battle: BattleState) {
   const base = effectiveStats(battle, monster); const stages = battle.statStages?.[monster.instanceId] ?? {};
-  const transformation = battle.transformations?.[monster.instanceId];
   const physical = monster.heldTool === 'choice-band' ? 1.5 : 1;
   const special = monster.heldTool === 'choice-specs' ? 1.5 : 1;
   const speed = monster.heldTool === 'choice-scarf' ? 1.5 : 1;
@@ -645,8 +641,7 @@ function combatant(monster: Monster, battle: BattleState) {
     specialAttack: Math.max(1, Math.floor(base.specialAttack * stageMultiplier(stages.specialAttack) * special)),
     specialDefense: Math.max(1, Math.floor(base.specialDefense * stageMultiplier(stages.specialDefense))),
     speed: Math.max(1, Math.floor(base.speed * stageMultiplier(stages.speed) * speed)),
-  }, types: effectiveTypes(battle, monster), originalTypes: regionalProfile(monster)?.types ?? getSpecies(monster.speciesId).types,
-    teraType: transformation?.kind === 'tera' ? transformation.teraType : undefined, status: monster.status, ability: effectiveAbility(battle, monster), heldTool: activeHeldTool(battle, monster) };
+  }, types: effectiveTypes(battle, monster), status: monster.status, ability: effectiveAbility(battle, monster), heldTool: activeHeldTool(battle, monster) };
 }
 
 function validMoveIndexes(monster: Monster, battle: BattleState): number[] {
@@ -654,8 +649,8 @@ function validMoveIndexes(monster: Monster, battle: BattleState): number[] {
   return effectiveMoves(battle, monster).flatMap((slot, index) => lock === undefined || slot.moveId === lock ? [index] : []);
 }
 
-export function battleMoveView(battle: BattleState, monster: Monster, moveId: number): PokemonMove {
-  return resolveTeraMove(combatant(monster, battle), getMove(moveId));
+export function battleMoveView(_battle: BattleState, _monster: Monster, moveId: number): PokemonMove {
+  return getMove(moveId);
 }
 
 function circularMoveIndex(monster: Monster, battle: BattleState, requested: number): number {
@@ -732,7 +727,7 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
       typeMultiplier: 1, damage, category: 'damage', hpRecovered: 0, statStageDelta: 0, ailmentApplied: false, strategicEffect: false, result: 'struggle' });
     return;
   }
-  const move = resolveTeraMove(combatant(attacker, battle), getMove(slot.moveId));
+  const move = getMove(slot.moveId);
   if (attacker.heldTool?.startsWith('choice-')) (battle.choiceLocks ??= {})[attacker.instanceId] = move.id;
   const growth = evolutionProgress(attacker);
   growth.moveUses[String(move.id)] = Math.min(1e9, (growth.moveUses[String(move.id)] ?? 0) + 1);
@@ -938,8 +933,8 @@ function gainExperience(monster: Monster, amount: number, events?: BattleLogEntr
     if (events && battle) events.push(event(battle, `${monster.nickname}은(는) 레벨 ${monster.level}이 되었다.`, 'reward'));
   }
   const transformation = battle?.transformations?.[monster.instanceId];
-  if (transformation?.kind === 'mega' || transformation?.kind === 'tera') {
-    const profile = transformation.kind === 'mega' ? getCombatForm(transformation.formIdentifier!) : undefined;
+  if (transformation?.kind === 'mega') {
+    const profile = getCombatForm(transformation.formIdentifier!);
     transformation.stats = profile ? formStats(monster, profile) : { ...monster.stats };
     transformation.moves = monster.moves.map(slot => ({ ...slot }));
   }
@@ -1190,29 +1185,21 @@ export function assignAlolaForm(state: GameState, instanceId: string, enabled: b
   return monster.regionalForm;
 }
 
-export function activateBattleTransformation(state: GameState, kind: 'mega' | 'tera', option: { instanceId?: string; formIdentifier?: string; teraType?: PokemonType } = {}): BattleTransformation {
+export function activateBattleTransformation(state: GameState, kind: 'mega', option: { instanceId?: string; formIdentifier?: string } = {}): BattleTransformation {
+  if (kind !== 'mega') throw new Error('Unsupported transformation');
   const battle = state.battle;
   if (!battle) throw new Error('진행 중인 전투가 없습니다.');
   const monster = active(battle.player);
   if (monster.hp <= 0 || battle.awaitingSwitch) throw new Error('기절한 포켓몬은 변신할 수 없습니다.');
   if (option.instanceId && option.instanceId !== monster.instanceId) throw new Error('현재 전투 중인 포켓몬만 변신할 수 있습니다.');
   if (battle.transformations?.[monster.instanceId]) throw new Error('이미 전투 변신을 사용했습니다.');
-  let transformation: BattleTransformation;
-  if (kind === 'mega') {
-    if (battle.playerMegaUsed) throw new Error('이 전투에서는 이미 메가진화를 사용했습니다.');
-    const profile = getMegaCombatForm(monster.speciesId, option.formIdentifier);
-    if (!profile || !getPokemonFormModelSource(profile.identifier)) throw new Error('메가진화할 수 없는 포켓몬입니다.');
-    if (monster.heldTool !== megaStoneId(profile.identifier)) throw new Error('해당 메가진화석을 장착해야 합니다.');
-    transformation = { kind, speciesId: monster.speciesId, formIdentifier: profile.identifier, types: [...profile.types], ability: combatFormAbility(profile), stats: formStats(monster, profile), moves: monster.moves.map(slot => ({ ...slot })), hpAdjusted: true };
-    monster.hp = scaleHp(monster.hp, monster.stats.hp, transformation.stats.hp, true);
-    battle.playerMegaUsed = true;
-  } else {
-    if (battle.playerTeraUsed) throw new Error('이 전투에서는 이미 테라스탈을 사용했습니다.');
-    const teraType = option.teraType ?? effectiveTypes(battle, monster)[0];
-    if (!['normal','fire','water','electric','grass','ice','fighting','poison','ground','flying','psychic','bug','rock','ghost','dragon','dark','steel','fairy'].includes(teraType)) throw new Error('테라 타입이 올바르지 않습니다.');
-    transformation = { kind, speciesId: monster.speciesId, types: [teraType], teraType, stats: structuredClone(effectiveStats(battle, monster)), moves: structuredClone(monster.moves) };
-    battle.playerTeraUsed = true;
-  }
+  if (battle.playerMegaUsed) throw new Error('이 전투에서는 이미 메가진화를 사용했습니다.');
+  const profile = getMegaCombatForm(monster.speciesId, option.formIdentifier);
+  if (!profile || !getPokemonFormModelSource(profile.identifier)) throw new Error('메가진화할 수 없는 포켓몬입니다.');
+  if (monster.heldTool !== megaStoneId(profile.identifier)) throw new Error('해당 메가진화석을 장착해야 합니다.');
+  const transformation: BattleTransformation = { kind, speciesId: monster.speciesId, formIdentifier: profile.identifier, types: [...profile.types], ability: combatFormAbility(profile), stats: formStats(monster, profile), moves: monster.moves.map(slot => ({ ...slot })), hpAdjusted: true };
+  monster.hp = scaleHp(monster.hp, monster.stats.hp, transformation.stats.hp, true);
+  battle.playerMegaUsed = true;
   battle.transformations ??= {};
   battle.transformations[monster.instanceId] = transformation;
   return transformation;
@@ -1224,8 +1211,7 @@ function preferredTransformationValid(monster: Monster, preference: PreferredTra
     const profile = typeof preference.formIdentifier === 'string' && getMegaCombatForm(monster.speciesId, preference.formIdentifier);
     return Boolean(profile && getPokemonFormModelSource(profile.identifier)) && Object.keys(preference).every(key => key === 'kind' || key === 'formIdentifier');
   }
-  return preference.kind === 'tera' && typeof preference.teraType === 'string' && Object.hasOwn(TYPE_EFFECTIVENESS, preference.teraType)
-    && Object.keys(preference).every(key => key === 'kind' || key === 'teraType');
+  return false;
 }
 
 export function assignPreferredTransformation(state: GameState, instanceId: string, preference?: PreferredTransformation): void {
@@ -1255,10 +1241,10 @@ export function applyPreferredBattleTransformation(state: GameState): void {
   if (!battle || battle.awaitingSwitch) return;
   const monster = active(battle.player), preference = monster?.preferredTransformation;
   if (!monster || monster.hp <= 0 || !preference || battle.transformations?.[monster.instanceId]) return;
-  if (preference.kind === 'mega' ? battle.playerMegaUsed : battle.playerTeraUsed) return;
+  if (battle.playerMegaUsed) return;
   if (!preferredTransformationValid(monster, preference)) return;
-  if (preference.kind === 'mega' && monster.heldTool !== megaStoneId(preference.formIdentifier)) return;
-  activateBattleTransformation(state, preference.kind, preference);
+  if (monster.heldTool !== megaStoneId(preference.formIdentifier)) return;
+  activateBattleTransformation(state, 'mega', preference);
 }
 
 export function firstUsableRegionalTeamIndex(state: GameState, region: CampaignRegion, startIndex = 0): number {
@@ -1763,6 +1749,42 @@ export function restoreGame(json: string): GameState {
   return validateGame(value);
 }
 
+function migrateRemovedTera(state: GameState): void {
+  const removePreference = (monster: unknown) => {
+    if (!monster || typeof monster !== 'object' || Array.isArray(monster)) return;
+    const record = monster as Record<string, unknown>;
+    const preference = record.preferredTransformation;
+    if (preference && typeof preference === 'object' && !Array.isArray(preference)
+      && (preference as Record<string, unknown>).kind === 'tera') delete record.preferredTransformation;
+  };
+  const removeFromTeam = (team: unknown) => { if (Array.isArray(team)) team.forEach(removePreference); };
+  removeFromTeam(state.player?.team);
+  removeFromTeam(state.player?.box);
+  removePreference(state.captureOffer);
+  const battle = state.battle as (BattleState & Record<string, unknown>) | undefined;
+  if (!battle || typeof battle !== 'object' || Array.isArray(battle)) return;
+  removeFromTeam(battle.player?.team);
+  removeFromTeam(battle.enemy?.team);
+  if (battle.transformations && typeof battle.transformations === 'object' && !Array.isArray(battle.transformations)) {
+    for (const [instanceId, transformation] of Object.entries(battle.transformations)) {
+      if (transformation && typeof transformation === 'object' && !Array.isArray(transformation)
+        && (transformation as Record<string, unknown>).kind === 'tera') {
+        const teams = [state.player?.team, battle.player?.team, battle.enemy?.team];
+        for (const team of teams) for (const monster of Array.isArray(team) ? team : []) {
+          if (monster.instanceId !== instanceId || !Array.isArray(monster.moves) || !Array.isArray(transformation.moves)) continue;
+          for (const slot of monster.moves) {
+            const spent = transformation.moves.find(candidate => candidate?.moveId === slot.moveId);
+            if (spent && Number.isSafeInteger(spent.pp) && spent.pp >= 0) slot.pp = Math.min(slot.pp, spent.pp);
+          }
+        }
+        delete battle.transformations[instanceId];
+      }
+    }
+    if (!Object.keys(battle.transformations).length) delete battle.transformations;
+  }
+  delete battle.playerTeraUsed;
+}
+
 /** Engineered victory rule: the unlimited basic ball guarantees this defeated individual. */
 export function captureDefeatedWild(state: GameState, ball: BallItem): boolean {
   if (!['poke-ball', 'great-ball', 'ultra-ball'].includes(ball)) return false;
@@ -1786,6 +1808,7 @@ export function captureDefeatedWild(state: GameState, ball: BallItem): boolean {
 export function validateGame(value: unknown): GameState {
   if (!value || typeof value !== 'object') throw new Error('저장 데이터는 객체여야 합니다.');
   const state = value as GameState;
+  migrateRemovedTera(state);
   state.defeatedFieldTrainers ??= [];
   if (!Array.isArray(state.defeatedFieldTrainers) || state.defeatedFieldTrainers.some((id, index, all) => typeof id !== 'string' || !getFieldTrainer(id) || all.indexOf(id) !== index)) throw new Error('Field trainer progress is damaged.');
   if (state.schemaVersion !== SAVE_SCHEMA_VERSION) throw new Error(`지원하지 않는 저장 스키마입니다: ${String(state.schemaVersion)}`);
@@ -1977,14 +2000,13 @@ export function validateGame(value: unknown): GameState {
     if (battle.transformations) for (const [instanceId, form] of Object.entries(battle.transformations)) {
       if (!battleIds.has(instanceId) || !form || !Number.isInteger(form.speciesId) || !form.stats || !Array.isArray(form.moves) || form.moves.length > 4) throw new Error('변신 상태가 손상되었습니다.');
       getSpecies(form.speciesId);
-      if (form.kind !== undefined && !['transform', 'mega', 'tera'].includes(form.kind)) throw new Error('변신 종류가 손상되었습니다.');
+      if (form.kind !== undefined && !['transform', 'mega'].includes(form.kind)) throw new Error('변신 종류가 손상되었습니다.');
       if (form.hpAdjusted !== undefined && (form.kind !== 'mega' || form.hpAdjusted !== true)) throw new Error('변신 HP 기록이 손상되었습니다.');
       if (form.types !== undefined && (!Array.isArray(form.types) || !form.types.length || form.types.length > 2 || form.types.some(type => !['normal','fire','water','electric','grass','ice','fighting','poison','ground','flying','psychic','bug','rock','ghost','dragon','dark','steel','fairy'].includes(type)))) throw new Error('변신 타입이 손상되었습니다.');
       const source = [...state.player.team, ...battle.enemy.team].find(monster => monster.instanceId === instanceId)!;
-      if (form.kind === 'mega' || form.kind === 'tera') {
+      if (form.kind === 'mega') {
         if (form.speciesId !== source.speciesId || JSON.stringify(form.moves) !== JSON.stringify(source.moves)) throw new Error('전투 변신 원본 기술이 일치하지 않습니다.');
-        if (state.player.team.includes(source) && !(form.kind === 'mega' ? battle.playerMegaUsed : battle.playerTeraUsed)) throw new Error('전투 변신 사용 기록이 손상되었습니다.');
-        if (form.kind === 'tera' && (form.ability !== undefined || form.formIdentifier !== undefined || JSON.stringify(form.stats) !== JSON.stringify(source.stats))) throw new Error('테라스탈 능력치가 손상되었습니다.');
+        if (state.player.team.includes(source) && !battle.playerMegaUsed) throw new Error('전투 변신 사용 기록이 손상되었습니다.');
       }
       if (form.kind === 'mega') {
         const profile = form.formIdentifier && getMegaCombatForm(form.speciesId, form.formIdentifier);
@@ -2002,12 +2024,10 @@ export function validateGame(value: unknown): GameState {
           form.hpAdjusted = true;
         }
       }
-      if (form.kind === 'tera' && (!form.teraType || form.types?.length !== 1 || form.types[0] !== form.teraType)) throw new Error('테라스탈 타입이 손상되었습니다.');
       if ((Object.values(form.stats) as unknown[]).some((stat) => !Number.isFinite(stat) || (stat as number) <= 0 || (stat as number) > 10000)) throw new Error('변신 능력치가 손상되었습니다.');
-      for (const slot of form.moves) { const move = getMove(slot.moveId); if (!Number.isInteger(slot.pp) || slot.pp < 0 || slot.pp > (form.kind === 'mega' || form.kind === 'tera' ? move.pp : Math.min(5, move.pp))) throw new Error('변신 기술 PP가 손상되었습니다.'); }
+      for (const slot of form.moves) { const move = getMove(slot.moveId); if (!Number.isInteger(slot.pp) || slot.pp < 0 || slot.pp > (form.kind === 'mega' ? move.pp : Math.min(5, move.pp))) throw new Error('변신 기술 PP가 손상되었습니다.'); }
     }
     if (battle.playerMegaUsed !== undefined && typeof battle.playerMegaUsed !== 'boolean') throw new Error('메가진화 사용 기록이 손상되었습니다.');
-    if (battle.playerTeraUsed !== undefined && typeof battle.playerTeraUsed !== 'boolean') throw new Error('테라스탈 사용 기록이 손상되었습니다.');
     battle.player.team = state.player.team;
   }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Brain } from '../src/core/brain';
-import { calculateDamage, resolveTeraMove } from '../src/game/battle';
+import { calculateDamage } from '../src/game/battle';
 import { getMove, getSpecies } from '../src/data/pokemon';
 import { COMBAT_FORMS } from '../src/data/pokemon-combat-forms';
 import { getPokemonFormModelSource } from '../src/data/pokemon-form-models';
@@ -221,32 +221,6 @@ describe('battle forms', () => {
     expect(() => restoreGame(serializeGame(game))).not.toThrow();
   });
 
-  it('applies real tera typing and same-type 2x STAB', () => {
-    const stats = { hp: 100, attack: 100, defense: 100, specialAttack: 100, specialDefense: 100, speed: 100 };
-    const move = { ...getMove(33), power: 80, type: 'normal' as const };
-    const ordinary = calculateDamage({ level: 50, hp: 100, stats, types: ['normal'] }, { level: 50, hp: 100, stats, types: ['normal'] }, move, 1).damage;
-    const tera = calculateDamage({ level: 50, hp: 100, stats, types: ['normal'], originalTypes: ['normal'], teraType: 'normal' }, { level: 50, hp: 100, stats, types: ['normal'] }, move, 1).damage;
-    expect(tera).toBeGreaterThan(ordinary);
-    const electricMove = { ...move, type: 'electric' as const };
-    const originalStabAfterWaterTera = calculateDamage({ level: 50, hp: 100, stats, types: ['water'], originalTypes: ['electric'], teraType: 'water' }, { level: 50, hp: 100, stats, types: ['normal'] }, electricMove, 1).damage;
-    const noStab = calculateDamage({ level: 50, hp: 100, stats, types: ['water'], originalTypes: ['normal'], teraType: 'water' }, { level: 50, hp: 100, stats, types: ['normal'] }, electricMove, 1).damage;
-    expect(originalStabAfterWaterTera).toBeGreaterThan(noStab);
-  });
-
-  it('resolves Tera Blast and the Gen 9 minimum power rule with its exclusions', () => {
-    const stats = { hp: 100, attack: 140, defense: 100, specialAttack: 90, specialDefense: 100, speed: 100 };
-    const attacker = { level: 50, hp: 100, stats, types: ['electric'] as const, originalTypes: ['normal'] as const, teraType: 'electric' as const };
-    const teraBlast = { ...getMove(33), id: 851, name: '테라버스트', englishName: 'Tera Blast', type: 'normal' as const, power: 80, damageClass: 'special' as const };
-    expect(resolveTeraMove(attacker, teraBlast)).toMatchObject({ type: 'electric', power: 80, damageClass: 'physical' });
-    expect(resolveTeraMove({ ...attacker, stats: { ...stats, attack: 90, specialAttack: 140 } }, teraBlast).damageClass).toBe('special');
-
-    const weak = { ...getMove(33), type: 'electric' as const, power: 40, priority: 0 };
-    expect(resolveTeraMove(attacker, weak).power).toBe(60);
-    expect(resolveTeraMove(attacker, { ...weak, priority: 1 }).power).toBe(40);
-    expect(resolveTeraMove(attacker, { ...weak, minHits: 2, maxHits: 5 }).power).toBe(40);
-    expect(resolveTeraMove(attacker, { ...weak, power: 0 }).power).toBe(0);
-  });
-
   it('loads Tera Blast from the generated catalog and equips it through the move layout flow', () => {
     const game = createGame(1, 'tera-blast-machine'), raichu = createMonster(game, 26, 30);
     game.player.box.push(raichu); assignAlolaForm(game, raichu.instanceId, true);
@@ -256,30 +230,6 @@ describe('battle forms', () => {
     replaceMonsterMove(game, raichu.instanceId, 0, 851);
     expect(getMoveLayout(raichu)[0]).toMatchObject({ moveId: 851, pp: 10 });
     expect(getMoveLayout(restoreGame(serializeGame(game)).player.box[0])[0]).toMatchObject({ moveId: 851, pp: 10 });
-  });
-
-  it('keeps Alola original STAB and Tera state through switching and reload', () => {
-    const game = createGame(1, 'alola-tera-reload'), raichu = createMonster(game, 26, 30), reserve = createMonster(game, 7, 30);
-    game.player.team = [raichu, reserve]; assignAlolaForm(game, raichu.instanceId, true);
-    const enemy = createMonster(game, 143, 30);
-    game.battle = { kind: 'wild', regionId: game.regionId, player: { team: game.player.team, activeIndex: 0 }, enemy: { team: [enemy], activeIndex: 0 }, turn: 1, canRun: true };
-    activateBattleTransformation(game, 'tera', { teraType: 'electric' });
-    const loaded = restoreGame(serializeGame(game));
-    const transformed = loaded.battle!.transformations![raichu.instanceId];
-    expect(transformed).toMatchObject({ kind: 'tera', teraType: 'electric', types: ['electric'] });
-    expect(() => activateBattleTransformation(loaded, 'tera', { instanceId: reserve.instanceId, teraType: 'water' })).toThrow();
-    actBattle(loaded, { type: 'switch', index: 1 }, 4);
-    actBattle(loaded, { type: 'switch', index: 0 }, 4);
-    expect(battleMonsterView(loaded.battle!, loaded.player.team[0])).toMatchObject({ types: ['electric'], teraType: 'electric' });
-
-    const stats = { hp: 100, attack: 100, defense: 100, specialAttack: 100, specialDefense: 100, speed: 100 };
-    const move = { ...getMove(84), power: 80, type: 'electric' as const };
-    const defender = { level: 50, hp: 100, stats, types: ['normal'] as const };
-    const alolaTera = calculateDamage({ level: 50, hp: 100, stats, types: ['electric'], originalTypes: ['electric', 'psychic'], teraType: 'electric' }, defender, move, 1).damage;
-    const changedTera = calculateDamage({ level: 50, hp: 100, stats, types: ['water'], originalTypes: ['electric', 'psychic'], teraType: 'water' }, defender, move, 1).damage;
-    const noOriginalStab = calculateDamage({ level: 50, hp: 100, stats, types: ['water'], originalTypes: ['normal'], teraType: 'water' }, defender, move, 1).damage;
-    expect(alolaTera).toBeGreaterThan(changedTera);
-    expect(changedTera).toBeGreaterThan(noOriginalStab);
   });
 
   it('persists a canonical Alola form and rejects it on the wrong species', () => {
@@ -322,13 +272,13 @@ describe('form and equipment continuity', () => {
     expect(loaded.player.team[0].heldTool).toBe('focus-sash');
   });
 
-  it.each(['mega', 'tera'] as const)('refreshes %s stats and moves after an in-battle level-up before saving', kind => {
+  it.each(['mega'] as const)('refreshes %s stats and moves after an in-battle level-up before saving', kind => {
     const game = createGame(4, `form-growth-${kind}`), player = createMonster(game, 6, 10);
     player.xp = experienceAtLevel(11, getSpecies(6).growthRate) - 1; game.player.team = [player];
     if (kind === 'mega') player.heldTool = 'mega-stone:charizard-mega-x';
     const trainer = FIELD_TRAINERS.find(trainer => trainer.region === 'kanto' && trainer.team.length > 1)!;
     expect(trainer).toBeDefined(); challengeFieldTrainer(game, trainer);
-    activateBattleTransformation(game, kind, kind === 'mega' ? { formIdentifier: 'charizard-mega-x' } : { teraType: 'water' });
+    activateBattleTransformation(game, kind, { formIdentifier: 'charizard-mega-x' });
     game.battle!.enemy.team[0].hp = 0; actBattle(game, { type: 'wait' }, 4);
     expect(player.level).toBeGreaterThan(10); expect(game.battle).toBeDefined();
     expect(restoreGame(serializeGame(game)).battle!.transformations![player.instanceId].moves).toEqual(player.moves);
@@ -348,7 +298,7 @@ describe('form and equipment continuity', () => {
     expect(game.player.money).toBe(0);
   });
 
-  it('senses the effective Alola and Tera type instead of the base species type', () => {
+  it('senses the effective Alola and effective type instead of the base species type', () => {
     const game = createGame(1, 'form-senses'), self = createMonster(game, 63, 30), foe = createMonster(game, 19, 30);
     self.moves = [94, 33].map(moveId => ({ moveId, pp: getMove(moveId).pp }));
     game.player.box.push(foe); assignAlolaForm(game, foe.instanceId, true);

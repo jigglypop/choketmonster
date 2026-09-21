@@ -6,7 +6,7 @@ import { defaultView, packSave } from '../../src/game/storage';
 import { OpenWorldSimulation } from '../../src/openworld/simulation';
 import type { Graph } from '../../src/core/brain';
 
-test('team setup saves Korean Mega and Tera choices without a battle click', async ({ page }, info) => {
+test('team setup saves Korean Mega choices without a battle click', async ({ page }, info) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await page.routeWebSocket('**', socket => socket.close());
   await mockAuthenticatedSession(page);
@@ -23,8 +23,8 @@ test('team setup saves Korean Mega and Tera choices without a battle click', asy
   const select = page.locator('#monster-transformation');
   await expect(select.locator('option[value="mega:charizard-mega-x"]')).toHaveText('메가리자몽 X');
   await expect(select.locator('option[value="mega:charizard-mega-y"]')).toHaveJSProperty('disabled', true);
-  await expect(select.locator('option[value="tera:water"]')).toHaveText('물 테라스탈');
-  for (const value of ['mega:charizard-mega-x', 'tera:water', '']) {
+  await expect(select.locator('option[value^="tera:"]')).toHaveCount(0);
+  for (const value of ['mega:charizard-mega-x', '']) {
     await select.selectOption(value);
     await page.locator('#save-now').click(); await expect(page.locator('#save-state')).toContainText('저장됨');
     await page.reload(); await page.locator('[data-tab="team"]').click();

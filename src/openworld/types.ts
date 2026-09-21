@@ -29,9 +29,7 @@ export type WorldCreature = WorldPoint & {
   /** Form-specific sprite used instead of a misleading base-species GLB. */
   formSpriteUrl?: string;
   /** Temporary battle presentation applied to this creature. */
-  transformationKind?: 'mega' | 'tera';
-  /** Effective Terastal type used to color its crystal presentation. */
-  transformationType?: import('../game/contracts').PokemonType;
+  transformationKind?: 'mega';
   /** A battle opponent to face without changing the simulation heading. */
   lookAt?: { x: number; z: number };
   inBattle?: boolean;
@@ -40,6 +38,15 @@ export type WorldCreature = WorldPoint & {
 };
 
 export type WorldFood = WorldPoint & { id: string; kind?: string };
+
+export type WorldFieldItemPickup = WorldPoint & {
+  id: string;
+  itemId: string;
+  name: string;
+  kind: 'held-tool' | 'mega-stone';
+  regionId: string;
+  locationId: string;
+};
 
 export type WorldTrainer = WorldPoint & { id: string; name: string; trainerClass: string; locationId: string };
 export type WorldPortal = WorldPoint & { id: string; label: string; targetSceneId: string };
@@ -57,6 +64,7 @@ export type OpenWorldRenderSnapshot = {
   player: WorldPlayer;
   entities: readonly WorldCreature[];
   foods?: readonly WorldFood[];
+  fieldItems?: readonly WorldFieldItemPickup[];
   trainers?: readonly WorldTrainer[];
   portals?: readonly WorldPortal[];
   selectedWildId?: string | null;
@@ -96,6 +104,7 @@ export type OpenWorldViewOptions = {
   onCameraHeading?: (radians: number) => void;
   onSelect: (instanceId: string | null) => void;
   onInteract?: (instanceId: string) => void;
+  onCollectItem?: (pickupId: string) => void;
   onTrainer?: (trainerId: string) => void;
   onPortal?: (portalId: string) => void;
   /** Lets the simulation quarantine a visible creature until its real model is usable. */

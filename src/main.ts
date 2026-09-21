@@ -59,11 +59,11 @@ import { legendaryClass } from './game/legendary';
 import { searchPokemon } from './ui/pokemon-search';
 import { pokemonPresentation, battleTransformationsHtml } from './ui/pokemon-presentation';
 import fieldItems from './data/field-items.json' with { type: 'json' };
+import { itemSourceDetailsHtml } from './ui/item-sources';
 import { getAlolaCombatForm } from './data/pokemon-combat-forms';
 import { EVOLUTION_TREAT_EFFECTS } from './game/evolution-conditions';
 import { evolutionProgress } from './game/evolution-progress';
 import { itemShopHtml, type ShopCategory } from './ui/item-shop';
-import type { PokemonType } from './game/contracts';
 
 type Tab = 'map' | 'team' | 'dex' | 'shop' | 'ranked' | 'lab';
 type PersistentView = ViewState & { rewards?: Record<string, number>; openWorld?: OpenWorldSnapshot };
@@ -288,13 +288,12 @@ function renderBattle() {
   $('#catch').onclick = () => submitTurn({ type: 'catch', ball: 'poke-ball' }, false); document.querySelectorAll<HTMLButtonElement>('[data-battle-heal]').forEach(button => button.onclick = () => submitTurn({ type: 'item', item: button.dataset.battleHeal as 'potion' | 'super-potion' }, false)); $('#run').onclick = () => submitTurn({ type: 'run' }, false); $('#switch-mon').onclick = showSwitchMenu;
   document.querySelectorAll<HTMLButtonElement>('[data-battle-transformation]').forEach(button => button.onclick = () => action(() => {
     if (brainTurnPending) return;
-    activateBattleTransformation(game!, button.dataset.battleTransformation as 'mega' | 'tera', {
+    activateBattleTransformation(game!, 'mega', {
       formIdentifier: document.querySelector<HTMLSelectElement>('[data-mega-form]')?.value,
-      teraType: document.querySelector<HTMLSelectElement>('[data-tera-type]')?.value as PokemonType,
     });
   }));
   controller.ensure(player); controller.ensure(enemy);
-  if (pDisplay.form || eDisplay.form || pDisplay.transformation?.kind === 'tera') detachPokemonScene();
+  if (pDisplay.form || eDisplay.form) detachPokemonScene();
   else { try { getPokemonScene().showBattle($('.battle-stage'), game); } catch { detachPokemonScene(); } }
 }
 function chooseAction(monster: Monster, other: Monster, battle: NonNullable<GameState['battle']>, reward: number | null, learning: boolean): BattleAction { const decision = graphChoose(monster, other, battle, reward, learning, true); lastDecision = `출력 ${decision.rawAction} → ${decision.action === 4 ? '대기' : (effective(battle, monster).moves[decision.action] ? getMove(effective(battle, monster).moves[decision.action].moveId).name : '발버둥')} · 활성도 ${(decision.activity * 100).toFixed(1)}%`; return decision.action === 4 ? { type: 'wait' } : { type: 'move', index: decision.action }; }
@@ -440,7 +439,7 @@ function individualTraitsHtml(selected: Monster) {
   const disabled = game?.battle || game?.captureOffer;
   const tools = fieldItems.filter(item => item.kind === 'held-tool' || item.speciesId === selected.speciesId);
   const values = [['HP', ivs.hp], ['공격', ivs.attack], ['방어', ivs.defense], ['특공', ivs.specialAttack], ['특방', ivs.specialDefense], ['스피드', ivs.speed]] as const;
-  return `<section class="individual-traits" aria-label="특성과 도구">${transformationSettingsHtml(selected, !!disabled, game!.inventory)}${alola ? `<label class="equipment-field"><span>모습</span><select id="monster-form" ${disabled ? 'disabled' : ''}><option value="">기본</option><option value="alola" ${selected.regionalForm ? 'selected' : ''}>알로라</option></select></label>` : ''}<label class="equipment-field"><span>특성</span><select id="monster-ability" ${disabled ? 'disabled' : ''}>${monsterAbilities(selected).map(option => `<option value="${option.slot}" ${option.slot === ability.slot ? 'selected' : ''}>${escapeHtml(option.name)}${option.hidden ? ' · 숨겨진 특성' : ''}</option>`).join('')}</select></label><label class="equipment-field"><span>도구</span><select id="monster-tool" ${disabled ? 'disabled' : ''}><option value="">없음</option>${tools.map(item => { const tool = item.id as EquippableItem; return `<option value="${tool}" ${selected.heldTool === tool ? 'selected' : ''} ${selected.heldTool !== tool && !game!.inventory[tool] ? 'disabled' : ''}>${escapeHtml(item.name)}</option>`; }).join('')}</select></label><details><summary>특성 · 개체값</summary><p>${escapeHtml(ability.description)}</p><div class="iv-grid">${values.map(([label, value]) => `<span><small>${label}</small><b>${value}</b></span>`).join('')}</div></details></section>`;
+  return `<section class="individual-traits" aria-label="특성과 도구">${transformationSettingsHtml(selected, !!disabled, game!.inventory)}${alola ? `<label class="equipment-field"><span>모습</span><select id="monster-form" ${disabled ? 'disabled' : ''}><option value="">기본</option><option value="alola" ${selected.regionalForm ? 'selected' : ''}>알로라</option></select></label>` : ''}<label class="equipment-field"><span>특성</span><select id="monster-ability" ${disabled ? 'disabled' : ''}>${monsterAbilities(selected).map(option => `<option value="${option.slot}" ${option.slot === ability.slot ? 'selected' : ''}>${escapeHtml(option.name)}${option.hidden ? ' · 숨겨진 특성' : ''}</option>`).join('')}</select></label><label class="equipment-field"><span>도구</span><select id="monster-tool" ${disabled ? 'disabled' : ''}><option value="">없음</option>${tools.map(item => { const tool = item.id as EquippableItem; return `<option value="${tool}" ${selected.heldTool === tool ? 'selected' : ''} ${selected.heldTool !== tool && !game!.inventory[tool] ? 'disabled' : ''}>${escapeHtml(item.name)}</option>`; }).join('')}</select></label>${itemSourceDetailsHtml(tools as import('./openworld/field-item-drops').FieldItem[])}<details><summary>특성 · 개체값</summary><p>${escapeHtml(ability.description)}</p><div class="iv-grid">${values.map(([label, value]) => `<span><small>${label}</small><b>${value}</b></span>`).join('')}</div></details></section>`;
 }
 function consumableItemsHtml(selected: Monster) {
   const progress = evolutionProgress(selected), blocked = Boolean(game!.battle || game!.captureOffer);

@@ -16,6 +16,9 @@ import { mountOpenWorld } from './view';
 import { createWorldLoading, type LoadingScreen } from '../ui/loading-screen';
 import type { OpenWorldRenderSnapshot, OpenWorldView, WorldCreature, WorldHeading } from './types';
 import './panel.css';
+import { atlasMapProjection, atlasTerrainImage } from './map-terrain';
+import { filterMapLocations, mapLocationDetails, mapLocationList, type MapFilter } from './map-explorer';
+import './map-explorer.css';
 import './trainer-battles.css';
 import './regional-starter.css';
 import { showGymVictory } from '../ui/gym-victory';
@@ -25,13 +28,12 @@ import { playGameSound } from '../audio';
 import { currentAccount } from '../game/account';
 import { WORLD_MIN, WORLD_MAX } from './world-space';
 import { getCaveScene, cavePortalAtSurface, cavePortalAtInterior } from './caves';
-import { nextDestinationGuide, type DestinationGuide } from './next-destination';
+import { nextDestinationGuide, regionalItinerary, type DestinationGuide } from './next-destination';
 import { pokemonPresentation, battleTransformationsHtml, combatFormSprite, fieldMegaForm } from '../ui/pokemon-presentation';
 import { getAlolaCombatForm, getCombatForm } from '../data/pokemon-combat-forms';
 import { getPokemonFormModelSource } from '../data/pokemon-form-models';
 import { searchPokemon } from '../ui/pokemon-search';
-import type { PokemonType } from '../game/contracts';
-import { CARDINAL_CAMERA_HEADINGS, cameraMapRotation, compassLabel, mapKindLabel, mapKindSymbol, nearestMapOrientation, rotateMapPoint, unrotateMapPoint, type MapOrientation } from './map-presentation';
+import { CARDINAL_CAMERA_HEADINGS, cameraMapRotation, compassLabel, mapKindSymbol, nearestMapOrientation, rotateMapPoint, unrotateMapPoint, type MapOrientation } from './map-presentation';
 
 const types: Record<string, string> = { normal: '노말', fire: '불꽃', water: '물', grass: '풀', electric: '전기', ice: '얼음', fighting: '격투', poison: '독', ground: '땅', flying: '비행', psychic: '에스퍼', bug: '벌레', rock: '바위', ghost: '고스트', dragon: '드래곤', steel: '강철', dark: '악', fairy: '페어리' };
 const escape = (text: unknown) => String(text).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -79,6 +81,9 @@ export class OpenWorldPanel {
   private mapView = { sceneId: '', zoom: 1, centerX: 120, centerY: 120 };
   private mapDrag?: { pointerId: number; x: number; y: number; moved: boolean };
   private suppressMapClick = false;
+  private mapQuery = '';
+  private mapFilter: MapFilter = 'all';
+  private mapSelection = '';
   private previousBattle?: GameState['battle'];
   private guideCache?: { key: string; guide: DestinationGuide };
   private locationCopyCache?: { key: string; name: string; short: string; level: string };
@@ -148,7 +153,7 @@ export class OpenWorldPanel {
         </details>
       </div>
       <section class="world-capture-offer" id="world-capture-offer" aria-label="승리 후 포획" hidden></section>
-      <dialog class="kanto-map-dialog" id="world-map-dialog"><header><div><small id="world-map-region-name">KANTO REGION</small><h2>지도 · 길찾기</h2></div><button id="world-map-close">닫기 ✕</button></header><div class="world-map-toolbar"><div class="world-region-picker"><label for="world-region">여행할 지역</label><select id="world-region">${PLAYABLE_WORLDS.map(region => `<option value="${region.id}">${region.name}</option>`).join('')}</select></div><fieldset id="world-map-orientation"><legend>카메라 방향</legend>${(['north','east','south','west'] as const).map(direction => `<button type="button" data-map-orientation="${direction}">${compassLabel(direction)}</button>`).join('')}</fieldset><div class="world-map-zoom" role="group" aria-label="지도 확대와 축소"><button id="world-map-zoom-out" type="button" aria-label="지도 축소">−</button><button id="world-map-reset" type="button">초기화</button><button id="world-map-zoom-in" type="button" aria-label="지도 확대">＋</button></div></div><section id="world-campaign-guide" class="world-campaign-guide" aria-label="지역 진행"></section><p id="world-map-note">방문한 마을로 무료 이동합니다. 지도 지점은 통행 가능한 경우 걸어서 이동합니다.</p><div id="world-travel"></div><div id="world-map-content"></div></dialog>
+      <dialog class="kanto-map-dialog" id="world-map-dialog"><header><div><small id="world-map-region-name">KANTO REGION</small><h2>지도 · 길찾기</h2></div><button id="world-map-close">닫기 ✕</button></header><div class="world-map-toolbar"><div class="world-region-picker"><label for="world-region">여행할 지역</label><select id="world-region">${PLAYABLE_WORLDS.map(region => `<option value="${region.id}">${region.name}</option>`).join('')}</select></div><fieldset id="world-map-orientation"><legend>카메라 방향</legend>${(['north','east','south','west'] as const).map(direction => `<button type="button" data-map-orientation="${direction}">${compassLabel(direction)}</button>`).join('')}</fieldset><div class="world-map-zoom" role="group" aria-label="지도 확대와 축소"><button id="world-map-zoom-out" type="button" aria-label="지도 축소">−</button><button id="world-map-reset" type="button">초기화</button><button id="world-map-zoom-in" type="button" aria-label="지도 확대">＋</button></div></div><section id="world-campaign-guide" class="world-campaign-guide" aria-label="지역 진행"></section><p id="world-map-note">방문한 마을로 무료 이동합니다. 지도 지점은 통행 가능한 경우 걸어서 이동합니다.</p><details class="map-travel-fold"><summary>순간이동</summary><div id="world-travel"></div></details><div id="world-map-searchbar" class="world-map-searchbar"><input id="world-map-search" type="search" placeholder="지역 · 포켓몬 · 도구 검색" aria-label="지역 · 포켓몬 · 도구 검색"><select id="world-map-filter" aria-label="지도 분류"><option value="all">전체</option><option value="items">도구 획득처</option><option value="town">마을</option><option value="cave">동굴</option><option value="unvisited">미방문 마을</option></select></div><div id="world-map-content"></div></dialog>
       <dialog class="world-box-dialog" id="world-box-dialog" aria-labelledby="world-box-title"><header><div><small>POKÉMON STORAGE</small><h2 id="world-box-title">팀 · 박스 관리</h2></div><button id="world-box-close">닫기 ✕</button></header><input id="world-box-search" type="search" aria-label="박스 검색" placeholder="이름 · 번호 · 타입"><div id="world-box-content"></div></dialog>
       <dialog class="world-trainer-dialog" id="world-trainer-dialog" aria-labelledby="world-trainer-title"><header><div><small>TRAINER BATTLE</small><h2 id="world-trainer-title">트레이너 배틀</h2></div><button id="world-trainer-close">닫기</button></header><p id="world-trainer-description"></p><div id="world-trainer-list"></div></dialog>
       <div class="world-feed" id="world-feed" aria-live="polite"></div>
@@ -201,6 +206,7 @@ export class OpenWorldPanel {
       },
       onSelect: id => { if (id?.startsWith('companion:')) return; this.manualIdleSeconds = 0; this.simulation.selectWild(id, true); this.options.changed(); this.refresh(); },
       onInteract: id => this.encounter(id),
+      onCollectItem: id => { if (this.simulation.collectFieldItem(id)) { this.options.changed(true); this.refresh(); this.renderer?.update(); } },
       onModelStatus: (id, status, speciesId) => {
         this.simulation.setModelStatus(id, status, speciesId);
         this.refreshRecovery();
@@ -264,6 +270,8 @@ export class OpenWorldPanel {
       this.host!.querySelector<HTMLDetailsElement>('.world-objective')!.open = false;
       this.options.changed(); this.refresh();
     });
+    this.input('#world-map-search').oninput = event => { this.mapQuery = (event.target as HTMLInputElement).value; this.drawRegionMap(); };
+    this.host.querySelector<HTMLSelectElement>('#world-map-filter')!.onchange = event => { this.mapFilter = (event.target as HTMLSelectElement).value as MapFilter; this.drawRegionMap(); };
     this.button('#world-map-open').onclick = () => { this.drawRegionMap(); this.host!.querySelector<HTMLDialogElement>('#world-map-dialog')!.showModal(); };
     this.button('#world-minimap-smaller').onclick = () => this.resizeMinimap(-1);
     this.button('#world-minimap-larger').onclick = () => this.resizeMinimap(1);
@@ -631,6 +639,7 @@ export class OpenWorldPanel {
       regionId: this.simulation.regionId,
       sceneId: this.simulation.sceneId,
       player: { ...this.simulation.player, heading: this.simulation.player.heading as WorldHeading }, tick: this.simulation.tick, selectedWildId: this.simulation.selectedWildId, badges: getRegionalBadges(game, this.simulation.regionId),
+      fieldItems: this.simulation.fieldPickups,
       foods: this.simulation.foods.map(food => ({ ...food, id: String(food.id) })),
       entities: this.simulation.visibleEntities(18).map(entity => {
         const inBattle = Boolean(battle && (entity.kind === 'companion' || entity.id === this.simulation.battleWildId));
@@ -645,8 +654,7 @@ export class OpenWorldPanel {
         const level = monster?.level ?? entity.level;
         return { id: entity.id, speciesId, name: form?.name || getSpecies(speciesId).name, level, hp: monster?.hp ?? stats.hp, maxHp: stats.hp,
           formIdentifier, formModelUrl: formModel?.url, formSpriteUrl: form ? combatFormSprite(form) : undefined,
-          transformationKind: transformed?.kind === 'mega' || transformed?.kind === 'tera' ? transformed.kind : fieldMega ? 'mega' : undefined,
-          transformationType: transformed?.teraType,
+          transformationKind: transformed?.kind === 'mega' ? transformed.kind : fieldMega ? 'mega' : undefined,
           x: entity.x, z: entity.z,
           heading: entity.heading as WorldHeading, inBattle,
           action: monster?.hp === 0 ? 'fainted' : inBattle ? (attacking(monster?.instanceId) ? 'attack' : 'idle') : entity.action < 4 ? 'walk' : 'idle',
@@ -816,6 +824,7 @@ export class OpenWorldPanel {
     const navigate = (target: Element, event?: MouseEvent) => {
       if (this.suppressMapClick) return;
       const marker = target.closest<SVGGElement>('.world-map-point');
+      if (marker?.dataset.locationId && marker.dataset.navigate !== 'true') { this.mapSelection = marker.dataset.locationId; this.drawRegionMap(); return; }
       if (marker?.dataset.lockReason) { this.options.notify(marker.dataset.lockReason); return; }
       const road = target.closest<SVGLineElement>('.world-map-road-hit');
       const clicked = event && !marker ? this.mapWorldPoint(svg, this.mapEventPoint(svg, event)) : undefined;
@@ -888,7 +897,7 @@ export class OpenWorldPanel {
     this.html('#world-region-label', world.atlas.name);
     this.html('#world-encounter-layout', `야생 분포 · ${{ johto: '크리스탈', kanto: '레드', hoenn: '에메랄드', sinnoh: '플라티나', unova: '블랙', kalos: 'X', alola: '울트라문', galar: '소드', hisui: '보충 조사표', paldea: '보충 조사표' }[world.regionId as CampaignRegion]}`);
     this.html('#world-map-caption', `${world.atlas.name} 지도 ↗`);
-    this.html('#world-map-note', '방문한 마을은 무료 순간이동, 통행 가능한 지도 지점은 도보 길찾기를 시작합니다. 도시 연결·지형·출현은 게임용으로 구성한 지도입니다.');
+    this.html('#world-map-note', '지점을 선택해 출현 포켓몬·도구를 확인하세요. ◇ 길가 물품');
     for (const [id, value] of [['world-region', world.regionId]]) {
       const select = this.host.querySelector<HTMLSelectElement>(`#${id}`)!; if (select.value !== value) select.value = value;
       select.disabled = Boolean(battle || game.captureOffer);
@@ -915,12 +924,11 @@ export class OpenWorldPanel {
     this.host.querySelectorAll<HTMLButtonElement>('[data-battle-transformation]').forEach(button => button.onclick = async () => {
       const paused = this.paused, currentBattle = game.battle;
       const formIdentifier = this.host!.querySelector<HTMLSelectElement>('[data-mega-form]')?.value;
-      const teraType = this.host!.querySelector<HTMLSelectElement>('[data-tera-type]')?.value as PokemonType;
       button.disabled = true;
       try {
         await this.pauseAndSettle();
         if (currentBattle !== game.battle) throw new Error('전투가 바뀌었습니다.');
-        this.simulation.transformBattle(button.dataset.battleTransformation as 'mega' | 'tera', { formIdentifier, teraType });
+        this.simulation.transformBattle('mega', { formIdentifier });
         await this.options.changed(true);
       } catch (error) { this.options.notify(error instanceof Error ? error.message : String(error), true); }
       finally { this.paused = paused; this.refresh(); this.renderer?.update(); }
@@ -1049,12 +1057,14 @@ export class OpenWorldPanel {
     this.html('#world-next-guide', `<span class="world-guide-symbol" aria-hidden="true">›</span><span><small>목적지${guide.recommendedLevel ? ` · Lv.${guide.recommendedLevel}` : ''}</small><strong>${escape(guide.title)}</strong><span class="world-guide-detail">${escape(guide.detail)}</span></span><b aria-hidden="true">${this.compactViewport.matches && this.button('#world-next-guide').dataset.expanded !== 'true' ? '상세' : '지도'}</b>`);
     const guideNode = this.host.querySelector<HTMLElement>('#world-next-guide')!;
     if (guideNode.dataset.status !== guide.status) guideNode.dataset.status = guide.status;
+    for (const event of this.simulation.drainItemDropEvents()) this.options.notify(event.message);
     this.minimap(); this.renderer?.update(); this.offerRegionalStarter();
   }
 
   private drawRegionMap(): void {
     const world = this.simulation, point = (x: number, z: number, size = 240) => this.mapPoint(x, z, size);
     const cave = getCaveScene(world.sceneId);
+    this.host!.querySelector<HTMLElement>('#world-map-searchbar')!.hidden = !!cave;
     if (cave) {
       this.html('#world-map-region-name', `${world.atlas.name} · ${cave.name}`);
       this.html('#world-campaign-guide', `<p><b>${escape(cave.name)}</b> · 출구까지 통로를 따라 이동하세요.</p>`);
@@ -1072,38 +1082,47 @@ export class OpenWorldPanel {
     const destinationId = trainer?.locationId ?? nextGym?.locationId;
     const destination = destinationId ? world.atlas.locations.find(item => item.id === destinationId) : undefined;
     const nextLabel = trainer ? `${trainer.kind === 'red' ? '최종 도전' : trainer.kind === 'champion' ? '챔피언전' : '사천왕전'} · ${trainer.name}` : nextGym ? `${nextGym.badgeName} · ${nextGym.name}` : '이 지역의 주요 도전을 완료했습니다.';
-    this.html('#world-map-region-name', `${world.atlas.englishName.toUpperCase()} REGION`);
-    const destinationGuide = destination ? destination.kind === 'town'
-      ? ` · ${world.visitedTownIds.includes(destination.id) ? '방문한 마을로 순간이동할 수 있습니다.' : '길을 따라 방문하면 순간이동 거점으로 등록됩니다.'}`
-      : ' · 인접한 길을 따라 도보로 도달하세요.' : '';
-    this.html('#world-campaign-guide', `<div><span>${world.atlas.name} 진행</span><strong>배지 ${badges}/8</strong></div><p><b>다음 도전</b> ${escape(nextLabel)}</p><p><b>목적지</b> ${escape(destination?.name ?? '—')}${destinationGuide}</p>`);
+    this.html('#world-map-region-name', `${world.atlas.name} 지방`);
+    this.html('#world-campaign-guide', `<div><span>${world.atlas.name} 진행</span><strong>배지 ${badges}/8</strong></div><p><b>다음 도전</b> ${escape(nextLabel)}</p><p><b>목적지</b> ${escape(destination?.name ?? '—')}</p>`);
     this.html('#world-travel', this.simulation.atlas.locations.filter(item => item.kind === 'town').map(item => `<button data-world-travel="${item.id}" ${!world.visitedTownIds.includes(item.id) || game.battle || game.captureOffer ? 'disabled' : ''}>${item.name}<small>${world.visitedTownIds.includes(item.id) ? '순간이동' : '미방문'}</small></button>`).join(''));
     this.host!.querySelectorAll<HTMLButtonElement>('[data-world-travel]').forEach(button => button.onclick = () => { if (world.teleportToTown(button.dataset.worldTravel!)) { this.host!.querySelector<HTMLDialogElement>('#world-map-dialog')!.close(); this.options.notify('안전한 마을 입구로 이동했습니다.'); this.options.changed(); this.refresh(); } });
-    const xs=world.atlas.locations.map(item=>item.x),zs=world.atlas.locations.map(item=>item.z),centerX=(Math.min(...xs)+Math.max(...xs))/2,centerZ=(Math.min(...zs)+Math.max(...zs))/2;
-    const span=Math.max(Math.max(...xs)-Math.min(...xs),Math.max(...zs)-Math.min(...zs),1),fitScale=196/span;
+    const { centerX, centerZ, scale: fitScale } = atlasMapProjection(world.atlas);
     const fullPoint=(x:number,z:number)=>rotateMapPoint(120+(x-centerX)*fitScale,120+(z-centerZ)*fitScale,240,cameraMapRotation(this.cameraHeading));
     const lines = this.simulation.atlas.connections.map(([from, to], index) => { const a = this.simulation.atlas.locations.find(item => item.id === from)!, b = this.simulation.atlas.locations.find(item => item.id === to)!, start = fullPoint(a.x, a.z), end = fullPoint(b.x, b.z), bridge = a.kind === 'sea' || b.kind === 'sea'; return `<line class="world-map-road-shadow" x1="${start.x}" y1="${start.y}" x2="${end.x}" y2="${end.y}"/><line class="world-map-road ${bridge ? 'bridge' : ''}" x1="${start.x}" y1="${start.y}" x2="${end.x}" y2="${end.y}" marker-end="url(#road-arrow-${index % 2})"/><line class="world-map-road-hit" x1="${start.x}" y1="${start.y}" x2="${end.x}" y2="${end.y}" data-map-x="${(a.x + b.x) / 2}" data-map-z="${(a.z + b.z) / 2}" aria-label="${escape(a.name)}와 ${escape(b.name)} 사이 도로로 이동"/>`; }).join('');
     const currentLocationId=this.simulation.locationAt(world.player.x,world.player.z).id;
     const badgeLabel = region === 'hisui' ? '조사증' : '배지';
     const lockReasons = new Map(world.atlas.locations.map(item => [item.id, item.requiredBadges > badges
       ? progressionRequirement(item.requiredBadges, badges, world.atlas.gyms, badgeLabel) : '']));
+    const matches = filterMapLocations(world.atlas, this.mapQuery, this.mapFilter, world.visitedTownIds), matchingIds = new Set(matches.map(item => item.id));
+    const selection = world.atlas.locations.find(item => item.id === this.mapSelection) ?? world.atlas.locations.find(item => item.id === currentLocationId)!;
+    this.mapSelection = selection.id;
+    const route = regionalItinerary(world.atlas, currentLocationId, selection.id, badges);
+    const routePoints = route.map(id => world.atlas.locations.find(item => item.id === id)!).map(item => fullPoint(item.x, item.z));
+    const routeHtml = routePoints.length > 1 ? `<polyline class="world-map-route-preview" points="${routePoints.map(item => `${item.x},${item.y}`).join(' ')}"/>` : '';
+    const pickupHtml = world.fieldPickups.map(item => { const marker = fullPoint(item.x, item.z); return `<g class="world-map-pickup" data-pickup-id="${item.id}" data-map-x="${item.x}" data-map-z="${item.z}" tabindex="0" role="button" aria-label="${escape(item.name)} 위치"><path transform="translate(${marker.x} ${marker.y})" d="M0,-3 L2.8,0 L0,3 L-2.8,0 Z"/><title>${escape(item.name)} · 길가에서 줍기</title></g>`; }).join('');
     const locations = world.atlas.locations.map((item, index) => {
       const marker = fullPoint(item.x, item.z), reason = lockReasons.get(item.id)!;
-      const prominent = item.id === currentLocationId || item.id === destinationId || item.kind === 'special' || (item.kind === 'town' && index % 4 === 0);
-      return `<g class="world-map-point ${reason ? 'blocked' : 'traversable'} kind-${item.kind}" data-map-x="${item.x}" data-map-z="${item.z}" data-location-id="${item.id}" data-lock-reason="${escape(reason)}" tabindex="0" role="button" aria-label="${escape(item.name)} · ${escape(reason || '클릭해 길찾기')}"><circle cx="${marker.x}" cy="${marker.y}" r="${item.kind === 'town' ? 4 : item.kind === 'special' ? 4.5 : 2.7}"/><text class="world-map-symbol" x="${marker.x}" y="${marker.y + 1.6}">${reason ? '🔒' : mapKindSymbol(item.kind)}</text><text class="world-map-label${prominent ? '' : ' secondary'}" x="${marker.x + 5}" y="${marker.y - 4}">${escape(item.name)}</text><title>${escape(item.name)} · ${escape(reason || '클릭해 길찾기')}</title></g>`;
+      const prominent = item.id === selection.id || (this.mapQuery.length > 0 && matchingIds.has(item.id)) || item.id === currentLocationId || item.id === destinationId || item.kind === 'special' || (item.kind === 'town' && index % 4 === 0);
+      return `<g class="world-map-point ${matchingIds.has(item.id) ? 'matched' : 'filtered'} ${item.id === selection.id ? 'selected' : ''} ${reason ? 'blocked' : 'traversable'} kind-${item.kind}" data-map-x="${item.x}" data-map-z="${item.z}" data-location-id="${item.id}" data-lock-reason="${escape(reason)}" tabindex="0" role="button" aria-label="${escape(item.name)} · ${escape(reason || '클릭해 길찾기')}"><circle cx="${marker.x}" cy="${marker.y}" r="${item.kind === 'town' ? 4 : item.kind === 'special' ? 4.5 : 2.7}"/><text class="world-map-symbol" x="${marker.x}" y="${marker.y + 1.6}">${reason ? '🔒' : mapKindSymbol(item.kind)}</text><text class="world-map-label${prominent ? '' : ' secondary'}" x="${marker.x + 5}" y="${marker.y - 4}">${escape(item.name)}</text><title>${escape(item.name)} · ${escape(reason || '클릭해 길찾기')}</title></g>`;
     }).join('');
     const player = fullPoint(world.player.x, world.player.z), destinationPoint = destination ? fullPoint(destination.x, destination.z) : undefined;
-    this.html('#world-map-content', `<svg viewBox="0 0 260 240" data-map-width="260" data-map-height="240" data-map-mode="region" data-map-center-x="${centerX}" data-map-center-z="${centerZ}" data-map-scale="${fitScale}" role="img" aria-label="${world.atlas.name} 도로·다리·특별 지점 지도. 확대하거나 드래그하고 도로를 선택해 이동하세요."><defs><marker id="road-arrow-0" markerUnits="userSpaceOnUse" markerWidth="4" markerHeight="4" refX="3.6" refY="2" orient="auto"><path fill="#8c7656" d="M0,0 L4,2 L0,4 z"/></marker><marker id="road-arrow-1" markerUnits="userSpaceOnUse" markerWidth="4" markerHeight="4" refX="3.6" refY="2" orient="auto-start-reverse"><path fill="#8c7656" d="M0,0 L4,2 L0,4 z"/></marker></defs><rect width="260" height="240" rx="8" fill="#bed5c0"/><g class="world-map-roads">${lines}</g><g class="world-map-locations">${locations}</g><g id="world-map-peers">${this.mapPeers(fullPoint)}</g>${destinationPoint ? `<circle cx="${destinationPoint.x}" cy="${destinationPoint.y}" r="6" fill="none" stroke="#d19c00" stroke-width="2"/><text x="${destinationPoint.x + 7}" y="${destinationPoint.y + 8}">다음</text>` : ''}<path class="world-map-player" transform="translate(${player.x} ${player.y})" d="M0,-6 L4,5 L0,3 L-4,5 Z"/>${this.mapCompass(240)}<text class="world-map-legend" x="8" y="232">◆ 도시 · ● 도로 · ≈ 수로/다리 · ★ 특별 지점</text></svg><div class="kanto-zone-list">${this.simulation.atlas.locations.map(item => { const levels = regionalWildLevels(game, region, item), encounterIds = regionalEncounters(item.id, getRegionalBadges(game, region), region); const traversable = item.requiredBadges <= badges && Boolean(world.atlas.nearestWalkable(item.x, item.z, badges)); return `<button data-map-list-location="${item.id}" ${traversable ? '' : 'disabled'} class="${this.simulation.locationAt(world.player.x, world.player.z).id === item.id ? 'current' : ''}${destination?.id === item.id ? ' destination' : ''}"><strong>${mapKindSymbol(item.kind)} ${item.name}${destination?.id === item.id ? ' · 다음 목적지' : ''}</strong><small>${mapKindLabel(item.kind)} · ${encounterIds.length ? `Lv.${levels.minLevel}–${levels.maxLevel} · ${encounterIds.slice(0, 4).map(id => getSpecies(id).name).join(' / ')}` : '연결 거점'}${item.requiredBadges ? ` · 배지 ${item.requiredBadges}개` : ''}</small></button>`; }).join('')}</div>`);
+    this.html('#world-map-content', `<svg viewBox="0 0 260 240" data-map-width="260" data-map-height="240" data-map-mode="region" data-map-center-x="${centerX}" data-map-center-z="${centerZ}" data-map-scale="${fitScale}" role="img" aria-label="${world.atlas.name} 도로·다리·특별 지점 지도. 확대하거나 드래그하고 도로를 선택해 이동하세요."><defs><marker id="road-arrow-0" markerUnits="userSpaceOnUse" markerWidth="4" markerHeight="4" refX="3.6" refY="2" orient="auto"><path fill="#8c7656" d="M0,0 L4,2 L0,4 z"/></marker><marker id="road-arrow-1" markerUnits="userSpaceOnUse" markerWidth="4" markerHeight="4" refX="3.6" refY="2" orient="auto-start-reverse"><path fill="#8c7656" d="M0,0 L4,2 L0,4 z"/></marker></defs><rect width="260" height="240" rx="8" fill="#bed5c0"/><image href="${atlasTerrainImage(world.atlas)}" x="0" y="0" width="240" height="240" transform="rotate(${cameraMapRotation(this.cameraHeading) * 180 / Math.PI} 120 120)" style="pointer-events:none"/><g class="world-map-roads">${lines}</g>${routeHtml}<g class="world-map-locations">${locations}</g>${pickupHtml}<g id="world-map-peers">${this.mapPeers(fullPoint)}</g>${destinationPoint ? `<circle cx="${destinationPoint.x}" cy="${destinationPoint.y}" r="6" fill="none" stroke="#d19c00" stroke-width="2"/><text x="${destinationPoint.x + 7}" y="${destinationPoint.y + 8}">다음</text>` : ''}<path class="world-map-player" transform="translate(${player.x} ${player.y})" d="M0,-6 L4,5 L0,3 L-4,5 Z"/>${this.mapCompass(240)}<text class="world-map-legend" x="8" y="232">◆ 도시 · ● 도로 · ≈ 수로/다리 · ★ 특별 지점</text></svg><aside class="world-map-explorer">${mapLocationDetails(world.atlas, selection, game, lockReasons.get(selection.id) ?? '', world.visitedTownIds)}${mapLocationList(world.atlas, matches, selection.id, currentLocationId, destinationId, lockReasons)}</aside>`);
     this.bindMapNavigation();
     this.host!.querySelectorAll<HTMLButtonElement>('[data-map-list-location]').forEach(button => {
-      const reason = lockReasons.get(button.dataset.mapListLocation!)!;
-      if (reason) {
-        button.disabled = false;
-        button.classList.add('locked');
-        button.querySelector('strong')!.prepend('🔒 ');
-        button.querySelector('small')!.textContent = reason;
-      }
-      button.onclick = () => this.host!.querySelector<SVGGElement>(`[data-location-id="${CSS.escape(button.dataset.mapListLocation!)}"]`)?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      button.onclick = () => { this.mapSelection = button.dataset.mapListLocation!; this.drawRegionMap(); };
+    });
+    this.button('#world-map-go').onclick = () => {
+      const marker = this.host!.querySelector<SVGGElement>(`[data-location-id="${CSS.escape(this.mapSelection)}"]`);
+      if (marker) { marker.dataset.navigate = 'true'; marker.dispatchEvent(new MouseEvent('click', { bubbles: true })); delete marker.dataset.navigate; }
+    };
+    this.host!.querySelectorAll<SVGGElement>('[data-pickup-id]').forEach(marker => {
+      const navigate = () => { const item = world.fieldPickups.find(row => row.id === marker.dataset.pickupId); if (!item) return;
+        if (game.battle || game.captureOffer) return;
+        const dialog = this.host!.querySelector<HTMLDialogElement>('#world-map-dialog')!; dialog.close();
+        if (!this.renderer?.navigateTo(item)) { dialog.showModal(); this.options.notify('현재 위치에서 이어지는 도보 경로가 없습니다.', true); }
+      };
+      marker.onclick = event => { event.stopPropagation(); if (!this.suppressMapClick) navigate(); };
+      marker.onkeydown = event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); navigate(); } };
     });
   }
 
@@ -1128,6 +1147,7 @@ export class OpenWorldPanel {
       ctx.fillStyle = '#ffe17c'; ctx.strokeStyle = '#273f30'; ctx.lineWidth = 2; ctx.beginPath();
       const marker = this.mapPoint(destination.x, destination.z, size); ctx.arc(marker.x, marker.y, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     }
+    for (const item of this.simulation.fieldPickups) { const marker = this.mapPoint(item.x, item.z, size); ctx.fillStyle = item.kind === 'mega-stone' ? '#af73ef' : '#f0bd4d'; ctx.strokeStyle = '#3d3351'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(marker.x, marker.y - 3.5); ctx.lineTo(marker.x + 3.5, marker.y); ctx.lineTo(marker.x, marker.y + 3.5); ctx.lineTo(marker.x - 3.5, marker.y); ctx.closePath(); ctx.fill(); ctx.stroke(); }
     for (const entity of this.simulation.entities) { const marker = this.mapPoint(entity.x, entity.z, size); ctx.fillStyle = entity.id === this.simulation.selectedWildId ? '#fff0a1' : '#faf2dc'; ctx.beginPath(); ctx.arc(marker.x, marker.y, 2.5, 0, Math.PI * 2); ctx.fill(); }
     for (const player of this.multiplayer?.view.players ?? []) {
       ctx.fillStyle = '#45d7ec'; ctx.strokeStyle = '#103b48'; ctx.lineWidth = 1;

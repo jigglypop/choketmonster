@@ -43,9 +43,9 @@ describe('Mega stone inventory and equipment', () => {
     assignPreferredTransformation(game, monster.instanceId, { kind: 'mega', formIdentifier: 'charizard-mega-x' });
     expect(serializeGame(game)).toBe(unchanged);
 
-    assignPreferredTransformation(game, monster.instanceId, { kind: 'tera', teraType: 'water' });
+    assignPreferredTransformation(game, monster.instanceId);
     expect(monster.heldTool).toBeUndefined(); expect(game.inventory[stone]).toBe(1);
-    expect(monster.preferredTransformation).toEqual({ kind: 'tera', teraType: 'water' });
+    expect(monster.preferredTransformation).toBeUndefined();
     assignPreferredTransformation(game, monster.instanceId, { kind: 'mega', formIdentifier: 'charizard-mega-x' });
     assignPreferredTransformation(game, monster.instanceId);
     expect(monster.heldTool).toBeUndefined(); expect(game.inventory[stone]).toBe(1);

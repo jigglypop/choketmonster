@@ -53,8 +53,6 @@ import { creatureLods, terrainChunks, TERRAIN_CHUNK_SIZE, type TerrainChunk, typ
 import { initialYaw, movementYaw, turnTowards } from './motion';
 import { normalizePokemonModel } from './model-normalization';
 import { disposeNormalizedPokemonMaterials } from './pokemon-materials';
-import { applyTerastalMaterials } from './terastal-materials';
-import { TeraCrown } from './tera-crown';
 import { createTerrainSurface } from './terrain-surface';
 import { getSpecies } from '../data/pokemon';
 import './view.css';
@@ -70,6 +68,8 @@ import { getCaveScene } from './caves';
 import { CaveInterior, GymEntranceStatus, ProgressGate, RegionalLeagueLandmark, ScenePortals, isRegionalLeagueLocation } from './scene-landmarks';
 import { DestinationPointer } from './destination-pointer';
 import { TargetRoute } from './target-route';
+import { FieldItemPickups } from './field-item-pickups';
+import { ExplorationLandmarks } from './exploration-landmarks';
 import { createOpenWorldRenderer } from './gpu-renderer';
 import { scenerySeed, townPavingCells, townStyle } from './town-style';
 const NATURE_DETAIL_RADIUS = 68;
@@ -149,6 +149,7 @@ export function sameRenderSnapshot(left: OpenWorldRenderSnapshot, right: OpenWor
     const a = left.entities[index], b = right.entities[index];
     if (a.id !== b.id || a.name !== b.name || a.x !== b.x || a.y !== b.y || a.z !== b.z || a.heading !== b.heading || a.hp !== b.hp || a.maxHp !== b.maxHp
       || a.level !== b.level || a.speciesId !== b.speciesId || a.action !== b.action || a.moveType !== b.moveType || a.inBattle !== b.inBattle
+      || a.formIdentifier !== b.formIdentifier || a.formModelUrl !== b.formModelUrl || a.transformationKind !== b.transformationKind
       || a.displayHeight !== b.displayHeight || a.movementSpeed !== b.movementSpeed || a.lookAt?.x !== b.lookAt?.x || a.lookAt?.z !== b.lookAt?.z
       || a.remotePlayer?.name !== b.remotePlayer?.name || a.remotePlayer?.activity !== b.remotePlayer?.activity) return false;
   }
@@ -157,7 +158,8 @@ export function sameRenderSnapshot(left: OpenWorldRenderSnapshot, right: OpenWor
     if (!a || !b || a.length !== b.length) return false;
     return a.every((item, index) => item.id === b[index].id && item.x === b[index].x && item.y === b[index].y && item.z === b[index].z);
   };
-  return simple(left.foods, right.foods) && simple(left.trainers, right.trainers) && simple(left.portals, right.portals)
+  return simple(left.fieldItems, right.fieldItems) && simple(left.foods, right.foods) && simple(left.trainers, right.trainers) && simple(left.portals, right.portals)
+    && (left.fieldItems ?? []).every((item, index) => item.itemId === right.fieldItems?.[index].itemId)
     && (left.foods ?? []).every((food, index) => food.kind === right.foods?.[index].kind)
     && (left.trainers ?? []).every((trainer, index) => trainer.name === right.trainers?.[index].name
       && trainer.trainerClass === right.trainers?.[index].trainerClass && trainer.locationId === right.trainers?.[index].locationId)
@@ -492,10 +494,6 @@ function PokemonModel({ creature, url, onStatus }: { creature: WorldCreature; ur
       return null;
     }
   }, [creature.displayHeight, creature.speciesId, gltf]);
-  useLayoutEffect(() => {
-    if (!normalized || creature.transformationKind !== 'tera') return;
-    return applyTerastalMaterials(normalized.visual, (MOVE_COLORS[creature.transformationType ?? 'normal'] ?? MOVE_COLORS.normal)[0]);
-  }, [normalized, creature.transformationKind, creature.transformationType]);
   const status = failed || renderFailed || (gltf && !normalized) ? 'failed' : normalized && drawnModel === normalized.visual ? 'ready' : 'loading';
   useLayoutEffect(() => { onStatus?.(creature.id, status, creature.speciesId); }, [creature.id, creature.speciesId, onStatus, status]);
   useLayoutEffect(() => () => onStatus?.(creature.id, 'untracked', creature.speciesId), [creature.id, creature.speciesId, onStatus]);
@@ -588,7 +586,6 @@ function PokemonModel({ creature, url, onStatus }: { creature: WorldCreature; ur
   if (!normalized || renderFailed) return <ModelStatus name={status === 'failed' ? '모델 오류' : ''} />;
   return <group ref={root} name={`pokemon-model:${creature.speciesId}`} userData={{ formIdentifier: creature.formIdentifier, sourceUrl: url }} dispose={null}>
     <primitive object={normalized.visual} />
-    {creature.transformationKind === 'tera' && <TeraCrown type={creature.transformationType ?? 'normal'} color={(MOVE_COLORS[creature.transformationType ?? 'normal'] ?? MOVE_COLORS.normal)[0]} height={normalized.sourceSize.y * normalized.scale} anchor={normalized.animatedRoot.getObjectsByProperty('isBone', true).find(bone => /head/i.test(bone.name))} />}
   </group>;
 }
 
@@ -618,16 +615,16 @@ function PokemonFormUnavailable({ creature, onStatus }: { creature: WorldCreatur
 function TransformationEffect({ creature }: { creature: WorldCreature }) {
   const ref = useRef<Group>(null);
   const kind = creature.transformationKind;
-  const colors = MOVE_COLORS[creature.transformationType ?? 'normal'] ?? MOVE_COLORS.normal;
+  const colors = MOVE_COLORS.psychic;
   useFrame(({ clock }) => {
     if (!ref.current || !kind) return;
-    ref.current.rotation.y = kind === 'tera' ? Math.sin(clock.elapsedTime * .7) * .15 : clock.elapsedTime * -.8;
+    ref.current.rotation.y = clock.elapsedTime * -.8;
     ref.current.scale.setScalar(1 + Math.sin(clock.elapsedTime * 3) * .035);
   });
   if (!kind) return null;
   return <group ref={ref} name={`pokemon-transformation:${kind}`}>
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, .07, 0]}>
-      <torusGeometry args={[.68, kind === 'tera' ? .055 : .035, 8, 40]} />
+      <torusGeometry args={[.68, .035, 8, 40]} />
       <meshStandardMaterial color={colors[0]} emissive={colors[1]} emissiveIntensity={1.5} transparent opacity={.82} />
     </mesh>
   </group>;
@@ -1042,6 +1039,7 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
         {cave ? <CaveInterior cave={cave} player={snapshot.player} mobile={windowState.mobile} onNavigate={onNavigate} /> : <>
           <group key={`terrain:${sceneId}`}>{chunks.map(chunk => <Terrain key={`${chunk.key}:${chunk.segments}`} sampleWorld={sample} atlas={atlas} chunk={chunk} material={groundMaterial} waterMaterial={waterMaterials[chunk.distance <= (windowState.mobile ? 24 : 40) ? 'detailed' : 'simple']} onNavigate={onNavigate} />)}</group>
           <Nature key={`nature:${sceneId}`} sampleWorld={sample} player={snapshot.player} atlas={atlas} isVisible={windowState.visible} />
+          <ExplorationLandmarks atlas={atlas} sampleWorld={sample} player={snapshot.player} visibility={windowState.visible} onNavigate={onNavigate} badges={snapshot.badges ?? 0} />
           <TrailAndWater key={`water:${sceneId}`} sampleWorld={sample} player={snapshot.player} atlas={atlas} gyms={snapshot.gyms} visible={windowState.visible} badges={snapshot.badges ?? 0} />
         </>}
         {options.terrainUrl && <StaticModel item={{
@@ -1055,6 +1053,7 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
           collider: 'none',
         }} />}
         {options.props?.filter(item => Math.hypot(item.x - snapshot.player.x, item.z - snapshot.player.z) < 85 && windowState.visible(item.x, item.y ?? 0, item.z, 8)).map(item => <StaticModel key={item.id} item={item} />)}
+        <FieldItemPickups items={snapshot.fieldItems ?? []} player={snapshot.player} sample={sample} onNavigate={onNavigate} onCollect={id => options.onCollectItem?.(id)} />
         <FoodInstances foods={snapshot.foods} sampleWorld={sample} />
       </Physics>
       {snapshot.guide && <DestinationPointer guide={snapshot.guide} sample={sample} />}

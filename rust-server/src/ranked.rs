@@ -614,6 +614,7 @@ async fn action(
         .await?;
     } else if map.len() == 2 {
         let SqlJson(mut battle): SqlJson<Battle> = row.get("state");
+        remove_legacy_tera(&mut battle.player1); remove_legacy_tera(&mut battle.player2);
         let a1: TurnAction = serde_json::from_value(map[&p1.to_string()].clone())
             .map_err(|_| invalid("대전 행동 정보가 손상되었습니다."))?;
         let a2: TurnAction = serde_json::from_value(map[&p2.to_string()].clone())
@@ -686,12 +687,12 @@ fn apply_switch(side: &mut Side, index: usize) -> Result<(), ApiError> {
 }
 
 fn apply_preferred_transformation(side: &mut Side) {
+    remove_legacy_tera(side);
     let Some(request) = side.team[side.active_index].preferred_transformation.clone() else {
         return;
     };
     if side.team[side.active_index].transformation_kind.is_some()
         || (request.kind == "mega" && side.mega_used)
-        || (request.kind == "tera" && side.tera_used)
     {
         return;
     }
@@ -734,51 +735,31 @@ fn apply_transformation(side: &mut Side, request: &TransformationRequest) -> Res
             monster.regional_form = Some(profile.identifier.clone());
             side.mega_used = true;
         }
-        "tera" => {
-            if side.tera_used { return Err(invalid("이미 테라스탈을 사용했습니다.")); }
-            let tera = request.tera_type.as_deref().filter(|kind| catalog().effectiveness.contains_key(*kind))
-                .ok_or(invalid("테라 타입이 올바르지 않습니다."))?;
-            monster.original_types = Some(monster.types.clone());
-            monster.types = vec![tera.to_owned()]; monster.tera_type = Some(tera.to_owned()); side.tera_used = true;
-        }
         _ => return Err(invalid("변신 종류가 올바르지 않습니다.")),
     }
     monster.transformation_kind = Some(request.kind.clone());
     Ok(())
 }
 
-fn stab_multiplier(monster: &Fighter, move_type: &str) -> f64 {
-    let original = monster.original_types.as_ref().unwrap_or(&monster.types).iter().any(|kind| kind == move_type);
-    if monster.tera_type.as_deref() == Some(move_type) { if original { 2.0 } else { 1.5 } }
-    else if original { 1.5 } else { 1.0 }
+fn remove_legacy_tera(side: &mut Side) {
+    side.tera_used = false;
+    for monster in &mut side.team {
+        if monster.preferred_transformation.as_ref().is_some_and(|request| request.kind == "tera") { monster.preferred_transformation = None; }
+        if monster.transformation_kind.as_deref() == Some("tera") {
+            monster.types = monster.original_types.take().unwrap_or_else(|| monster.regional_form.as_deref().and_then(combat_form)
+                .map(|form| form.types.clone()).unwrap_or_else(|| catalog().species[&monster.species_id].types.clone()));
+            monster.transformation_kind = None;
+        }
+        monster.tera_type = None; monster.original_types = None;
+    }
 }
 
-fn effective_tera_move(monster: &Fighter, mv: &Move) -> (String, String, i64) {
-    let move_type = if mv.id == 851 {
-        monster.tera_type.as_deref().unwrap_or(&mv.move_type)
-    } else {
-        &mv.move_type
-    };
-    let damage_class = if mv.id == 851
-        && monster.tera_type.is_some()
-        && effective_stat(monster, "attack") > effective_stat(monster, "specialAttack")
-    {
-        "physical"
-    } else {
-        &mv.damage_class
-    };
-    let multi_hit = matches!((mv.min_hits, mv.max_hits), (Some(min), Some(max)) if min > 0 && max > 0);
-    let power = if monster.tera_type.as_deref() == Some(move_type)
-        && mv.power > 0
-        && mv.power < 60
-        && mv.priority <= 0
-        && !multi_hit
-    {
-        60
-    } else {
-        mv.power
-    };
-    (move_type.to_owned(), damage_class.to_owned(), power)
+fn stab_multiplier(monster: &Fighter, move_type: &str) -> f64 {
+    if monster.types.iter().any(|kind| kind == move_type) { 1.5 } else { 1.0 }
+}
+
+fn effective_move(_monster: &Fighter, mv: &Move) -> (String, String, i64) {
+    (mv.move_type.clone(), mv.damage_class.clone(), mv.power)
 }
 
 fn selected_move(side: &Side, index: usize) -> Result<Move, ApiError> {
@@ -1076,7 +1057,7 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
     if matches!(active(attacker).held_tool.as_deref(), Some("choice-band" | "choice-specs" | "choice-scarf")) {
         attacker.team[attacker.active_index].choice_move = Some(mv.id);
     }
-    let (move_type, damage_class, move_power) = effective_tera_move(active(attacker), mv);
+    let (move_type, damage_class, move_power) = effective_move(active(attacker), mv);
     let accuracy = (mv.accuracy as f64
         * stage_multiplier(*active(attacker).stages.get("accuracy").unwrap_or(&0))
         / stage_multiplier(*active(defender).stages.get("evasion").unwrap_or(&0)))
@@ -1414,7 +1395,7 @@ async fn current_match(
 fn presentation_side(mut side: Side) -> Side {
     for fighter in &mut side.team {
         fighter.moves = fighter.moves.iter().map(|source| {
-            let (move_type, damage_class, power) = effective_tera_move(fighter, source);
+            let (move_type, damage_class, power) = effective_move(fighter, source);
             let mut view = source.clone();
             view.move_type = move_type; view.damage_class = damage_class; view.power = power;
             view
@@ -1425,7 +1406,8 @@ fn presentation_side(mut side: Side) -> Side {
 
 async fn match_value(state: &AppState, id: Uuid, viewer: Uuid) -> Result<Value, ApiError> {
     let row=sqlx::query("SELECT league,state,actions,turn,status,winner_id,result_reason,rating_changes,deadline_at::text deadline_at FROM ranked_matches WHERE id=$1").bind(id).fetch_optional(&state.db).await?.ok_or_else(not_found)?;
-    let SqlJson(battle): SqlJson<Battle> = row.get("state");
+    let SqlJson(mut battle): SqlJson<Battle> = row.get("state");
+    remove_legacy_tera(&mut battle.player1); remove_legacy_tera(&mut battle.player2);
     let p1 = battle.player1.user_id;
     let (p_self, p_other) = if viewer == p1 {
         (battle.player1, battle.player2)
@@ -1602,7 +1584,7 @@ mod tests {
     }
 
     #[test]
-    fn mega_and_tera_are_canonical_and_persist_per_side_limits() {
+    fn mega_persists_and_removed_tera_is_rejected() {
         let mut side = battle(fighter(6, 53, None), fighter(7, 55, None)).player1;
         side.team[0].held_tool = Some("mega-stone:charizard-mega-x".into());
         side.team.push(fighter(25, 85, None));
@@ -1615,14 +1597,14 @@ mod tests {
         let mut loaded: Side = serde_json::from_value(serde_json::to_value(side).unwrap()).unwrap();
         assert!(apply_transformation(&mut loaded, &mega).is_err());
         apply_switch(&mut loaded, 1).unwrap();
-        apply_transformation(&mut loaded, &TransformationRequest { kind: "tera".into(), form_identifier: None, tera_type: Some("electric".into()) }).unwrap();
-        assert_eq!(stab_multiplier(active(&loaded), "electric"), 2.0);
-        assert!(loaded.mega_used && loaded.tera_used);
+        assert!(apply_transformation(&mut loaded, &TransformationRequest { kind: "tera".into(), form_identifier: None, tera_type: Some("electric".into()) }).is_err());
+        assert_eq!(stab_multiplier(active(&loaded), "electric"), 1.5);
+        assert!(loaded.mega_used && !loaded.tera_used);
         let mut other = battle(fighter(6, 53, None), fighter(7, 55, None)).player1;
-        apply_transformation(&mut other, &TransformationRequest { kind: "tera".into(), form_identifier: None, tera_type: Some("water".into()) }).unwrap();
+        assert!(apply_transformation(&mut other, &TransformationRequest { kind: "tera".into(), form_identifier: None, tera_type: Some("water".into()) }).is_err());
         assert_eq!(stab_multiplier(active(&other), "fire"), 1.5);
-        assert_eq!(stab_multiplier(active(&other), "water"), 1.5);
-        assert_eq!(active(&other).types, vec!["water"]);
+        assert_eq!(stab_multiplier(active(&other), "water"), 1.0);
+        assert_eq!(active(&other).types, vec!["fire", "flying"]);
     }
 
     #[test]
@@ -1663,8 +1645,8 @@ mod tests {
         );
 
         assert_eq!(active(&game.player1).transformation_kind.as_deref(), Some("mega"));
-        assert_eq!(active(&game.player2).transformation_kind.as_deref(), Some("tera"));
-        assert!(game.player1.mega_used && game.player2.tera_used);
+        assert_eq!(active(&game.player2).transformation_kind, None);
+        assert!(game.player1.mega_used && !game.player2.tera_used);
 
         let mut loaded: Battle = serde_json::from_value(serde_json::to_value(game).unwrap()).unwrap();
         apply_switch(&mut loaded.player1, 1).unwrap();
@@ -1679,62 +1661,37 @@ mod tests {
     }
 
     #[test]
-    fn preferred_transformation_applies_after_manual_and_faint_switches() {
+    fn legacy_tera_preferences_are_removed_after_manual_and_faint_switches() {
         let tera = TransformationRequest { kind: "tera".into(), form_identifier: None, tera_type: Some("water".into()) };
         let lead = fighter(25, 85, None);
         let mut manual_reserve = fighter(7, 55, None);
         manual_reserve.preferred_transformation = Some(tera.clone());
         let mut side = Side { user_id: Uuid::nil(), username: "one".into(), active_index: 0, team: vec![lead, manual_reserve], mega_used: false, tera_used: false };
         apply_switch(&mut side, 1).unwrap();
-        assert_eq!(active(&side).tera_type.as_deref(), Some("water"));
+        assert_eq!(active(&side).tera_type, None);
 
         let mut faint_side = Side { user_id: Uuid::nil(), username: "two".into(), active_index: 0, team: vec![fighter(25, 85, None), fighter(7, 55, None)], mega_used: false, tera_used: false };
         faint_side.team[0].hp = 0;
         faint_side.team[1].preferred_transformation = Some(tera);
         auto_switch(&mut faint_side);
         assert_eq!(faint_side.active_index, 1);
-        assert_eq!(active(&faint_side).tera_type.as_deref(), Some("water"));
-        assert!(faint_side.tera_used);
+        assert_eq!(active(&faint_side).tera_type, None);
+        assert!(!faint_side.tera_used);
     }
 
     #[test]
-    fn tera_move_rules_match_gen_nine_power_and_tera_blast_behavior() {
-        let mut attacker = fighter(26, 33, None);
-        attacker.types = vec!["electric".into()];
-        attacker.original_types = Some(vec!["electric".into(), "psychic".into()]);
-        attacker.tera_type = Some("electric".into());
-        attacker.stats.attack = 140;
-        attacker.stats.special_attack = 90;
-
-        let mut tera_blast = catalog().moves[&33].clone();
-        tera_blast.id = 851;
-        tera_blast.move_type = "normal".into();
-        tera_blast.damage_class = "special".into();
-        tera_blast.power = 80;
-        assert_eq!(effective_tera_move(&attacker, &tera_blast), ("electric".into(), "physical".into(), 80));
-        attacker.stats.attack = 90;
-        attacker.stats.special_attack = 140;
-        assert_eq!(effective_tera_move(&attacker, &tera_blast).1, "special");
-
-        let mut weak = catalog().moves[&33].clone();
-        weak.move_type = "electric".into();
-        weak.power = 40;
-        weak.priority = 0;
-        weak.min_hits = None;
-        weak.max_hits = None;
-        assert_eq!(effective_tera_move(&attacker, &weak).2, 60);
-        weak.priority = 1;
-        assert_eq!(effective_tera_move(&attacker, &weak).2, 40);
-        weak.priority = 0;
-        weak.min_hits = Some(2);
-        weak.max_hits = Some(5);
-        assert_eq!(effective_tera_move(&attacker, &weak).2, 40);
-        weak.min_hits = None;
-        weak.max_hits = None;
-        weak.power = 0;
-        assert_eq!(effective_tera_move(&attacker, &weak).2, 0);
-        assert_eq!(stab_multiplier(&attacker, "electric"), 2.0);
-        assert_eq!(stab_multiplier(&attacker, "psychic"), 1.5);
+    fn restores_legacy_tera_types_without_refilling_hp_or_changing_moves() {
+        let mut side = battle(fighter(26, 85, None), fighter(7, 55, None)).player1;
+        side.team[0].types = vec!["water".into()];
+        side.team[0].original_types = Some(vec!["electric".into(), "psychic".into()]);
+        side.team[0].transformation_kind = Some("tera".into());
+        side.team[0].tera_type = Some("water".into());
+        side.team[0].hp = 5; let move_id = side.team[0].moves[0].id;
+        remove_legacy_tera(&mut side);
+        assert_eq!(side.team[0].types, vec!["electric", "psychic"]);
+        assert_eq!(side.team[0].hp, 5); assert_eq!(side.team[0].moves[0].id, move_id);
+        assert_eq!(side.team[0].transformation_kind, None);
+        assert_eq!(stab_multiplier(&side.team[0], "electric"), 1.5);
     }
 
     #[test]
