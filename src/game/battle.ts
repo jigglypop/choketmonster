@@ -10,7 +10,7 @@ export type Combatant = {
   teraType?: PokemonType;
   status?: string;
   ability?: MonsterAbility;
-  heldTool?: 'leftovers' | 'choice-band' | 'choice-specs' | 'choice-scarf' | 'life-orb' | 'focus-sash';
+  heldTool?: 'leftovers' | 'choice-band' | 'choice-specs' | 'choice-scarf' | 'life-orb' | 'focus-sash' | `mega-stone:${string}`;
 };
 
 const effectiveness: Partial<Record<PokemonType, Partial<Record<PokemonType, number>>>> = {

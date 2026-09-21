@@ -9,7 +9,7 @@ import { FIELD_TRAINERS } from '../src/data/field-trainers';
 import { automatedMoveMask, battleMoveSenses } from '../src/game/connectome';
 import { getMoveLayout } from '../src/game/move-layout';
 import {
-  actBattle, battleMonsterView, buyItem, challengeFieldTrainer, experienceAtLevel, useItem, activateBattleTransformation, assignAlolaForm, assignHeldTool, assignMonsterAbility, captureDefeatedWild, createGame, createMonster, evolve,
+  actBattle, battleMonsterView, challengeFieldTrainer, experienceAtLevel, useItem, activateBattleTransformation, assignAlolaForm, assignHeldTool, assignMonsterAbility, captureDefeatedWild, createGame, createMonster, evolve,
   evolutionPurchaseQuote, HEALING_ITEM_HP, HELD_TOOL_DESCRIPTIONS, HELD_TOOL_LABELS, HELD_TOOL_PRICES, HELD_TOOLS, ITEM_PRICES, mergeCollectionDuplicates, mergeDuplicateMonsters,
   previewCollectionMerge, releaseMonster, restoreGame, serializeGame, setAutoMergeDuplicates, statsFor, availableMonsterMoveIds, replaceMonsterMove,
 } from '../src/game/engine';
@@ -136,11 +136,9 @@ describe('held tools', () => {
     }
   });
 
-  it('buys finite tools, moves stock transactionally between individuals, and preserves it across saves', () => {
+  it('moves finite tools transactionally between individuals and preserves them across saves', () => {
     const game = createGame(1, 'held-tools'), attacker = game.player.team[0], other = createMonster(game, 4, 5);
-    game.player.box.push(other); game.player.money = 100_000;
-    buyItem(game, 'focus-sash', 2); buyItem(game, 'leftovers');
-    expect(game.player.money).toBe(100_000 - ITEM_PRICES['focus-sash'] * 2 - ITEM_PRICES.leftovers);
+    game.player.box.push(other); game.inventory['focus-sash'] = 2; game.inventory.leftovers = 1;
     assignHeldTool(game, attacker.instanceId, 'focus-sash');
     expect(game.inventory['focus-sash']).toBe(1);
     const unchanged = serializeGame(game); assignHeldTool(game, attacker.instanceId, 'focus-sash');
@@ -214,6 +212,7 @@ describe('battle forms', () => {
   it('uses canonical Mega stats and limits Mega evolution to once per battle', () => {
     const game = createGame(4, 'mega-battle'), charizard = createMonster(game, 6, 50), enemy = createMonster(game, 7, 50);
     game.player.team = [charizard];
+    charizard.heldTool = 'mega-stone:charizard-mega-x';
     game.battle = { kind: 'wild', regionId: game.regionId, player: { team: game.player.team, activeIndex: 0 }, enemy: { team: [enemy], activeIndex: 0 }, turn: 1, canRun: true };
     const mega = activateBattleTransformation(game, 'mega', { formIdentifier: 'charizard-mega-x' });
     expect(mega).toMatchObject({ kind: 'mega', formIdentifier: 'charizard-mega-x', types: ['fire', 'dragon'] });
@@ -326,6 +325,7 @@ describe('form and equipment continuity', () => {
   it.each(['mega', 'tera'] as const)('refreshes %s stats and moves after an in-battle level-up before saving', kind => {
     const game = createGame(4, `form-growth-${kind}`), player = createMonster(game, 6, 10);
     player.xp = experienceAtLevel(11, getSpecies(6).growthRate) - 1; game.player.team = [player];
+    if (kind === 'mega') player.heldTool = 'mega-stone:charizard-mega-x';
     const trainer = FIELD_TRAINERS.find(trainer => trainer.region === 'kanto' && trainer.team.length > 1)!;
     expect(trainer).toBeDefined(); challengeFieldTrainer(game, trainer);
     activateBattleTransformation(game, kind, kind === 'mega' ? { formIdentifier: 'charizard-mega-x' } : { teraType: 'water' });

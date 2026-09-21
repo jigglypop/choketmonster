@@ -17,6 +17,7 @@ test('WebGPU exploration renders Alola geometry, Mega aura and Tera crystal', as
   for (const kind of ['alola', 'mega', 'tera'] as const) {
     const game = createGame(152, `world-form-${kind}`), monster = createMonster(game, kind === 'alola' ? 26 : 6, 50);
     game.player.team = [monster];
+    if (kind === 'mega') game.inventory['mega-stone:charizard-mega-x'] = 1;
     if (kind === 'alola') assignAlolaForm(game, monster.instanceId, true);
     if (kind === 'tera') replaceMonsterMove(game, monster.instanceId, 0, 851);
     if (kind === 'mega') assignPreferredTransformation(game, monster.instanceId, { kind, formIdentifier: 'charizard-mega-x' });

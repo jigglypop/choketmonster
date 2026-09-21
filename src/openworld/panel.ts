@@ -3,7 +3,7 @@ import { getMove, getSpecies } from '../data/pokemon';
 import { fieldTrainersAt, getFieldTrainer } from '../data/field-trainers';
 import { pokemonModelUrl, pokemonSpriteUrl } from '../game/assets';
 import { getMoveLayout } from '../game/move-layout';
-import { battleMoveView, depositMonster, experienceAtLevel, firstUsableRegionalTeamIndex, heal, HEALING_ITEM_HP, ITEM_LABELS, statsFor, withdrawMonster, type GameState, type Monster } from '../game/engine';
+import { battleMonsterMaxHp, battleMoveView, depositMonster, experienceAtLevel, firstUsableRegionalTeamIndex, heal, HEALING_ITEM_HP, ITEM_LABELS, statsFor, withdrawMonster, type GameState, type Monster } from '../game/engine';
 import { monsterRegionalUseReason, REGIONAL_STARTERS, regionalLevelCap } from '../game/regional-policy';
 import { CAMPAIGN_TRAINERS, campaignTravelReason, getCampaignGyms, getNextCampaignTrainer, getRegionalBadges, regionalWildLevels, type CampaignRegion } from '../game/campaign';
 import { getWorldAtlas } from './atlas';
@@ -26,7 +26,7 @@ import { currentAccount } from '../game/account';
 import { WORLD_MIN, WORLD_MAX } from './world-space';
 import { getCaveScene, cavePortalAtSurface, cavePortalAtInterior } from './caves';
 import { nextDestinationGuide, type DestinationGuide } from './next-destination';
-import { pokemonPresentation, battleTransformationsHtml, combatFormSprite } from '../ui/pokemon-presentation';
+import { pokemonPresentation, battleTransformationsHtml, combatFormSprite, fieldMegaForm } from '../ui/pokemon-presentation';
 import { getAlolaCombatForm, getCombatForm } from '../data/pokemon-combat-forms';
 import { getPokemonFormModelSource } from '../data/pokemon-form-models';
 import { searchPokemon } from '../ui/pokemon-search';
@@ -454,10 +454,10 @@ export class OpenWorldPanel {
       const lastHealthy = Boolean(battle && monster.hp > 0 && healthy <= 1);
       const disabled = game.player.team.length <= 1 || active || lastHealthy;
       const reason = active ? '현재 출전 중' : lastHealthy ? '마지막 생존 개체' : game.player.team.length <= 1 ? '마지막 팀 개체' : '';
-      return `<article><img src="${pokemonSpriteUrl(monster.speciesId)}" alt=""><div><strong>${escape(monster.nickname)}</strong><small>Lv.${monster.level} · HP ${monster.hp}/${monster.stats.hp}${reason ? ` · ${reason}` : ''}</small></div><button data-world-deposit="${index}" ${disabled ? 'disabled' : ''}>맡기기</button></article>`;
+      return `<article><img src="${pokemonSpriteUrl(monster.speciesId)}" alt=""><div><strong>${escape(monster.nickname)}</strong><small>Lv.${monster.level} · HP ${monster.hp}/${battleMonsterMaxHp(game.battle, monster)}${reason ? ` · ${reason}` : ''}</small></div><button data-world-deposit="${index}" ${disabled ? 'disabled' : ''}>맡기기</button></article>`;
     }).join('');
     const matches = searchPokemon(game.player.box, this.boxQuery);
-    const box = matches.slice(0, this.boxLimit).map(monster => `<article><img loading="lazy" src="${pokemonPresentation(monster).sprite}" alt=""><div><strong>${escape(pokemonPresentation(monster).name)}</strong><small>Lv.${monster.level} · HP ${monster.hp}/${monster.stats.hp}</small></div><button data-world-withdraw="${escape(monster.instanceId)}" ${game.player.team.length >= 6 ? 'disabled' : ''}>데려오기</button></article>`).join('');
+    const box = matches.slice(0, this.boxLimit).map(monster => `<article><img loading="lazy" src="${pokemonPresentation(monster).sprite}" alt=""><div><strong>${escape(pokemonPresentation(monster).name)}</strong><small>Lv.${monster.level} · HP ${monster.hp}/${battleMonsterMaxHp(game.battle, monster)}</small></div><button data-world-withdraw="${escape(monster.instanceId)}" ${game.player.team.length >= 6 ? 'disabled' : ''}>데려오기</button></article>`).join('');
     root.innerHTML = `<section><h3>팀 ${game.player.team.length}/6</h3><div>${team}</div></section><section><h3>박스 ${matches.length}</h3><div>${box || '<p class="world-box-empty">검색 결과가 없습니다.</p>'}</div>${matches.length > this.boxLimit ? '<button id="world-box-more">더 보기</button>' : ''}</section>`;
     root.querySelectorAll<HTMLButtonElement>('[data-world-deposit]').forEach(button => button.onclick = () => void this.changeBox(() => depositMonster(game, Number(button.dataset.worldDeposit), this.simulation.regionId), '박스에 맡겼습니다.'));
     root.querySelectorAll<HTMLButtonElement>('[data-world-withdraw]').forEach(button => button.onclick = () => void this.changeBox(() => withdrawMonster(game, game.player.box.findIndex(monster => monster.instanceId === button.dataset.worldWithdraw)), '팀으로 데려왔습니다.'));
@@ -536,6 +536,8 @@ export class OpenWorldPanel {
       }
       if (event.type === 'evolved') this.options.notify(`${getSpecies(event.fromSpeciesId).name} → ${getSpecies(event.speciesId).name} 진화!`);
     }
+    const drops = result.events.filter(event => event.type === 'item-drop');
+    if (drops.length) this.options.notify(drops.map(event => event.message).join(' · '));
     if (result.tick % 20 === 0) this.options.changed();
     this.refresh();
     } catch (error) {
@@ -635,14 +637,15 @@ export class OpenWorldPanel {
         const monster = entity.kind === 'companion' ? ally : entity.id === this.simulation.battleWildId ? enemy : undefined;
         const transformed = monster && battle?.transformations?.[monster.instanceId];
         const speciesId = transformed?.speciesId ?? monster?.speciesId ?? entity.speciesId;
-        const formIdentifier = transformed?.formIdentifier ?? monster?.regionalForm ?? (!monster && this.simulation.regionId === 'alola' ? getAlolaCombatForm(speciesId)?.identifier : undefined);
+        const fieldMega = !battle && monster ? fieldMegaForm(monster) : undefined;
+        const formIdentifier = transformed?.formIdentifier ?? fieldMega?.identifier ?? monster?.regionalForm ?? (!monster && this.simulation.regionId === 'alola' ? getAlolaCombatForm(speciesId)?.identifier : undefined);
         const form = formIdentifier ? getCombatForm(formIdentifier) : undefined;
         const formModel = getPokemonFormModelSource(formIdentifier);
         const stats = transformed?.stats ?? monster?.stats ?? statsFor(getSpecies(entity.speciesId), entity.level);
         const level = monster?.level ?? entity.level;
         return { id: entity.id, speciesId, name: form?.name || getSpecies(speciesId).name, level, hp: monster?.hp ?? stats.hp, maxHp: stats.hp,
           formIdentifier, formModelUrl: formModel?.url, formSpriteUrl: form ? combatFormSprite(form) : undefined,
-          transformationKind: transformed?.kind === 'mega' || transformed?.kind === 'tera' ? transformed.kind : undefined,
+          transformationKind: transformed?.kind === 'mega' || transformed?.kind === 'tera' ? transformed.kind : fieldMega ? 'mega' : undefined,
           transformationType: transformed?.teraType,
           x: entity.x, z: entity.z,
           heading: entity.heading as WorldHeading, inBattle,
@@ -895,7 +898,7 @@ export class OpenWorldPanel {
     const lead = battle ? battle.player.team[battle.player.activeIndex] : game.player.team[firstUsableRegionalTeamIndex(game, world.regionId)] ?? game.player.team[0];
     const serverReceipt = lastServerDecision(lead.instanceId);
     this.html('#world-learning-label', serverReceipt ? `기술 학습 · ${serverReceipt.updates}회` : '기술 학습');
-    this.html('.world-battle-hud > summary strong', `<span class="world-summary-name">${escape(lead.nickname)} · Lv.${lead.level}</span><span class="world-summary-hp">HP ${lead.hp} / ${lead.stats.hp}</span>`);
+    this.html('.world-battle-hud > summary strong', `<span class="world-summary-name">${escape(pokemonPresentation(lead, battle).name)} · Lv.${lead.level}</span><span class="world-summary-hp">HP ${lead.hp} / ${battleMonsterMaxHp(battle, lead)}</span>`);
     const enemy = battle?.enemy.team[battle.enemy.activeIndex];
     const transformed = battle?.transformations?.[lead.instanceId];
     const species = getSpecies(transformed?.speciesId ?? lead.speciesId), moves = transformed?.moves ?? lead.moves;
@@ -937,7 +940,7 @@ export class OpenWorldPanel {
       this.html('#world-switch-options', battle.player.team.map((monster, index) => {
         const current = index === battle.player.activeIndex;
         const reason = current ? '현재 출전' : monster.hp <= 0 ? '기절' : battle.policyRegion ? monsterRegionalUseReason(game, battle.policyRegion, monster) : undefined;
-        return `<button data-world-switch="${index}" ${reason ? `disabled title="${escape(reason)}"` : ''}><img src="${pokemonSpriteUrl(monster.speciesId)}" alt=""><span><strong>${escape(monster.nickname)} · Lv.${monster.level}</strong><small>HP ${monster.hp}/${monster.stats.hp}${monster.status ? ` · ${escape(monster.status)}` : ''}</small></span><b>${escape(reason ?? '교체')}</b></button>`;
+        return `<button data-world-switch="${index}" ${reason ? `disabled title="${escape(reason)}"` : ''}><img src="${pokemonSpriteUrl(monster.speciesId)}" alt=""><span><strong>${escape(monster.nickname)} · Lv.${monster.level}</strong><small>HP ${monster.hp}/${battleMonsterMaxHp(game.battle, monster)}${monster.status ? ` · ${escape(monster.status)}` : ''}</small></span><b>${escape(reason ?? '교체')}</b></button>`;
       }).join(''));
       if (battle.awaitingSwitch) switchPanel.open = true;
     }
@@ -1006,7 +1009,7 @@ export class OpenWorldPanel {
     this.button('#world-catch').disabled = !offer && battle?.kind !== 'wild';
     for (const item of ['potion', 'super-potion'] as const) {
       const button = this.button(`#world-${item}`);
-      button.disabled = !battle || game.inventory[item] <= 0 || lead.hp <= 0 || lead.hp >= lead.stats.hp;
+      button.disabled = !battle || game.inventory[item] <= 0 || lead.hp <= 0 || lead.hp >= battleMonsterMaxHp(battle, lead);
       button.textContent = `${ITEM_LABELS[item]} ×${game.inventory[item]}`;
       button.title = `HP +${HEALING_ITEM_HP[item]}`;
     }

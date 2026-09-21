@@ -8,9 +8,16 @@ export const POKEMON_TYPE_LABELS: Record<string, string> = { normal: '노말', f
 const escape = (text: unknown) => String(text).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 export const combatFormSprite = (form: PokemonCombatFormProfile) => form.frontSprite ? pokemonSpriteUrl(form.frontSprite.split('/').at(-1)!.replace(/\.png$/, '')) : undefined;
 
+export function fieldMegaForm(monster: Monster): PokemonCombatFormProfile | undefined {
+  const preference = monster.preferredTransformation;
+  if (preference?.kind !== 'mega' || monster.heldTool !== `mega-stone:${preference.formIdentifier}`) return undefined;
+  const form = getCombatForm(preference.formIdentifier);
+  return form?.kind === 'mega' && form.speciesId === monster.speciesId && getPokemonFormModelSource(form.identifier) ? form : undefined;
+}
+
 export function pokemonPresentation(monster: Monster, battle?: GameState['battle']) {
   const transformation = battle?.transformations?.[monster.instanceId];
-  const identifier = transformation?.formIdentifier ?? monster.regionalForm;
+  const identifier = transformation?.formIdentifier ?? (!battle ? fieldMegaForm(monster)?.identifier : undefined) ?? monster.regionalForm;
   const form = identifier ? getCombatForm(identifier) : undefined;
   const species = getSpecies(transformation?.speciesId ?? monster.speciesId);
   const sprite = (form && combatFormSprite(form)) ?? pokemonSpriteUrl(species.id);
@@ -26,6 +33,6 @@ export function battleTransformationsHtml(state: GameState, disabled = false): s
   if (presentation.transformation?.kind === 'tera') return `<div class="battle-transformation-active" data-transformation-active="tera">${POKEMON_TYPE_LABELS[presentation.transformation.teraType!]} 테라스탈</div>`;
   if (presentation.transformation) return '';
   const blocked = disabled || battle.awaitingSwitch || monster.hp <= 0;
-  const megas = getMegaCombatForms(monster.speciesId).filter(form => getPokemonFormModelSource(form.identifier));
+  const megas = getMegaCombatForms(monster.speciesId).filter(form => getPokemonFormModelSource(form.identifier) && monster.heldTool === `mega-stone:${form.identifier}`);
   return `<div class="battle-transformations">${megas.length ? `<div><select data-mega-form aria-label="메가진화 모습" ${blocked || battle.playerMegaUsed ? 'disabled' : ''}>${megas.map(form => `<option value="${escape(form.identifier)}">${escape(form.name || form.identifier)}</option>`).join('')}</select><button data-battle-transformation="mega" ${blocked || battle.playerMegaUsed ? 'disabled' : ''}>메가진화</button></div>` : ''}<div><select data-tera-type aria-label="테라 타입" ${blocked || battle.playerTeraUsed ? 'disabled' : ''}>${Object.entries(POKEMON_TYPE_LABELS).map(([type, label]) => `<option value="${type}" ${type === presentation.types[0] ? 'selected' : ''}>${label}</option>`).join('')}</select><button data-battle-transformation="tera" ${blocked || battle.playerTeraUsed ? 'disabled' : ''}>테라스탈</button></div></div>`;
 }

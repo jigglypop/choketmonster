@@ -6,7 +6,7 @@ import { defaultView, packSave } from '../../src/game/storage';
 import { OpenWorldSimulation } from '../../src/openworld/simulation';
 import type { Graph } from '../../src/core/brain';
 
-test('starts from an existing save with obsolete unequipped PP and keeps its progress after reload', async ({ page }, info) => {
+for (const inBattle of [false, true]) test(`starts from an existing save with obsolete PP and keeps progress after reload (battle=${inBattle})`, async ({ page }, info) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await page.routeWebSocket('**', socket => socket.close());
   await page.route('**/api/auth/me', route => route.fulfill({ json: { user: null } }));
@@ -20,7 +20,13 @@ test('starts from an existing save with obsolete unequipped PP and keeps its pro
   monster.movePpReserve = { '401': 0, '0244': 0, '999999': 0, '244': getMove(244).pp + 1 };
   game.player.team = [monster]; game.player.money = 4321;
   const world = new OpenWorldSimulation(graph, game, 719); world.setControlMode('manual'); world.setAutoHunt(false);
+  if (inBattle) {
+    const wild = world.entities.find(entity => entity.kind === 'wild')!; world.battleWildId = wild.id;
+    game.battle = { kind: 'wild', regionId: game.regionId, player: { team: game.player.team, activeIndex: 0 }, enemy: { team: [createMonster(game, wild.speciesId, wild.level)], activeIndex: 0 }, turn: 7, canRun: true };
+  }
   const envelope = packSave(game, graph, { ...defaultView(), openWorld: world.snapshot(), openWorldPaused: true });
+  const legacyInventory = (envelope.game as typeof game).inventory;
+  for (const key of Object.keys(legacyInventory)) if (key.startsWith('mega-stone:')) delete legacyInventory[key as keyof typeof legacyInventory];
   await page.goto('/'); await page.locator('[data-starter="152"]').click();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30000 });
   await page.locator('[data-tab="team"]').click();

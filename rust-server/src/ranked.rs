@@ -9,7 +9,7 @@
 //! stat-reset and Rapid Spin rules. Other move-specific scripts remain outside this core.
 
 use crate::api::{ApiError, AppState, decompress, profile_user, rate_limit};
-use crate::combat_forms::combat_form;
+use crate::combat_forms::{combat_form, mega_stone_matches};
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -717,6 +717,13 @@ fn apply_transformation(side: &mut Side, request: &TransformationRequest) -> Res
             let profile = request.form_identifier.as_deref().and_then(combat_form)
                 .filter(|form| form.kind == "mega" && form.species_id == monster.species_id && crate::combat_forms::mega_model_available(&form.identifier))
                 .ok_or(invalid("메가진화 모습이 올바르지 않습니다."))?;
+            if !monster
+                .held_tool
+                .as_deref()
+                .is_some_and(|tool| mega_stone_matches(tool, &profile.identifier))
+            {
+                return Err(invalid("해당 메가진화석을 장착해야 합니다."));
+            }
             let base = profile.base_stats;
             let base = Stats { hp: base.hp, attack: base.attack, defense: base.defense, special_attack: base.special_attack, special_defense: base.special_defense, speed: base.speed };
             let saved = monster.individual_values.map(|ivs| json!({"ivs":ivs})).unwrap_or(json!({}));
@@ -1534,6 +1541,7 @@ mod tests {
     fn ranked_snapshot_carries_preferred_transformation() {
         let save = json!({"game":{"player":{"team":[{
             "instanceId":"mon-6","speciesId":6,"nickname":"Charizard",
+            "heldTool":"mega-stone:charizard-mega-x",
             "ivs":{"hp":31,"attack":31,"defense":31,"specialAttack":31,"specialDefense":31,"speed":31},
             "moves":[{"moveId":53}],
             "preferredTransformation":{"kind":"mega","formIdentifier":"charizard-mega-x"}
@@ -1542,6 +1550,7 @@ mod tests {
         let preferred = side.team[0].preferred_transformation.as_ref().unwrap();
         assert_eq!(preferred.kind, "mega");
         assert_eq!(preferred.form_identifier.as_deref(), Some("charizard-mega-x"));
+        assert_eq!(side.team[0].held_tool.as_deref(), Some("mega-stone:charizard-mega-x"));
 
         let loaded: Side = serde_json::from_value(serde_json::to_value(side).unwrap()).unwrap();
         assert_eq!(
@@ -1595,6 +1604,7 @@ mod tests {
     #[test]
     fn mega_and_tera_are_canonical_and_persist_per_side_limits() {
         let mut side = battle(fighter(6, 53, None), fighter(7, 55, None)).player1;
+        side.team[0].held_tool = Some("mega-stone:charizard-mega-x".into());
         side.team.push(fighter(25, 85, None));
         let attack_before = active(&side).stats.attack;
         let mega = TransformationRequest { kind: "mega".into(), form_identifier: Some("charizard-mega-x".into()), tera_type: None };
@@ -1616,14 +1626,34 @@ mod tests {
     }
 
     #[test]
+    fn mega_requires_the_exact_held_stone() {
+        let mega = TransformationRequest { kind: "mega".into(), form_identifier: Some("charizard-mega-x".into()), tera_type: None };
+        for held_tool in [None, Some("mega-stone:charizard-mega-y"), Some("life-orb")] {
+            let mut side = battle(fighter(6, 53, None), fighter(7, 55, None)).player1;
+            side.team[0].held_tool = held_tool.map(str::to_owned);
+            let before = serde_json::to_value(&side).unwrap();
+            assert!(apply_transformation(&mut side, &mega).is_err());
+            assert_eq!(serde_json::to_value(side).unwrap(), before);
+        }
+
+        let mut automatic = battle(fighter(6, 53, None), fighter(7, 55, None)).player1;
+        automatic.team[0].preferred_transformation = Some(mega);
+        apply_preferred_transformation(&mut automatic);
+        assert_eq!(automatic.team[0].transformation_kind, None);
+        assert!(!automatic.mega_used);
+    }
+
+    #[test]
     fn preferred_transformations_apply_on_entry_and_respect_side_limits_after_switches() {
         let mega = TransformationRequest { kind: "mega".into(), form_identifier: Some("charizard-mega-x".into()), tera_type: None };
         let tera = TransformationRequest { kind: "tera".into(), form_identifier: None, tera_type: Some("electric".into()) };
 
         let mut lead = fighter(6, 53, None);
+        lead.held_tool = Some("mega-stone:charizard-mega-x".into());
         lead.preferred_transformation = Some(mega.clone());
         let mut reserve = fighter(6, 53, None);
         reserve.instance_id = "mon-6-reserve".into();
+        reserve.held_tool = Some("mega-stone:charizard-mega-x".into());
         reserve.preferred_transformation = Some(mega);
         let mut tera_lead = fighter(25, 85, None);
         tera_lead.preferred_transformation = Some(tera.clone());

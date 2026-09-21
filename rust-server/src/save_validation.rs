@@ -1,5 +1,7 @@
 use serde::Deserialize;
-use crate::combat_forms::{combat_form, mega_model_available};
+use crate::combat_forms::{
+    combat_form, field_item_exists, held_tool_valid_for_species, mega_model_available,
+};
 use serde_json::{Map, Value};
 use std::{
     collections::{HashMap, HashSet},
@@ -293,6 +295,43 @@ fn form_stats(identifier: &str, level: i64, ivs: [i64; 6]) -> Result<[i64; 6], &
     let base = form.base_stats;
     Ok(expected_stats_from_base(&Stats { hp: base.hp, attack: base.attack, defense: base.defense,
         special_attack: base.special_attack, special_defense: base.special_defense, speed: base.speed }, level, ivs))
+}
+
+fn adjusted_mega_maximum_hp(
+    monster: &Value,
+    transformations: Option<&serde_json::Map<String, Value>>,
+) -> Result<Option<i64>, &'static str> {
+    let Some(instance_id) = monster.get("instanceId").and_then(Value::as_str) else {
+        return Ok(None);
+    };
+    let Some(form_value) = transformations.and_then(|forms| forms.get(instance_id)) else {
+        return Ok(None);
+    };
+    let form = form_value
+        .as_object()
+        .ok_or("전투 변신 기록이 올바르지 않습니다.")?;
+    let Some(hp_adjusted) = form.get("hpAdjusted") else {
+        return Ok(None);
+    };
+    if hp_adjusted.as_bool() != Some(true)
+        || form.get("kind").and_then(Value::as_str) != Some("mega")
+    {
+        return Err("메가진화 HP 조정 기록이 올바르지 않습니다.");
+    }
+    let species_id = integer(monster.get("speciesId"), 1, i64::MAX)?;
+    let profile = form
+        .get("formIdentifier")
+        .and_then(Value::as_str)
+        .and_then(combat_form)
+        .filter(|profile| {
+            profile.kind == "mega"
+                && profile.species_id == species_id
+                && mega_model_available(&profile.identifier)
+        })
+        .ok_or("메가진화 모습이 올바르지 않습니다.")?;
+    let level = integer(monster.get("level"), 1, 100)?;
+    let ivs = validate_individual_traits(monster, species_id)?;
+    Ok(Some(form_stats(&profile.identifier, level, ivs)?[0]))
 }
 
 fn validate_individual_traits(monster: &Value, species_id: i64) -> Result<[i64; 6], &'static str> {
@@ -617,6 +656,7 @@ fn validate_monster(
     ids: &mut HashSet<String>,
     owned: bool,
     owned_species: &mut HashSet<i64>,
+    maximum_hp_override: Option<i64>,
 ) -> Result<(), &'static str> {
     validate_evolution_progress(monster)?;
     if let Some(origin) = monster.get("originRegion") {
@@ -705,17 +745,9 @@ fn validate_monster(
     }
     let ivs = validate_individual_traits(monster, species_id)?;
     if monster.get("heldTool").is_some_and(|value| {
-        !matches!(
-            value.as_str(),
-            Some(
-                "leftovers"
-                    | "choice-band"
-                    | "choice-specs"
-                    | "choice-scarf"
-                    | "life-orb"
-                    | "focus-sash"
-            )
-        )
+        value
+            .as_str()
+            .is_none_or(|identifier| !held_tool_valid_for_species(identifier, species_id))
     }) {
         return Err("장착 도구가 올바르지 않습니다.");
     }
@@ -780,7 +812,7 @@ fn validate_monster(
             return Err("계산 능력치가 종과 레벨에 맞지 않습니다.");
         }
     }
-    let maximum_hp = stats["hp"].as_i64().unwrap();
+    let maximum_hp = maximum_hp_override.unwrap_or_else(|| stats["hp"].as_i64().unwrap());
     integer(monster.get("hp"), 0, maximum_hp)?;
     if let Some(status) = monster.get("status") {
         let status = status
@@ -1754,6 +1786,7 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
         || inventory.keys().any(|item| {
             !REQUIRED_INVENTORY_ITEMS.contains(&item.as_str())
                 && !OPTIONAL_INVENTORY_ITEMS.contains(&item.as_str())
+                && !field_item_exists(item)
         })
     {
         return Err("가방 품목 구성이 올바르지 않습니다.");
@@ -1840,17 +1873,25 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
 
     let mut ids = HashSet::new();
     let mut owned_species = HashSet::new();
-    for monster in team.iter().chain(box_monsters) {
-        validate_monster(monster, &mut ids, true, &mut owned_species)?;
+    let battle = game.get("battle");
+    let battle_transformations = battle
+        .and_then(|battle| battle.get("transformations"))
+        .and_then(Value::as_object);
+    for monster in team {
+        let maximum_hp = adjusted_mega_maximum_hp(monster, battle_transformations)?;
+        validate_monster(monster, &mut ids, true, &mut owned_species, maximum_hp)?;
+    }
+    for monster in box_monsters {
+        validate_monster(monster, &mut ids, true, &mut owned_species, None)?;
     }
     validate_nursery(game, &mut ids)?;
     if let Some(offer) = game.get("captureOffer") {
-        validate_monster(offer, &mut ids, false, &mut owned_species)?;
+        validate_monster(offer, &mut ids, false, &mut owned_species, None)?;
         if offer.get("hp").and_then(Value::as_i64) != Some(0) || game.get("battle").is_some() {
             return Err("승리 후 포획 대상이 올바르지 않습니다.");
         }
     }
-    if let Some(battle) = game.get("battle") {
+    if let Some(battle) = battle {
         validate_battle_progress(game, battle, badges, campaign.as_ref())?;
         let enemy = battle
             .get("enemy")
@@ -1861,7 +1902,8 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
         }
         integer(enemy.get("activeIndex"), 0, enemies.len() as i64 - 1)?;
         for monster in enemies {
-            validate_monster(monster, &mut ids, false, &mut owned_species)?;
+            let maximum_hp = adjusted_mega_maximum_hp(monster, battle_transformations)?;
+            validate_monster(monster, &mut ids, false, &mut owned_species, maximum_hp)?;
         }
         let battle_player = battle
             .get("player")
@@ -1944,6 +1986,11 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
                 if kind.is_some_and(|kind| !matches!(kind, "transform" | "mega" | "tera")) {
                     return Err("전투 변신 종류가 올바르지 않습니다.");
                 }
+                if let Some(hp_adjusted) = form.get("hpAdjusted")
+                    && (kind != Some("mega") || hp_adjusted.as_bool() != Some(true))
+                {
+                    return Err("메가진화 HP 조정 기록이 올바르지 않습니다.");
+                }
                 if let Some(types) = form.get("types") {
                     let types = types
                         .as_array()
@@ -1984,7 +2031,11 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
                     }
                     let expected_stats = if kind == Some("mega") {
                         let profile = form.get("formIdentifier").and_then(Value::as_str).and_then(combat_form)
-                            .filter(|profile| profile.kind == "mega" && Some(profile.species_id) == source.get("speciesId").and_then(Value::as_i64))
+                            .filter(|profile| {
+                                profile.kind == "mega"
+                                    && Some(profile.species_id) == source.get("speciesId").and_then(Value::as_i64)
+                                    && mega_model_available(&profile.identifier)
+                            })
                             .ok_or("메가진화 모습이 올바르지 않습니다.")?;
                         if form.get("types") != Some(&serde_json::json!(profile.types)) { return Err("메가진화 타입이 올바르지 않습니다."); }
                         if let Some(ability) = profile.abilities.first() {
@@ -2257,6 +2308,58 @@ mod tests {
         save["game"]["battle"] = battle;
     }
 
+    fn monster_for_species(species_id: i64, instance_id: &str, level: i64, hp: i64) -> Value {
+        let species = &catalog().species[&species_id];
+        let stats = expected_stats(species, level);
+        serde_json::json!({
+            "instanceId":instance_id,"speciesId":species_id,"nickname":"test","level":level,
+            "xp":experience_at_level(species, level).unwrap(),"hp":hp,
+            "stats":{"hp":stats[0],"attack":stats[1],"defense":stats[2],"specialAttack":stats[3],"specialDefense":stats[4],"speed":stats[5]},
+            "moves":[]
+        })
+    }
+
+    fn mega_transformation(monster: &Value, identifier: &str, hp_adjusted: Option<Value>) -> Value {
+        let profile = combat_form(identifier).unwrap();
+        let stats = form_stats(
+            identifier,
+            monster["level"].as_i64().unwrap(),
+            [0; 6],
+        )
+        .unwrap();
+        let mut transformation = serde_json::json!({
+            "kind":"mega","formIdentifier":identifier,
+            "speciesId":monster["speciesId"],"moves":monster["moves"],
+            "types":profile.types,
+            "stats":{"hp":stats[0],"attack":stats[1],"defense":stats[2],"specialAttack":stats[3],"specialDefense":stats[4],"speed":stats[5]}
+        });
+        if let Some(ability) = profile.abilities.first() {
+            transformation["ability"] = serde_json::json!({"id":ability.id,"slug":ability.slug});
+        }
+        if let Some(value) = hp_adjusted {
+            transformation["hpAdjusted"] = value;
+        }
+        transformation
+    }
+
+    fn mega_battle_save(species_id: i64, identifier: &str, hp: i64, marker: Option<Value>) -> Value {
+        let mut save = valid_save();
+        let monster = monster_for_species(species_id, "mega-player", 100, hp);
+        save["game"]["player"]["team"] = serde_json::json!([monster]);
+        save["game"]["dex"]["seen"] = serde_json::json!([species_id]);
+        save["game"]["dex"]["caught"] = serde_json::json!([species_id]);
+        set_battle(&mut save, "wild", "safari-meadow", None, None, None);
+        let transformation = mega_transformation(
+            &save["game"]["player"]["team"][0],
+            identifier,
+            marker,
+        );
+        save["game"]["battle"]["transformations"] =
+            Value::Object(Map::from_iter([("mega-player".into(), transformation)]));
+        save["game"]["battle"]["playerMegaUsed"] = Value::Bool(true);
+        save
+    }
+
     #[test]
     fn accepts_consistent_save() {
         validate_save(&valid_save()).unwrap();
@@ -2333,6 +2436,22 @@ mod tests {
             complete["game"]["inventory"][item] = Value::from(0);
         }
         assert_eq!(complete["game"]["inventory"].as_object().unwrap().len(), 60);
+        validate_save(&complete).unwrap();
+
+        let field_items: Vec<Value> = serde_json::from_str(include_str!(
+            "../../src/data/field-items.json"
+        ))
+        .unwrap();
+        let mega_stones: Vec<&str> = field_items
+            .iter()
+            .filter(|item| item.get("kind").and_then(Value::as_str) == Some("mega-stone"))
+            .filter_map(|item| item.get("id").and_then(Value::as_str))
+            .collect();
+        assert_eq!(mega_stones.len(), 64);
+        for item in mega_stones {
+            complete["game"]["inventory"][item] = Value::from(0);
+        }
+        assert_eq!(complete["game"]["inventory"].as_object().unwrap().len(), 124);
         validate_save(&complete).unwrap();
     }
 
@@ -2857,6 +2976,26 @@ mod tests {
         let mut bad_tool = save;
         bad_tool["game"]["player"]["team"][0]["heldTool"] = Value::from("unknown-tool");
         assert!(validate_save(&bad_tool).is_err());
+
+        let species_id = 718;
+        let base_hp = expected_stats(&catalog().species[&species_id], 100)[0];
+        let mut matching_stone = valid_save();
+        matching_stone["game"]["player"]["team"][0] =
+            monster_for_species(species_id, "zygarde", 100, base_hp);
+        matching_stone["game"]["player"]["team"][0]["heldTool"] =
+            Value::from("mega-stone:zygarde-mega");
+        matching_stone["game"]["dex"]["seen"] = serde_json::json!([species_id]);
+        matching_stone["game"]["dex"]["caught"] = serde_json::json!([species_id]);
+        validate_save(&matching_stone).unwrap();
+
+        for invalid in [
+            "mega-stone:charizard-mega-x",
+            "mega-stone:clefable-mega",
+        ] {
+            let mut wrong = matching_stone.clone();
+            wrong["game"]["player"]["team"][0]["heldTool"] = Value::from(invalid);
+            assert!(validate_save(&wrong).is_err(), "{invalid}");
+        }
     }
 
     #[test]
@@ -2893,17 +3032,83 @@ mod tests {
         let mut charizard = make_monster(6, "mega-6");
         charizard["preferredTransformation"] =
             serde_json::json!({"kind":"mega","formIdentifier":"charizard-mega-x"});
-        validate_monster(&charizard, &mut HashSet::new(), true, &mut HashSet::new()).unwrap();
+        validate_monster(&charizard, &mut HashSet::new(), true, &mut HashSet::new(), None).unwrap();
 
         let mut unavailable = make_monster(36, "mega-36");
         unavailable["preferredTransformation"] =
             serde_json::json!({"kind":"mega","formIdentifier":"clefable-mega"});
-        assert!(validate_monster(&unavailable, &mut HashSet::new(), true, &mut HashSet::new()).is_err());
+        assert!(validate_monster(&unavailable, &mut HashSet::new(), true, &mut HashSet::new(), None).is_err());
 
         let mut encounter = make_monster(25, "enemy-25");
         encounter["preferredTransformation"] =
             serde_json::json!({"kind":"tera","teraType":"electric"});
-        assert!(validate_monster(&encounter, &mut HashSet::new(), false, &mut HashSet::new()).is_err());
+        assert!(validate_monster(&encounter, &mut HashSet::new(), false, &mut HashSet::new(), None).is_err());
+    }
+
+    #[test]
+    fn accepts_canonical_adjusted_mega_hp_for_battle_team_members() {
+        for (species_id, identifier) in [(670, "floette-mega"), (718, "zygarde-mega")] {
+            let base_hp = expected_stats(&catalog().species[&species_id], 100)[0];
+            let mega_hp = form_stats(identifier, 100, [0; 6]).unwrap()[0];
+            assert!(mega_hp > base_hp, "{identifier} must exercise the HP override");
+
+            let save = mega_battle_save(species_id, identifier, mega_hp, Some(Value::Bool(true)));
+            validate_save(&save).unwrap();
+        }
+    }
+
+    #[test]
+    fn rejects_adjusted_mega_hp_above_canonical_form_even_with_forged_form_stats() {
+        let identifier = "zygarde-mega";
+        let mega_hp = form_stats(identifier, 100, [0; 6]).unwrap()[0];
+        let over_form_hp = mega_battle_save(718, identifier, mega_hp + 1, Some(Value::Bool(true)));
+        assert!(validate_save(&over_form_hp).is_err());
+
+        let mut forged_form_stats = over_form_hp;
+        forged_form_stats["game"]["battle"]["transformations"]["mega-player"]["stats"]["hp"] =
+            Value::from(mega_hp + 1);
+        assert!(validate_save(&forged_form_stats).is_err());
+    }
+
+    #[test]
+    fn rejects_invalid_hp_adjustment_markers_and_box_hp_bypass() {
+        let mega_hp = form_stats("zygarde-mega", 100, [0; 6]).unwrap()[0];
+        for (kind, marker) in [
+            ("mega", Value::Bool(false)),
+            ("mega", Value::Null),
+            ("tera", Value::Bool(true)),
+            ("transform", Value::Bool(true)),
+        ] {
+            let mut save = mega_battle_save(718, "zygarde-mega", mega_hp, Some(marker));
+            save["game"]["battle"]["transformations"]["mega-player"]["kind"] =
+                Value::String(kind.into());
+            assert!(validate_save(&save).is_err(), "kind={kind}");
+        }
+
+        let mut boxed = valid_save();
+        let boxed_monster = monster_for_species(718, "boxed-mega", 100, mega_hp);
+        boxed["game"]["player"]["box"] = serde_json::json!([boxed_monster]);
+        boxed["game"]["dex"]["seen"] = serde_json::json!([1, 718]);
+        boxed["game"]["dex"]["caught"] = serde_json::json!([1, 718]);
+        set_battle(&mut boxed, "wild", "safari-meadow", None, None, None);
+        let transformation = mega_transformation(
+            &boxed["game"]["player"]["box"][0],
+            "zygarde-mega",
+            Some(Value::Bool(true)),
+        );
+        boxed["game"]["battle"]["transformations"] =
+            Value::Object(Map::from_iter([("boxed-mega".into(), transformation)]));
+        boxed["game"]["battle"]["playerMegaUsed"] = Value::Bool(true);
+        assert!(validate_save(&boxed).is_err());
+    }
+
+    #[test]
+    fn preserves_legacy_mega_saves_without_hp_adjustment_marker() {
+        let species_id = 718;
+        let base_hp = expected_stats(&catalog().species[&species_id], 100)[0];
+        let save = mega_battle_save(species_id, "zygarde-mega", base_hp, None);
+        validate_save(&save).unwrap();
+        validate_save(&valid_save()).unwrap();
     }
 
     #[test]
@@ -2952,11 +3157,11 @@ mod tests {
                 "stats":{"hp":stats[0],"attack":stats[1],"defense":stats[2],"specialAttack":stats[3],"specialDefense":stats[4],"speed":stats[5]},
                 "moves":[]
             });
-            validate_monster(&monster, &mut HashSet::new(), false, &mut HashSet::new()).unwrap();
+            validate_monster(&monster, &mut HashSet::new(), false, &mut HashSet::new(), None).unwrap();
             let mut edited = monster;
             edited["xp"] = Value::from(species.experience[99] + 1);
             assert!(
-                validate_monster(&edited, &mut HashSet::new(), false, &mut HashSet::new()).is_err()
+                validate_monster(&edited, &mut HashSet::new(), false, &mut HashSet::new(), None).is_err()
             );
         }
     }

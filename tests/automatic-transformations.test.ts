@@ -9,6 +9,7 @@ const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as
 function setup() {
   const game = createGame(4, 'automatic-forms'), lead = createMonster(game, 6, 5), reserve = createMonster(game, 7, 5);
   game.player.team = [lead, reserve];
+  game.inventory['mega-stone:charizard-mega-x'] = 1;
   assignPreferredTransformation(game, lead.instanceId, { kind: 'mega', formIdentifier: 'charizard-mega-x' });
   assignPreferredTransformation(game, reserve.instanceId, { kind: 'tera', teraType: 'water' });
   return { game, lead, reserve };
@@ -42,6 +43,7 @@ describe('saved automatic transformations', () => {
   it('applies after a faint switch while enforcing one use of each kind per battle', () => {
     const { game, lead, reserve } = setup(), other = createMonster(game, 6, 5);
     game.player.team.push(other);
+    game.inventory['mega-stone:charizard-mega-y'] = 1;
     assignPreferredTransformation(game, other.instanceId, { kind: 'mega', formIdentifier: 'charizard-mega-y' });
     challengeGym(game, 'safari-meadow');
     lead.hp = 0; game.battle!.awaitingSwitch = 'player';

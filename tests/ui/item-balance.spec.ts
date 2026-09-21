@@ -14,16 +14,18 @@ test('shop quantities, held-tool stock, healing and treats persist on mobile', a
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   const game = createGame(1, 'item-balance-ui'), monster = createMonster(game, 133, 50);
   game.player.team = [monster]; game.player.money = 30000; game.inventory.potion = 0; monster.hp -= 80;
+  game.inventory.leftovers = 2; game.inventory['life-orb'] = 1;
   const world = new OpenWorldSimulation(graph, game, 221);
   world.setControlMode('manual'); world.setAutoHunt(false);
   await page.goto('/'); await page.locator('[data-starter="152"]').click();
   await page.locator('#import-file').setInputFiles({ name: 'items.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(packSave(game, graph, { ...defaultView(), openWorld: world.snapshot(), openWorldPaused: true }))) });
   await expect(page.locator('#toast')).toContainText('불러왔습니다');
   await page.locator('[data-tab="team"]').click();
-  await expect(page.locator('#monster-tool option[value="leftovers"]')).toHaveJSProperty('disabled', true);
+  await expect(page.locator('#monster-tool option[value="focus-sash"]')).toHaveJSProperty('disabled', true);
   await page.locator('[data-tab="shop"]').click();
   await expect(page.locator('[data-shop-item]')).toHaveCount(SHOP_ITEMS.length);
-  const purchases = [['leftovers', 2], ['life-orb', 1], ['super-potion', 2], ['beauty-treat', 3], ['affection-treat', 2]] as const;
+  await expect(page.locator('[data-shop-item="leftovers"],[data-shop-item="life-orb"],[data-shop-category="held"]')).toHaveCount(0);
+  const purchases = [['super-potion', 2], ['beauty-treat', 3], ['affection-treat', 2]] as const;
   let spent = 0;
   for (const [item, quantity] of purchases) {
     await page.locator(`[data-buy-quantity="${item}"]`).fill(String(quantity));
@@ -50,10 +52,8 @@ test('shop quantities, held-tool stock, healing and treats persist on mobile', a
   await page.reload(); await page.locator('[data-tab="team"]').click();
   await expect(page.locator('#monster-tool')).toHaveValue('life-orb');
   await page.locator('[data-tab="shop"]').click();
-  await page.locator('[data-shop-category="held"]').click();
-  await expect(page.locator('[data-shop-item]')).toHaveCount(6);
-  await expect(page.locator('[data-shop-item="leftovers"]')).toContainText('보유 2개');
-  await expect(page.locator('[data-shop-item="life-orb"]')).toContainText('보유 0개');
+  await expect(page.locator('[data-shop-category="held"]')).toHaveCount(0);
+  await expect(page.locator('[data-shop-item="leftovers"],[data-shop-item="life-orb"]')).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: info.outputPath('item-shop-mobile.png'), fullPage: true });

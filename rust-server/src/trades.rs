@@ -12,21 +12,23 @@ use axum::{
 };
 use base64::Engine;
 use rand::RngCore;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use sqlx::{Postgres, Row, Transaction, postgres::PgRow};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Mutex, OnceLock},
     time::{Duration, Instant},
 };
 use uuid::Uuid;
 
 const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
+const MAX_ITEM_STOCK: i64 = 1_000_000_000;
 const MAX_NEURAL_BYTES: usize = 2_000_000;
 static MUTATIONS: OnceLock<Mutex<HashMap<Uuid, (Instant, u32)>>> = OnceLock::new();
 static SOCKETS: OnceLock<Mutex<HashMap<Uuid, u8>>> = OnceLock::new();
+static TRADEABLE_ITEMS: OnceLock<HashSet<String>> = OnceLock::new();
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -151,7 +153,32 @@ struct OfferRequest {
     monster_id: Option<String>,
     money: i64,
     #[serde(default)]
+    items: Vec<ItemOffer>,
+    #[serde(default)]
     neural: Option<Value>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct ItemOffer {
+    item_id: String,
+    quantity: i64,
+}
+
+fn tradeable_items() -> &'static HashSet<String> {
+    TRADEABLE_ITEMS.get_or_init(|| {
+        let rows: Vec<Value> =
+            serde_json::from_str(include_str!("../../src/data/field-items.json"))
+                .expect("field-items.json must be valid JSON");
+        rows.into_iter()
+            .map(|row| {
+                row.get("id")
+                    .and_then(Value::as_str)
+                    .expect("each field item must have a string id")
+                    .to_owned()
+            })
+            .collect()
+    })
 }
 
 #[derive(Deserialize)]
@@ -235,11 +262,14 @@ fn participant(row: &PgRow, which: &str) -> Option<Value> {
         .try_get(format!("{which}_monster").as_str())
         .ok()
         .flatten();
+    let items: Value = row
+        .try_get(format!("{which}_items").as_str())
+        .unwrap_or_else(|_| json!([]));
     Some(json!({
         "side":which,
         "user":{"id":id,"username":username},
         "confirmed":row.get::<bool,_>(format!("{which}_confirmed").as_str()),
-        "offer":{"monster":monster,"money":row.get::<i64,_>(format!("{which}_money").as_str())}
+        "offer":{"monster":monster,"money":row.get::<i64,_>(format!("{which}_money").as_str()),"items":items}
     }))
 }
 
@@ -494,6 +524,87 @@ fn summary(monster: &Value) -> Value {
     json!({"instanceId":monster["instanceId"],"speciesId":monster["speciesId"],"nickname":monster["nickname"],"level":monster["level"]})
 }
 
+fn inventory(save: &Value) -> TradeResult<&Map<String, Value>> {
+    save.pointer("/game/inventory")
+        .and_then(Value::as_object)
+        .ok_or_else(|| invalid("가방 저장이 올바르지 않습니다."))
+}
+
+fn validate_item_offer(save: &Value, items: &[ItemOffer]) -> TradeResult<()> {
+    if items.len() > 8 {
+        return Err(invalid("도구는 한 번에 최대 8종까지 제안할 수 있습니다."));
+    }
+    let bag = inventory(save)?;
+    let mut seen = HashSet::with_capacity(items.len());
+    for item in items {
+        if item.quantity < 1 || item.quantity > 999 {
+            return Err(invalid("도구 수량은 1개에서 999개 사이여야 합니다."));
+        }
+        if !seen.insert(item.item_id.as_str()) {
+            return Err(invalid("같은 도구를 두 번 제안할 수 없습니다."));
+        }
+        if !tradeable_items().contains(&item.item_id) {
+            return Err(invalid(
+                "필드에서 얻는 장착 도구와 메가진화석만 거래할 수 있습니다.",
+            ));
+        }
+        let stock = bag.get(&item.item_id).and_then(Value::as_i64).unwrap_or(-1);
+        if stock < item.quantity {
+            return Err(conflict(
+                "제안한 도구의 가방 재고가 부족합니다.",
+                "INSUFFICIENT_ITEMS",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn decode_item_offer(value: Value) -> TradeResult<Vec<ItemOffer>> {
+    let items: Vec<ItemOffer> = serde_json::from_value(value)
+        .map_err(|_| invalid("저장된 도구 거래 제안이 올바르지 않습니다."))?;
+    if items.len() > 8 {
+        return Err(invalid("저장된 도구 거래 제안이 올바르지 않습니다."));
+    }
+    let mut seen = HashSet::with_capacity(items.len());
+    if items.iter().any(|item| {
+        item.quantity < 1
+            || item.quantity > 999
+            || !seen.insert(item.item_id.as_str())
+            || !tradeable_items().contains(&item.item_id)
+    }) {
+        return Err(invalid("저장된 도구 거래 제안이 올바르지 않습니다."));
+    }
+    Ok(items)
+}
+
+fn apply_item_exchange(
+    save: &mut Value,
+    outgoing: &[ItemOffer],
+    incoming: &[ItemOffer],
+) -> TradeResult<()> {
+    validate_item_offer(save, outgoing)?;
+    let bag = save
+        .pointer_mut("/game/inventory")
+        .and_then(Value::as_object_mut)
+        .ok_or_else(|| invalid("가방 저장이 올바르지 않습니다."))?;
+    let mut deltas = HashMap::<&str, i64>::new();
+    for item in outgoing {
+        *deltas.entry(&item.item_id).or_default() -= item.quantity;
+    }
+    for item in incoming {
+        *deltas.entry(&item.item_id).or_default() += item.quantity;
+    }
+    for (item_id, delta) in deltas {
+        let stock = bag.get(item_id).and_then(Value::as_i64).unwrap_or(0);
+        let next = stock
+            .checked_add(delta)
+            .filter(|value| (0..=MAX_ITEM_STOCK).contains(value))
+            .ok_or_else(|| conflict("도구 재고 한도를 넘을 수 없습니다.", "ITEM_STOCK_LIMIT"))?;
+        bag.insert(item_id.to_owned(), json!(next));
+    }
+    Ok(())
+}
+
 async fn load_save_tx(
     tx: &mut Transaction<'_, Postgres>,
     id: Uuid,
@@ -544,6 +655,7 @@ async fn offer(
         return Err(conflict("저장 revision이 바뀌었습니다.", "SAVE_CHANGED"));
     }
     no_transient(&save)?;
+    validate_item_offer(&save, &body.items)?;
     let balance = save
         .pointer("/game/player/money")
         .and_then(Value::as_i64)
@@ -565,7 +677,7 @@ async fn offer(
     };
     let who = side(&row, account.id);
     let sql = format!(
-        "UPDATE trades SET {who}_revision=$2,{who}_monster_id=$3,{who}_monster=$4,{who}_money=$5,{who}_neural=$6,creator_confirmed=false,joiner_confirmed=false,version=version+1,updated_at=now(),expires_at=now()+interval '10 minutes' WHERE id=$1"
+        "UPDATE trades SET {who}_revision=$2,{who}_monster_id=$3,{who}_monster=$4,{who}_money=$5,{who}_neural=$6,{who}_items=$7,creator_confirmed=false,joiner_confirmed=false,version=version+1,updated_at=now(),expires_at=now()+interval '10 minutes' WHERE id=$1"
     );
     sqlx::query(&sql)
         .bind(id)
@@ -574,6 +686,7 @@ async fn offer(
         .bind(monster.as_ref().map(summary))
         .bind(body.money)
         .bind(body.neural)
+        .bind(json!(body.items))
         .execute(&mut *tx)
         .await?;
     let creator = row.get::<Uuid, _>("creator_id");
@@ -852,8 +965,16 @@ async fn confirm(
     let j_mon: Option<String> = row.try_get("joiner_monster_id").ok();
     let c_money: i64 = row.get("creator_money");
     let j_money: i64 = row.get("joiner_money");
-    if c_mon.is_none() && j_mon.is_none() && c_money == 0 && j_money == 0 {
-        return Err(invalid("포켓몬이나 돈 중 하나는 이동해야 합니다."));
+    let c_items = decode_item_offer(row.get::<Value, _>("creator_items"))?;
+    let j_items = decode_item_offer(row.get::<Value, _>("joiner_items"))?;
+    if c_mon.is_none()
+        && j_mon.is_none()
+        && c_money == 0
+        && j_money == 0
+        && c_items.is_empty()
+        && j_items.is_empty()
+    {
+        return Err(invalid("포켓몬이나 돈, 도구 중 하나는 이동해야 합니다."));
     }
     let other_confirmed = row.get::<bool, _>(
         format!(
@@ -910,8 +1031,20 @@ async fn confirm(
         Some(v) => Some(extract(&mut js, v)?),
         None => None,
     };
-    cs["game"]["player"]["money"] = json!(cb - c_money + j_money);
-    js["game"]["player"]["money"] = json!(jb - j_money + c_money);
+    apply_item_exchange(&mut cs, &c_items, &j_items)?;
+    apply_item_exchange(&mut js, &j_items, &c_items)?;
+    let creator_balance = cb
+        .checked_sub(c_money)
+        .and_then(|value| value.checked_add(j_money))
+        .filter(|value| (0..=MAX_SAFE_INTEGER).contains(value))
+        .ok_or_else(|| conflict("거래 후 보유 금액 한도를 넘을 수 없습니다.", "MONEY_LIMIT"))?;
+    let joiner_balance = jb
+        .checked_sub(j_money)
+        .and_then(|value| value.checked_add(c_money))
+        .filter(|value| (0..=MAX_SAFE_INTEGER).contains(value))
+        .ok_or_else(|| conflict("거래 후 보유 금액 한도를 넘을 수 없습니다.", "MONEY_LIMIT"))?;
+    cs["game"]["player"]["money"] = json!(creator_balance);
+    js["game"]["player"]["money"] = json!(joiner_balance);
     let creator_received = if let Some((m, a)) = j_transfer {
         Some(receive(&mut cs, m, a)?)
     } else {
@@ -1194,5 +1327,82 @@ mod tests {
             save["view"]["openWorld"]["rewardLedgers"]["mon-3"]["individualId"],
             "mon-3"
         );
+    }
+
+    #[test]
+    fn item_offer_accepts_only_unique_owned_field_items() {
+        let save = json!({"game":{"inventory":{"leftovers":2,"mega-stone:gengar-mega":1}}});
+        assert!(
+            validate_item_offer(
+                &save,
+                &[
+                    ItemOffer {
+                        item_id: "leftovers".into(),
+                        quantity: 2
+                    },
+                    ItemOffer {
+                        item_id: "mega-stone:gengar-mega".into(),
+                        quantity: 1
+                    },
+                ]
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_item_offer(
+                &save,
+                &[ItemOffer {
+                    item_id: "leftovers".into(),
+                    quantity: 3
+                }]
+            )
+            .is_err()
+        );
+        assert!(
+            validate_item_offer(
+                &save,
+                &[ItemOffer {
+                    item_id: "poke-ball".into(),
+                    quantity: 1
+                }]
+            )
+            .is_err()
+        );
+        assert!(
+            validate_item_offer(
+                &save,
+                &[
+                    ItemOffer {
+                        item_id: "leftovers".into(),
+                        quantity: 1
+                    },
+                    ItemOffer {
+                        item_id: "leftovers".into(),
+                        quantity: 1
+                    },
+                ]
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn item_exchange_preserves_stock_and_blocks_overflow() {
+        let mut save = json!({"game":{"inventory":{"leftovers":5,"focus-sash":1}}});
+        let outgoing = [ItemOffer {
+            item_id: "leftovers".into(),
+            quantity: 2,
+        }];
+        let incoming = [ItemOffer {
+            item_id: "focus-sash".into(),
+            quantity: 3,
+        }];
+        apply_item_exchange(&mut save, &outgoing, &incoming).unwrap();
+        assert_eq!(save["game"]["inventory"]["leftovers"], 3);
+        assert_eq!(save["game"]["inventory"]["focus-sash"], 4);
+
+        save["game"]["inventory"]["focus-sash"] = json!(MAX_ITEM_STOCK);
+        assert!(apply_item_exchange(&mut save, &[], &incoming).is_err());
+        assert_eq!(save["game"]["inventory"]["focus-sash"], MAX_ITEM_STOCK);
     }
 }

@@ -1,0 +1,480 @@
+[
+  {
+    "id": "leftovers",
+    "name": "먹다남은음식",
+    "kind": "held-tool"
+  },
+  {
+    "id": "choice-band",
+    "name": "구애머리띠",
+    "kind": "held-tool"
+  },
+  {
+    "id": "choice-specs",
+    "name": "구애안경",
+    "kind": "held-tool"
+  },
+  {
+    "id": "choice-scarf",
+    "name": "구애스카프",
+    "kind": "held-tool"
+  },
+  {
+    "id": "life-orb",
+    "name": "생명의구슬",
+    "kind": "held-tool"
+  },
+  {
+    "id": "focus-sash",
+    "name": "기합의띠",
+    "kind": "held-tool"
+  },
+  {
+    "id": "mega-stone:venusaur-mega",
+    "name": "메가이상해꽃 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "venusaur-mega",
+    "speciesId": 3
+  },
+  {
+    "id": "mega-stone:charizard-mega-x",
+    "name": "메가리자몽 X 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "charizard-mega-x",
+    "speciesId": 6
+  },
+  {
+    "id": "mega-stone:charizard-mega-y",
+    "name": "메가리자몽 Y 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "charizard-mega-y",
+    "speciesId": 6
+  },
+  {
+    "id": "mega-stone:blastoise-mega",
+    "name": "메가거북왕 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "blastoise-mega",
+    "speciesId": 9
+  },
+  {
+    "id": "mega-stone:beedrill-mega",
+    "name": "메가독침붕 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "beedrill-mega",
+    "speciesId": 15
+  },
+  {
+    "id": "mega-stone:pidgeot-mega",
+    "name": "메가피죤투 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "pidgeot-mega",
+    "speciesId": 18
+  },
+  {
+    "id": "mega-stone:raichu-mega-x",
+    "name": "메가라이츄 X 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "raichu-mega-x",
+    "speciesId": 26
+  },
+  {
+    "id": "mega-stone:raichu-mega-y",
+    "name": "메가라이츄 Y 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "raichu-mega-y",
+    "speciesId": 26
+  },
+  {
+    "id": "mega-stone:alakazam-mega",
+    "name": "메가후딘 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "alakazam-mega",
+    "speciesId": 65
+  },
+  {
+    "id": "mega-stone:slowbro-mega",
+    "name": "메가야도란 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "slowbro-mega",
+    "speciesId": 80
+  },
+  {
+    "id": "mega-stone:gengar-mega",
+    "name": "메가팬텀 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "gengar-mega",
+    "speciesId": 94
+  },
+  {
+    "id": "mega-stone:kangaskhan-mega",
+    "name": "메가캥카 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "kangaskhan-mega",
+    "speciesId": 115
+  },
+  {
+    "id": "mega-stone:starmie-mega",
+    "name": "메가아쿠스타 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "starmie-mega",
+    "speciesId": 121
+  },
+  {
+    "id": "mega-stone:pinsir-mega",
+    "name": "메가쁘사이저 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "pinsir-mega",
+    "speciesId": 127
+  },
+  {
+    "id": "mega-stone:gyarados-mega",
+    "name": "메가갸라도스 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "gyarados-mega",
+    "speciesId": 130
+  },
+  {
+    "id": "mega-stone:aerodactyl-mega",
+    "name": "메가프테라 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "aerodactyl-mega",
+    "speciesId": 142
+  },
+  {
+    "id": "mega-stone:mewtwo-mega-x",
+    "name": "메가뮤츠 X 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "mewtwo-mega-x",
+    "speciesId": 150
+  },
+  {
+    "id": "mega-stone:mewtwo-mega-y",
+    "name": "메가뮤츠 Y 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "mewtwo-mega-y",
+    "speciesId": 150
+  },
+  {
+    "id": "mega-stone:feraligatr-mega",
+    "name": "메가장크로다일 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "feraligatr-mega",
+    "speciesId": 160
+  },
+  {
+    "id": "mega-stone:ampharos-mega",
+    "name": "메가전룡 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "ampharos-mega",
+    "speciesId": 181
+  },
+  {
+    "id": "mega-stone:steelix-mega",
+    "name": "메가강철톤 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "steelix-mega",
+    "speciesId": 208
+  },
+  {
+    "id": "mega-stone:scizor-mega",
+    "name": "메가핫삼 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "scizor-mega",
+    "speciesId": 212
+  },
+  {
+    "id": "mega-stone:heracross-mega",
+    "name": "메가헤라크로스 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "heracross-mega",
+    "speciesId": 214
+  },
+  {
+    "id": "mega-stone:skarmory-mega",
+    "name": "메가무장조 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "skarmory-mega",
+    "speciesId": 227
+  },
+  {
+    "id": "mega-stone:houndoom-mega",
+    "name": "메가헬가 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "houndoom-mega",
+    "speciesId": 229
+  },
+  {
+    "id": "mega-stone:tyranitar-mega",
+    "name": "메가마기라스 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "tyranitar-mega",
+    "speciesId": 248
+  },
+  {
+    "id": "mega-stone:sceptile-mega",
+    "name": "메가나무킹 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "sceptile-mega",
+    "speciesId": 254
+  },
+  {
+    "id": "mega-stone:blaziken-mega",
+    "name": "메가번치코 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "blaziken-mega",
+    "speciesId": 257
+  },
+  {
+    "id": "mega-stone:swampert-mega",
+    "name": "메가대짱이 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "swampert-mega",
+    "speciesId": 260
+  },
+  {
+    "id": "mega-stone:gardevoir-mega",
+    "name": "메가가디안 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "gardevoir-mega",
+    "speciesId": 282
+  },
+  {
+    "id": "mega-stone:sableye-mega",
+    "name": "메가깜까미 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "sableye-mega",
+    "speciesId": 302
+  },
+  {
+    "id": "mega-stone:mawile-mega",
+    "name": "메가입치트 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "mawile-mega",
+    "speciesId": 303
+  },
+  {
+    "id": "mega-stone:aggron-mega",
+    "name": "메가보스로라 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "aggron-mega",
+    "speciesId": 306
+  },
+  {
+    "id": "mega-stone:medicham-mega",
+    "name": "메가요가램 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "medicham-mega",
+    "speciesId": 308
+  },
+  {
+    "id": "mega-stone:manectric-mega",
+    "name": "메가썬더볼트 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "manectric-mega",
+    "speciesId": 310
+  },
+  {
+    "id": "mega-stone:sharpedo-mega",
+    "name": "메가샤크니아 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "sharpedo-mega",
+    "speciesId": 319
+  },
+  {
+    "id": "mega-stone:camerupt-mega",
+    "name": "메가폭타 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "camerupt-mega",
+    "speciesId": 323
+  },
+  {
+    "id": "mega-stone:altaria-mega",
+    "name": "메가파비코리 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "altaria-mega",
+    "speciesId": 334
+  },
+  {
+    "id": "mega-stone:banette-mega",
+    "name": "메가다크펫 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "banette-mega",
+    "speciesId": 354
+  },
+  {
+    "id": "mega-stone:absol-mega",
+    "name": "메가앱솔 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "absol-mega",
+    "speciesId": 359
+  },
+  {
+    "id": "mega-stone:glalie-mega",
+    "name": "메가얼음귀신 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "glalie-mega",
+    "speciesId": 362
+  },
+  {
+    "id": "mega-stone:salamence-mega",
+    "name": "메가보만다 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "salamence-mega",
+    "speciesId": 373
+  },
+  {
+    "id": "mega-stone:metagross-mega",
+    "name": "메가메타그로스 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "metagross-mega",
+    "speciesId": 376
+  },
+  {
+    "id": "mega-stone:latias-mega",
+    "name": "메가라티아스 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "latias-mega",
+    "speciesId": 380
+  },
+  {
+    "id": "mega-stone:latios-mega",
+    "name": "메가라티오스 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "latios-mega",
+    "speciesId": 381
+  },
+  {
+    "id": "mega-stone:rayquaza-mega",
+    "name": "메가레쿠쟈 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "rayquaza-mega",
+    "speciesId": 384
+  },
+  {
+    "id": "mega-stone:lopunny-mega",
+    "name": "메가이어롭 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "lopunny-mega",
+    "speciesId": 428
+  },
+  {
+    "id": "mega-stone:garchomp-mega",
+    "name": "메가한카리아스 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "garchomp-mega",
+    "speciesId": 445
+  },
+  {
+    "id": "mega-stone:garchomp-mega-z",
+    "name": "메가한카리아스 Z 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "garchomp-mega-z",
+    "speciesId": 445
+  },
+  {
+    "id": "mega-stone:lucario-mega",
+    "name": "메가루카리오 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "lucario-mega",
+    "speciesId": 448
+  },
+  {
+    "id": "mega-stone:lucario-mega-z",
+    "name": "메가루카리오 Z 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "lucario-mega-z",
+    "speciesId": 448
+  },
+  {
+    "id": "mega-stone:abomasnow-mega",
+    "name": "메가눈설왕 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "abomasnow-mega",
+    "speciesId": 460
+  },
+  {
+    "id": "mega-stone:gallade-mega",
+    "name": "메가엘레이드 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "gallade-mega",
+    "speciesId": 475
+  },
+  {
+    "id": "mega-stone:darkrai-mega",
+    "name": "메가다크라이 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "darkrai-mega",
+    "speciesId": 491
+  },
+  {
+    "id": "mega-stone:excadrill-mega",
+    "name": "메가몰드류 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "excadrill-mega",
+    "speciesId": 530
+  },
+  {
+    "id": "mega-stone:audino-mega",
+    "name": "메가다부니 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "audino-mega",
+    "speciesId": 531
+  },
+  {
+    "id": "mega-stone:eelektross-mega",
+    "name": "메가저리더프 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "eelektross-mega",
+    "speciesId": 604
+  },
+  {
+    "id": "mega-stone:chesnaught-mega",
+    "name": "메가브리가론 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "chesnaught-mega",
+    "speciesId": 652
+  },
+  {
+    "id": "mega-stone:delphox-mega",
+    "name": "메가마폭시 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "delphox-mega",
+    "speciesId": 655
+  },
+  {
+    "id": "mega-stone:greninja-mega",
+    "name": "메가개굴닌자 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "greninja-mega",
+    "speciesId": 658
+  },
+  {
+    "id": "mega-stone:floette-mega",
+    "name": "메가플라엣테 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "floette-mega",
+    "speciesId": 670
+  },
+  {
+    "id": "mega-stone:zygarde-mega",
+    "name": "메가지가르데 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "zygarde-mega",
+    "speciesId": 718
+  },
+  {
+    "id": "mega-stone:diancie-mega",
+    "name": "메가디안시 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "diancie-mega",
+    "speciesId": 719
+  },
+  {
+    "id": "mega-stone:zeraora-mega",
+    "name": "메가제라오라 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "zeraora-mega",
+    "speciesId": 807
+  }
+]

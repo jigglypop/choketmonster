@@ -14,6 +14,7 @@ import { EXTRA_EVOLUTION_ITEM_IDS, EXTRA_EVOLUTION_PRICES, EXTRA_EVOLUTION_LABEL
 import { initialEvolutionProgress, evolutionProgress, validateEvolutionProgress, validateEvolutionContext, type EvolutionProgress, type EvolutionContext } from './evolution-progress';
 import { evolutionFormSupported, feedEvolutionTreat, naturalEvolution, needsSpecialEvolution, sourceEvolutionItems, sourceEvolutionItemsForMonster, sourceEvolutionRules, specialEvolutionLevel } from './evolution-conditions';
 import { getFieldTrainer, type FieldTrainer } from '../data/field-trainers';
+import fieldItems from '../data/field-items.json' with { type: 'json' };
 import { genderFor, isValidGender, validateEgg, type Egg, type MonsterGender } from './breeding';
 import { abilityForSpecies, abilityImmunity, canonicalAbility, createIndividualTraits, hasSturdy, isValidIndividualValues, speciesAbilities,
   legacyIndividualTraits, statsWithIndividualValues, type IndividualValues, type MonsterAbility } from './individual-traits';
@@ -25,7 +26,17 @@ export const SAVE_SCHEMA_VERSION = 2 as const;
 export type BallItem = 'poke-ball' | 'great-ball' | 'ultra-ball';
 export const HELD_TOOLS = ['leftovers', 'choice-band', 'choice-specs', 'choice-scarf', 'life-orb', 'focus-sash'] as const;
 export type HeldTool = typeof HELD_TOOLS[number];
-export type InventoryItem = BallItem | 'potion' | 'super-potion' | 'rare-candy' | 'fire-stone' | 'water-stone' | 'thunder-stone' | 'leaf-stone' | 'moon-stone' | 'link-cable' | ExtraEvolutionItem | HeldTool;
+export type MegaStoneId = `mega-stone:${string}`;
+export type EquippableItem = HeldTool | MegaStoneId;
+export type FieldItem = { id: EquippableItem; name: string; kind: 'held-tool' | 'mega-stone'; formIdentifier?: string; speciesId?: number };
+export const FIELD_ITEMS = fieldItems as readonly FieldItem[];
+export const MEGA_STONES = FIELD_ITEMS.filter((item): item is FieldItem & { id: MegaStoneId; kind: 'mega-stone'; formIdentifier: string; speciesId: number } => item.kind === 'mega-stone');
+export const EQUIPPABLE_ITEMS = FIELD_ITEMS.map(item => item.id) as readonly EquippableItem[];
+export function megaStoneId(formIdentifier: string): MegaStoneId { return `mega-stone:${formIdentifier}`; }
+export function megaStoneForSpecies(speciesId: number, formIdentifier?: string) {
+  return MEGA_STONES.find(item => item.speciesId === speciesId && (!formIdentifier || item.formIdentifier === formIdentifier));
+}
+export type InventoryItem = BallItem | 'potion' | 'super-potion' | 'rare-candy' | 'fire-stone' | 'water-stone' | 'thunder-stone' | 'leaf-stone' | 'moon-stone' | 'link-cable' | ExtraEvolutionItem | EquippableItem;
 export type BattleKind = 'wild' | 'gym' | 'trainer' | 'champion' | 'elite' | 'red';
 
 export type MonsterStats = BaseStats;
@@ -48,7 +59,7 @@ export type Monster = {
   /** Source ability slot and current species ability. Absent only in legacy input before validation. */
   ability?: MonsterAbility;
   /** Optional battle equipment. Legacy saves omit it. */
-  heldTool?: HeldTool;
+  heldTool?: EquippableItem;
   preferredTransformation?: PreferredTransformation;
   /** Optional canonical regional combat form; currently supports Alola forms. */
   regionalForm?: string;
@@ -68,7 +79,7 @@ export type Monster = {
 export type BattleSide = { team: Monster[]; activeIndex: number };
 export type BattleStat = 'attack' | 'defense' | 'specialAttack' | 'specialDefense' | 'speed' | 'accuracy' | 'evasion';
 export type BattleStatStages = Partial<Record<BattleStat, number>>;
-export type BattleTransformation = { speciesId: number; stats: MonsterStats; moves: MonsterMove[]; types?: PokemonType[]; ability?: MonsterAbility; kind?: 'transform' | 'mega' | 'tera'; formIdentifier?: string; teraType?: PokemonType };
+export type BattleTransformation = { speciesId: number; stats: MonsterStats; moves: MonsterMove[]; types?: PokemonType[]; ability?: MonsterAbility; kind?: 'transform' | 'mega' | 'tera'; formIdentifier?: string; teraType?: PokemonType; hpAdjusted?: true };
 export type BattleState = {
   kind: BattleKind;
   regionId: string;
@@ -120,6 +131,8 @@ export type ExecutedMove = {
 export type ExperienceGain = { instanceId: string; amount: number; levelsGained: number; shared: boolean };
 export type GymVictory = { badge: number; money: number; region?: CampaignRegion };
 export type BattleTurnResult = {
+  /** Battle-unit HP before form reversion and post-defeat healing. */
+  endingHp?: Record<string, { hp: number; maxHp: number }>;
   battleEnded: boolean;
   outcome?: 'won' | 'lost' | 'caught' | 'escaped';
   gymVictory?: GymVictory;
@@ -191,6 +204,7 @@ export const ITEM_PRICES: Readonly<Record<InventoryItem, number>> = {
   'leaf-stone': 3000, 'moon-stone': 3000, 'link-cable': 4000,
   ...EXTRA_EVOLUTION_PRICES,
   ...HELD_TOOL_PRICES,
+  ...Object.fromEntries(MEGA_STONES.map(item => [item.id, 0])) as Record<MegaStoneId, number>,
 };
 export const ITEM_LABELS: Readonly<Record<InventoryItem, string>> = {
   'poke-ball': '몬스터볼', 'great-ball': '슈퍼볼', 'ultra-ball': '하이퍼볼',
@@ -199,9 +213,10 @@ export const ITEM_LABELS: Readonly<Record<InventoryItem, string>> = {
   'leaf-stone': '리프의돌', 'moon-stone': '달의돌', 'link-cable': '연결의끈',
   ...EXTRA_EVOLUTION_LABELS,
   ...HELD_TOOL_LABELS,
+  ...Object.fromEntries(MEGA_STONES.map(item => [item.id, item.name])) as Record<MegaStoneId, string>,
 };
 const INVENTORY_ITEMS = Object.keys(ITEM_PRICES) as InventoryItem[];
-export const SHOP_ITEMS: readonly InventoryItem[] = INVENTORY_ITEMS.filter(item => !['poke-ball', 'great-ball', 'ultra-ball', 'friendship-treat', 'galarica-cuff', 'galarica-wreath'].includes(item));
+export const SHOP_ITEMS: readonly InventoryItem[] = INVENTORY_ITEMS.filter(item => !['poke-ball', 'great-ball', 'ultra-ball', 'friendship-treat', 'galarica-cuff', 'galarica-wreath'].includes(item) && !EQUIPPABLE_ITEMS.includes(item as EquippableItem));
 
 /** Legacy ball counts stay finite for save/server compatibility; one finite token represents unlimited basic balls. */
 export function normalizeBalls(state: GameState): void {
@@ -428,6 +443,7 @@ export function createGame(starterId: 1 | 4 | 7 | 152 | 155 | 158, seed: number 
       'leaf-stone': 0, 'moon-stone': 0, 'link-cable': 0,
       ...emptyExtraEvolutionInventory(),
       ...Object.fromEntries(HELD_TOOLS.map(tool => [tool, 0])) as Record<HeldTool, number>,
+      ...Object.fromEntries(MEGA_STONES.map(stone => [stone.id, 0])) as Record<MegaStoneId, number>,
     },
     dex: { seen: [starterId], caught: [starterId] }, regionId: REGIONS[0].id,
     defeatedGyms: [], defeatedFieldTrainers: [], championDefeated: false, experienceShare: true, autoMergeDuplicates: false, adventureVersion: 'red', versionCaught: { red: [starterId] }, ballRefillSeconds: 0, logs: [],
@@ -577,7 +593,30 @@ function active(side: BattleSide): Monster { return side.team[side.activeIndex];
 function effectiveSpeciesId(battle: BattleState, monster: Monster): number { return battle.transformations?.[monster.instanceId]?.speciesId ?? monster.speciesId; }
 function regionalProfile(monster: Monster): PokemonCombatFormProfile | undefined { return monster.regionalForm ? getCombatForm(monster.regionalForm) : undefined; }
 function formStats(monster: Monster, profile: PokemonCombatFormProfile): MonsterStats { return statsFor({ ...getSpecies(monster.speciesId), baseStats: profile.baseStats }, monster.level, individualValues(monster)); }
-function effectiveStats(battle: BattleState, monster: Monster): MonsterStats { const profile = regionalProfile(monster); return battle.transformations?.[monster.instanceId]?.stats ?? (profile ? formStats(monster, profile) : monster.stats); }
+export function battleMonsterMaxHp(battle: BattleState | undefined, monster: Monster): number {
+  const form = battle?.transformations?.[monster.instanceId];
+  return form?.kind === 'mega' && form.hpAdjusted ? form.stats.hp : monster.stats.hp;
+}
+function effectiveStats(battle: BattleState, monster: Monster): MonsterStats {
+  const profile = regionalProfile(monster), stats = battle.transformations?.[monster.instanceId]?.stats ?? (profile ? formStats(monster, profile) : monster.stats);
+  const hp = battleMonsterMaxHp(battle, monster);
+  return stats.hp === hp ? stats : { ...stats, hp };
+}
+function scaleHp(hp: number, before: number, after: number, roundUp: boolean): number {
+  const value = hp * after / Math.max(1, before);
+  return Math.max(hp > 0 ? 1 : 0, Math.min(after, roundUp ? Math.ceil(value) : Math.floor(value)));
+}
+function endBattle(state: GameState, result: BattleTurnResult): void {
+  const battle = state.battle;
+  if (!battle) return;
+  const participants = [...battle.player.team, ...battle.enemy.team];
+  result.endingHp = Object.fromEntries(participants.map(monster => [monster.instanceId, { hp: monster.hp, maxHp: battleMonsterMaxHp(battle, monster) }]));
+  for (const monster of participants) {
+    const form = battle.transformations?.[monster.instanceId];
+    if (form?.kind === 'mega' && form.hpAdjusted) monster.hp = scaleHp(monster.hp, form.stats.hp, monster.stats.hp, false);
+  }
+  state.battle = undefined;
+}
 function effectiveMoves(battle: BattleState, monster: Monster): MonsterMove[] { return battle.transformations?.[monster.instanceId]?.moves ?? monster.moves; }
 function effectiveTypes(battle: BattleState, monster: Monster): readonly PokemonType[] { return battle.transformations?.[monster.instanceId]?.types ?? regionalProfile(monster)?.types ?? getSpecies(effectiveSpeciesId(battle, monster)).types; }
 function effectiveAbility(battle: BattleState, monster: Monster): MonsterAbility | undefined { return battle.transformations?.[monster.instanceId]?.ability ?? monster.ability; }
@@ -589,7 +628,7 @@ export function battleMonsterView(battle: BattleState, monster: Monster) {
     teraType: transformation?.kind === 'tera' ? transformation.teraType : undefined,
     lockedMoveId: battle.choiceLocks?.[monster.instanceId] };
 }
-function activeHeldTool(battle: BattleState, monster: Monster): HeldTool | undefined {
+function activeHeldTool(battle: BattleState, monster: Monster): EquippableItem | undefined {
   return battle.consumedTools?.includes(monster.instanceId) ? undefined : monster.heldTool;
 }
 function stageMultiplier(stage = 0): number { return stage >= 0 ? (2 + stage) / 2 : 2 / (2 - stage); }
@@ -680,13 +719,13 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
   if (attacker.status === 'confusion') {
     attacker.statusTurns = Math.max(0, (attacker.statusTurns ?? 2) - 1);
     if (attacker.statusTurns === 0) { attacker.status = undefined; attacker.statusTurns = undefined; events.push(event(battle, `${attacker.nickname}의 혼란이 풀렸다.`, 'status')); }
-    else if (random(state) < 1 / 3) { const selfDamage = Math.max(1, Math.floor(attacker.stats.hp / 8)); attacker.hp = Math.max(0, attacker.hp - selfDamage); events.push(event(battle, `${attacker.nickname}은(는) 혼란으로 자신을 공격했다.`, 'status')); return; }
+    else if (random(state) < 1 / 3) { const selfDamage = Math.max(1, Math.floor(battleMonsterMaxHp(battle, attacker) / 8)); attacker.hp = Math.max(0, attacker.hp - selfDamage); events.push(event(battle, `${attacker.nickname}은(는) 혼란으로 자신을 공격했다.`, 'status')); return; }
   }
 
   const slot = effectiveMoves(battle, attacker)[index];
   if (!slot) {
-    const damage = Math.max(1, Math.floor(defender.stats.hp / 8)); defender.hp = Math.max(0, defender.hp - damage);
-    attacker.hp = Math.max(0, attacker.hp - Math.max(1, Math.floor(attacker.stats.hp / 4)));
+    const damage = Math.max(1, Math.floor(battleMonsterMaxHp(battle, defender) / 8)); defender.hp = Math.max(0, defender.hp - damage);
+    attacker.hp = Math.max(0, attacker.hp - Math.max(1, Math.floor(battleMonsterMaxHp(battle, attacker) / 4)));
     events.push(event(battle, `${attacker.nickname}은(는) 발버둥쳐 ${damage} 피해를 주었다.`, 'damage'));
     executedMoves.push({ actorInstanceId: attacker.instanceId, targetInstanceId: defender.instanceId, moveId: -1,
       moveType: 'normal', damageClass: 'physical', damagingMove: true, executed: true, hit: true,
@@ -728,7 +767,7 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
     } else if (move.id === 156) {
       failed = attacker.hp === effectiveStats(battle, attacker).hp || ['insomnia', 'vital-spirit', 'comatose'].includes(effectiveAbility(battle, attacker)?.slug ?? '');
       if (!failed) {
-        hpRecovered = attacker.stats.hp - attacker.hp; attacker.hp = attacker.stats.hp;
+        hpRecovered = battleMonsterMaxHp(battle, attacker) - attacker.hp; attacker.hp = battleMonsterMaxHp(battle, attacker);
         attacker.status = 'sleep'; attacker.statusTurns = 3; ailmentApplied = true;
         events.push(event(battle, `${attacker.nickname}은(는) 잠들어 완전히 회복했다.`, 'status'));
       } else events.push(event(battle, `${move.name}을(를) 사용할 수 없었다.`, 'status'));
@@ -781,7 +820,7 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
     }
   }
   if (activatedAbility === 'absorb') {
-    defender.hp = Math.min(defender.stats.hp, defender.hp + Math.max(1, Math.floor(defender.stats.hp / 4)));
+    defender.hp = Math.min(battleMonsterMaxHp(battle, defender), defender.hp + Math.max(1, Math.floor(battleMonsterMaxHp(battle, defender) / 4)));
   }
   if (activatedAbility) {
     if (activatedAbility === 'focus-sash') (battle.consumedTools ??= []).push(defender.instanceId);
@@ -797,14 +836,14 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
 
   if (move.drain && totalDamage > 0) {
     const amount = Math.max(1, Math.floor(totalDamage * Math.abs(move.drain) / 100));
-    if (move.drain > 0) { const before = attacker.hp; attacker.hp = Math.min(attacker.stats.hp, attacker.hp + amount); hpRecovered += attacker.hp - before; } else {
+    if (move.drain > 0) { const before = attacker.hp; attacker.hp = Math.min(battleMonsterMaxHp(battle, attacker), attacker.hp + amount); hpRecovered += attacker.hp - before; } else {
       const recoil = Math.min(attacker.hp, amount); attacker.hp -= recoil;
       growth.recoilDamage = attacker.hp > 0 ? Math.min(1e9, growth.recoilDamage + recoil) : 0;
     }
     events.push(event(battle, move.drain > 0 ? `${attacker.nickname}은(는) HP를 ${amount} 흡수했다.` : `${attacker.nickname}은(는) 반동으로 ${amount} 피해를 입었다.`, 'status'));
   }
   if (move.healing && move.healing > 0) {
-    const amount = Math.max(1, Math.floor(attacker.stats.hp * move.healing / 100)); const before = attacker.hp; attacker.hp = Math.min(attacker.stats.hp, attacker.hp + amount); hpRecovered += attacker.hp - before;
+    const amount = Math.max(1, Math.floor(battleMonsterMaxHp(battle, attacker) * move.healing / 100)); const before = attacker.hp; attacker.hp = Math.min(battleMonsterMaxHp(battle, attacker), attacker.hp + amount); hpRecovered += attacker.hp - before;
     events.push(event(battle, `${attacker.nickname}의 HP가 회복되었다.`, 'status'));
   }
   let clearedBinding = false;
@@ -813,7 +852,7 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
     events.push(event(battle, `${defender.nickname}의 능력치 변화가 사라졌다.`, 'status'));
   }
   if (monsterUsesLifeOrb(attacker, totalDamage)) {
-    const recoil = Math.max(1, Math.floor(attacker.stats.hp / 10));
+    const recoil = Math.max(1, Math.floor(battleMonsterMaxHp(battle, attacker) / 10));
     attacker.hp = Math.max(0, attacker.hp - recoil);
     events.push(event(battle, `${attacker.nickname}은(는) 생명의구슬 반동으로 ${recoil} 피해를 입었다.`, 'status'));
   }
@@ -858,7 +897,7 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
 function residual(battle: BattleState, monster: Monster, events: BattleLogEntry[]): void {
   if (monster.hp <= 0) return;
   if (['poison', 'burn', 'trap', 'leech-seed'].includes(monster.status ?? '')) {
-    const damage = Math.max(1, Math.floor(monster.stats.hp / 8));
+    const damage = Math.max(1, Math.floor(battleMonsterMaxHp(battle, monster) / 8));
     monster.hp = Math.max(0, monster.hp - damage);
     events.push(event(battle, `${monster.nickname}은(는) ${monster.status}으로 ${damage} 피해를 입었다.`, 'status'));
     if (monster.status === 'trap') {
@@ -867,8 +906,8 @@ function residual(battle: BattleState, monster: Monster, events: BattleLogEntry[
     }
   }
   if (monster.hp > 0 && monster.heldTool === 'leftovers') {
-    const before = monster.hp, amount = Math.max(1, Math.floor(monster.stats.hp / 16));
-    monster.hp = Math.min(monster.stats.hp, monster.hp + amount);
+    const before = monster.hp, amount = Math.max(1, Math.floor(battleMonsterMaxHp(battle, monster) / 16));
+    monster.hp = Math.min(battleMonsterMaxHp(battle, monster), monster.hp + amount);
     if (monster.hp > before) events.push(event(battle, `${monster.nickname}은(는) 먹다남은음식으로 ${monster.hp - before} 회복했다.`, 'status'));
   }
 }
@@ -885,12 +924,14 @@ function gainExperience(monster: Monster, amount: number, events?: BattleLogEntr
   const levelBefore = monster.level;
   monster.xp += applied;
   while (monster.level < maximumLevel && monster.xp >= experienceAtLevel(monster.level + 1, species.growthRate)) {
-    const oldMax = monster.stats.hp;
+    const oldMax = battleMonsterMaxHp(battle, monster);
     monster.level++;
     const progress = evolutionProgress(monster); progress.friendship = Math.min(255, progress.friendship + 5);
     const profile = regionalProfile(monster);
     monster.stats = profile ? formStats(monster, profile) : statsFor(getSpecies(monster.speciesId), monster.level, individualValues(monster));
-    monster.hp += monster.stats.hp - oldMax;
+    const transformation = battle?.transformations?.[monster.instanceId];
+    if (transformation?.kind === 'mega') transformation.stats = formStats(monster, getCombatForm(transformation.formIdentifier!)!);
+    monster.hp += battleMonsterMaxHp(battle, monster) - oldMax;
     for (const learned of (profile?.levelUpMoves ?? getSpecies(monster.speciesId).moves).filter((entry) => entry.level === monster.level)) {
       learnMove(monster, learned.moveId);
     }
@@ -905,9 +946,9 @@ function gainExperience(monster: Monster, amount: number, events?: BattleLogEntr
   return { instanceId: monster.instanceId, amount: applied, levelsGained: monster.level - levelBefore, shared };
 }
 
-function concludeIfNeeded(state: GameState, battle: BattleState, events: BattleLogEntry[], experienceGains: ExperienceGain[]): BattleTurnResult['outcome'] | undefined {
+function concludeIfNeeded(state: GameState, battle: BattleState, events: BattleLogEntry[], experienceGains: ExperienceGain[], result: BattleTurnResult): BattleTurnResult['outcome'] | undefined {
   if (!battle.player.team.some((monster) => monster.hp > 0)) {
-    recoverAfterDefeat(state);
+    recoverAfterDefeat(state, result);
     events.push(event(battle, '전멸하여 치료소로 돌아왔다.'));
     return 'lost';
   }
@@ -945,7 +986,7 @@ function concludeIfNeeded(state: GameState, battle: BattleState, events: BattleL
         state.campaign ??= campaignProgress(state); state.campaign.kantoLeague = 5;
         events.push(event(battle, '챔피언이 되었다!', 'reward'));
       } else state.player.money += Math.max(30, enemy.level * 8);
-      state.battle = undefined;
+      endBattle(state, result);
       return 'won';
     }
   }
@@ -955,7 +996,7 @@ function concludeIfNeeded(state: GameState, battle: BattleState, events: BattleL
       && (!battle.policyRegion || !monsterRegionalUseReason(state, battle.policyRegion, monster)));
     if (next >= 0) { battle.awaitingSwitch = 'player'; events.push(event(battle, '다음 포켓몬을 선택해야 한다.')); }
     else {
-      recoverAfterDefeat(state);
+      recoverAfterDefeat(state, result);
       events.push(event(battle, '전멸하여 치료소로 돌아왔다.'));
       return 'lost';
     }
@@ -998,7 +1039,7 @@ export function actBattle(state: GameState, action: BattleAction, aiChoice?: num
     if (!battle.canRun) throw new Error('이 전투에서는 도망칠 수 없습니다.');
     const player = active(battle.player); const enemy = active(battle.enemy);
     const chance = Math.min(.95, .45 + (player.stats.speed - enemy.stats.speed) / Math.max(1, enemy.stats.speed) * .3);
-    if (random(state) < chance) { state.battle = undefined; events.push(event(battle, '무사히 도망쳤다.')); for (const entry of events) addLog(state, entry.text); result.battleEnded = true; result.outcome = 'escaped'; return result; }
+    if (random(state) < chance) { endBattle(state, result); events.push(event(battle, '무사히 도망쳤다.')); for (const entry of events) addLog(state, entry.text); result.battleEnded = true; result.outcome = 'escaped'; return result; }
     events.push(event(battle, '도망치지 못했다.')); enemyActs(player);
   } else if (action.type === 'catch') {
     if (battle.kind !== 'wild') throw new Error('야생 포켓몬만 잡을 수 있습니다.');
@@ -1011,7 +1052,7 @@ export function actBattle(state: GameState, action: BattleAction, aiChoice?: num
       if (state.player.team.length < 6) state.player.team.push(captured); else state.player.box.push(captured);
       state.dex.seen = uniqueSorted([...state.dex.seen, captured.speciesId]);
       recordCapture(state, captured.speciesId);
-      state.battle = undefined;
+      endBattle(state, result);
       if (state.autoMergeDuplicates && existing.length) {
         const target = existing.find(candidate => state.player.team.includes(candidate)) ?? existing[0];
         if (target) mergeDuplicateMonsters(state, target.instanceId, [captured.instanceId]);
@@ -1043,7 +1084,7 @@ export function actBattle(state: GameState, action: BattleAction, aiChoice?: num
   }
 
   residual(battle, active(battle.player), events); residual(battle, active(battle.enemy), events);
-  const outcome = concludeIfNeeded(state, battle, events, experienceGains);
+  const outcome = concludeIfNeeded(state, battle, events, experienceGains, result);
   if (outcome) { result.battleEnded = true; result.outcome = outcome; }
   else battle.turn++;
   if (outcome === 'won' && battle.kind === 'gym' && battle.gymBadge) {
@@ -1053,8 +1094,8 @@ export function actBattle(state: GameState, action: BattleAction, aiChoice?: num
   return result;
 }
 
-function recoverAfterDefeat(state: GameState): void {
-  state.battle = undefined;
+function recoverAfterDefeat(state: GameState, result: BattleTurnResult): void {
+  endBattle(state, result);
   state.player.money = Math.floor(state.player.money * .9);
   heal(state);
 }
@@ -1082,21 +1123,21 @@ export function buyItem(state: GameState, item: InventoryItem, quantity = 1): vo
 
 function allOwned(state: GameState): Monster[] { return [...state.player.team, ...state.player.box]; }
 
-function heldToolReturnCounts(monsters: readonly Monster[]): Map<HeldTool, number> {
-  const counts = new Map<HeldTool, number>();
+function heldToolReturnCounts(monsters: readonly Monster[]): Map<EquippableItem, number> {
+  const counts = new Map<EquippableItem, number>();
   for (const monster of monsters) if (monster.heldTool) counts.set(monster.heldTool, (counts.get(monster.heldTool) ?? 0) + 1);
   return counts;
 }
 
-function assertHeldToolsCanReturn(state: GameState, monsters: readonly Monster[]): Map<HeldTool, number> {
+function assertHeldToolsCanReturn(state: GameState, monsters: readonly Monster[]): Map<EquippableItem, number> {
   const counts = heldToolReturnCounts(monsters);
   for (const [tool, count] of counts) {
-    if (state.inventory[tool] > 1_000_000_000 - count) throw new Error(`${HELD_TOOL_LABELS[tool]} 재고가 너무 많습니다.`);
+    if (state.inventory[tool] > 1_000_000_000 - count) throw new Error(`${ITEM_LABELS[tool]} 재고가 너무 많습니다.`);
   }
   return counts;
 }
 
-function returnHeldTools(state: GameState, counts: ReadonlyMap<HeldTool, number>): void {
+function returnHeldTools(state: GameState, counts: ReadonlyMap<EquippableItem, number>): void {
   for (const [tool, count] of counts) state.inventory[tool] += count;
 }
 
@@ -1108,17 +1149,21 @@ export function setAutoMergeDuplicates(state: GameState, enabled: boolean): void
   state.autoMergeDuplicates = enabled;
 }
 
-export function assignHeldTool(state: GameState, instanceId: string, tool?: HeldTool): void {
+export function assignHeldTool(state: GameState, instanceId: string, tool?: EquippableItem): void {
   if (state.battle || state.captureOffer) throw new Error('전투와 포획 선택을 마친 뒤 도구를 바꿀 수 있습니다.');
-  if (tool !== undefined && !HELD_TOOLS.includes(tool)) throw new Error('장착할 수 없는 도구입니다.');
   const monster = findOwned(state, instanceId);
+  const stone = tool?.startsWith('mega-stone:') ? MEGA_STONES.find(item => item.id === tool) : undefined;
+  if (tool !== undefined && !EQUIPPABLE_ITEMS.includes(tool)) throw new Error('장착할 수 없는 도구입니다.');
+  if (stone && stone.speciesId !== monster.speciesId) throw new Error('이 포켓몬에게 맞지 않는 메가진화석입니다.');
   const previous = monster.heldTool;
   if (previous === tool) return;
-  if (tool !== undefined && state.inventory[tool] <= 0) throw new Error(`${HELD_TOOL_LABELS[tool]} 재고가 없습니다.`);
+  if (tool !== undefined && state.inventory[tool] <= 0) throw new Error(`${ITEM_LABELS[tool]} 재고가 없습니다.`);
   if (previous !== undefined && state.inventory[previous] >= 1_000_000_000) throw new Error('도구 재고가 너무 많습니다.');
   if (tool !== undefined) state.inventory[tool]--;
   if (previous !== undefined) state.inventory[previous]++;
   monster.heldTool = tool;
+  if (monster.preferredTransformation?.kind === 'mega'
+    && monster.heldTool !== megaStoneId(monster.preferredTransformation.formIdentifier)) delete monster.preferredTransformation;
 }
 
 export function assignMonsterAbility(state: GameState, instanceId: string, slot: number): MonsterAbility {
@@ -1157,7 +1202,9 @@ export function activateBattleTransformation(state: GameState, kind: 'mega' | 't
     if (battle.playerMegaUsed) throw new Error('이 전투에서는 이미 메가진화를 사용했습니다.');
     const profile = getMegaCombatForm(monster.speciesId, option.formIdentifier);
     if (!profile || !getPokemonFormModelSource(profile.identifier)) throw new Error('메가진화할 수 없는 포켓몬입니다.');
-    transformation = { kind, speciesId: monster.speciesId, formIdentifier: profile.identifier, types: [...profile.types], ability: combatFormAbility(profile), stats: formStats(monster, profile), moves: monster.moves.map(slot => ({ ...slot })) };
+    if (monster.heldTool !== megaStoneId(profile.identifier)) throw new Error('해당 메가진화석을 장착해야 합니다.');
+    transformation = { kind, speciesId: monster.speciesId, formIdentifier: profile.identifier, types: [...profile.types], ability: combatFormAbility(profile), stats: formStats(monster, profile), moves: monster.moves.map(slot => ({ ...slot })), hpAdjusted: true };
+    monster.hp = scaleHp(monster.hp, monster.stats.hp, transformation.stats.hp, true);
     battle.playerMegaUsed = true;
   } else {
     if (battle.playerTeraUsed) throw new Error('이 전투에서는 이미 테라스탈을 사용했습니다.');
@@ -1185,6 +1232,20 @@ export function assignPreferredTransformation(state: GameState, instanceId: stri
   if (state.battle || state.captureOffer) throw new Error('전투와 포획 선택을 마친 뒤 변신 설정을 바꿀 수 있습니다.');
   const monster = findOwned(state, instanceId);
   if (preference !== undefined && !preferredTransformationValid(monster, preference)) throw new Error('설정할 수 없는 변신입니다.');
+  if (preference?.kind === 'mega') {
+    const stone = megaStoneForSpecies(monster.speciesId, preference.formIdentifier)!;
+    if (monster.heldTool !== stone.id) {
+      if (state.inventory[stone.id] <= 0) throw new Error(`${stone.name} 재고가 없습니다.`);
+      if (monster.heldTool !== undefined && state.inventory[monster.heldTool] >= 1_000_000_000) throw new Error('도구 재고가 너무 많습니다.');
+      state.inventory[stone.id]--;
+      if (monster.heldTool !== undefined) state.inventory[monster.heldTool]++;
+      monster.heldTool = stone.id;
+    }
+  } else if (monster.heldTool?.startsWith('mega-stone:')) {
+    if (state.inventory[monster.heldTool] >= 1_000_000_000) throw new Error('도구 재고가 너무 많습니다.');
+    state.inventory[monster.heldTool]++;
+    delete monster.heldTool;
+  }
   monster.preferredTransformation = preference ? { ...preference } : undefined;
 }
 
@@ -1196,6 +1257,7 @@ export function applyPreferredBattleTransformation(state: GameState): void {
   if (!monster || monster.hp <= 0 || !preference || battle.transformations?.[monster.instanceId]) return;
   if (preference.kind === 'mega' ? battle.playerMegaUsed : battle.playerTeraUsed) return;
   if (!preferredTransformationValid(monster, preference)) return;
+  if (preference.kind === 'mega' && monster.heldTool !== megaStoneId(preference.formIdentifier)) return;
   activateBattleTransformation(state, preference.kind, preference);
 }
 
@@ -1262,8 +1324,9 @@ function useHealingItem(state: GameState, item: 'potion' | 'super-potion', targe
   if (state.inventory[item] <= 0) throw new Error(`${item}이(가) 없습니다.`);
   const monster = findOwned(state, targetInstanceId);
   if (monster.hp <= 0) throw new Error('기절한 포켓몬에는 사용할 수 없습니다.');
-  if (monster.hp >= monster.stats.hp) throw new Error('이미 HP가 가득 찼습니다.');
-  monster.hp = Math.min(monster.stats.hp, monster.hp + HEALING_ITEM_HP[item]); state.inventory[item]--;
+  const maxHp = battleMonsterMaxHp(state.battle, monster);
+  if (monster.hp >= maxHp) throw new Error('이미 HP가 가득 찼습니다.');
+  monster.hp = Math.min(maxHp, monster.hp + HEALING_ITEM_HP[item]); state.inventory[item]--;
 }
 
 export function useItem(state: GameState, item: InventoryItem, targetInstanceId?: string, quantity = 1, policyRegion?: CampaignRegion): void {
@@ -1326,6 +1389,9 @@ export function evolve(state: GameState, instanceId: string, option: { targetId?
   let evolution = evolutions.find((candidate) => evolutionReady(state, monster, candidate, option.item));
   if (!evolution && option.autoBuyMissing) evolution = evolutions.find(candidate => evolutionPurchaseQuote(state, monster, candidate, option.item).affordable);
   if (!evolution) throw new Error('현재 조건으로 가능한 진화가 없습니다.');
+  const heldStone = monster.heldTool?.startsWith('mega-stone:') ? MEGA_STONES.find(item => item.id === monster.heldTool) : undefined;
+  const returnStone = heldStone && heldStone.speciesId !== evolution.target ? heldStone.id : undefined;
+  if (returnStone && state.inventory[returnStone] >= 1_000_000_000) throw new Error(`${ITEM_LABELS[returnStone]} 재고가 너무 많습니다.`);
   const quote = evolutionPurchaseQuote(state, monster, evolution, option.item);
   if (!quote.ready && option.autoBuyMissing) {
     if (!quote.requiredItem || !quote.affordable || quote.missing !== 1) throw new Error('진화 도구를 구매할 수 없습니다.');
@@ -1335,6 +1401,11 @@ export function evolve(state: GameState, instanceId: string, option: { targetId?
   const route = evolutionRoute(state, monster, evolution, option.item)!;
   const requiredItem = route.item;
   if (requiredItem) state.inventory[requiredItem]--;
+  if (returnStone) {
+    state.inventory[returnStone]++;
+    delete monster.heldTool;
+    if (monster.preferredTransformation?.kind === 'mega') delete monster.preferredTransformation;
+  }
   // Shedinja is a second individual: keep Nincada/Ninjask's identity and neural memory.
   if (route.shed) {
     const shed = createMonster(state, 292, monster.level, monster.originRegion);
@@ -1743,6 +1814,7 @@ export function validateGame(value: unknown): GameState {
   // Only genuinely absent new keys are legacy defaults; explicit invalid values still fail.
   for (const item of EXTRA_EVOLUTION_ITEM_IDS) if (!Object.hasOwn(state.inventory, item)) state.inventory[item] = 0;
   for (const tool of HELD_TOOLS) if (!Object.hasOwn(state.inventory, tool)) state.inventory[tool] = 0;
+  for (const stone of MEGA_STONES) if (!Object.hasOwn(state.inventory, stone.id)) state.inventory[stone.id] = 0;
   for (const item of INVENTORY_ITEMS) if (!Number.isSafeInteger(state.inventory[item]) || state.inventory[item] < 0 || state.inventory[item] > 1_000_000_000) throw new Error(`가방 수량이 잘못되었습니다: ${item}`);
   normalizeBalls(state);
   for (const id of [...state.dex.seen, ...state.dex.caught]) if (!Number.isInteger(id) || !POKEMON.some(species => species.id === id)) throw new Error('도감 번호가 잘못되었습니다.');
@@ -1779,8 +1851,12 @@ export function validateGame(value: unknown): GameState {
     if (monster.ivs === undefined && monster.ability === undefined) Object.assign(monster, legacyIndividualTraits(monster.instanceId, monster.speciesId));
     else if (monster.ivs === undefined || monster.ability === undefined) throw new Error('개체값/특성 데이터가 일부만 있습니다.');
     if (!isValidIndividualValues(monster.ivs)) throw new Error('개체값이 잘못되었습니다.');
-    if (monster.heldTool !== undefined && !HELD_TOOLS.includes(monster.heldTool)) throw new Error('장착 도구가 잘못되었습니다.');
+    const heldStone = monster.heldTool?.startsWith('mega-stone:') ? MEGA_STONES.find(item => item.id === monster.heldTool) : undefined;
+    if (monster.heldTool !== undefined && !EQUIPPABLE_ITEMS.includes(monster.heldTool)
+      || heldStone !== undefined && heldStone.speciesId !== monster.speciesId) throw new Error('장착 도구가 잘못되었습니다.');
     if (monster.preferredTransformation !== undefined && !preferredTransformationValid(monster, monster.preferredTransformation)) throw new Error('자동 변신 설정이 잘못되었습니다.');
+    if (monster.preferredTransformation?.kind === 'mega'
+      && monster.heldTool !== megaStoneId(monster.preferredTransformation.formIdentifier)) delete monster.preferredTransformation;
     let form: PokemonCombatFormProfile | undefined;
     if (monster.regionalForm !== undefined) {
       form = getCombatForm(monster.regionalForm);
@@ -1807,7 +1883,11 @@ export function validateGame(value: unknown): GameState {
     const match = /^mon-(\d+)$/.exec(monster.instanceId); if (match) maximumGeneratedId = Math.max(maximumGeneratedId, Number(match[1]));
     if (typeof monster.nickname !== 'string' || !monster.nickname || monster.nickname.length > 40 || !Number.isInteger(monster.level) || monster.level < 1 || monster.level > 100 || !Number.isSafeInteger(monster.xp) || monster.xp < experienceAtLevel(monster.level, species.growthRate) || (monster.level < 100 && monster.xp >= experienceAtLevel(monster.level + 1, species.growthRate))) throw new Error('이름/레벨/경험치가 잘못되었습니다.');
     const expectedStats = form ? formStats(monster, form) : statsFor(species, monster.level, monster.ivs);
-    if (!monster.stats || (Object.keys(expectedStats) as (keyof MonsterStats)[]).some((key) => monster.stats[key] !== expectedStats[key]) || !Number.isFinite(monster.hp) || monster.hp < 0 || monster.hp > monster.stats.hp) throw new Error('능력치/HP가 잘못되었습니다.');
+    const transformation = state.battle?.transformations?.[monster.instanceId];
+    const battleMember = state.player.team.includes(monster) || state.battle?.enemy.team.includes(monster);
+    const mega = battleMember && transformation?.kind === 'mega' && transformation.hpAdjusted === true && getMegaCombatForm(monster.speciesId, transformation.formIdentifier);
+    const maxHp = mega && getPokemonFormModelSource(mega.identifier) ? formStats(monster, mega).hp : expectedStats.hp;
+    if (!monster.stats || (Object.keys(expectedStats) as (keyof MonsterStats)[]).some((key) => monster.stats[key] !== expectedStats[key]) || !Number.isFinite(monster.hp) || monster.hp < 0 || monster.hp > maxHp) throw new Error('능력치/HP가 잘못되었습니다.');
     if (!Array.isArray(monster.moves) || monster.moves.length > 4) throw new Error('기술 데이터가 잘못되었습니다.');
     for (const slot of monster.moves) { const move = getMove(slot.moveId); if (!Number.isInteger(slot.pp) || slot.pp < 0 || slot.pp > move.pp) throw new Error('PP가 잘못되었습니다.'); }
     const knownMoveIds = new Set(monster.moves.map((slot) => slot.moveId));
@@ -1867,11 +1947,16 @@ export function validateGame(value: unknown): GameState {
           || member.ability.hidden !== owned.ability.hidden || member.ability.slug !== owned.ability.slug) throw new Error('전투 특성이 소유 개체 데이터와 맞지 않습니다.');
         else member.ability = structuredClone(owned.ability);
         member.heldTool = owned.heldTool;
+        member.preferredTransformation = owned.preferredTransformation
+          ? structuredClone(owned.preferredTransformation) : undefined;
         member.regionalForm = owned.regionalForm;
+        normalizeMovePpReserve(member);
         if (member.evolutionProgress) member.evolutionProgress.gender = member.gender!;
       }
     }
-    if (!Array.isArray(battle.player.team) || JSON.stringify(battle.player.team) !== JSON.stringify(state.player.team)) throw new Error('전투 팀과 플레이어 팀이 일치하지 않습니다.');
+    const canonicalTeam = (team: Monster[]) => JSON.stringify(team, (_key, value) => value && typeof value === 'object' && !Array.isArray(value)
+      ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))) : value);
+    if (!Array.isArray(battle.player.team) || canonicalTeam(battle.player.team) !== canonicalTeam(state.player.team)) throw new Error('전투 팀과 플레이어 팀이 일치하지 않습니다.');
     if (battle.awaitingSwitch !== undefined && battle.awaitingSwitch !== 'player') throw new Error('강제 교체 상태가 손상되었습니다.');
     const activePlayer = state.player.team[battle.player.activeIndex];
     if ((activePlayer.hp === 0) !== (battle.awaitingSwitch === 'player') && state.player.team.some((monster) => monster.hp > 0)) throw new Error('강제 교체 대상이 일치하지 않습니다.');
@@ -1893,6 +1978,7 @@ export function validateGame(value: unknown): GameState {
       if (!battleIds.has(instanceId) || !form || !Number.isInteger(form.speciesId) || !form.stats || !Array.isArray(form.moves) || form.moves.length > 4) throw new Error('변신 상태가 손상되었습니다.');
       getSpecies(form.speciesId);
       if (form.kind !== undefined && !['transform', 'mega', 'tera'].includes(form.kind)) throw new Error('변신 종류가 손상되었습니다.');
+      if (form.hpAdjusted !== undefined && (form.kind !== 'mega' || form.hpAdjusted !== true)) throw new Error('변신 HP 기록이 손상되었습니다.');
       if (form.types !== undefined && (!Array.isArray(form.types) || !form.types.length || form.types.length > 2 || form.types.some(type => !['normal','fire','water','electric','grass','ice','fighting','poison','ground','flying','psychic','bug','rock','ghost','dragon','dark','steel','fairy'].includes(type)))) throw new Error('변신 타입이 손상되었습니다.');
       const source = [...state.player.team, ...battle.enemy.team].find(monster => monster.instanceId === instanceId)!;
       if (form.kind === 'mega' || form.kind === 'tera') {
@@ -1911,6 +1997,10 @@ export function validateGame(value: unknown): GameState {
         const expected = formStats(source, profile), expectedAbility = combatFormAbility(profile);
         if ((Object.keys(expected) as (keyof MonsterStats)[]).some(key => form.stats[key] !== expected[key])
           || (expectedAbility && (!form.ability || form.ability.id !== expectedAbility.id || form.ability.slug !== expectedAbility.slug))) throw new Error('메가진화 능력치/특성이 손상되었습니다.');
+        if (form.hpAdjusted === undefined) {
+          source.hp = scaleHp(source.hp, source.stats.hp, expected.hp, true);
+          form.hpAdjusted = true;
+        }
       }
       if (form.kind === 'tera' && (!form.teraType || form.types?.length !== 1 || form.types[0] !== form.teraType)) throw new Error('테라스탈 타입이 손상되었습니다.');
       if ((Object.values(form.stats) as unknown[]).some((stat) => !Number.isFinite(stat) || (stat as number) <= 0 || (stat as number) > 10000)) throw new Error('변신 능력치가 손상되었습니다.');

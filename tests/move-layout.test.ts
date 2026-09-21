@@ -148,6 +148,23 @@ describe('move presentation layout', () => {
     expect(restoreGame(serializeGame(game)).player.team[0]).toEqual(monster);
   });
 
+  it('restores both team copies with stale PP and different JSON key order without losing battle progress', () => {
+    const game = createGame(1, 'legacy-battle-pp'), monster = game.player.team[0];
+    monster.movePpReserve = { [monster.moves[0].moveId]: 0, '999999': 0 };
+    monster.brain = new Brain(23).state;
+    game.battle = { kind: 'wild', regionId: game.regionId, player: { team: game.player.team, activeIndex: 0 }, enemy: { team: [createMonster(game, 4, 5)], activeIndex: 0 }, turn: 7, canRun: true };
+    const save = JSON.parse(JSON.stringify(game));
+    save.battle.player.team[0] = Object.fromEntries(Object.entries(save.battle.player.team[0]).reverse());
+    const restored = restoreGame(JSON.stringify(save));
+    expect(restored.battle!.turn).toBe(7);
+    expect(restored.battle!.player.team).toBe(restored.player.team);
+    expect(restored.player.team[0].movePpReserve).toBeUndefined();
+    expect(restored.player.team[0].brain).toEqual(monster.brain);
+    expect(restored.player.team[0].xp).toBe(monster.xp);
+    save.battle.player.team[0].hp--;
+    expect(() => restoreGame(JSON.stringify(save))).toThrow(/전투 팀과 플레이어 팀/);
+  });
+
   it('blocks illegal, duplicate, battle-time and capture-time slot changes', () => {
     const game = createGame(1, 'free-move-guards'), monster = createMonster(game, 54, 39);
     game.player.team = [monster];

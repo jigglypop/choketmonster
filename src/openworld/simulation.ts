@@ -4,7 +4,7 @@ import { advanceEggProgress } from '../game/breeding';
 import { Random, clamp } from '../core/random';
 import { POKEMON, getMove, getSpecies } from '../data/pokemon';
 import { getVersionSpeciesIds } from '../data/pokemon-versions';
-import { applyPreferredBattleTransformation, replenishBalls, challengeCampaignGym, challengeCampaignTrainer, challengeFieldTrainer, claimRegionalStarter as claimStarter } from '../game/engine';
+import { battleMonsterMaxHp, applyPreferredBattleTransformation, replenishBalls, challengeCampaignGym, challengeCampaignTrainer, challengeFieldTrainer, claimRegionalStarter as claimStarter } from '../game/engine';
 import { CAMPAIGN_REGIONS, getRegionalBadges, getCampaignGyms, getNextCampaignTrainer, campaignTravelReason, regionalWildLevels, type CampaignRegion } from '../game/campaign';
 import { availableFieldTrainer, fieldTrainersAt, type FieldTrainer } from '../data/field-trainers';
 import { chooseRegionalEncounter, encounterPeriodAt, regionalRuntimePools, supplementalEncounterRules, type EncounterPeriod } from '../data/regional-encounters';
@@ -23,6 +23,7 @@ import type { FieldPolicy } from '../game/field';
 import type { WorldSample } from './types';
 export type { WorldSample } from './types';
 import { appendReward, emptyRewardLedger, rewardEncounter, rewardBattleTurn, validateRewardLedger, type EngineeredReward, type RewardLedger, type RewardDecisionSource } from '../game/rewards';
+import { grantFieldItem, rollFieldItemDrop } from './field-item-drops';
 
 export const OPEN_WORLD_MODEL = 'pokemon-open-world-recurrent-v1' as const;
 export { WORLD_MIN, WORLD_MAX };
@@ -71,6 +72,7 @@ export type OpenWorldEvent =
   | { type: 'move' | 'wait' | 'collision' | 'food'; entityId: string; x: number; z: number; reward: number }
   | { type: 'encounter'; entityId: string; speciesId: number; level: number }
   | { type: 'battle-turn'; entityId: string; result: BattleTurnResult }
+  | { type: 'item-drop'; entityId: string; itemId: string; message: string }
   | { type: 'evolved'; entityId: string; fromSpeciesId: number; speciesId: number };
 export type OpenWorldStep = { tick: number; events: OpenWorldEvent[]; battleActive: boolean };
 export type OpenWorldSave = { schema: 1; model: typeof OPEN_WORLD_MODEL; graphId: string; game: unknown; world: OpenWorldSnapshot };
@@ -584,7 +586,7 @@ export class OpenWorldSimulation {
     if (action.type === 'switch' && battle.policyRegion && monsterRegionalUseReason(this.game, battle.policyRegion, battle.player.team[action.index])) return false;
     if (action.type === 'item') {
       const target = action.targetInstanceId ? battle.player.team.find(monster => monster.instanceId === action.targetInstanceId) : battle.player.team[battle.player.activeIndex];
-      if (!target || target.hp <= 0 || target.hp >= target.stats.hp || this.game.inventory[action.item] <= 0) return false;
+      if (!target || target.hp <= 0 || target.hp >= battleMonsterMaxHp(battle, target) || this.game.inventory[action.item] <= 0) return false;
     }
     if (action.type === 'catch') return this.requestCapture(action.ball);
     this.pendingAction = structuredClone(action); this.pendingCapture = false; this.pendingBall = undefined; return true;
@@ -745,7 +747,7 @@ export class OpenWorldSimulation {
     }
     if (!learnedPlayerAction) this.clearPendingLearning(player);
     const playerHp = player.hp, enemyHp = enemy.hp, playerLevel = player.level, enemyLevel = enemy.level;
-    const playerMaxBefore = battle.transformations?.[player.instanceId]?.stats.hp ?? player.stats.hp, enemyMaxBefore = battle.transformations?.[enemy.instanceId]?.stats.hp ?? enemy.stats.hp;
+    const playerMaxBefore = battleMonsterMaxHp(battle, player), enemyMaxBefore = battleMonsterMaxHp(battle, enemy);
     const playerTypes = battleMonsterTypes(this.game, player);
     const enemyTypes = battleMonsterTypes(this.game, enemy);
     const enemyDecision = this.chooseBattle(enemy, player, battle, this.lastEnemyReward, learning);
@@ -755,15 +757,16 @@ export class OpenWorldSimulation {
     const result = actBattle(this.game, action, enemyDecision.action);
     if (result.battleEnded && result.outcome === 'won') this.autoEvolve(events);
     const playerAttack = result.executedMoves.find(move => move.actorInstanceId === player.instanceId), enemyAttack = result.executedMoves.find(move => move.actorInstanceId === enemy.instanceId);
-    const playerMaxHp = Math.max(playerMaxBefore, player.stats.hp), enemyMaxHp = Math.max(enemyMaxBefore, enemy.stats.hp);
-    const resolvedPlayerHp = result.outcome === 'lost' ? 0 : player.hp;
+    const playerEnding = result.endingHp?.[player.instanceId], enemyEnding = result.endingHp?.[enemy.instanceId];
+    const playerMaxHp = Math.max(playerMaxBefore, playerEnding?.maxHp ?? battleMonsterMaxHp(battle, player)), enemyMaxHp = Math.max(enemyMaxBefore, enemyEnding?.maxHp ?? battleMonsterMaxHp(battle, enemy));
+    const resolvedPlayerHp = result.outcome === 'lost' ? 0 : playerEnding?.hp ?? player.hp, resolvedEnemyHp = enemyEnding?.hp ?? enemy.hp;
     const playerReward = rewardBattleTurn({ individualId: player.instanceId, decisionSource: source, learningEnabled: learning,
-      selfHpBefore: playerHp, selfHpAfter: resolvedPlayerHp, selfMaxHp: playerMaxHp, opponentHpBefore: enemyHp, opponentHpAfter: enemy.hp, opponentMaxHp: enemyMaxHp,
+      selfHpBefore: playerHp, selfHpAfter: resolvedPlayerHp, selfMaxHp: playerMaxHp, opponentHpBefore: enemyHp, opponentHpAfter: resolvedEnemyHp, opponentMaxHp: enemyMaxHp,
       chosenAttackType: playerAttack?.moveType, defenderTypes: enemyTypes, damagingMove: playerAttack?.damagingMove, actionExecuted: playerAttack?.executed, attackHit: playerAttack?.hit, typeEffectiveness: playerAttack?.typeMultiplier,
       moveCategory: playerAttack?.category, hpRecovered: playerAttack?.hpRecovered, statStageDelta: playerAttack?.statStageDelta, ailmentApplied: playerAttack?.ailmentApplied, strategicEffect: playerAttack?.strategicEffect,
       outcome: result.outcome, levelsGained: player.level - playerLevel, evolved: events.some(event => event.type === 'evolved' && event.entityId === player.instanceId) });
     const enemyReward = rewardBattleTurn({ individualId: enemy.instanceId, decisionSource: enemySource, learningEnabled: learning,
-      selfHpBefore: enemyHp, selfHpAfter: enemy.hp, selfMaxHp: enemyMaxHp, opponentHpBefore: playerHp, opponentHpAfter: resolvedPlayerHp, opponentMaxHp: playerMaxHp,
+      selfHpBefore: enemyHp, selfHpAfter: resolvedEnemyHp, selfMaxHp: enemyMaxHp, opponentHpBefore: playerHp, opponentHpAfter: resolvedPlayerHp, opponentMaxHp: playerMaxHp,
       chosenAttackType: enemyAttack?.moveType, defenderTypes: playerTypes, damagingMove: enemyAttack?.damagingMove, actionExecuted: enemyAttack?.executed, attackHit: enemyAttack?.hit, typeEffectiveness: enemyAttack?.typeMultiplier,
       moveCategory: enemyAttack?.category, hpRecovered: enemyAttack?.hpRecovered, statStageDelta: enemyAttack?.statStageDelta, ailmentApplied: enemyAttack?.ailmentApplied, strategicEffect: enemyAttack?.strategicEffect,
       outcome: result.outcome === 'won' ? 'lost' : result.outcome === 'lost' ? 'won' : result.outcome, levelsGained: enemy.level - enemyLevel });
@@ -792,6 +795,14 @@ export class OpenWorldSimulation {
       const removed = this.entities.find(entity => entity.id === entityId);
       if (removed) this.removeWild(entityId);
       if (result.outcome === 'won' && battle.kind === 'wild') {
+        const location = removed ? this.locationAt(removed.x, removed.z) : this.locationAt(this.player.x, this.player.z);
+        const drop = rollFieldItemDrop(() => this.rng.next(), enemy.speciesId,
+          regionalEncounters(location.id, this.regionalBadges, this.regionId, this.dayPeriod));
+        if (drop && grantFieldItem(this.game.inventory as Record<string, number>, drop)) {
+          const message = `획득 · ${drop.name} +1`;
+          this.game.logs.push(message); this.game.logs = this.game.logs.slice(-200);
+          events.push({ type: 'item-drop', entityId, itemId: drop.id, message });
+        }
         this.game.captureOffer = structuredClone(enemy); this.game.captureOffer.hp = 0;
         this.game.captureOffer.status = undefined; this.game.captureOffer.statusTurns = undefined;
         if (this.autoCapture) this.captureVictory();

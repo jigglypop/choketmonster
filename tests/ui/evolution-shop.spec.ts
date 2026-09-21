@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test';
 import { mkdirSync, readFileSync } from 'node:fs';
-import { createGame, createMonster } from '../../src/game/engine';
+import { createGame, createMonster, ITEM_PRICES } from '../../src/game/engine';
 import { ConnectomeController } from '../../src/game/connectome';
 import { EXTRA_EVOLUTION_ITEM_IDS } from '../../src/game/evolution-items';
 import { defaultView, packSave } from '../../src/game/storage';
 
-test('buys Metal Coats in both shops, evolves Onix and boxed Scyther, and restores them', async ({ page }) => {
+test('auto-buys a missing Metal Coat from evolution and keeps regular shop purchases', async ({ page }) => {
   test.setTimeout(150_000);
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await page.route('**/api/auth/me', route => route.fulfill({ json: { user: null } }));
@@ -20,25 +20,34 @@ test('buys Metal Coats in both shops, evolves Onix and boxed Scyther, and restor
   await page.goto('/'); await page.locator('[data-starter="152"]').click();
   await page.locator('#import-file').setInputFiles({ name: 'legacy-tools.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(save)) });
   await expect(page.locator('#toast')).toContainText('불러왔습니다');
-  await page.locator('.world-explore-toggle').click(); await page.locator('.world-shop > summary').click();
-  await page.locator('[data-world-buy="metal-coat"][data-quantity="1"]').click();
-  await expect(page.locator('#toast')).toContainText('금속코트 1개');
+  await expect(page.locator('.world-shop')).toHaveCount(0);
+
+  await page.locator('[data-tab="team"]').click();
+  await page.locator('.evolution-panel > summary').click();
+  const onixEvolution = page.locator('[data-evolve="208"][data-evolution-item="metal-coat"]');
+  await expect(onixEvolution).toContainText('금속코트 ×1 · 보유 0개');
+  await expect(onixEvolution).toContainText(`자동 구매 ₩${ITEM_PRICES['metal-coat'].toLocaleString('ko-KR')}`);
+  await expect(onixEvolution).toContainText('구매 후 진화');
+  await onixEvolution.click();
+  await expect(page.locator('.detail-title h2')).toHaveText('강철톤');
+  await expect(page.locator('#money')).toContainText('16,000');
+  await expect(page.locator('#pokemon-canvas')).toHaveAttribute('data-species', '208', { timeout: 45_000 });
+  await expect(page.locator('#pokemon-canvas')).toHaveAttribute('data-ready', 'true');
 
   await page.locator('[data-tab="shop"]').click();
   const card = page.locator('.shop-card').filter({ has: page.locator('[data-buy="metal-coat"]') });
   await expect(card).toContainText('롱스톤 → 강철톤'); await expect(card).toContainText('스라크 → 핫삼');
-  await page.locator('[data-buy="metal-coat"]').click(); await expect(card).toContainText('보유 2개');
+  await page.locator('[data-buy="metal-coat"]').click(); await expect(card).toContainText('보유 1개');
   mkdirSync('artifacts/evolution-shop', { recursive: true });
   await card.screenshot({ path: 'artifacts/evolution-shop/metal-coat.png' });
   await page.locator('[data-tab="team"]').click();
-  await expect(page.locator('[data-evolve="208"]')).toContainText('금속코트 ×1 · 보유 2개');
-  await page.locator('[data-evolve="208"]').click();
-  await expect(page.locator('.detail-title h2')).toHaveText('강철톤');
-  await expect(page.locator('#pokemon-canvas')).toHaveAttribute('data-species', '208', { timeout: 45_000 });
-  await expect(page.locator('#pokemon-canvas')).toHaveAttribute('data-ready', 'true');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator(`[data-monster="${scyther.instanceId}"]`).click();
-  await page.locator('[data-evolve="212"]').click();
+  await page.locator('.evolution-panel > summary').click();
+  const scytherEvolution = page.locator('[data-evolve="212"][data-evolution-item="metal-coat"]');
+  await expect(scytherEvolution).toContainText('금속코트 ×1 · 보유 1개');
+  await expect(scytherEvolution).toContainText('준비 완료');
+  await scytherEvolution.click();
   await expect(page.locator('.detail-title h2')).toHaveText('핫삼');
   await expect(page.locator('#pokemon-canvas')).toHaveAttribute('data-species', '212', { timeout: 45_000 });
   await expect(page.locator('#pokemon-canvas')).toHaveAttribute('data-ready', 'true');
@@ -50,8 +59,8 @@ test('buys Metal Coats in both shops, evolves Onix and boxed Scyther, and restor
   await page.reload();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 45_000 });
   await page.locator('[data-tab="team"]').click();
-  await expect(page.locator(`[data-monster="${onix.instanceId}"]`)).toContainText('강철톤');
-  await expect(page.locator(`[data-monster="${scyther.instanceId}"]`)).toContainText('핫삼');
+  await expect(page.locator(`.monster-card[data-monster="${onix.instanceId}"]`)).toContainText('강철톤');
+  await expect(page.locator(`.monster-card[data-monster="${scyther.instanceId}"]`)).toContainText('핫삼');
   await page.locator('[data-tab="shop"]').click();
   await expect(page.locator('.shop-card').filter({ has: page.locator('[data-buy="metal-coat"]') })).toContainText('보유 0개');
   await expect(page.locator('.wallet')).toHaveText('₩12,000');
