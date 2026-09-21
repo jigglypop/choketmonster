@@ -1,4 +1,5 @@
 mod api;
+mod combat_forms;
 mod connectome;
 mod local;
 mod ranked;

@@ -1,23 +1,24 @@
 import { applyInterfacePreferences, DEFAULT_INTERFACE, readInterfacePreferences, writeInterfacePreferences, type InterfacePreferences } from './preferences';
 import { getGameAudioSettings, setGameAudioSettings, resumeGameAudio } from '../audio';
 
-export function mountInterfaceSettings(button: HTMLButtonElement): void {
+export function mountInterfaceSettings(button: HTMLButtonElement, collection?: { enabled: () => boolean; change: (enabled: boolean) => Promise<void>; available: () => boolean }): void {
   let preferences = { ...DEFAULT_INTERFACE }, revision = 0;
   let writes: Promise<void> = Promise.resolve();
   const dialog = document.createElement('dialog');
   dialog.id = 'interface-settings'; dialog.className = 'interface-settings';
   dialog.setAttribute('aria-labelledby', 'interface-settings-title');
-  dialog.innerHTML = `<header class="settings-heading"><div><span class="settings-eyebrow">나에게 맞는 화면</span><h2 id="interface-settings-title">화면 설정</h2></div><button class="settings-close" aria-label="화면 설정 닫기">×</button></header>
-    <p class="settings-description">바꾸는 즉시 적용됩니다. 설정은 이 기기에 기억합니다.</p>
-    <section class="settings-preview" aria-label="글자 크기 미리보기"><div class="settings-preview-icon">Aa</div><div><strong>편하게 읽고, 가볍게 탐험하세요.</strong><p>기술 이름과 설명이 이 크기로 표시됩니다.</p></div></section>
+  dialog.innerHTML = `<header class="settings-heading"><div><h2 id="interface-settings-title">화면 설정</h2></div><button class="settings-close" aria-label="화면 설정 닫기">×</button></header>
+
+
     <div class="settings-fields">
+      ${collection ? '<label class="settings-field"><span><strong>같은 포켓몬 자동 합치기</strong><small>새로 포획한 포켓몬</small></span><input id="collection-auto-merge" type="checkbox"></label>' : ''}
       <label class="settings-field settings-font"><span><strong>글자 크기</strong><output id="interface-font-value" for="interface-font-size">100%</output></span><input id="interface-font-size" type="range" min="100" max="150" step="5" value="100"><small>기본 <span>크게</span></small></label>
       <label class="settings-field"><span><strong>정보 간격</strong><small>카드와 설명의 여백</small></span><select id="interface-density"><option value="comfortable">여유롭게</option><option value="compact">촘촘하게</option></select></label>
       <label class="settings-field"><span><strong>전투 패널 위치</strong><small>넓은 화면의 파트너·기술 패널</small></span><select id="interface-battle-position"><option value="right">오른쪽</option><option value="left">왼쪽</option><option value="bottom">아래 가운데</option></select></label>
       <label class="settings-field"><span><strong>팀 상세 배치</strong><small>좁은 화면에서는 한 열로 표시</small></span><select id="interface-team-layout"><option value="split">박스 옆에</option><option value="stack">넓게 한 열로</option></select></label>
       <label class="settings-field"><span><strong>패널 대비</strong><small>배경과 글씨를 더 뚜렷하게</small></span><select id="interface-contrast"><option value="normal">기본</option><option value="high">높게</option></select></label>
       <label class="settings-field"><span><strong>모험 음악</strong><small>레드·그린 음악 · 장소와 전투에 맞춰 자동 재생</small></span><input aria-label="음악 음량" id="audio-music" type="range" min="0" max="100" step="1"></label>
-      <div class="settings-field settings-music-file"><span><strong>BGM 파일</strong><small id="audio-music-file-status">저장된 파일을 확인하는 중…</small></span><span><button type="button" id="audio-music-change">파일 선택·변경</button><button type="button" id="audio-music-remove" disabled>기본 음악으로</button></span></div>
+      <div class="settings-field settings-music-file"><span><strong>BGM 파일</strong><small id="audio-music-file-status">기본 음악</small></span><span><button type="button" id="audio-music-change">파일 선택·변경</button><button type="button" id="audio-music-remove" disabled>기본 음악으로</button></span></div>
       <label class="settings-field"><span><strong>포켓몬 효과음</strong><small>만남 · 공격 · 포획</small></span><input aria-label="효과음 음량" id="audio-effects" type="range" min="0" max="100" step="1"></label>
       <label class="settings-field"><span><strong>모든 소리 끄기</strong></span><input id="audio-muted" type="checkbox" aria-label="모든 소리 끄기"></label>
     </div><footer class="settings-footer"><button id="interface-reset">기본값으로</button><span id="interface-save-status" aria-live="polite"></span><button class="primary settings-done">완료</button></footer>`;
@@ -32,6 +33,8 @@ export function mountInterfaceSettings(button: HTMLButtonElement): void {
     musicRemove.disabled = !detail.hasFile;
   });
   const syncControls = () => {
+    const autoMerge = dialog.querySelector<HTMLInputElement>('#collection-auto-merge');
+    if (autoMerge && collection) { autoMerge.checked = collection.enabled(); autoMerge.disabled = !collection.available(); }
     const audio = getGameAudioSettings();
     dialog.querySelector<HTMLInputElement>('#audio-music')!.value = String(Math.round(audio.musicVolume * 100));
     dialog.querySelector<HTMLInputElement>('#audio-effects')!.value = String(Math.round(audio.effectsVolume * 100));
@@ -51,6 +54,14 @@ export function mountInterfaceSettings(button: HTMLButtonElement): void {
     }).catch(() => { if (revision === changedRevision) status.textContent = '저장 실패 · 설정을 다시 선택해 주세요'; });
   };
   font.oninput = () => { preferences.fontScale = Number(font.value) / 100; save(); };
+  dialog.querySelector<HTMLInputElement>('#collection-auto-merge')?.addEventListener('change', async event => {
+    if (!collection) return;
+    const input = event.target as HTMLInputElement;
+    input.disabled = true;
+    try { await collection.change(input.checked); status.textContent = '저장됨'; }
+    catch (error) { status.textContent = error instanceof Error ? error.message : '저장 실패'; }
+    finally { syncControls(); }
+  });
   for (const [id, key] of [['music', 'musicVolume'], ['effects', 'effectsVolume']] as const) {
     dialog.querySelector<HTMLInputElement>(`#audio-${id}`)!.oninput = event => { setGameAudioSettings({ [key]: Number((event.target as HTMLInputElement).value) / 100 }); void resumeGameAudio(); status.textContent = '음량을 저장했습니다.'; };
   }

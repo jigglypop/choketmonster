@@ -7,6 +7,7 @@ export class LoadingScreen {
   private progress = { connectome: -1, world: -1 };
   constructor(readonly element: HTMLElement) {}
   stage(stage: Stage, percent: number, detail: string) {
+    if (!this.element.querySelector(`[data-loading-bar="${stage}"]`)) return;
     const value = Math.max(0, Math.min(100, Math.round(percent)));
     if (this.progress[stage] !== value) {
       this.progress[stage] = value;
@@ -21,6 +22,7 @@ export class LoadingScreen {
     if (text.textContent !== message) text.textContent = message;
   }
   fail(message: string, retry: () => void = () => location.reload()) {
+    this.element.hidden = false;
     this.element.dataset.failed = 'true';
     this.status(message);
     const button = this.element.querySelector<HTMLButtonElement>('[data-loading-retry]')!;
@@ -34,6 +36,7 @@ export const startupLoading = initial ? new LoadingScreen(initial) : undefined;
 export function createWorldLoading(host: HTMLElement): LoadingScreen | undefined {
   if (!template) return undefined;
   const element = template.cloneNode(true) as HTMLElement;
+  element.hidden = true;
   element.removeAttribute('id');
   element.classList.add('adventure-loading--world');
   element.setAttribute('aria-label', '3D 모험 준비');

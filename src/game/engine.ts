@@ -2,6 +2,7 @@ import { Brain, type BrainState } from '../core/brain';
 import { getMove, getSpecies, POKEMON } from '../data/pokemon';
 import { getExperienceForLevel, EXPERIENCE_BY_GROWTH_RATE } from '../data/pokemon-experience';
 import { getVersionSpeciesIds } from '../data/pokemon-versions';
+import { getAlolaCombatForm, getCombatForm, getMegaCombatForm, type PokemonCombatFormProfile } from '../data/pokemon-combat-forms';
 import type { BaseStats, Evolution, PokemonMove, PokemonSpecies, PokemonType } from './contracts';
 import { calculateDamage, catchProbability, turnOrder, typeMultiplier } from './battle';
 import { getMoveLayout, reconcileMoveOrder } from './move-layout';
@@ -13,7 +14,7 @@ import { initialEvolutionProgress, evolutionProgress, validateEvolutionProgress,
 import { feedEvolutionTreat, naturalEvolution, needsSpecialEvolution, sourceEvolutionItems, sourceEvolutionRules, specialEvolutionLevel } from './evolution-conditions';
 import { getFieldTrainer, type FieldTrainer } from '../data/field-trainers';
 import { genderFor, isValidGender, validateEgg, type Egg, type MonsterGender } from './breeding';
-import { abilityForSpecies, abilityImmunity, canonicalAbility, createIndividualTraits, hasSturdy, isValidIndividualValues,
+import { abilityForSpecies, abilityImmunity, canonicalAbility, createIndividualTraits, hasSturdy, isValidIndividualValues, speciesAbilities,
   legacyIndividualTraits, statsWithIndividualValues, type IndividualValues, type MonsterAbility } from './individual-traits';
 import { REGIONAL_STARTERS, claimedRegionalStarters, isCampaignRegion, monsterRegionalUseReason, needsRegionalStarter, regionalLevelCap } from './regional-policy';
 export { duplicateMergeValue } from './growth';
@@ -42,6 +43,10 @@ export type Monster = {
   ivs?: IndividualValues;
   /** Source ability slot and current species ability. Absent only in legacy input before validation. */
   ability?: MonsterAbility;
+  /** Optional battle equipment. Legacy saves omit it. */
+  heldTool?: HeldTool;
+  /** Optional canonical regional combat form; currently supports Alola forms. */
+  regionalForm?: string;
   moves: MonsterMove[];
   /** Presentation order by move ID. Engine and neural slots remain in `moves`. */
   moveOrder?: number[];
@@ -58,7 +63,7 @@ export type Monster = {
 export type BattleSide = { team: Monster[]; activeIndex: number };
 export type BattleStat = 'attack' | 'defense' | 'specialAttack' | 'specialDefense' | 'speed' | 'accuracy' | 'evasion';
 export type BattleStatStages = Partial<Record<BattleStat, number>>;
-export type BattleTransformation = { speciesId: number; stats: MonsterStats; moves: MonsterMove[] };
+export type BattleTransformation = { speciesId: number; stats: MonsterStats; moves: MonsterMove[]; types?: PokemonType[]; ability?: MonsterAbility; kind?: 'transform' | 'mega' | 'tera'; formIdentifier?: string; teraType?: PokemonType };
 export type BattleState = {
   kind: BattleKind;
   regionId: string;
@@ -74,6 +79,8 @@ export type BattleState = {
   trainerId?: string;
   statStages?: Record<string, BattleStatStages>;
   transformations?: Record<string, BattleTransformation>;
+  playerMegaUsed?: boolean;
+  playerTeraUsed?: boolean;
 };
 
 export type BattleAction =
@@ -137,6 +144,8 @@ export type GameState = {
   claimedRegionalStarters?: CampaignRegion[];
   /** Undefined in legacy schema-v2 saves is migrated to enabled by validateGame. */
   experienceShare?: boolean;
+  /** Merge newly captured duplicates into an existing individual. */
+  autoMergeDuplicates?: boolean;
   adventureVersion?: string;
   versionCaught?: Record<string, number[]>;
   /** Legacy finite refill progress retained for schema-v2 save/server compatibility; runtime resets it to zero. */
@@ -147,6 +156,9 @@ export type GameState = {
   captureOffer?: Monster;
   logs: string[];
 };
+
+export const HELD_TOOLS = ['leftovers', 'choice-band', 'choice-specs', 'choice-scarf', 'life-orb', 'focus-sash'] as const;
+export type HeldTool = typeof HELD_TOOLS[number];
 
 export type ExploreResult = { kind: 'encounter' | 'item' | 'money'; speciesId?: number; item?: InventoryItem; amount: number; text: string };
 
@@ -213,6 +225,24 @@ export function monsterAbility(monster: Pick<Monster, 'instanceId' | 'speciesId'
   return monster.ability ?? legacyIndividualTraits(monster.instanceId, monster.speciesId).ability;
 }
 
+function combatFormAbility(profile: PokemonCombatFormProfile, slot?: number): MonsterAbility | undefined {
+  const source = slot === undefined ? profile.abilities[0] : profile.abilities.find(ability => ability.slot === slot);
+  if (!source) return undefined;
+  const implemented = ['overgrow','blaze','torrent','swarm','levitate','sturdy','water-absorb','volt-absorb'].includes(source.slug);
+  const partial = ['flash-fire','lightning-rod','motor-drive','sap-sipper','storm-drain','dry-skin','insomnia','vital-spirit','comatose','soundproof','good-as-gold'].includes(source.slug);
+  return { ...source, effect: implemented ? 'implemented' : partial ? 'partial' : 'display-only', description: `${source.name} · ${profile.name}의 원본 폼 특성` };
+}
+
+export function monsterAbilities(monster: Pick<Monster, 'speciesId' | 'regionalForm'>): readonly MonsterAbility[] {
+  const profile = monster.regionalForm ? getCombatForm(monster.regionalForm) : undefined;
+  return profile ? profile.abilities.map(ability => combatFormAbility(profile, ability.slot)!) : speciesAbilities(monster.speciesId);
+}
+
+function formMoves(profile: PokemonCombatFormProfile, level: number): MonsterMove[] {
+  const ids = [...new Set(profile.levelUpMoves.filter(entry => entry.level <= level).map(entry => entry.moveId))].slice(-4);
+  return ids.map(moveId => ({ moveId, pp: getMove(moveId).pp }));
+}
+
 export function experienceAtLevel(level: number, growthRate: string): number {
   const n = Math.max(1, Math.min(100, Math.floor(level)));
   const rate = growthRate.toLowerCase();
@@ -248,9 +278,11 @@ export function recoverableAttackMoveIds(monster: Monster): number[] {
 }
 
 /** Every distinct level-up move available to this species or an earlier form. */
-export function availableMonsterMoveIds(monster: Pick<Monster, 'speciesId' | 'level'>): number[] {
+export function availableMonsterMoveIds(monster: Pick<Monster, 'speciesId' | 'level' | 'regionalForm'>): number[] {
   const forms = [monster.speciesId], visited = new Set<number>(), entries: Array<{ moveId: number; level: number; order: number }> = [];
   let order = 0;
+  const profile = monster.regionalForm ? getCombatForm(monster.regionalForm) : undefined;
+  if (profile) for (const learned of profile.levelUpMoves) if (learned.level <= monster.level) entries.push({ ...learned, order: order++ });
   while (forms.length) {
     const form = forms.shift()!;
     if (visited.has(form)) continue;
@@ -328,6 +360,13 @@ export function createMonster(state: Pick<GameState, 'nextInstanceId'> & Partial
     ...traits,
     moves: knownMoves(species, normalizedLevel),
   };
+  const alola = monster.originRegion === 'alola' ? getAlolaCombatForm(speciesId) : undefined;
+  if (alola) {
+    monster.regionalForm = alola.identifier;
+    monster.stats = formStats(monster, alola); monster.hp = monster.stats.hp;
+    monster.ability = combatFormAbility(alola) ?? monster.ability;
+    const moves = formMoves(alola, normalizedLevel); if (moves.length) monster.moves = moves;
+  }
   monster.evolutionProgress = initialEvolutionProgress(monster);
   monster.evolutionProgress.gender = monster.gender!;
   return monster;
@@ -347,7 +386,7 @@ export function createGame(starterId: 1 | 4 | 7 | 152 | 155 | 158, seed: number 
       ...emptyExtraEvolutionInventory(),
     },
     dex: { seen: [starterId], caught: [starterId] }, regionId: REGIONS[0].id,
-    defeatedGyms: [], defeatedFieldTrainers: [], championDefeated: false, experienceShare: true, adventureVersion: 'red', versionCaught: { red: [starterId] }, ballRefillSeconds: 0, logs: [],
+    defeatedGyms: [], defeatedFieldTrainers: [], championDefeated: false, experienceShare: true, autoMergeDuplicates: false, adventureVersion: 'red', versionCaught: { red: [starterId] }, ballRefillSeconds: 0, logs: [],
   };
   const startRegion = starterId >= 152 ? 'johto' : 'kanto';
   state.campaign = { startRegion, johtoBadges: [], johtoLeague: 0, kantoLeague: 0, redDefeated: false };
@@ -487,19 +526,29 @@ export function challengeFieldTrainer(state: GameState, trainer: FieldTrainer): 
 
 function active(side: BattleSide): Monster { return side.team[side.activeIndex]; }
 function effectiveSpeciesId(battle: BattleState, monster: Monster): number { return battle.transformations?.[monster.instanceId]?.speciesId ?? monster.speciesId; }
-function effectiveStats(battle: BattleState, monster: Monster): MonsterStats { return battle.transformations?.[monster.instanceId]?.stats ?? monster.stats; }
+function regionalProfile(monster: Monster): PokemonCombatFormProfile | undefined { return monster.regionalForm ? getCombatForm(monster.regionalForm) : undefined; }
+function formStats(monster: Monster, profile: PokemonCombatFormProfile): MonsterStats { return statsFor({ ...getSpecies(monster.speciesId), baseStats: profile.baseStats }, monster.level, individualValues(monster)); }
+function effectiveStats(battle: BattleState, monster: Monster): MonsterStats { const profile = regionalProfile(monster); return battle.transformations?.[monster.instanceId]?.stats ?? (profile ? formStats(monster, profile) : monster.stats); }
 function effectiveMoves(battle: BattleState, monster: Monster): MonsterMove[] { return battle.transformations?.[monster.instanceId]?.moves ?? monster.moves; }
+function effectiveTypes(battle: BattleState, monster: Monster): readonly PokemonType[] { return battle.transformations?.[monster.instanceId]?.types ?? regionalProfile(monster)?.types ?? getSpecies(effectiveSpeciesId(battle, monster)).types; }
+function effectiveAbility(battle: BattleState, monster: Monster): MonsterAbility | undefined { return battle.transformations?.[monster.instanceId]?.ability ?? monster.ability; }
+export function battleMonsterTypes(state: GameState, monster: Monster): readonly PokemonType[] { return state.battle ? effectiveTypes(state.battle, monster) : regionalProfile(monster)?.types ?? getSpecies(monster.speciesId).types; }
 function stageMultiplier(stage = 0): number { return stage >= 0 ? (2 + stage) / 2 : 2 / (2 - stage); }
 function combatant(monster: Monster, battle: BattleState) {
   const base = effectiveStats(battle, monster); const stages = battle.statStages?.[monster.instanceId] ?? {};
+  const transformation = battle.transformations?.[monster.instanceId];
+  const physical = monster.heldTool === 'choice-band' ? 1.5 : monster.heldTool === 'life-orb' ? 1.3 : 1;
+  const special = monster.heldTool === 'choice-specs' ? 1.5 : monster.heldTool === 'life-orb' ? 1.3 : 1;
+  const speed = monster.heldTool === 'choice-scarf' ? 1.5 : 1;
   return { level: monster.level, hp: monster.hp, stats: {
     hp: base.hp,
-    attack: Math.max(1, Math.floor(base.attack * stageMultiplier(stages.attack))),
+    attack: Math.max(1, Math.floor(base.attack * stageMultiplier(stages.attack) * physical)),
     defense: Math.max(1, Math.floor(base.defense * stageMultiplier(stages.defense))),
-    specialAttack: Math.max(1, Math.floor(base.specialAttack * stageMultiplier(stages.specialAttack))),
+    specialAttack: Math.max(1, Math.floor(base.specialAttack * stageMultiplier(stages.specialAttack) * special)),
     specialDefense: Math.max(1, Math.floor(base.specialDefense * stageMultiplier(stages.specialDefense))),
-    speed: Math.max(1, Math.floor(base.speed * stageMultiplier(stages.speed))),
-  }, types: getSpecies(effectiveSpeciesId(battle, monster)).types, status: monster.status, ability: monster.ability };
+    speed: Math.max(1, Math.floor(base.speed * stageMultiplier(stages.speed) * speed)),
+  }, types: effectiveTypes(battle, monster), originalTypes: regionalProfile(monster)?.types ?? getSpecies(monster.speciesId).types,
+    teraType: transformation?.kind === 'tera' ? transformation.teraType : undefined, status: monster.status, ability: effectiveAbility(battle, monster), heldTool: monster.heldTool };
 }
 
 function validMoveIndexes(monster: Monster, battle: BattleState): number[] {
@@ -610,7 +659,7 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
       statStageDelta = clearStages(battle, attacker) + clearStages(battle, defender);
       events.push(event(battle, `${move.name}: 양쪽 포켓몬의 능력치 변화가 사라졌다.`, 'status'));
     } else if (move.id === 156) {
-      failed = attacker.hp === attacker.stats.hp || ['insomnia', 'vital-spirit', 'comatose'].includes(attacker.ability?.slug ?? '');
+      failed = attacker.hp === effectiveStats(battle, attacker).hp || ['insomnia', 'vital-spirit', 'comatose'].includes(effectiveAbility(battle, attacker)?.slug ?? '');
       if (!failed) {
         hpRecovered = attacker.stats.hp - attacker.hp; attacker.hp = attacker.stats.hp;
         attacker.status = 'sleep'; attacker.statusTurns = 3; ailmentApplied = true;
@@ -622,7 +671,7 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
       const side = battle.player.team.includes(attacker) ? battle.player : battle.enemy;
       for (const ally of side.team) {
         if (ally.hp <= 0 || !CURABLE_AILMENTS.has(ally.status ?? '')) continue;
-        if (move.id === 215 && ally !== attacker && ['soundproof', 'good-as-gold'].includes(ally.ability?.slug ?? '')) continue;
+        if (move.id === 215 && ally !== attacker && ['soundproof', 'good-as-gold'].includes(effectiveAbility(battle, ally)?.slug ?? '')) continue;
         ally.status = undefined; ally.statusTurns = undefined; cured = true;
         events.push(event(battle, `${move.name}: ${ally.nickname}의 상태이상이 나았다.`, 'status'));
       }
@@ -637,19 +686,19 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
     return;
   }
 
-  let totalDamage = 0; let multiplier = 1; let activatedAbility: 'immunity' | 'absorb' | 'sturdy' | undefined;
+  let totalDamage = 0; let multiplier = 1; let activatedAbility: 'immunity' | 'absorb' | 'sturdy' | 'focus-sash' | undefined;
   const isOhko = [12, 32, 90].includes(move.id);
   let fixed = fixedMoveDamage(move.id, attacker, defender);
   if (move.id === 149) fixed = Math.max(1, Math.floor(attacker.level * (.5 + random(state))));
-  const matchup = typeMultiplier(move.type, getSpecies(effectiveSpeciesId(battle, defender)).types);
-  const immunity = abilityImmunity(defender.ability, move.type);
+  const matchup = typeMultiplier(move.type, effectiveTypes(battle, defender));
+  const immunity = abilityImmunity(effectiveAbility(battle, defender), move.type);
   if ((isOhko || fixed !== undefined) && immunity) { multiplier = 0; activatedAbility = immunity.heal ? 'absorb' : 'immunity'; }
   else if ((isOhko || fixed !== undefined) && matchup === 0) { multiplier = 0; events.push(event(battle, '타입 면역으로 효과가 없었다.')); }
   else if (isOhko && attacker.level < defender.level) events.push(event(battle, '상대의 레벨이 높아 일격필살이 통하지 않았다.'));
-  else if (isOhko && hasSturdy(defender.ability)) { activatedAbility = 'sturdy'; }
+  else if (isOhko && (hasSturdy(effectiveAbility(battle, defender)) || defender.heldTool === 'focus-sash') && defender.hp === effectiveStats(battle, defender).hp) { activatedAbility = hasSturdy(effectiveAbility(battle, defender)) ? 'sturdy' : 'focus-sash'; }
   else if (isOhko) { totalDamage = defender.hp; defender.hp = 0; multiplier = 1; }
   else if (fixed !== undefined) {
-    const capped = hasSturdy(defender.ability) && defender.hp === defender.stats.hp && fixed >= defender.hp ? defender.hp - 1 : fixed;
+    const capped = hasSturdy(effectiveAbility(battle, defender)) && defender.hp === effectiveStats(battle, defender).hp && fixed >= defender.hp ? defender.hp - 1 : fixed;
     if (capped !== fixed) activatedAbility = 'sturdy';
     totalDamage = Math.min(defender.hp, Math.max(0, capped)); defender.hp -= totalDamage;
   }
@@ -666,9 +715,9 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
     defender.hp = Math.min(defender.stats.hp, defender.hp + Math.max(1, Math.floor(defender.stats.hp / 4)));
   }
   if (activatedAbility) {
-    const ability = monsterAbility(defender);
-    const detail = activatedAbility === 'sturdy' ? '쓰러지지 않았다' : activatedAbility === 'absorb' ? '공격을 흡수해 회복했다' : '공격을 무효화했다';
-    events.push(event(battle, `${defender.nickname}의 ${ability.name}: ${detail}.`, 'status'));
+    const source = activatedAbility === 'focus-sash' ? '기합의띠' : monsterAbility(defender).name;
+    const detail = activatedAbility === 'sturdy' || activatedAbility === 'focus-sash' ? '쓰러지지 않았다' : activatedAbility === 'absorb' ? '공격을 흡수해 회복했다' : '공격을 무효화했다';
+    events.push(event(battle, `${defender.nickname}의 ${source}: ${detail}.`, 'status'));
   }
   if (move.power > 0 || fixed !== undefined || isOhko) {
     let text = `${attacker.nickname}의 ${move.name}! ${totalDamage} 피해.`;
@@ -693,6 +742,11 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
     statStageDelta += clearStages(battle, defender);
     events.push(event(battle, `${defender.nickname}의 능력치 변화가 사라졌다.`, 'status'));
   }
+  if (monsterUsesLifeOrb(attacker, totalDamage)) {
+    const recoil = Math.max(1, Math.floor(attacker.stats.hp / 10));
+    attacker.hp = Math.max(0, attacker.hp - recoil);
+    events.push(event(battle, `${attacker.nickname}은(는) 생명의구슬 반동으로 ${recoil} 피해를 입었다.`, 'status'));
+  }
   if (move.id === 229 && totalDamage > 0 && ['trap', 'leech-seed'].includes(attacker.status ?? '')) {
     attacker.status = undefined; attacker.statusTurns = undefined; clearedBinding = true;
     events.push(event(battle, `${attacker.nickname}은(는) 속박에서 벗어났다.`, 'status'));
@@ -712,7 +766,7 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
   const ailmentTarget = SELF_TARGETS.has(move.targetId ?? 10) ? attacker : defender;
   const ailmentChance = move.ailmentChance && move.ailmentChance > 0 ? move.ailmentChance : move.damageClass === 'status' ? 100 : move.effectChance ?? 0;
   if ((multiplier > 0 || ailmentTarget === attacker) && ailmentTarget.hp > 0 && move.ailment && move.ailment !== 'none' && !ailmentTarget.status && random(state) * 100 < ailmentChance) {
-    const types = getSpecies(effectiveSpeciesId(battle, ailmentTarget)).types;
+    const types = effectiveTypes(battle, ailmentTarget);
     const immune = (move.ailment === 'poison' && (types.includes('poison') || types.includes('steel'))) || (move.ailment === 'burn' && types.includes('fire')) || (move.ailment === 'freeze' && types.includes('ice')) || (move.ailment === 'paralysis' && types.includes('electric'));
     if (immune) events.push(event(battle, `${ailmentTarget.nickname}에게는 상태이상이 통하지 않았다.`, 'status'));
     else { ailmentTarget.status = move.ailment; ailmentTarget.statusTurns = move.ailment === 'sleep' ? 2 + Math.floor(random(state) * 3) : move.ailment === 'confusion' || move.ailment === 'trap' ? 2 + Math.floor(random(state) * 4) : undefined; ailmentApplied = true; events.push(event(battle, `${ailmentTarget.nickname}은(는) ${move.ailment} 상태가 되었다.`, 'status')); }
@@ -732,15 +786,24 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
 }
 
 function residual(battle: BattleState, monster: Monster, events: BattleLogEntry[]): void {
-  if (monster.hp <= 0 || !['poison', 'burn', 'trap', 'leech-seed'].includes(monster.status ?? '')) return;
-  const damage = Math.max(1, Math.floor(monster.stats.hp / 8));
-  monster.hp = Math.max(0, monster.hp - damage);
-  events.push(event(battle, `${monster.nickname}은(는) ${monster.status}으로 ${damage} 피해를 입었다.`, 'status'));
-  if (monster.status === 'trap') {
-    monster.statusTurns = Math.max(0, (monster.statusTurns ?? 1) - 1);
-    if (monster.statusTurns === 0) { monster.status = undefined; monster.statusTurns = undefined; }
+  if (monster.hp <= 0) return;
+  if (['poison', 'burn', 'trap', 'leech-seed'].includes(monster.status ?? '')) {
+    const damage = Math.max(1, Math.floor(monster.stats.hp / 8));
+    monster.hp = Math.max(0, monster.hp - damage);
+    events.push(event(battle, `${monster.nickname}은(는) ${monster.status}으로 ${damage} 피해를 입었다.`, 'status'));
+    if (monster.status === 'trap') {
+      monster.statusTurns = Math.max(0, (monster.statusTurns ?? 1) - 1);
+      if (monster.statusTurns === 0) { monster.status = undefined; monster.statusTurns = undefined; }
+    }
+  }
+  if (monster.hp > 0 && monster.heldTool === 'leftovers') {
+    const before = monster.hp, amount = Math.max(1, Math.floor(monster.stats.hp / 16));
+    monster.hp = Math.min(monster.stats.hp, monster.hp + amount);
+    if (monster.hp > before) events.push(event(battle, `${monster.nickname}은(는) 먹다남은음식으로 ${monster.hp - before} 회복했다.`, 'status'));
   }
 }
+
+function monsterUsesLifeOrb(monster: Monster, damage: number): boolean { return monster.heldTool === 'life-orb' && damage > 0 && monster.hp > 0; }
 
 function gainExperience(monster: Monster, amount: number, events?: BattleLogEntry[], battle?: BattleState, shared = false, maximumLevel = 100): ExperienceGain | undefined {
   maximumLevel = Math.max(1, Math.min(100, Math.floor(maximumLevel)));
@@ -755,9 +818,10 @@ function gainExperience(monster: Monster, amount: number, events?: BattleLogEntr
     const oldMax = monster.stats.hp;
     monster.level++;
     const progress = evolutionProgress(monster); progress.friendship = Math.min(255, progress.friendship + 5);
-    monster.stats = statsFor(getSpecies(monster.speciesId), monster.level, individualValues(monster));
+    const profile = regionalProfile(monster);
+    monster.stats = profile ? formStats(monster, profile) : statsFor(getSpecies(monster.speciesId), monster.level, individualValues(monster));
     monster.hp += monster.stats.hp - oldMax;
-    for (const learned of getSpecies(monster.speciesId).moves.filter((entry) => entry.level === monster.level)) {
+    for (const learned of (profile?.levelUpMoves ?? getSpecies(monster.speciesId).moves).filter((entry) => entry.level === monster.level)) {
       learnMove(monster, learned.moveId);
     }
     if (events && battle) events.push(event(battle, `${monster.nickname}은(는) 레벨 ${monster.level}이 되었다.`, 'reward'));
@@ -847,7 +911,7 @@ export function actBattle(state: GameState, action: BattleAction, aiChoice?: num
     }
     const outgoing = active(battle.player);
     if (battle.statStages) delete battle.statStages[outgoing.instanceId];
-    if (battle.transformations) delete battle.transformations[outgoing.instanceId];
+    if (!battle.transformations?.[outgoing.instanceId]?.kind || battle.transformations[outgoing.instanceId]?.kind === 'transform') delete battle.transformations?.[outgoing.instanceId];
     battle.player.activeIndex = action.index; battle.awaitingSwitch = undefined;
     events.push(event(battle, `${target.nickname}, 부탁해!`));
     enemyActs(target);
@@ -864,10 +928,15 @@ export function actBattle(state: GameState, action: BattleAction, aiChoice?: num
     const chance = catchProbability(wild.stats.hp, wild.hp, species.catchRate, 1, wild.status);
     if (random(state) < chance) {
       const captured = structuredClone(wild); captured.status = undefined; captured.statusTurns = undefined;
+      const existing = allOwned(state).filter(candidate => candidate.speciesId === captured.speciesId && candidate.regionalForm === captured.regionalForm);
       if (state.player.team.length < 6) state.player.team.push(captured); else state.player.box.push(captured);
       state.dex.seen = uniqueSorted([...state.dex.seen, captured.speciesId]);
       recordCapture(state, captured.speciesId);
       state.battle = undefined;
+      if (state.autoMergeDuplicates && existing.length) {
+        const target = existing.find(candidate => state.player.team.includes(candidate)) ?? existing[0];
+        if (target) mergeDuplicateMonsters(state, target.instanceId, [captured.instanceId]);
+      }
 
       events.push(event(battle, `${captured.nickname}을(를) 잡았다!`, 'capture'));
       for (const entry of events) addLog(state, entry.text);
@@ -936,6 +1005,66 @@ function allOwned(state: GameState): Monster[] { return [...state.player.team, .
 
 export function isMonsterInBattle(state: GameState, instanceId: string): boolean {
   return Boolean(state.battle?.player.team.some(monster => monster.instanceId === instanceId));
+}
+
+export function setAutoMergeDuplicates(state: GameState, enabled: boolean): void {
+  state.autoMergeDuplicates = enabled;
+}
+
+export function assignHeldTool(state: GameState, instanceId: string, tool?: HeldTool): void {
+  if (state.battle || state.captureOffer) throw new Error('전투와 포획 선택을 마친 뒤 도구를 바꿀 수 있습니다.');
+  if (tool !== undefined && !HELD_TOOLS.includes(tool)) throw new Error('장착할 수 없는 도구입니다.');
+  const monster = findOwned(state, instanceId);
+  monster.heldTool = tool;
+}
+
+export function assignMonsterAbility(state: GameState, instanceId: string, slot: number): MonsterAbility {
+  if (state.battle || state.captureOffer) throw new Error('전투와 포획 선택을 마친 뒤 특성을 바꿀 수 있습니다.');
+  if (!Number.isInteger(slot) || slot < 1 || slot > 3) throw new Error('특성 슬롯이 올바르지 않습니다.');
+  const monster = findOwned(state, instanceId), ability = monsterAbilities(monster).find(candidate => candidate.slot === slot);
+  if (!ability) throw new Error('이 포켓몬에게 없는 특성 슬롯입니다.');
+  monster.ability = ability;
+  return ability;
+}
+
+export function assignAlolaForm(state: GameState, instanceId: string, enabled: boolean): string | undefined {
+  if (state.battle || state.captureOffer) throw new Error('전투와 포획 선택을 마친 뒤 모습을 바꿀 수 있습니다.');
+  const monster = findOwned(state, instanceId), profile = getAlolaCombatForm(monster.speciesId);
+  if (enabled && !profile) throw new Error('이 포켓몬은 알로라 모습이 없습니다.');
+  const oldMax = monster.stats.hp, hpRatio = monster.hp / Math.max(1, oldMax);
+  monster.regionalForm = enabled ? profile!.identifier : undefined;
+  monster.stats = enabled ? formStats(monster, profile!) : statsFor(getSpecies(monster.speciesId), monster.level, individualValues(monster));
+  monster.hp = Math.max(monster.hp > 0 ? 1 : 0, Math.min(monster.stats.hp, Math.round(monster.stats.hp * hpRatio)));
+  monster.ability = enabled ? combatFormAbility(profile!) ?? monster.ability : abilityForSpecies(monster.speciesId, monster.ability?.slot ?? 1, monster.ability?.hidden);
+  monster.moves = enabled ? formMoves(profile!, monster.level) : knownMoves(getSpecies(monster.speciesId), monster.level);
+  reconcileMoveOrder(monster);
+  return monster.regionalForm;
+}
+
+export function activateBattleTransformation(state: GameState, kind: 'mega' | 'tera', option: { instanceId?: string; formIdentifier?: string; teraType?: PokemonType } = {}): BattleTransformation {
+  const battle = state.battle;
+  if (!battle) throw new Error('진행 중인 전투가 없습니다.');
+  const monster = active(battle.player);
+  if (monster.hp <= 0 || battle.awaitingSwitch) throw new Error('기절한 포켓몬은 변신할 수 없습니다.');
+  if (option.instanceId && option.instanceId !== monster.instanceId) throw new Error('현재 전투 중인 포켓몬만 변신할 수 있습니다.');
+  if (battle.transformations?.[monster.instanceId]) throw new Error('이미 전투 변신을 사용했습니다.');
+  let transformation: BattleTransformation;
+  if (kind === 'mega') {
+    if (battle.playerMegaUsed) throw new Error('이 전투에서는 이미 메가진화를 사용했습니다.');
+    const profile = getMegaCombatForm(monster.speciesId, option.formIdentifier);
+    if (!profile) throw new Error('메가진화할 수 없는 포켓몬입니다.');
+    transformation = { kind, speciesId: monster.speciesId, formIdentifier: profile.identifier, types: [...profile.types], ability: combatFormAbility(profile), stats: formStats(monster, profile), moves: monster.moves.map(slot => ({ ...slot })) };
+    battle.playerMegaUsed = true;
+  } else {
+    if (battle.playerTeraUsed) throw new Error('이 전투에서는 이미 테라스탈을 사용했습니다.');
+    const teraType = option.teraType ?? effectiveTypes(battle, monster)[0];
+    if (!['normal','fire','water','electric','grass','ice','fighting','poison','ground','flying','psychic','bug','rock','ghost','dragon','dark','steel','fairy'].includes(teraType)) throw new Error('테라 타입이 올바르지 않습니다.');
+    transformation = { kind, speciesId: monster.speciesId, types: [teraType], teraType, stats: structuredClone(effectiveStats(battle, monster)), moves: structuredClone(monster.moves) };
+    battle.playerTeraUsed = true;
+  }
+  battle.transformations ??= {};
+  battle.transformations[monster.instanceId] = transformation;
+  return transformation;
 }
 
 export function firstUsableRegionalTeamIndex(state: GameState, region: CampaignRegion, startIndex = 0): number {
@@ -1036,12 +1165,37 @@ export function useItem(state: GameState, item: InventoryItem, targetInstanceId?
   throw new Error('이 아이템은 진화 또는 전투 전용입니다.');
 }
 
-export function evolve(state: GameState, instanceId: string, option: { targetId?: number; item?: InventoryItem } = {}): Monster {
+export type EvolutionPurchaseQuote = { ready: boolean; requiredItem?: InventoryItem; missing: number; cost: number; affordable: boolean };
+
+export function evolutionPurchaseQuote(state: GameState, monster: Monster, evolution: Evolution, supplied?: InventoryItem): EvolutionPurchaseQuote {
+  const ready = evolutionRoute(state, monster, evolution, supplied);
+  if (ready) return { ready: true, requiredItem: ready.item, missing: 0, cost: 0, affordable: true };
+  if (isMonsterInBattle(state, monster.instanceId)) return { ready: false, missing: 0, cost: 0, affordable: false };
+  let requiredItem: InventoryItem | undefined;
+  if (supplied === 'evolution-catalyst') {
+    if (needsSpecialEvolution(monster.speciesId, evolution) && monster.level >= specialEvolutionLevel(monster.speciesId, evolution.target)) requiredItem = supplied;
+  } else {
+    const candidates = monsterEvolutionItemsFor(monster, evolution);
+    requiredItem = supplied && candidates.includes(supplied) ? supplied : supplied === undefined ? candidates[0] : undefined;
+  }
+  if (!requiredItem || !SHOP_ITEMS.includes(requiredItem)) return { ready: false, requiredItem, missing: 0, cost: 0, affordable: false };
+  const missing = Math.max(0, 1 - state.inventory[requiredItem]), cost = missing * ITEM_PRICES[requiredItem];
+  return { ready: false, requiredItem, missing, cost, affordable: missing > 0 && state.player.money >= cost };
+}
+
+export function evolve(state: GameState, instanceId: string, option: { targetId?: number; item?: InventoryItem; autoBuyMissing?: boolean } = {}): Monster {
   const monster = findOwned(state, instanceId);
   if (isMonsterInBattle(state, instanceId)) throw new Error('전투 중에는 참가 포켓몬을 진화시킬 수 없습니다.');
   const evolutions = getSpecies(monster.speciesId).evolutions.filter((evolution) => option.targetId === undefined || evolution.target === option.targetId);
-  const evolution = evolutions.find((candidate) => evolutionReady(state, monster, candidate, option.item));
+  let evolution = evolutions.find((candidate) => evolutionReady(state, monster, candidate, option.item));
+  if (!evolution && option.autoBuyMissing) evolution = evolutions.find(candidate => evolutionPurchaseQuote(state, monster, candidate, option.item).affordable);
   if (!evolution) throw new Error('현재 조건으로 가능한 진화가 없습니다.');
+  const quote = evolutionPurchaseQuote(state, monster, evolution, option.item);
+  if (!quote.ready && option.autoBuyMissing) {
+    if (!quote.requiredItem || !quote.affordable || quote.missing !== 1) throw new Error('진화 도구를 구매할 수 없습니다.');
+    state.player.money -= quote.cost; state.inventory[quote.requiredItem]++;
+    addLog(state, `${ITEM_LABELS[quote.requiredItem]} 자동 구매 · ₩${quote.cost.toLocaleString('ko-KR')}`);
+  }
   const route = evolutionRoute(state, monster, evolution, option.item)!;
   const requiredItem = route.item;
   if (requiredItem) state.inventory[requiredItem]--;
@@ -1067,6 +1221,7 @@ export function evolve(state: GameState, instanceId: string, option: { targetId?
 
 function applyEvolution(state: GameState, monster: Monster, evolution: Evolution): Monster {
   const before = getSpecies(monster.speciesId), after = getSpecies(evolution.target);
+  const wasAlola = regionalProfile(monster)?.kind === 'alola';
   if (before.growthRate !== after.growthRate) {
     const floor = experienceAtLevel(monster.level, before.growthRate), ceiling = experienceAtLevel(monster.level + 1, before.growthRate);
     const progress = ceiling > floor ? (monster.xp - floor) / (ceiling - floor) : 0;
@@ -1076,12 +1231,14 @@ function applyEvolution(state: GameState, monster: Monster, evolution: Evolution
   const oldMax = monster.stats.hp;
   const previousAbility = monsterAbility(monster);
   monster.speciesId = evolution.target; monster.nickname = getSpecies(evolution.target).name;
-  monster.ability = abilityForSpecies(evolution.target, previousAbility.slot, previousAbility.hidden);
+  const evolvedForm = wasAlola ? getAlolaCombatForm(evolution.target) : undefined;
+  monster.regionalForm = evolvedForm?.identifier;
+  monster.ability = evolvedForm ? combatFormAbility(evolvedForm) ?? abilityForSpecies(evolution.target, previousAbility.slot, previousAbility.hidden) : abilityForSpecies(evolution.target, previousAbility.slot, previousAbility.hidden);
   if (!isValidGender(monster.speciesId, monster.gender)) monster.gender = genderFor(monster.speciesId, monster.instanceId);
   evolutionProgress(monster).gender = monster.gender!;
-  monster.stats = statsFor(getSpecies(evolution.target), monster.level, individualValues(monster));
+  monster.stats = evolvedForm ? formStats(monster, evolvedForm) : statsFor(getSpecies(evolution.target), monster.level, individualValues(monster));
   monster.hp = Math.min(monster.stats.hp, monster.hp + monster.stats.hp - oldMax);
-  for (const learned of knownMoves(getSpecies(evolution.target), monster.level)) {
+  for (const learned of evolvedForm ? formMoves(evolvedForm, monster.level) : knownMoves(getSpecies(evolution.target), monster.level)) {
     learnMove(monster, learned.moveId);
   }
   reconcileMoveOrder(monster);
@@ -1105,6 +1262,12 @@ export function evolutionItemsFor(speciesId: number, evolution: Evolution): Inve
   return [...new Set([...(explicit ? [explicit] : []), ...source])];
 }
 
+export function monsterEvolutionItemsFor(monster: Monster, evolution: Evolution): InventoryItem[] {
+  if (monster.regionalForm === 'sandshrew-alola' || monster.regionalForm === 'vulpix-alola') return ['ice-stone'];
+  if (monster.regionalForm === 'meowth-alola' || monster.regionalForm === 'rattata-alola') return [];
+  return evolutionItemsFor(monster.speciesId, evolution);
+}
+
 let evolutionUses: Map<InventoryItem, string> | undefined;
 export function evolutionItemUses(item: InventoryItem): string {
   if (!evolutionUses) {
@@ -1123,6 +1286,15 @@ export function evolutionItemUses(item: InventoryItem): string {
 
 export function evolutionRoute(state: GameState, monster: Monster, evolution: Evolution, supplied?: InventoryItem): { item?: InventoryItem; shed?: boolean } | undefined {
   if (isMonsterInBattle(state, monster.instanceId)) return undefined;
+  if (monster.regionalForm === 'sandshrew-alola' || monster.regionalForm === 'vulpix-alola') {
+    return (supplied === undefined || supplied === 'ice-stone') && state.inventory['ice-stone'] > 0 ? { item: 'ice-stone' } : undefined;
+  }
+  if (monster.regionalForm === 'meowth-alola' || monster.regionalForm === 'rattata-alola') {
+    if (supplied === 'evolution-catalyst') return state.inventory[supplied] > 0 && (monster.speciesId !== 19 || monster.level >= 20) ? { item: supplied } : undefined;
+    if (supplied !== undefined) return undefined;
+    return monster.speciesId === 52 ? evolutionProgress(monster).friendship >= 160 ? {} : undefined
+      : monster.level >= 20 && state.evolutionContext?.period === 'night' ? {} : undefined;
+  }
   if (supplied === 'evolution-catalyst') return needsSpecialEvolution(monster.speciesId, evolution)
     && monster.level >= specialEvolutionLevel(monster.speciesId, evolution.target) && state.inventory[supplied] > 0 ? { item: supplied } : undefined;
   if (supplied === undefined) {
@@ -1131,7 +1303,7 @@ export function evolutionRoute(state: GameState, monster: Monster, evolution: Ev
     // Compatibility for authored data without a source row. Source-backed rows never bypass predicates.
     if (!sourceEvolutionRules(monster.speciesId, evolution.target).length && evolution.method === 'level' && monster.level >= (evolution.level ?? 1)) return {};
   }
-  const item = evolutionItemsFor(monster.speciesId, evolution).find(item => state.inventory[item] > 0 && (supplied === undefined || item === supplied));
+  const item = monsterEvolutionItemsFor(monster, evolution).find(item => state.inventory[item] > 0 && (supplied === undefined || item === supplied));
   return item ? { item } : undefined;
 }
 function evolutionReady(state: GameState, monster: Monster, evolution: Evolution, supplied?: InventoryItem): boolean {
@@ -1279,8 +1451,7 @@ export function previewDuplicateMerge(state: GameState, targetId: string, donorI
   if (state.captureOffer) throw new Error('포획 선택을 마친 뒤 합칠 수 있습니다.');
   if (!donorIds.length || new Set(donorIds).size !== donorIds.length || donorIds.includes(targetId)) throw new Error('서로 다른 중복 개체를 선택하세요.');
   const target = findOwned(state, targetId), donors = donorIds.map(id => findOwned(state, id));
-  if (donors.some(donor => donor.speciesId !== target.speciesId)) throw new Error('같은 종끼리만 경험치를 합칠 수 있습니다.');
-  if (target.level >= 100) throw new Error('이미 최고 레벨입니다.');
+  if (donors.some(donor => donor.speciesId !== target.speciesId || donor.regionalForm !== target.regionalForm)) throw new Error('같은 종과 모습끼리 합칠 수 있습니다.');
   battleRemovalActiveId(state, new Set(donorIds));
   const donorLevels = donors.reduce((sum, donor) => sum + donor.level, 0);
   const highestDonorLevel = Math.max(...donors.map(donor => donor.level));
@@ -1289,8 +1460,8 @@ export function previewDuplicateMerge(state: GameState, targetId: string, donorI
   const uncappedToLevel = baselineLevel + bonusLevels, toLevel = Math.min(100, uncappedToLevel);
   const gainedLevels = toLevel - target.level, totalLevels = gainedLevels;
   const growth = getSpecies(target.speciesId).growthRate;
-  const startXp = experienceAtLevel(target.level, growth), nextXp = experienceAtLevel(target.level + 1, growth);
-  const progress = Math.max(0, Math.min(1, (target.xp - startXp) / (nextXp - startXp)));
+  const startXp = experienceAtLevel(target.level, growth), nextXp = experienceAtLevel(Math.min(100, target.level + 1), growth);
+  const progress = target.level >= 100 ? 0 : Math.max(0, Math.min(1, (target.xp - startXp) / (nextXp - startXp)));
   const destinationXp = experienceAtLevel(toLevel, growth) + (toLevel < 100 ? Math.floor(progress * (experienceAtLevel(toLevel + 1, growth) - experienceAtLevel(toLevel, growth))) : 0);
   const gainedXp = Math.max(0, destinationXp - target.xp);
   const movesToTeam = !state.battle && state.player.team.every(monster => donorIds.includes(monster.instanceId));
@@ -1314,7 +1485,40 @@ export function mergeDuplicateMonsters(state: GameState, targetId: string, donor
     moves: grown.moves, moveOrder: grown.moveOrder, movePpReserve: grown.movePpReserve, evolutionProgress: grown.evolutionProgress });
   state.player.team = team; state.player.box = box;
   reconcileBattleRemoval(state, ids, activeId);
-  addLog(state, `${target.nickname} (${targetId})에게 같은 종 최고 레벨 Lv.${plan.baselineLevel}을 기준으로 5% 보너스 ${plan.bonusLevels}레벨을 한 번 적용해 Lv.${plan.toLevel}. 남긴 개체의 회로 기억은 유지했다.`);
+  addLog(state, `${target.nickname} · ${plan.count}마리 합치기 · Lv.${plan.toLevel}`);
+  return plan;
+}
+
+export type CollectionMergeGroup = ReturnType<typeof previewDuplicateMerge> & { speciesId: number; targetId: string };
+export type CollectionMergePlan = { groups: CollectionMergeGroup[]; totalDonors: number; totalGainedLevels: number };
+
+export function previewCollectionMerge(state: GameState, policyRegion?: CampaignRegion, preferredTargetId?: string): CollectionMergePlan {
+  if (state.captureOffer) throw new Error('포획 선택을 마친 뒤 합칠 수 있습니다.');
+  if (state.battle) throw new Error('전투를 마친 뒤 컬렉션 전체를 합칠 수 있습니다.');
+  const bySpecies = new Map<string, Monster[]>();
+  for (const monster of allOwned(state)) {
+    const key = `${monster.speciesId}:${monster.regionalForm ?? ''}`;
+    const group = bySpecies.get(key) ?? [];
+    group.push(monster); bySpecies.set(key, group);
+  }
+  const groups: CollectionMergeGroup[] = [];
+  for (const monsters of bySpecies.values()) {
+    const speciesId = monsters[0].speciesId;
+    if (monsters.length < 2) continue;
+    const preferred = monsters.find(monster => monster.instanceId === preferredTargetId);
+    const target = preferred ?? monsters.find(monster => state.player.team.includes(monster)) ?? monsters[0];
+    const donorIds = monsters.filter(monster => monster !== target).map(monster => monster.instanceId);
+    groups.push({ speciesId, targetId: target.instanceId, ...previewDuplicateMerge(state, target.instanceId, donorIds, policyRegion) });
+  }
+  return { groups, totalDonors: groups.reduce((sum, group) => sum + group.count, 0), totalGainedLevels: groups.reduce((sum, group) => sum + group.gainedLevels, 0) };
+}
+
+export function mergeCollectionDuplicates(state: GameState, plan: CollectionMergePlan, policyRegion?: CampaignRegion): CollectionMergePlan {
+  for (const group of plan.groups) {
+    const current = previewDuplicateMerge(state, group.targetId, group.donorIds, policyRegion);
+    if (group.speciesId !== findOwned(state, group.targetId).speciesId || current.gainedXp !== group.gainedXp || current.toLevel !== group.toLevel) throw new Error('합치기 대상이 변경되었습니다. 다시 확인해 주세요.');
+  }
+  for (const group of plan.groups) mergeDuplicateMonsters(state, group.targetId, group.donorIds, policyRegion);
   return plan;
 }
 
@@ -1332,11 +1536,16 @@ export function captureDefeatedWild(state: GameState, ball: BallItem): boolean {
   normalizeBalls(state); ball = 'poke-ball';
   const monster = state.captureOffer;
   if (!monster || state.battle || !['poke-ball', 'great-ball', 'ultra-ball'].includes(ball) || (state.player.team.length >= 6 && state.player.box.length >= 10000)) return false;
+  const existing = allOwned(state).filter(candidate => candidate.speciesId === monster.speciesId && candidate.regionalForm === monster.regionalForm);
   monster.hp = Math.max(1, monster.hp); monster.status = undefined; monster.statusTurns = undefined;
   if (state.player.team.length < 6) state.player.team.push(monster); else state.player.box.push(monster);
   state.dex.seen = uniqueSorted([...state.dex.seen, monster.speciesId]);
   recordCapture(state, monster.speciesId);
   state.captureOffer = undefined;
+  if (state.autoMergeDuplicates && existing.length) {
+    const target = existing.find(candidate => state.player.team.includes(candidate)) ?? existing[0];
+    if (target) mergeDuplicateMonsters(state, target.instanceId, [monster.instanceId]);
+  }
   addLog(state, `${monster.nickname} 포획 성공! 무한 ${ITEM_LABELS[ball]}을 사용했다.`);
   return true;
 }
@@ -1349,6 +1558,8 @@ export function validateGame(value: unknown): GameState {
   if (state.schemaVersion !== SAVE_SCHEMA_VERSION) throw new Error(`지원하지 않는 저장 스키마입니다: ${String(state.schemaVersion)}`);
   if (state.experienceShare !== undefined && typeof state.experienceShare !== 'boolean') throw new Error('경험치 공유 설정이 손상되었습니다.');
   state.experienceShare ??= true;
+  if (state.autoMergeDuplicates !== undefined && typeof state.autoMergeDuplicates !== 'boolean') throw new Error('자동 합치기 설정이 손상되었습니다.');
+  state.autoMergeDuplicates ??= false;
   state.nursery ??= [];
   if (!Array.isArray(state.nursery) || state.nursery.length > 6) throw new Error('알 보관함 데이터가 손상되었습니다.');
   state.adventureVersion ??= 'red';
@@ -1405,7 +1616,17 @@ export function validateGame(value: unknown): GameState {
     if (monster.ivs === undefined && monster.ability === undefined) Object.assign(monster, legacyIndividualTraits(monster.instanceId, monster.speciesId));
     else if (monster.ivs === undefined || monster.ability === undefined) throw new Error('개체값/특성 데이터가 일부만 있습니다.');
     if (!isValidIndividualValues(monster.ivs)) throw new Error('개체값이 잘못되었습니다.');
-    const currentAbility = canonicalAbility(monster.ability, monster.speciesId);
+    if (monster.heldTool !== undefined && !HELD_TOOLS.includes(monster.heldTool)) throw new Error('장착 도구가 잘못되었습니다.');
+    let form: PokemonCombatFormProfile | undefined;
+    if (monster.regionalForm !== undefined) {
+      form = getCombatForm(monster.regionalForm);
+      if (!form || form.kind !== 'alola' || form.speciesId !== monster.speciesId) throw new Error('지역 모습이 원본 종과 맞지 않습니다.');
+    }
+    const savedAbility = monster.ability!;
+    const formAbility = form && combatFormAbility(form, savedAbility.slot);
+    const currentAbility = formAbility && savedAbility.id === formAbility.id && savedAbility.slot === formAbility.slot
+      && savedAbility.hidden === formAbility.hidden && savedAbility.slug === formAbility.slug
+      ? formAbility : form ? undefined : canonicalAbility(monster.ability, monster.speciesId);
     if (!currentAbility) throw new Error('특성이 원본 종/슬롯 데이터와 맞지 않습니다.');
     // Source identity is persisted, while labels and implemented-effect notes
     // are release metadata and must be refreshed without invalidating a save.
@@ -1421,7 +1642,7 @@ export function validateGame(value: unknown): GameState {
     monster.evolutionProgress.gender = monster.gender;
     const match = /^mon-(\d+)$/.exec(monster.instanceId); if (match) maximumGeneratedId = Math.max(maximumGeneratedId, Number(match[1]));
     if (typeof monster.nickname !== 'string' || !monster.nickname || monster.nickname.length > 40 || !Number.isInteger(monster.level) || monster.level < 1 || monster.level > 100 || !Number.isSafeInteger(monster.xp) || monster.xp < experienceAtLevel(monster.level, species.growthRate) || (monster.level < 100 && monster.xp >= experienceAtLevel(monster.level + 1, species.growthRate))) throw new Error('이름/레벨/경험치가 잘못되었습니다.');
-    const expectedStats = statsFor(species, monster.level, monster.ivs);
+    const expectedStats = form ? formStats(monster, form) : statsFor(species, monster.level, monster.ivs);
     if (!monster.stats || (Object.keys(expectedStats) as (keyof MonsterStats)[]).some((key) => monster.stats[key] !== expectedStats[key]) || !Number.isFinite(monster.hp) || monster.hp < 0 || monster.hp > monster.stats.hp) throw new Error('능력치/HP가 잘못되었습니다.');
     if (!Array.isArray(monster.moves) || monster.moves.length > 4) throw new Error('기술 데이터가 잘못되었습니다.');
     for (const slot of monster.moves) { const move = getMove(slot.moveId); if (!Number.isInteger(slot.pp) || slot.pp < 0 || slot.pp > move.pp) throw new Error('PP가 잘못되었습니다.'); }
@@ -1487,6 +1708,8 @@ export function validateGame(value: unknown): GameState {
         if (member.ability === undefined) member.ability = structuredClone(owned.ability);
         else if (!canonicalAbility(member.ability, member.speciesId)) throw new Error('전투 특성이 원본 종/슬롯 데이터와 맞지 않습니다.');
         else member.ability = structuredClone(owned.ability);
+        member.heldTool = owned.heldTool;
+        member.regionalForm = owned.regionalForm;
         if (member.evolutionProgress) member.evolutionProgress.gender = member.gender!;
       }
     }
@@ -1501,9 +1724,28 @@ export function validateGame(value: unknown): GameState {
     if (battle.transformations) for (const [instanceId, form] of Object.entries(battle.transformations)) {
       if (!battleIds.has(instanceId) || !form || !Number.isInteger(form.speciesId) || !form.stats || !Array.isArray(form.moves) || form.moves.length > 4) throw new Error('변신 상태가 손상되었습니다.');
       getSpecies(form.speciesId);
+      if (form.kind !== undefined && !['transform', 'mega', 'tera'].includes(form.kind)) throw new Error('변신 종류가 손상되었습니다.');
+      if (form.types !== undefined && (!Array.isArray(form.types) || !form.types.length || form.types.length > 2 || form.types.some(type => !['normal','fire','water','electric','grass','ice','fighting','poison','ground','flying','psychic','bug','rock','ghost','dragon','dark','steel','fairy'].includes(type)))) throw new Error('변신 타입이 손상되었습니다.');
+      const source = [...state.player.team, ...battle.enemy.team].find(monster => monster.instanceId === instanceId)!;
+      if (form.kind === 'mega' || form.kind === 'tera') {
+        if (form.speciesId !== source.speciesId || JSON.stringify(form.moves) !== JSON.stringify(source.moves)) throw new Error('전투 변신 원본 기술이 일치하지 않습니다.');
+        if (state.player.team.includes(source) && !(form.kind === 'mega' ? battle.playerMegaUsed : battle.playerTeraUsed)) throw new Error('전투 변신 사용 기록이 손상되었습니다.');
+        if (form.kind === 'tera' && (form.ability !== undefined || JSON.stringify(form.stats) !== JSON.stringify(source.stats))) throw new Error('테라스탈 능력치가 손상되었습니다.');
+      }
+      if (form.kind === 'mega') {
+        const profile = form.formIdentifier && getMegaCombatForm(form.speciesId, form.formIdentifier);
+        const source = [...state.player.team, ...battle.enemy.team].find(monster => monster.instanceId === instanceId);
+        if (!profile || !source || profile.identifier !== form.formIdentifier || JSON.stringify(form.types) !== JSON.stringify(profile.types)) throw new Error('메가진화 모습이 손상되었습니다.');
+        const expected = formStats(source, profile), expectedAbility = combatFormAbility(profile);
+        if ((Object.keys(expected) as (keyof MonsterStats)[]).some(key => form.stats[key] !== expected[key])
+          || (expectedAbility && (!form.ability || form.ability.id !== expectedAbility.id || form.ability.slug !== expectedAbility.slug))) throw new Error('메가진화 능력치/특성이 손상되었습니다.');
+      }
+      if (form.kind === 'tera' && (!form.teraType || form.types?.length !== 1 || form.types[0] !== form.teraType)) throw new Error('테라스탈 타입이 손상되었습니다.');
       if ((Object.values(form.stats) as unknown[]).some((stat) => !Number.isFinite(stat) || (stat as number) <= 0 || (stat as number) > 10000)) throw new Error('변신 능력치가 손상되었습니다.');
-      for (const slot of form.moves) { const move = getMove(slot.moveId); if (!Number.isInteger(slot.pp) || slot.pp < 0 || slot.pp > Math.min(5, move.pp)) throw new Error('변신 기술 PP가 손상되었습니다.'); }
+      for (const slot of form.moves) { const move = getMove(slot.moveId); if (!Number.isInteger(slot.pp) || slot.pp < 0 || slot.pp > (form.kind === 'mega' || form.kind === 'tera' ? move.pp : Math.min(5, move.pp))) throw new Error('변신 기술 PP가 손상되었습니다.'); }
     }
+    if (battle.playerMegaUsed !== undefined && typeof battle.playerMegaUsed !== 'boolean') throw new Error('메가진화 사용 기록이 손상되었습니다.');
+    if (battle.playerTeraUsed !== undefined && typeof battle.playerTeraUsed !== 'boolean') throw new Error('테라스탈 사용 기록이 손상되었습니다.');
     battle.player.team = state.player.team;
   }
 

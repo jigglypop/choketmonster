@@ -6,8 +6,11 @@ export type Combatant = {
   hp: number;
   stats: { hp: number; attack: number; defense: number; specialAttack: number; specialDefense: number; speed: number };
   types: readonly PokemonType[];
+  originalTypes?: readonly PokemonType[];
+  teraType?: PokemonType;
   status?: string;
   ability?: MonsterAbility;
+  heldTool?: 'leftovers' | 'choice-band' | 'choice-specs' | 'choice-scarf' | 'life-orb' | 'focus-sash';
 };
 
 const effectiveness: Partial<Record<PokemonType, Partial<Record<PokemonType, number>>>> = {
@@ -36,7 +39,7 @@ export function typeMultiplier(attack: PokemonType, defenders: readonly PokemonT
 }
 
 export function calculateDamage(attacker: Combatant, defender: Combatant, move: PokemonMove, randomFactor = 1): {
-  damage: number; multiplier: number; abilityActivation?: 'immunity' | 'absorb' | 'sturdy';
+  damage: number; multiplier: number; abilityActivation?: 'immunity' | 'absorb' | 'sturdy' | 'focus-sash';
 } {
   if (move.damageClass === 'status' || move.power <= 0) return { damage: 0, multiplier: 1 };
   const immunity = abilityImmunity(defender.ability, move.type);
@@ -44,14 +47,16 @@ export function calculateDamage(attacker: Combatant, defender: Combatant, move: 
   const rawAttack = move.damageClass === 'physical' ? attacker.stats.attack : attacker.stats.specialAttack;
   const attack = move.damageClass === 'physical' && attacker.status === 'burn' ? Math.max(1, Math.floor(rawAttack / 2)) : rawAttack;
   const defense = Math.max(1, move.damageClass === 'physical' ? defender.stats.defense : defender.stats.specialDefense);
-  const stab = attacker.types.includes(move.type) ? 1.5 : 1;
+  const stab = attacker.teraType === move.type ? (attacker.originalTypes?.includes(move.type) ? 2 : 1.5)
+    : attacker.teraType ? (attacker.originalTypes?.includes(move.type) ? 1.5 : 1)
+      : attacker.types.includes(move.type) ? 1.5 : 1;
   const multiplier = typeMultiplier(move.type, defender.types);
   if (multiplier === 0) return { damage: 0, multiplier };
   const abilityPower = lowHpPowerMultiplier(attacker.ability, attacker.hp, attacker.stats.hp, move.type);
   const base = (((2 * attacker.level / 5 + 2) * move.power * attack / defense) / 50) + 2;
   const damage = Math.max(1, Math.floor(base * stab * multiplier * abilityPower * randomFactor));
-  if (hasSturdy(defender.ability) && defender.hp === defender.stats.hp && damage >= defender.hp) {
-    return { damage: Math.max(0, defender.hp - 1), multiplier, abilityActivation: 'sturdy' };
+  if ((hasSturdy(defender.ability) || defender.heldTool === 'focus-sash') && defender.hp === defender.stats.hp && damage >= defender.hp) {
+    return { damage: Math.max(0, defender.hp - 1), multiplier, abilityActivation: defender.heldTool === 'focus-sash' && !hasSturdy(defender.ability) ? 'focus-sash' : 'sturdy' };
   }
   return { damage, multiplier };
 }

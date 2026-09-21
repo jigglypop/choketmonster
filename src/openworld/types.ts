@@ -22,6 +22,14 @@ export type WorldCreature = WorldPoint & {
   movementSpeed?: number;
   /** Type of the currently presented move, used to choose a readable battle effect. */
   moveType?: string;
+  /** Canonical form identifier when the base-species model is not the visible form. */
+  formIdentifier?: string;
+  /** Form-specific sprite used instead of a misleading base-species GLB. */
+  formSpriteUrl?: string;
+  /** Temporary battle presentation applied to this creature. */
+  transformationKind?: 'mega' | 'tera';
+  /** Effective Terastal type used to color its crystal presentation. */
+  transformationType?: import('../game/contracts').PokemonType;
   /** A battle opponent to face without changing the simulation heading. */
   lookAt?: { x: number; z: number };
   inBattle?: boolean;

@@ -26,9 +26,12 @@ import {
   MathUtils,
   Mesh,
   MeshStandardMaterial,
+  NearestFilter,
   Object3D,
   Quaternion,
   SRGBColorSpace,
+  Texture,
+  TextureLoader,
   Vector3,
 } from 'three';
 import { type GLTF } from 'three/addons/loaders/GLTFLoader.js';
@@ -467,6 +470,9 @@ function PokemonModel({ creature, url, onStatus }: { creature: WorldCreature; ur
   const mixer = useRef<AnimationMixer | null>(null);
   const activeAction = useRef<AnimationAction | undefined>(undefined);
   const ground = useRef<((groundY: number) => number) | undefined>(undefined);
+  const nextGroundingAt = useRef(0);
+  const groundingOffset = useRef(0);
+  const groundedAction = useRef<WorldCreature['action'] | undefined>(undefined);
   const worldPosition = useRef(new Vector3());
   const normalized = useMemo(() => {
     if (!gltf) return null;
@@ -519,11 +525,27 @@ function PokemonModel({ creature, url, onStatus }: { creature: WorldCreature; ur
     root.current.scale.set(pulse, creature.action === 'hurt' ? .88 : 1, pulse);
     root.current.rotation.z = creature.action === 'fainted' ? Math.PI / 2 : !gltf?.animations.length && creature.action === 'walk' ? Math.sin(phase) * .045 : 0;
     if (!ground.current && normalized) ground.current = createGrounding(normalized.visual, root.current, normalized.grounding);
-    root.current.parent?.getWorldPosition(worldPosition.current);
-    ground.current?.(worldPosition.current.y);
-    if (!gltf?.animations.length && creature.action === 'walk') root.current.position.y += Math.abs(Math.sin(phase)) * .07;
+    const animated = !!gltf?.animations.length;
+    // Animated grounding walks the support vertices of every skinned mesh.
+    // Keep clip playback at the display frame rate while bounding that CPU
+    // traversal to 30 Hz. Models using the procedural walk bounce still need
+    // the exact per-frame reset before their absolute phase offset is applied.
+    if (!animated || creature.action === 'attack' || clock.elapsedTime >= nextGroundingAt.current || groundedAction.current !== creature.action) {
+      root.current.parent?.getWorldPosition(worldPosition.current);
+      ground.current?.(worldPosition.current.y);
+      groundingOffset.current = root.current.position.y;
+      nextGroundingAt.current = clock.elapsedTime + 1 / 30;
+      groundedAction.current = creature.action;
+    }
+    root.current.position.y = groundingOffset.current;
+    if (!animated && creature.action === 'walk') root.current.position.y += Math.abs(Math.sin(phase)) * .07;
   }, -1);
-  useEffect(() => { ground.current = undefined; }, [normalized]);
+  useEffect(() => {
+    ground.current = undefined;
+    groundingOffset.current = 0;
+    nextGroundingAt.current = 0;
+    groundedAction.current = undefined;
+  }, [normalized]);
   useEffect(() => () => {
     if (!normalized) return;
     disposeNormalizedPokemonMaterials(normalized.animatedRoot);
@@ -560,14 +582,14 @@ function PokemonModel({ creature, url, onStatus }: { creature: WorldCreature; ur
     activeAction.current = next;
   }, [creature.action, gltf, normalized]);
 
-  if (!normalized || renderFailed) return <ModelStatus name={status === 'failed' ? '3D 불러오기 실패' : '3D 불러오는 중'} />;
+  if (!normalized || renderFailed) return <ModelStatus name={status === 'failed' ? '모델 오류' : ''} />;
   return <group ref={root} name={`pokemon-model:${creature.speciesId}`} dispose={null}><primitive object={normalized.visual} /></group>;
 }
 
 function ModelStatus({ name }: { name: string }) {
   return <group name={`pokemon-model-status:${name}`}>
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, .04, 0]}><ringGeometry args={[.45, .6, 24]} /><meshBasicMaterial color="#d2d9d1" transparent opacity={.65} /></mesh>
-    <WorldLabel name={name} x={0} y={.65} z={0} />
+    {name && <WorldLabel name={name} x={0} y={.65} z={0} />}
   </group>;
 }
 
@@ -579,6 +601,84 @@ const MOVE_COLORS: Record<string, [string, string]> = {
   rock: ['#bdad6f', '#65572b'], bug: ['#a9ca48', '#50691c'], flying: ['#92bdf0', '#49689e'],
   steel: ['#b8c4ce', '#66717d'], fairy: ['#ffa7d9', '#ad4f82'], normal: ['#eadfc9', '#827463'],
 };
+
+function PokemonFormSprite({ creature, url, onStatus }: { creature: WorldCreature; url: string; onStatus?: OpenWorldViewOptions['onModelStatus'] }) {
+  const root = useRef<Group>(null);
+  const [texture, setTexture] = useState<Texture | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let active = true;
+    setTexture(null);
+    setFailed(false);
+    const loaded = new TextureLoader().load(url, next => {
+      if (!active) { next.dispose(); return; }
+      next.colorSpace = SRGBColorSpace;
+      next.magFilter = NearestFilter;
+      next.minFilter = NearestFilter;
+      next.needsUpdate = true;
+      setTexture(next);
+    }, undefined, () => { if (active) setFailed(true); });
+    return () => { active = false; loaded.dispose(); };
+  }, [url]);
+  const status = failed ? 'failed' : texture ? 'ready' : 'loading';
+  useLayoutEffect(() => { onStatus?.(creature.id, status, creature.speciesId); }, [creature.id, creature.speciesId, onStatus, status]);
+  useLayoutEffect(() => () => onStatus?.(creature.id, 'untracked', creature.speciesId), [creature.id, creature.speciesId, onStatus]);
+  useFrame(({ clock }) => {
+    if (!root.current) return;
+    const phase = clock.elapsedTime * 5 + creature.speciesId;
+    const pulse = creature.action === 'attack' ? 1 + Math.max(0, Math.sin(phase)) * .12 : 1;
+    root.current.scale.set(pulse, creature.action === 'hurt' ? .88 : 1, pulse);
+    root.current.rotation.z = creature.action === 'fainted' ? Math.PI / 2 : 0;
+  });
+  if (!texture || failed) return <ModelStatus name={failed ? '모습 오류' : ''} />;
+  const height = creature.displayHeight ?? 1.2;
+  const image = texture.image as { width?: number; height?: number } | undefined;
+  const aspect = MathUtils.clamp((image?.width ?? 1) / Math.max(1, image?.height ?? 1), .55, 1.8);
+  return <group ref={root} name={`pokemon-form:${creature.formIdentifier ?? creature.speciesId}`}>
+    <sprite position={[0, height / 2, 0]} scale={[height * aspect, height, 1]}>
+      <spriteMaterial map={texture} transparent alphaTest={.04} toneMapped={false} />
+    </sprite>
+  </group>;
+}
+
+function PokemonFormUnavailable({ creature, onStatus }: { creature: WorldCreature; onStatus?: OpenWorldViewOptions['onModelStatus'] }) {
+  useLayoutEffect(() => {
+    // A missing source sprite must not substitute the base-species model or
+    // block simulation readiness. Keep a neutral footprint so the actor can
+    // still move while the UI filters this unsupported presentation choice.
+    onStatus?.(creature.id, 'ready', creature.speciesId);
+    return () => onStatus?.(creature.id, 'untracked', creature.speciesId);
+  }, [creature.id, creature.speciesId, onStatus]);
+  return <group name={`pokemon-form-unavailable:${creature.formIdentifier ?? creature.speciesId}`}>
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, .04, 0]}>
+      <ringGeometry args={[.34, .48, 24]} />
+      <meshBasicMaterial color="#d2d9d1" transparent opacity={.65} />
+    </mesh>
+  </group>;
+}
+
+function TransformationEffect({ creature }: { creature: WorldCreature }) {
+  const ref = useRef<Group>(null);
+  const kind = creature.transformationKind;
+  const colors = MOVE_COLORS[creature.transformationType ?? 'normal'] ?? MOVE_COLORS.normal;
+  useFrame(({ clock }) => {
+    if (!ref.current || !kind) return;
+    ref.current.rotation.y = clock.elapsedTime * (kind === 'tera' ? 1.25 : -.8);
+    ref.current.scale.setScalar(1 + Math.sin(clock.elapsedTime * 3) * .035);
+  });
+  if (!kind) return null;
+  const height = creature.displayHeight ?? 1.2;
+  return <group ref={ref} name={`pokemon-transformation:${kind}`}>
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, .07, 0]}>
+      <torusGeometry args={[.68, kind === 'tera' ? .055 : .035, 8, 40]} />
+      <meshStandardMaterial color={colors[0]} emissive={colors[1]} emissiveIntensity={1.5} transparent opacity={.82} />
+    </mesh>
+    {kind === 'tera' && <mesh position={[0, height + .3, 0]} rotation={[0, 0, Math.PI / 4]}>
+      <octahedronGeometry args={[.18, 0]} />
+      <meshStandardMaterial color={colors[0]} emissive={colors[1]} emissiveIntensity={1.8} transparent opacity={.9} />
+    </mesh>}
+  </group>;
+}
 
 function AttackEffect({ active, moveType }: { active: boolean; moveType?: string }) {
   const ref = useRef<Mesh>(null);
@@ -625,10 +725,10 @@ function Creature({ creature, selected, distance, options, showLabels, model }: 
   }, [options.onModelStatus]);
   const modelReady = model && modelState.speciesId === creature.speciesId && modelState.status === 'ready';
   useEffect(() => {
-    if (supportedModel) return;
+    if (supportedModel || creature.formIdentifier) return;
     options.onModelStatus?.(creature.id, 'failed', creature.speciesId);
     return () => options.onModelStatus?.(creature.id, 'untracked', creature.speciesId);
-  }, [creature.id, creature.speciesId, options, supportedModel]);
+  }, [creature.formIdentifier, creature.id, creature.speciesId, options, supportedModel]);
   const sample = options.sampleWorld ?? fallbackSample;
   const y = terrainSurfaceHeight(sample, creature.x, creature.z);
   const hp = MathUtils.clamp(creature.maxHp > 0 ? creature.hp / creature.maxHp : 0, 0, 1);
@@ -670,9 +770,14 @@ function Creature({ creature, selected, distance, options, showLabels, model }: 
       onClick={event => { event.stopPropagation(); if (!creature.remotePlayer) options.onSelect(creature.id); }}
       onDoubleClick={event => { event.stopPropagation(); if (!creature.remotePlayer) options.onInteract?.(creature.id); }}
     >
-      {model && supportedModel
+      {model && creature.formIdentifier
+        ? creature.formSpriteUrl
+          ? <PokemonFormSprite creature={creature} url={creature.formSpriteUrl} onStatus={onModelStatus} />
+          : <PokemonFormUnavailable creature={creature} onStatus={onModelStatus} />
+        : model && supportedModel
         ? <PokemonModel creature={creature} url={(options.modelUrl ?? (id => `/models/pokemon/${id}.glb`))(creature.speciesId)} onStatus={onModelStatus} />
         : !supportedModel ? <ModelStatus name="3D 미지원 · 이동 중지" /> : null}
+      <TransformationEffect creature={creature} />
       {(selected || creature.inBattle) && <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, .04, 0]}><ringGeometry args={[1.1, 1.34, 40]} /><meshBasicMaterial color={creature.inBattle ? '#f09155' : '#f6dd67'} transparent opacity={.86} /></mesh>}
       <AttackEffect active={modelReady && creature.action === 'attack'} moveType={creature.moveType} />
       {modelReady && showLabels && (distance <= 28 || selected || creature.inBattle || creature.remotePlayer) && <CreatureBillboard creature={creature} hp={hp} distance={distance} emphasized={selected || !!creature.inBattle || !!creature.remotePlayer} />}

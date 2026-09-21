@@ -1,9 +1,10 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
-import { createGame, createMonster, type Monster } from '../../src/game/engine';
+import { assignAlolaForm, createGame, createMonster, type Monster } from '../../src/game/engine';
 import { defaultView, packSave } from '../../src/game/storage';
 import { OpenWorldSimulation } from '../../src/openworld/simulation';
 import type { Graph } from '../../src/core/brain';
+import { getSpecies } from '../../src/data/pokemon';
 
 test.setTimeout(240_000);
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
@@ -15,7 +16,15 @@ async function prepare(context: BrowserContext, index: number) {
   const registered = await context.request.post(`${base}/api/auth/register`, { headers: { origin: base }, data: { username, password: `Trade-fixture-${Date.now()}!` } });
   expect(registered.ok(), await registered.text()).toBe(true);
   const user = (await registered.json()).user as { id: string; username: string };
-  const game = createGame(index ? 155 : 152, `${username}-different-seed`), boxed = createMonster(game, index ? 7 : 25, 12);
+  const game = createGame(index ? 155 : 152, `${username}-different-seed`), boxed = createMonster(game, index ? 7 : 19, 12);
+  game.autoMergeDuplicates = true;
+  if (!index) {
+    // Keep the established UI label while exercising an actual transferable
+    // Alola form and held-tool payload through both account saves.
+    boxed.nickname = getSpecies(25).name;
+    game.player.box.push(boxed); assignAlolaForm(game, boxed.instanceId, true); game.player.box.pop();
+    boxed.heldTool = 'focus-sash';
+  }
   game.player.box.push(boxed); game.dex.seen.push(boxed.speciesId); game.dex.caught.push(boxed.speciesId); game.dex.seen.sort((a,b)=>a-b); game.dex.caught.sort((a,b)=>a-b);
   const world = new OpenWorldSimulation(graph, game, 100 + index); world.setControlMode('manual'); world.setAutoHunt(false);
   const save = packSave(game, graph, { ...defaultView(), openWorld: world.snapshot(), openWorldPaused: true });
@@ -77,9 +86,11 @@ test('two authenticated trainers trade colliding IDs and money, preserve a full 
     const getSave = async (context: BrowserContext, id: string) => (await context.request.get(`${base}/api/saves/current`, { headers: { 'x-choketmon-profile': id } })).json();
     const ls = await getSave(a, left.user.id), rs = await getSave(b, right.user.id);
     expect(ls.save.game.player.money).toBe(3250); expect(rs.save.game.player.money).toBe(2750);
+    expect(ls.save.game.autoMergeDuplicates).toBe(true); expect(rs.save.game.autoMergeDuplicates).toBe(true);
     expect(ls.save.game.player.box.map((m: Monster)=>m.speciesId)).toEqual([7]);
     const received = rs.save.game.player.box[0] as Monster;
-    expect(received.speciesId).toBe(25); expect(received.instanceId).not.toBe(left.boxed.instanceId);
+    expect(received.speciesId).toBe(19); expect(received.instanceId).not.toBe(left.boxed.instanceId);
+    expect(received.regionalForm).toBe('rattata-alola'); expect(received.heldTool).toBe('focus-sash');
     // Identical sensory inputs continue the exact source circuit despite a new game and ID.
     const expected = await brainStep(left.page, left.boxed, left.game.player.team[0], 2);
     const actual = await brainStep(right.page, received, left.game.player.team[0], 2);

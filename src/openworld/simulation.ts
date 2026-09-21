@@ -12,7 +12,7 @@ import { chooseExpansionEncounter, expansionEncounterSpecies, isExpansionRegion 
 import { gameplayHabitat } from '../game/habitat';
 import { ConnectomeController, type NeuralMonster } from '../game/connectome';
 import { chooseServerBrains, usesServerBrain, type ServerDecision } from '../game/server-brain';
-import { actBattle, availableEvolutions, captureDefeatedWild, createMonster, evolve, evolutionRoute, firstUsableRegionalTeamIndex, validateGame, type BallItem, type BattleAction, type BattleTurnResult, type GameState, type Monster } from '../game/engine';
+import { activateBattleTransformation, actBattle, availableEvolutions, battleMonsterTypes, captureDefeatedWild, createMonster, evolve, evolutionRoute, firstUsableRegionalTeamIndex, validateGame, type BallItem, type BattleAction, type BattleTurnResult, type GameState, type Monster } from '../game/engine';
 import { monsterRegionalUseReason, needsRegionalStarter } from '../game/regional-policy';
 import { KANTO_START, KANTO_MAP_VERSION } from './kanto';
 import { WORLD_MIN, WORLD_MAX, WORLD_SCALE, migrateSurfaceSnapshotCoordinates, surfaceSceneId } from './world-space';
@@ -461,6 +461,12 @@ export class OpenWorldSimulation {
   }
 
   captureVictory(ball?: BallItem): boolean { return captureDefeatedWild(this.game, ball ?? this.cheapestBall()); }
+  transformBattle(kind: 'mega' | 'tera', option: { instanceId?: string; formIdentifier?: string; teraType?: import('../game/contracts').PokemonType } = {}) {
+    const transformed = activateBattleTransformation(this.game, kind, option);
+    this.serverTurn = undefined;
+    this.syncCompanion();
+    return transformed;
+  }
   releaseVictory(): void { if (this.game.captureOffer) { this.game.logs.push(`${this.game.captureOffer.nickname}을(를) 놓아주었습니다.`); this.game.logs = this.game.logs.slice(-200); this.game.captureOffer = undefined; } }
 
   reconcileTeamChange(): void {
@@ -739,8 +745,8 @@ export class OpenWorldSimulation {
     if (!learnedPlayerAction) this.clearPendingLearning(player);
     const playerHp = player.hp, enemyHp = enemy.hp, playerLevel = player.level, enemyLevel = enemy.level;
     const playerMaxBefore = battle.transformations?.[player.instanceId]?.stats.hp ?? player.stats.hp, enemyMaxBefore = battle.transformations?.[enemy.instanceId]?.stats.hp ?? enemy.stats.hp;
-    const playerTypes = getSpecies(battle.transformations?.[player.instanceId]?.speciesId ?? player.speciesId).types;
-    const enemyTypes = getSpecies(battle.transformations?.[enemy.instanceId]?.speciesId ?? enemy.speciesId).types;
+    const playerTypes = battleMonsterTypes(this.game, player);
+    const enemyTypes = battleMonsterTypes(this.game, enemy);
     const enemyDecision = this.chooseBattle(enemy, player, battle, this.lastEnemyReward, learning);
     const enemySource: RewardDecisionSource = enemyDecision.rawAction === enemyDecision.action ? 'connectome' : 'fallback';
     const playerMoveId = action.type === 'move' ? (battle.transformations?.[player.instanceId]?.moves ?? player.moves)[action.index]?.moveId : undefined;

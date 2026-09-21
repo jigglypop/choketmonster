@@ -9,6 +9,7 @@
 //! stat-reset and Rapid Spin rules. Other move-specific scripts remain outside this core.
 
 use crate::api::{ApiError, AppState, decompress, profile_user, rate_limit};
+use crate::combat_forms::combat_form;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -165,6 +166,8 @@ struct Fighter {
     types: Vec<String>,
     moves: Vec<Move>,
     ability: Option<String>,
+    #[serde(default)]
+    held_tool: Option<String>,
     status: Option<String>,
     status_turns: Option<i8>,
     #[serde(default)]
@@ -204,22 +207,19 @@ fn iv(monster: &Value, field: &str) -> i64 {
         .unwrap_or(0)
         .clamp(0, 31)
 }
-fn normalized_stats(species: &Species, monster: &Value) -> Stats {
+fn normalized_stats_from_base(base: Stats, monster: &Value) -> Stats {
     let normal = |base, iv| (2 * base + iv) * 50 / 100 + 5;
     Stats {
-        hp: (2 * species.base_stats.hp + iv(monster, "hp")) * 50 / 100 + 60,
-        attack: normal(species.base_stats.attack, iv(monster, "attack")),
-        defense: normal(species.base_stats.defense, iv(monster, "defense")),
-        special_attack: normal(
-            species.base_stats.special_attack,
-            iv(monster, "specialAttack"),
-        ),
-        special_defense: normal(
-            species.base_stats.special_defense,
-            iv(monster, "specialDefense"),
-        ),
-        speed: normal(species.base_stats.speed, iv(monster, "speed")),
+        hp: (2 * base.hp + iv(monster, "hp")) * 50 / 100 + 60,
+        attack: normal(base.attack, iv(monster, "attack")),
+        defense: normal(base.defense, iv(monster, "defense")),
+        special_attack: normal(base.special_attack, iv(monster, "specialAttack")),
+        special_defense: normal(base.special_defense, iv(monster, "specialDefense")),
+        speed: normal(base.speed, iv(monster, "speed")),
     }
+}
+fn normalized_stats(species: &Species, monster: &Value) -> Stats {
+    normalized_stats_from_base(species.base_stats, monster)
 }
 fn snapshot(
     save: &Value,
@@ -270,7 +270,26 @@ fn snapshot(
         if moves.is_empty() {
             return Err(invalid("기술을 가진 포켓몬만 참가할 수 있습니다."));
         }
-        let stats = normalized_stats(species, monster);
+        let form = monster
+            .get("regionalForm")
+            .and_then(Value::as_str)
+            .and_then(combat_form);
+        if form.is_some_and(|form| form.species_id != species_id) {
+            return Err(invalid("지역 모습이 원본 종과 맞지 않습니다."));
+        }
+        let base = form.map(|form| form.base_stats);
+        let stats = normalized_stats_from_base(
+            base.map(|stats| Stats {
+                hp: stats.hp,
+                attack: stats.attack,
+                defense: stats.defense,
+                special_attack: stats.special_attack,
+                special_defense: stats.special_defense,
+                speed: stats.speed,
+            })
+            .unwrap_or(species.base_stats),
+            monster,
+        );
         team.push(Fighter {
             instance_id: monster
                 .get("instanceId")
@@ -289,10 +308,16 @@ fn snapshot(
             hp: stats.hp,
             max_hp: stats.hp,
             stats,
-            types: species.types.clone(),
+            types: form
+                .map(|form| form.types.clone())
+                .unwrap_or_else(|| species.types.clone()),
             moves,
             ability: monster
                 .pointer("/ability/slug")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+            held_tool: monster
+                .get("heldTool")
                 .and_then(Value::as_str)
                 .map(str::to_owned),
             status: None,
@@ -704,8 +729,16 @@ fn effective_stat(monster: &Fighter, stat: &str) -> i64 {
         "speed" => monster.stats.speed,
         _ => 1,
     };
+    let tool_multiplier = match (monster.held_tool.as_deref(), stat) {
+        (Some("choice-band"), "attack")
+        | (Some("choice-specs"), "specialAttack")
+        | (Some("choice-scarf"), "speed") => 1.5,
+        (Some("life-orb"), "attack" | "specialAttack") => 1.3,
+        _ => 1.0,
+    };
     let mut value =
-        (base as f64 * stage_multiplier(*monster.stages.get(stat).unwrap_or(&0))).floor() as i64;
+        (base as f64 * stage_multiplier(*monster.stages.get(stat).unwrap_or(&0)) * tool_multiplier)
+            .floor() as i64;
     if stat == "speed" && monster.status.as_deref() == Some("paralysis") {
         value /= 2;
     }
@@ -935,7 +968,8 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
         if type_mult == 0.0 {
             damage = 0;
         }
-        if target.ability.as_deref() == Some("sturdy")
+        if (target.ability.as_deref() == Some("sturdy")
+            || target.held_tool.as_deref() == Some("focus-sash"))
             && target.hp == target.max_hp
             && damage >= target.hp
         {
@@ -992,7 +1026,8 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
                 .floor()
                 .max(if type_mult > 0.0 { 1.0 } else { 0.0 }) as i64;
             let target = &mut defender.team[defender.active_index];
-            if target.ability.as_deref() == Some("sturdy")
+            if (target.ability.as_deref() == Some("sturdy")
+                || target.held_tool.as_deref() == Some("focus-sash"))
                 && target.hp == target.max_hp
                 && damage >= target.hp
             {
@@ -1025,6 +1060,13 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
         battle
             .events
             .push(format!("{}의 HP가 회복되었습니다.", actor.nickname));
+    }
+    if total_damage > 0
+        && active(attacker).held_tool.as_deref() == Some("life-orb")
+        && active(attacker).hp > 0
+    {
+        let actor = &mut attacker.team[attacker.active_index];
+        actor.hp = (actor.hp - (actor.max_hp / 10).max(1)).max(0);
     }
     if mv.id == 499 && total_damage > 0 {
         let target = &mut defender.team[defender.active_index];
@@ -1116,6 +1158,9 @@ fn residual(side: &mut Side, events: &mut Vec<String>) {
             "{}은(는) 상태 이상으로 {} 피해를 입었습니다.",
             target.nickname, damage
         ));
+    }
+    if target.hp > 0 && target.held_tool.as_deref() == Some("leftovers") {
+        target.hp = (target.hp + (target.max_hp / 16).max(1)).min(target.max_hp);
     }
 }
 
@@ -1285,6 +1330,7 @@ mod tests {
             types: species.types.clone(),
             moves: vec![catalog().moves.get(&move_id).unwrap().clone()],
             ability: ability.map(str::to_owned),
+            held_tool: None,
             status: None,
             status_turns: None,
             stages: HashMap::new(),
@@ -1306,6 +1352,60 @@ mod tests {
             },
             events: vec![],
         }
+    }
+
+    #[test]
+    fn ranked_snapshot_uses_alola_profile_and_held_tool() {
+        let save = json!({"game":{"player":{"team":[{
+            "instanceId":"mon-19","speciesId":19,"nickname":"Alola Rattata","regionalForm":"rattata-alola","heldTool":"choice-scarf",
+            "ivs":{"hp":31,"attack":31,"defense":31,"specialAttack":31,"specialDefense":31,"speed":31},"moves":[{"moveId":33}]
+        }]}}});
+        let side = snapshot(&save, Uuid::nil(), "ranked".into(), League::Open).unwrap();
+        let fighter = &side.team[0];
+        assert_eq!(fighter.types, vec!["dark", "normal"]);
+        assert_eq!(fighter.stats.hp, 105);
+        assert_eq!(fighter.stats.speed, 92);
+        assert_eq!(effective_stat(fighter, "speed"), 138);
+        assert_eq!(fighter.held_tool.as_deref(), Some("choice-scarf"));
+    }
+
+    #[test]
+    fn ranked_held_tools_apply_damage_survival_recoil_and_recovery() {
+        let mut band = fighter(25, 33, None);
+        let base_attack = effective_stat(&band, "attack");
+        band.held_tool = Some("choice-band".into());
+        assert_eq!(
+            effective_stat(&band, "attack"),
+            (base_attack as f64 * 1.5).floor() as i64
+        );
+
+        let mut sash_battle = battle(fighter(150, 63, None), fighter(10, 33, None));
+        sash_battle.player2.team[0].held_tool = Some("focus-sash".into());
+        attack(
+            Uuid::nil(),
+            1,
+            &mut sash_battle,
+            true,
+            &catalog().moves[&63],
+        );
+        assert_eq!(active(&sash_battle.player2).hp, 1);
+
+        let mut orb_battle = battle(fighter(25, 33, None), fighter(10, 33, None));
+        orb_battle.player1.team[0].held_tool = Some("life-orb".into());
+        let before = active(&orb_battle.player1).hp;
+        attack(Uuid::nil(), 1, &mut orb_battle, true, &catalog().moves[&33]);
+        assert_eq!(
+            active(&orb_battle.player1).hp,
+            before - (active(&orb_battle.player1).max_hp / 10).max(1)
+        );
+
+        let mut leftovers = fighter(25, 33, None);
+        leftovers.held_tool = Some("leftovers".into());
+        leftovers.hp -= 20;
+        let expected = leftovers.hp + (leftovers.max_hp / 16).max(1);
+        let mut side = battle(leftovers, fighter(10, 33, None)).player1;
+        residual(&mut side, &mut vec![]);
+        assert_eq!(active(&side).hp, expected);
     }
 
     #[test]

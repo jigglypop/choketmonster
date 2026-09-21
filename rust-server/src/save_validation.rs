@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use crate::combat_forms::combat_form;
 use serde_json::{Map, Value};
 use std::{
     collections::{HashMap, HashSet},
@@ -264,15 +265,26 @@ fn expected_stats(species: &Species, level: i64) -> [i64; 6] {
 }
 
 fn expected_stats_with_ivs(species: &Species, level: i64, ivs: [i64; 6]) -> [i64; 6] {
+    expected_stats_from_base(&species.base_stats, level, ivs)
+}
+
+fn expected_stats_from_base(base: &Stats, level: i64, ivs: [i64; 6]) -> [i64; 6] {
     let normal = |base, iv| (2 * base + iv) * level / 100 + 5;
     [
-        (2 * species.base_stats.hp + ivs[0]) * level / 100 + level + 10,
-        normal(species.base_stats.attack, ivs[1]),
-        normal(species.base_stats.defense, ivs[2]),
-        normal(species.base_stats.special_attack, ivs[3]),
-        normal(species.base_stats.special_defense, ivs[4]),
-        normal(species.base_stats.speed, ivs[5]),
+        (2 * base.hp + ivs[0]) * level / 100 + level + 10,
+        normal(base.attack, ivs[1]),
+        normal(base.defense, ivs[2]),
+        normal(base.special_attack, ivs[3]),
+        normal(base.special_defense, ivs[4]),
+        normal(base.speed, ivs[5]),
     ]
+}
+
+fn form_stats(identifier: &str, level: i64, ivs: [i64; 6]) -> Result<[i64; 6], &'static str> {
+    let form = combat_form(identifier).ok_or("지원하지 않는 포켓몬 모습입니다.")?;
+    let base = form.base_stats;
+    Ok(expected_stats_from_base(&Stats { hp: base.hp, attack: base.attack, defense: base.defense,
+        special_attack: base.special_attack, special_defense: base.special_defense, speed: base.speed }, level, ivs))
 }
 
 fn validate_individual_traits(monster: &Value, species_id: i64) -> Result<[i64; 6], &'static str> {
@@ -282,7 +294,14 @@ fn validate_individual_traits(monster: &Value, species_id: i64) -> Result<[i64; 
         _ => {}
     }
     let ivs = object(monster, "ivs")?;
-    let fields = ["hp", "attack", "defense", "specialAttack", "specialDefense", "speed"];
+    let fields = [
+        "hp",
+        "attack",
+        "defense",
+        "specialAttack",
+        "specialDefense",
+        "speed",
+    ];
     if ivs.len() != fields.len() || fields.iter().any(|field| !ivs.contains_key(*field)) {
         return Err("개체값 구성이 올바르지 않습니다.");
     }
@@ -295,23 +314,60 @@ fn validate_individual_traits(monster: &Value, species_id: i64) -> Result<[i64; 
         integer(ivs.get("speed"), 0, 31)?,
     ];
     let ability = object(monster, "ability")?;
-    let required = ["id", "slot", "hidden", "slug", "name", "englishName", "effect", "description"];
-    if ability.len() != required.len() || required.iter().any(|field| !ability.contains_key(*field)) {
+    let required = [
+        "id",
+        "slot",
+        "hidden",
+        "slug",
+        "name",
+        "englishName",
+        "effect",
+        "description",
+    ];
+    if ability.len() != required.len() || required.iter().any(|field| !ability.contains_key(*field))
+    {
         return Err("특성 구성이 올바르지 않습니다.");
     }
     let id = integer(ability.get("id"), 1, MAX_SAFE_INTEGER)?;
     let slot = integer(ability.get("slot"), 1, 3)?;
-    let source = abilities().get(&species_id).and_then(|entries| entries.iter()
-        .find(|entry| entry.id == id && entry.slot == slot)).ok_or("특성이 원본 종/슬롯 데이터와 맞지 않습니다.")?;
+    if let Some(identifier) = monster.get("regionalForm") {
+        let form = identifier.as_str().and_then(combat_form)
+            .filter(|form| form.species_id == species_id && form.kind == "alola")
+            .ok_or("지역 모습이 원본 종과 맞지 않습니다.")?;
+        let source = form.abilities.iter().find(|entry| entry.id == id && entry.slot == slot)
+            .ok_or("특성이 원본 모습/슬롯 데이터와 맞지 않습니다.")?;
+        if ability.get("hidden").and_then(Value::as_bool) != Some(source.hidden)
+            || ability.get("slug").and_then(Value::as_str) != Some(source.slug.as_str())
+            || ability.get("name").and_then(Value::as_str) != Some(source.name.as_str())
+            || ability.get("englishName").and_then(Value::as_str) != Some(source.english_name.as_str())
+            || ability.get("effect").and_then(Value::as_str) != Some(ability_effect(&source.slug))
+            || ability.get("description").and_then(Value::as_str).is_none_or(|text| text.is_empty() || text.chars().count() > 240) {
+            return Err("지역 모습 특성 정보가 올바르지 않습니다.");
+        }
+        return Ok(values);
+    }
+    let source = abilities()
+        .get(&species_id)
+        .and_then(|entries| {
+            entries
+                .iter()
+                .find(|entry| entry.id == id && entry.slot == slot)
+        })
+        .ok_or("특성이 원본 종/슬롯 데이터와 맞지 않습니다.")?;
     if ability.get("hidden").and_then(Value::as_bool) != Some(source.hidden)
         || ability.get("slug").and_then(Value::as_str) != Some(source.slug.as_str())
         || ability.get("name").and_then(Value::as_str) != Some(source.name.as_str())
-        || ability.get("englishName").and_then(Value::as_str) != Some(source.english_name.as_str()) {
+        || ability.get("englishName").and_then(Value::as_str) != Some(source.english_name.as_str())
+    {
         return Err("특성 원본 정보가 변조되었습니다.");
     }
     let expected_effect = ability_effect(&source.slug);
     if ability.get("effect").and_then(Value::as_str) != Some(expected_effect)
-        || ability.get("description").and_then(Value::as_str).is_none_or(|text| text.is_empty() || text.chars().count() > 240) {
+        || ability
+            .get("description")
+            .and_then(Value::as_str)
+            .is_none_or(|text| text.is_empty() || text.chars().count() > 240)
+    {
         return Err("특성 효과 표시가 올바르지 않습니다.");
     }
     Ok(values)
@@ -325,11 +381,12 @@ fn finite_number(value: &Value, absolute_maximum: f64) -> bool {
 
 fn ability_effect(slug: &str) -> &'static str {
     match slug {
-        "overgrow" | "blaze" | "torrent" | "swarm" | "levitate" | "sturdy"
-        | "water-absorb" | "volt-absorb" => "implemented",
+        "overgrow" | "blaze" | "torrent" | "swarm" | "levitate" | "sturdy" | "water-absorb"
+        | "volt-absorb" => "implemented",
         "flash-fire" | "lightning-rod" | "motor-drive" | "sap-sipper" | "storm-drain"
-        | "dry-skin" | "insomnia" | "vital-spirit" | "comatose" | "soundproof"
-        | "good-as-gold" => "partial",
+        | "dry-skin" | "insomnia" | "vital-spirit" | "comatose" | "soundproof" | "good-as-gold" => {
+            "partial"
+        }
         _ => "display-only",
     }
 }
@@ -494,22 +551,52 @@ fn validate_brain(brain: &Value) -> Result<(), &'static str> {
 }
 
 fn validate_nursery(game: &Value, ids: &mut HashSet<String>) -> Result<(), &'static str> {
-    let Some(value) = game.get("nursery") else { return Ok(()); };
-    let eggs = value.as_array().filter(|eggs| eggs.len() <= 6).ok_or("알 보관함이 올바르지 않습니다.")?;
+    let Some(value) = game.get("nursery") else {
+        return Ok(());
+    };
+    let eggs = value
+        .as_array()
+        .filter(|eggs| eggs.len() <= 6)
+        .ok_or("알 보관함이 올바르지 않습니다.")?;
     for egg in eggs {
-        let egg_id = egg.get("eggId").and_then(Value::as_str)
-            .filter(|id| id.starts_with("egg-") && id.len() <= 120 && id.bytes().all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b)))
+        let egg_id = egg
+            .get("eggId")
+            .and_then(Value::as_str)
+            .filter(|id| {
+                id.starts_with("egg-")
+                    && id.len() <= 120
+                    && id
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b))
+            })
             .ok_or("알 ID가 올바르지 않습니다.")?;
-        if !ids.insert(egg_id.to_owned()) { return Err("알 ID가 중복되었습니다."); }
+        if !ids.insert(egg_id.to_owned()) {
+            return Err("알 ID가 중복되었습니다.");
+        }
         let species_id = integer(egg.get("speciesId"), 1, MAX_SAFE_INTEGER)?;
-        if !catalog().species.contains_key(&species_id) { return Err("알의 포켓몬 종이 올바르지 않습니다."); }
-        let parents = egg.get("parentIds").and_then(Value::as_array).filter(|items| items.len() == 2)
+        if !catalog().species.contains_key(&species_id) {
+            return Err("알의 포켓몬 종이 올바르지 않습니다.");
+        }
+        let parents = egg
+            .get("parentIds")
+            .and_then(Value::as_array)
+            .filter(|items| items.len() == 2)
             .ok_or("알의 부모 기록이 올바르지 않습니다.")?;
-        let first = parents[0].as_str().filter(|id| !id.is_empty() && id.len() <= 120).ok_or("알의 부모 기록이 올바르지 않습니다.")?;
-        let second = parents[1].as_str().filter(|id| !id.is_empty() && id.len() <= 120).ok_or("알의 부모 기록이 올바르지 않습니다.")?;
-        if first == second { return Err("알의 부모 기록이 올바르지 않습니다."); }
+        let first = parents[0]
+            .as_str()
+            .filter(|id| !id.is_empty() && id.len() <= 120)
+            .ok_or("알의 부모 기록이 올바르지 않습니다.")?;
+        let second = parents[1]
+            .as_str()
+            .filter(|id| !id.is_empty() && id.len() <= 120)
+            .ok_or("알의 부모 기록이 올바르지 않습니다.")?;
+        if first == second {
+            return Err("알의 부모 기록이 올바르지 않습니다.");
+        }
         let required = integer(egg.get("requiredSteps"), 256, 65_536)?;
-        if required % 256 != 0 { return Err("알의 부화 걸음이 올바르지 않습니다."); }
+        if required % 256 != 0 {
+            return Err("알의 부화 걸음이 올바르지 않습니다.");
+        }
         integer(egg.get("steps"), 0, required)?;
         integer(egg.get("createdAtStep"), 1, MAX_SAFE_INTEGER)?;
         validate_brain(egg.get("brain").ok_or("알의 회로 상태가 없습니다.")?)?;
@@ -525,8 +612,22 @@ fn validate_monster(
 ) -> Result<(), &'static str> {
     validate_evolution_progress(monster)?;
     if let Some(origin) = monster.get("originRegion") {
-        let origin = origin.as_str().ok_or("포켓몬 출신 지방 기록이 올바르지 않습니다.")?;
-        if !matches!(origin, "kanto" | "johto" | "hoenn" | "sinnoh" | "unova" | "kalos" | "alola" | "galar" | "hisui" | "paldea") {
+        let origin = origin
+            .as_str()
+            .ok_or("포켓몬 출신 지방 기록이 올바르지 않습니다.")?;
+        if !matches!(
+            origin,
+            "kanto"
+                | "johto"
+                | "hoenn"
+                | "sinnoh"
+                | "unova"
+                | "kalos"
+                | "alola"
+                | "galar"
+                | "hisui"
+                | "paldea"
+        ) {
             return Err("포켓몬 출신 지방 기록이 올바르지 않습니다.");
         }
     }
@@ -552,6 +653,48 @@ fn validate_monster(
         owned_species.insert(species_id);
     }
     let ivs = validate_individual_traits(monster, species_id)?;
+    if monster.get("heldTool").is_some_and(|value| {
+        !matches!(
+            value.as_str(),
+            Some(
+                "leftovers"
+                    | "choice-band"
+                    | "choice-specs"
+                    | "choice-scarf"
+                    | "life-orb"
+                    | "focus-sash"
+            )
+        )
+    }) {
+        return Err("장착 도구가 올바르지 않습니다.");
+    }
+    if let Some(form) = monster.get("regionalForm") {
+        let form = form.as_str().ok_or("지역 모습이 올바르지 않습니다.")?;
+        let expected_species = match form {
+            "rattata-alola" => 19,
+            "raticate-alola" => 20,
+            "raichu-alola" => 26,
+            "sandshrew-alola" => 27,
+            "sandslash-alola" => 28,
+            "vulpix-alola" => 37,
+            "ninetales-alola" => 38,
+            "diglett-alola" => 50,
+            "dugtrio-alola" => 51,
+            "meowth-alola" => 52,
+            "persian-alola" => 53,
+            "geodude-alola" => 74,
+            "graveler-alola" => 75,
+            "golem-alola" => 76,
+            "grimer-alola" => 88,
+            "muk-alola" => 89,
+            "exeggutor-alola" => 103,
+            "marowak-alola" => 105,
+            _ => return Err("지역 모습이 올바르지 않습니다."),
+        };
+        if species_id != expected_species {
+            return Err("지역 모습이 원본 종과 맞지 않습니다.");
+        }
+    }
     let nickname = monster
         .get("nickname")
         .and_then(Value::as_str)
@@ -580,7 +723,7 @@ fn validate_monster(
         "speed",
     ]
     .into_iter()
-    .zip(expected_stats_with_ivs(species, level, ivs))
+    .zip(if let Some(identifier) = monster.get("regionalForm").and_then(Value::as_str) { form_stats(identifier, level, ivs)? } else { expected_stats_with_ivs(species, level, ivs) })
     {
         if integer(stats.get(field), 1, 10_000)? != expected {
             return Err("계산 능력치가 종과 레벨에 맞지 않습니다.");
@@ -637,6 +780,7 @@ fn validate_monster(
                 .map(|candidate| candidate.id),
         );
     }
+    if let Some(form) = monster.get("regionalForm").and_then(Value::as_str).and_then(combat_form) { legal.extend(form.level_up_moves.iter().filter(|entry| entry.level <= level).map(|entry| entry.move_id)); }
     let mut move_ids = HashSet::new();
     for slot in moves {
         let move_id = integer(slot.get("moveId"), 1, i64::MAX)?;
@@ -878,7 +1022,9 @@ fn validate_open_world(view: Option<&Value>) -> Result<(), &'static str> {
             .ok_or("오픈월드 출현표 버전이 올바르지 않습니다.")?;
         let expected = match region {
             Some("johto") => "gold-v1",
-            Some("hoenn" | "sinnoh" | "unova" | "kalos" | "alola" | "galar" | "hisui" | "paldea") => "expansion-v1",
+            Some(
+                "hoenn" | "sinnoh" | "unova" | "kalos" | "alola" | "galar" | "hisui" | "paldea",
+            ) => "expansion-v1",
             _ => "red-v1",
         };
         if layout != expected
@@ -886,8 +1032,10 @@ fn validate_open_world(view: Option<&Value>) -> Result<(), &'static str> {
         {
             return Err("오픈월드 출현표 버전이 지역과 일치하지 않습니다.");
         }
-    } else if matches!(region, Some("hoenn" | "sinnoh" | "unova" | "kalos" | "alola" | "galar" | "hisui" | "paldea"))
-        && !is_legacy_expansion_map(region, map_version)
+    } else if matches!(
+        region,
+        Some("hoenn" | "sinnoh" | "unova" | "kalos" | "alola" | "galar" | "hisui" | "paldea")
+    ) && !is_legacy_expansion_map(region, map_version)
     {
         return Err("추가 지방 오픈월드 출현표 버전이 필요합니다.");
     }
@@ -1064,7 +1212,10 @@ fn validate_campaign(
             .filter(|regions| regions.len() <= 8)
             .ok_or("추가 지방 진행 형식이 올바르지 않습니다.")?;
         for (region, value) in regions {
-            if !matches!(region.as_str(), "hoenn" | "sinnoh" | "unova" | "kalos" | "alola" | "galar" | "hisui" | "paldea") {
+            if !matches!(
+                region.as_str(),
+                "hoenn" | "sinnoh" | "unova" | "kalos" | "alola" | "galar" | "hisui" | "paldea"
+            ) {
                 return Err("추가 지방 진행 형식이 올바르지 않습니다.");
             }
             let progress = value
@@ -1141,7 +1292,12 @@ fn validate_battle_progress(
     let kind = battle
         .get("kind")
         .and_then(Value::as_str)
-        .filter(|kind| matches!(*kind, "wild" | "gym" | "trainer" | "elite" | "champion" | "red"))
+        .filter(|kind| {
+            matches!(
+                *kind,
+                "wild" | "gym" | "trainer" | "elite" | "champion" | "red"
+            )
+        })
         .ok_or("전투 종류가 올바르지 않습니다.")?;
     let region_id = battle
         .get("regionId")
@@ -1155,9 +1311,23 @@ fn validate_battle_progress(
     if (kind == "wild") != can_run {
         return Err("전투 도주 규칙이 올바르지 않습니다.");
     }
-    if battle.get("policyRegion").is_some_and(|value| !matches!(value.as_str(),
-        Some("kanto" | "johto" | "hoenn" | "sinnoh" | "unova" | "kalos" | "alola" | "galar" | "hisui" | "paldea")))
-    {
+    if battle.get("policyRegion").is_some_and(|value| {
+        !matches!(
+            value.as_str(),
+            Some(
+                "kanto"
+                    | "johto"
+                    | "hoenn"
+                    | "sinnoh"
+                    | "unova"
+                    | "kalos"
+                    | "alola"
+                    | "galar"
+                    | "hisui"
+                    | "paldea"
+            )
+        )
+    }) {
         return Err("전투 사용 정책 지역이 올바르지 않습니다.");
     }
 
@@ -1203,7 +1373,21 @@ fn validate_battle_progress(
     };
     let campaign_region = campaign_region
         .as_str()
-        .filter(|region| matches!(*region, "johto" | "kanto" | "hoenn" | "sinnoh" | "unova" | "kalos" | "alola" | "galar" | "hisui" | "paldea"))
+        .filter(|region| {
+            matches!(
+                *region,
+                "johto"
+                    | "kanto"
+                    | "hoenn"
+                    | "sinnoh"
+                    | "unova"
+                    | "kalos"
+                    | "alola"
+                    | "galar"
+                    | "hisui"
+                    | "paldea"
+            )
+        })
         .ok_or("캠페인 전투 지역이 올바르지 않습니다.")?;
     let campaign = campaign.ok_or("캠페인 전투 진행이 올바르지 않습니다.")?;
     if campaign_region == "kanto" && campaign.start_region == "johto" && campaign.johto_league < 5 {
@@ -1221,34 +1405,63 @@ fn validate_battle_progress(
                 .get("sinnoh")
                 .map_or(true, |progress| progress.league < 5)
         || campaign_region == "kalos"
-            && campaign.expansion.get("unova").map_or(true, |progress| progress.league < 5)
+            && campaign
+                .expansion
+                .get("unova")
+                .map_or(true, |progress| progress.league < 5)
         || campaign_region == "alola"
-            && campaign.expansion.get("kalos").map_or(true, |progress| progress.league < 5)
+            && campaign
+                .expansion
+                .get("kalos")
+                .map_or(true, |progress| progress.league < 5)
         || campaign_region == "galar"
-            && campaign.expansion.get("alola").map_or(true, |progress| progress.league < 5)
+            && campaign
+                .expansion
+                .get("alola")
+                .map_or(true, |progress| progress.league < 5)
         || campaign_region == "hisui"
-            && campaign.expansion.get("galar").map_or(true, |progress| progress.league < 5)
+            && campaign
+                .expansion
+                .get("galar")
+                .map_or(true, |progress| progress.league < 5)
         || campaign_region == "paldea"
-            && campaign.expansion.get("hisui").map_or(true, |progress| progress.league < 5)
+            && campaign
+                .expansion
+                .get("hisui")
+                .map_or(true, |progress| progress.league < 5)
     {
         return Err("이전 지방 리그 완료 전에 추가 지방 전투를 저장할 수 없습니다.");
     }
 
     match kind {
         "trainer" => {
-            let trainer = trainer_id.and_then(Value::as_str)
+            let trainer = trainer_id
+                .and_then(Value::as_str)
                 .and_then(field_trainer)
                 .ok_or("트레이너 정보가 올바르지 않습니다.")?;
-            let enemy_team = battle.get("enemy").and_then(|enemy| enemy.get("team")).and_then(Value::as_array)
+            let enemy_team = battle
+                .get("enemy")
+                .and_then(|enemy| enemy.get("team"))
+                .and_then(Value::as_array)
                 .ok_or("트레이너 편성이 올바르지 않습니다.")?;
-            if trainer.region != campaign_region || trainer.location_id != region_id
+            if trainer.region != campaign_region
+                || trainer.location_id != region_id
                 || battle.get("gymBadge").is_some()
-                || game.get("defeatedFieldTrainers").and_then(Value::as_array)
-                    .is_some_and(|ids| ids.iter().any(|id| id.as_str() == Some(trainer.id.as_str())))
+                || game
+                    .get("defeatedFieldTrainers")
+                    .and_then(Value::as_array)
+                    .is_some_and(|ids| {
+                        ids.iter()
+                            .any(|id| id.as_str() == Some(trainer.id.as_str()))
+                    })
                 || enemy_team.len() != trainer.team.len()
-                || enemy_team.iter().zip(&trainer.team).any(|(monster, (species, level))|
-                    monster.get("speciesId").and_then(Value::as_i64) != Some(*species)
-                    || monster.get("level").and_then(Value::as_i64) != Some(*level))
+                || enemy_team
+                    .iter()
+                    .zip(&trainer.team)
+                    .any(|(monster, (species, level))| {
+                        monster.get("speciesId").and_then(Value::as_i64) != Some(*species)
+                            || monster.get("level").and_then(Value::as_i64) != Some(*level)
+                    })
             {
                 return Err("트레이너 배틀 진행이 올바르지 않습니다.");
             }
@@ -1343,24 +1556,69 @@ fn validate_battle_progress(
                     ],
                 ),
                 "kalos" => (
-                    campaign.expansion.get("kalos").map_or(0, |progress| progress.league),
-                    ["kalos-malus","kalos-siebold","kalos-wikstrom","kalos-drashna","kalos-diantha"],
+                    campaign
+                        .expansion
+                        .get("kalos")
+                        .map_or(0, |progress| progress.league),
+                    [
+                        "kalos-malus",
+                        "kalos-siebold",
+                        "kalos-wikstrom",
+                        "kalos-drashna",
+                        "kalos-diantha",
+                    ],
                 ),
                 "alola" => (
-                    campaign.expansion.get("alola").map_or(0, |progress| progress.league),
-                    ["alola-molayne","alola-olivia","alola-acerola","alola-kahili","alola-champion"],
+                    campaign
+                        .expansion
+                        .get("alola")
+                        .map_or(0, |progress| progress.league),
+                    [
+                        "alola-molayne",
+                        "alola-olivia",
+                        "alola-acerola",
+                        "alola-kahili",
+                        "alola-champion",
+                    ],
                 ),
                 "galar" => (
-                    campaign.expansion.get("galar").map_or(0, |progress| progress.league),
-                    ["galar-marnie","galar-hop","galar-bede","galar-raihan","galar-leon"],
+                    campaign
+                        .expansion
+                        .get("galar")
+                        .map_or(0, |progress| progress.league),
+                    [
+                        "galar-marnie",
+                        "galar-hop",
+                        "galar-bede",
+                        "galar-raihan",
+                        "galar-leon",
+                    ],
                 ),
                 "hisui" => (
-                    campaign.expansion.get("hisui").map_or(0, |progress| progress.league),
-                    ["hisui-mai","hisui-irida","hisui-adaman","hisui-kamado","hisui-volo"],
+                    campaign
+                        .expansion
+                        .get("hisui")
+                        .map_or(0, |progress| progress.league),
+                    [
+                        "hisui-mai",
+                        "hisui-irida",
+                        "hisui-adaman",
+                        "hisui-kamado",
+                        "hisui-volo",
+                    ],
                 ),
                 "paldea" => (
-                    campaign.expansion.get("paldea").map_or(0, |progress| progress.league),
-                    ["paldea-rika","paldea-poppy","paldea-larry","paldea-hassel","paldea-geeta"],
+                    campaign
+                        .expansion
+                        .get("paldea")
+                        .map_or(0, |progress| progress.league),
+                    [
+                        "paldea-rika",
+                        "paldea-poppy",
+                        "paldea-larry",
+                        "paldea-hassel",
+                        "paldea-geeta",
+                    ],
                 ),
                 _ => return Err("캠페인 리그 지역이 올바르지 않습니다."),
             };
@@ -1417,6 +1675,12 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
         .is_some_and(|value| !value.is_boolean())
     {
         return Err("경험치 공유 설정이 올바르지 않습니다.");
+    }
+    if game
+        .get("autoMergeDuplicates")
+        .is_some_and(|value| !value.is_boolean())
+    {
+        return Err("자동 합치기 설정이 올바르지 않습니다.");
     }
     let next_instance_id = integer(game.get("nextInstanceId"), 1, MAX_SAFE_INTEGER)?;
     let player = game
@@ -1484,17 +1748,40 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
     }
     let campaign = validate_campaign(game, badges, champion_defeated)?;
     if let Some(claimed) = game.get("claimedRegionalStarters") {
-        let claimed = claimed.as_array().filter(|items| items.len() <= 10)
+        let claimed = claimed
+            .as_array()
+            .filter(|items| items.len() <= 10)
             .ok_or("지역별 스타팅 포켓몬 수령 기록이 올바르지 않습니다.")?;
-        let start_region = campaign.as_ref().map_or("kanto", |progress| progress.start_region);
+        let start_region = campaign
+            .as_ref()
+            .map_or("kanto", |progress| progress.start_region);
         let mut unique = HashSet::new();
         for region in claimed {
-            let region = region.as_str().filter(|region| matches!(*region,
-                "kanto" | "johto" | "hoenn" | "sinnoh" | "unova" | "kalos" | "alola" | "galar" | "hisui" | "paldea"))
+            let region = region
+                .as_str()
+                .filter(|region| {
+                    matches!(
+                        *region,
+                        "kanto"
+                            | "johto"
+                            | "hoenn"
+                            | "sinnoh"
+                            | "unova"
+                            | "kalos"
+                            | "alola"
+                            | "galar"
+                            | "hisui"
+                            | "paldea"
+                    )
+                })
                 .ok_or("지역별 스타팅 포켓몬 수령 기록이 올바르지 않습니다.")?;
-            if !unique.insert(region) { return Err("지역별 스타팅 포켓몬 수령 기록이 올바르지 않습니다."); }
+            if !unique.insert(region) {
+                return Err("지역별 스타팅 포켓몬 수령 기록이 올바르지 않습니다.");
+            }
         }
-        if !unique.contains(start_region) { return Err("시작 지방 스타팅 포켓몬 수령 기록이 없습니다."); }
+        if !unique.contains(start_region) {
+            return Err("시작 지방 스타팅 포켓몬 수령 기록이 없습니다.");
+        }
     }
 
     let mut ids = HashSet::new();
@@ -1529,6 +1816,136 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
             return Err("전투 팀과 플레이어 팀이 일치하지 않습니다.");
         }
         integer(battle_player.get("activeIndex"), 0, team.len() as i64 - 1)?;
+        for key in ["playerMegaUsed", "playerTeraUsed"] {
+            if battle.get(key).is_some_and(|value| !value.is_boolean()) {
+                return Err("전투 변신 사용 기록이 올바르지 않습니다.");
+            }
+        }
+        if let Some(transformations) = battle.get("transformations") {
+            let transformations = transformations
+                .as_object()
+                .ok_or("전투 변신 기록이 올바르지 않습니다.")?;
+            let battle_ids: HashSet<&str> = team
+                .iter()
+                .chain(enemies)
+                .filter_map(|monster| monster.get("instanceId")?.as_str())
+                .collect();
+            if transformations.len() > battle_ids.len() {
+                return Err("전투 변신 기록이 올바르지 않습니다.");
+            }
+            for (instance_id, form_value) in transformations {
+                if !battle_ids.contains(instance_id.as_str()) {
+                    return Err("전투 변신 개체가 올바르지 않습니다.");
+                }
+                let form = form_value
+                    .as_object()
+                    .ok_or("전투 변신 기록이 올바르지 않습니다.")?;
+                integer(form.get("speciesId"), 1, MAX_SAFE_INTEGER)?;
+                let stats = object(form_value, "stats")?;
+                for key in [
+                    "hp",
+                    "attack",
+                    "defense",
+                    "specialAttack",
+                    "specialDefense",
+                    "speed",
+                ] {
+                    integer(stats.get(key), 1, 10_000)?;
+                }
+                let moves = array(form_value, "moves")?;
+                if moves.len() > 4 {
+                    return Err("전투 변신 기술이 올바르지 않습니다.");
+                }
+                for slot in moves {
+                    let move_id = integer(slot.get("moveId"), 1, MAX_SAFE_INTEGER)?;
+                    let known = catalog()
+                        .moves
+                        .get(&move_id)
+                        .ok_or("전투 변신 기술이 올바르지 않습니다.")?;
+                    integer(slot.get("pp"), 0, known.pp)?;
+                }
+                let kind = form.get("kind").and_then(Value::as_str);
+                if kind.is_some_and(|kind| !matches!(kind, "transform" | "mega" | "tera")) {
+                    return Err("전투 변신 종류가 올바르지 않습니다.");
+                }
+                if let Some(types) = form.get("types") {
+                    let types = types
+                        .as_array()
+                        .filter(|types| !types.is_empty() && types.len() <= 2)
+                        .ok_or("전투 변신 타입이 올바르지 않습니다.")?;
+                    if types.iter().any(|value| {
+                        !matches!(
+                            value.as_str(),
+                            Some(
+                                "normal"
+                                    | "fire"
+                                    | "water"
+                                    | "electric"
+                                    | "grass"
+                                    | "ice"
+                                    | "fighting"
+                                    | "poison"
+                                    | "ground"
+                                    | "flying"
+                                    | "psychic"
+                                    | "bug"
+                                    | "rock"
+                                    | "ghost"
+                                    | "dragon"
+                                    | "dark"
+                                    | "steel"
+                                    | "fairy"
+                            )
+                        )
+                    }) {
+                        return Err("전투 변신 타입이 올바르지 않습니다.");
+                    }
+                }
+                if matches!(kind, Some("mega" | "tera")) {
+                    let source = team.iter().chain(enemies).find(|monster| monster.get("instanceId").and_then(Value::as_str) == Some(instance_id.as_str())).unwrap();
+                    if form.get("speciesId") != source.get("speciesId") || form.get("moves") != source.get("moves") {
+                        return Err("전투 변신 원본 개체/기술이 일치하지 않습니다.");
+                    }
+                    let expected_stats = if kind == Some("mega") {
+                        let profile = form.get("formIdentifier").and_then(Value::as_str).and_then(combat_form)
+                            .filter(|profile| profile.kind == "mega" && Some(profile.species_id) == source.get("speciesId").and_then(Value::as_i64))
+                            .ok_or("메가진화 모습이 올바르지 않습니다.")?;
+                        if form.get("types") != Some(&serde_json::json!(profile.types)) { return Err("메가진화 타입이 올바르지 않습니다."); }
+                        if let Some(ability) = profile.abilities.first() {
+                            if form_value.pointer("/ability/id").and_then(Value::as_i64) != Some(ability.id)
+                                || form_value.pointer("/ability/slug").and_then(Value::as_str) != Some(ability.slug.as_str()) {
+                                return Err("메가진화 특성이 올바르지 않습니다.");
+                            }
+                        }
+                        let ivs = validate_individual_traits(source, profile.species_id)?;
+                        form_stats(&profile.identifier, integer(source.get("level"), 1, 100)?, ivs)?
+                    } else {
+                        let source_stats = object(source, "stats")?;
+                        ["hp", "attack", "defense", "specialAttack", "specialDefense", "speed"].map(|key| source_stats[key].as_i64().unwrap())
+                    };
+                    for (key, expected) in ["hp", "attack", "defense", "specialAttack", "specialDefense", "speed"].into_iter().zip(expected_stats) {
+                        if stats.get(key).and_then(Value::as_i64) != Some(expected) { return Err("전투 변신 능력치가 올바르지 않습니다."); }
+                    }
+                    if team.iter().any(|monster| monster.get("instanceId").and_then(Value::as_str) == Some(instance_id.as_str()))
+                        && battle.get(if kind == Some("mega") { "playerMegaUsed" } else { "playerTeraUsed" }).and_then(Value::as_bool) != Some(true) {
+                        return Err("전투 변신 사용 기록이 올바르지 않습니다.");
+                    }
+                }
+                if kind == Some("tera") {
+                    let tera = form
+                        .get("teraType")
+                        .and_then(Value::as_str)
+                        .ok_or("테라스탈 타입이 올바르지 않습니다.")?;
+                    let types = form
+                        .get("types")
+                        .and_then(Value::as_array)
+                        .ok_or("테라스탈 타입이 올바르지 않습니다.")?;
+                    if types.len() != 1 || types[0].as_str() != Some(tera) {
+                        return Err("테라스탈 타입이 올바르지 않습니다.");
+                    }
+                }
+            }
+        }
     }
     let dex = game.get("dex").ok_or("도감 저장 데이터가 없습니다.")?;
     let seen = array(dex, "seen")?;
@@ -1598,7 +2015,12 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
     }
     let maximum_generated_id = ids
         .iter()
-        .filter_map(|id| id.strip_prefix("mon-").or_else(|| id.strip_prefix("egg-"))?.parse::<i64>().ok())
+        .filter_map(|id| {
+            id.strip_prefix("mon-")
+                .or_else(|| id.strip_prefix("egg-"))?
+                .parse::<i64>()
+                .ok()
+        })
         .max()
         .unwrap_or(0);
     if next_instance_id <= maximum_generated_id {
@@ -1615,7 +2037,13 @@ mod tests {
     #[test]
     fn ability_effects_match_the_client_runtime_categories() {
         assert_eq!(ability_effect("overgrow"), "implemented");
-        for slug in ["insomnia", "vital-spirit", "comatose", "soundproof", "good-as-gold"] {
+        for slug in [
+            "insomnia",
+            "vital-spirit",
+            "comatose",
+            "soundproof",
+            "good-as-gold",
+        ] {
             assert_eq!(ability_effect(slug), "partial");
         }
         assert_eq!(ability_effect("run-away"), "display-only");
@@ -1625,11 +2053,16 @@ mod tests {
     fn accepts_a_client_canonicalized_insomnia_save() {
         let species_id = 163;
         let source = abilities()[&species_id]
-            .iter().find(|entry| entry.slug == "insomnia")
+            .iter()
+            .find(|entry| entry.slug == "insomnia")
             .expect("fixture species with insomnia");
         let species = &catalog().species[&species_id];
         let level = 5;
-        let learned = species.moves.iter().find(|entry| entry.level <= level).unwrap();
+        let learned = species
+            .moves
+            .iter()
+            .find(|entry| entry.level <= level)
+            .unwrap();
         let pp = catalog().moves[&learned.move_id].pp;
         let ivs = [0; 6];
         let stats = expected_stats_with_ivs(species, level, ivs);
@@ -1754,8 +2187,18 @@ mod tests {
     fn validates_ordinary_trainer_battle_and_victory_history() {
         let mut save = valid_save();
         set_campaign(&mut save, 0, 0, 0, false);
-        let trainer = field_trainer_catalog().iter().find(|trainer| trainer.id == "practice-johto-new-bark").unwrap();
-        set_battle(&mut save, "trainer", &trainer.location_id, Some("johto"), Some(&trainer.id), None);
+        let trainer = field_trainer_catalog()
+            .iter()
+            .find(|trainer| trainer.id == "practice-johto-new-bark")
+            .unwrap();
+        set_battle(
+            &mut save,
+            "trainer",
+            &trainer.location_id,
+            Some("johto"),
+            Some(&trainer.id),
+            None,
+        );
         let (species_id, level) = trainer.team[0];
         let species = catalog().species.get(&species_id).unwrap();
         let stats = expected_stats(species, level);
@@ -2023,7 +2466,9 @@ mod tests {
         assert!(validate_save(&premature_unova).is_err());
 
         let mut late = hoenn.clone();
-        for region in ["hoenn", "sinnoh", "unova", "kalos", "alola", "galar", "hisui"] {
+        for region in [
+            "hoenn", "sinnoh", "unova", "kalos", "alola", "galar", "hisui",
+        ] {
             set_expansion_progress(&mut late, region, 8, 5);
         }
         set_expansion_progress(&mut late, "paldea", 1, 0);
@@ -2312,8 +2757,26 @@ mod tests {
         bad_ability["game"]["player"]["team"][0]["ability"]["slot"] = Value::from(3);
         assert!(validate_save(&bad_ability).is_err());
         let mut partial = save;
-        partial["game"]["player"]["team"][0].as_object_mut().unwrap().remove("ability");
+        partial["game"]["player"]["team"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("ability");
         assert!(validate_save(&partial).is_err());
+    }
+
+    #[test]
+    fn validates_auto_merge_and_held_tool_extensions() {
+        let mut save = valid_save();
+        save["game"]["autoMergeDuplicates"] = Value::Bool(true);
+        save["game"]["player"]["team"][0]["heldTool"] = Value::from("leftovers");
+        validate_save(&save).unwrap();
+
+        let mut bad_option = save.clone();
+        bad_option["game"]["autoMergeDuplicates"] = Value::from(1);
+        assert!(validate_save(&bad_option).is_err());
+        let mut bad_tool = save;
+        bad_tool["game"]["player"]["team"][0]["heldTool"] = Value::from("unknown-tool");
+        assert!(validate_save(&bad_tool).is_err());
     }
 
     #[test]
@@ -2476,7 +2939,10 @@ mod tests {
         }
 
         for region in ["galar", "hisui", "paldea"] {
-            for map_version in [format!("{region}-authored-v1"), format!("{region}-atlas-v1")] {
+            for map_version in [
+                format!("{region}-authored-v1"),
+                format!("{region}-atlas-v1"),
+            ] {
                 let mut save = valid_save();
                 save["view"]["openWorld"] = serde_json::json!({
                     "regionId":region,

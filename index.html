@@ -4,7 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <link rel="preload" href="/fonts/ChoketSansVariable.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="/chocketmon.png?v=__SHARE_IMAGE_HASH__" as="image" fetchpriority="high" />
     <link rel="stylesheet" href="/src/ui/loading-screen.css" />
     <meta name="theme-color" content="#173f39" />
     <meta name="description" content="버전별 포켓몬 수집과 개체별 기억, 실제 초파리 커넥톰 일부가 행동에 관여하는 포획·배틀·육성 모험" />
@@ -30,18 +29,9 @@
     <link rel="apple-touch-icon" href="/chocketmon.png?v=__SHARE_IMAGE_HASH__" />
   </head>
   <body>
-    <section id="startup-loading" class="adventure-loading" aria-label="모험 준비">
-      <div class="adventure-loading__card">
-        <img class="adventure-loading__art" src="/chocketmon.png?v=__SHARE_IMAGE_HASH__" width="1024" height="1536" fetchpriority="high" alt="초켓몬스터 모험 대표 이미지" />
-        <div class="adventure-loading__body">
-          <div><span class="adventure-loading__eyebrow">CHOCKETMON · ADVENTURE</span><h1>모험을 준비하고 있어요</h1></div>
-          <div class="adventure-loading__stage"><div class="adventure-loading__label"><strong>Male CNS</strong><span data-loading-percent="connectome">0%</span></div><progress data-loading-bar="connectome" aria-label="Male CNS 준비" max="100" value="0"></progress><p class="adventure-loading__detail" data-loading-detail="connectome">회로와 이동 정책 준비 대기</p></div>
-          <div class="adventure-loading__stage"><div class="adventure-loading__label"><strong>3D 월드</strong><span data-loading-percent="world">0%</span></div><progress data-loading-bar="world" aria-label="3D 월드 준비" max="100" value="0"></progress><p class="adventure-loading__detail" data-loading-detail="world">모험을 불러오면 준비를 시작합니다</p></div>
-          <p class="adventure-loading__status" data-loading-status role="status" aria-live="polite">게임 파일을 불러오고 있습니다.</p>
-          <button type="button" class="adventure-loading__retry" data-loading-retry hidden>다시 시도</button>
-          <noscript>모험을 시작하려면 JavaScript를 켜 주세요.</noscript>
-        </div>
-      </div>
+    <section id="startup-loading" class="startup-error" aria-label="시작 오류" hidden>
+      <p data-loading-status role="alert"></p><button type="button" data-loading-retry hidden>다시 시도</button>
+      <noscript>JavaScript를 켜 주세요.</noscript>
     </section>
     <div id="app"></div><script type="module" src="/src/bootstrap.ts"></script>
   </body>

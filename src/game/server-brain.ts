@@ -3,7 +3,7 @@ export type ServerDecision = { action: number; updates: number; activity: number
 export type ServerBrainReceipt = ServerDecision & { turn: number; learning: boolean };
 export type ServerBrainChoice = { self: NeuralMonster; foe: NeuralMonster; turn: number; reward: number | null; learning: boolean; battleId: string; terminal?: boolean; context?: BattleSenseContext };
 type ReplayStep = { requestId: string; episodeId: string; inputs: number[]; available: boolean[]; reward: number | null; learning: boolean; terminal: boolean };
-type LocalBrain = { checkpoint?: string; checkpointId?: string; history: ReplayStep[]; lastRequestId: string; decision: ServerDecision };
+type LocalBrain = { checkpoint?: string; checkpointId?: string; history: ReplayStep[]; lastRequestId: string; lastChoiceId?: string; decision: ServerDecision };
 export type TransferableServerBrain = { schema: 1; graphId: string; gameScope: string; state: LocalBrain };
 const lastReceipts = new Map<string, ServerBrainReceipt>();
 // Hints only: IndexedDB still owns the full durable checkpoint and replay log.
@@ -85,7 +85,8 @@ const validDecision = (value: unknown): value is ServerDecision => {
 const validateLocalBrain = (value: unknown): LocalBrain => {
   const state = value as LocalBrain;
   if (!state || typeof state !== 'object' || !Array.isArray(state.history) || state.history.length > 7
-    || typeof state.lastRequestId !== 'string' || !HASH.test(state.lastRequestId) || !validDecision(state.decision)
+    || typeof state.lastRequestId !== 'string' || !HASH.test(state.lastRequestId)
+    || (state.lastChoiceId !== undefined && (typeof state.lastChoiceId !== 'string' || !HASH.test(state.lastChoiceId))) || !validDecision(state.decision)
     || (state.checkpoint !== undefined && (typeof state.checkpoint !== 'string' || state.checkpoint.length > 2_100_000))
     || (state.checkpointId !== undefined && (typeof state.checkpointId !== 'string' || !HASH.test(state.checkpointId)))) throw new Error('전송된 포켓몬 회로 기억이 올바르지 않습니다.');
   for (const step of state.history) {
@@ -96,7 +97,7 @@ const validateLocalBrain = (value: unknown): LocalBrain => {
       || typeof step.learning !== 'boolean' || typeof step.terminal !== 'boolean') throw new Error('전송된 포켓몬 회로 재생 기록이 올바르지 않습니다.');
   }
   return {
-    checkpoint: state.checkpoint, checkpointId: state.checkpointId, lastRequestId: state.lastRequestId,
+    checkpoint: state.checkpoint, checkpointId: state.checkpointId, lastRequestId: state.lastRequestId, lastChoiceId: state.lastChoiceId,
     decision: { action: state.decision.action, updates: state.decision.updates, activity: state.decision.activity, elapsedMs: state.decision.elapsedMs,
       graphId: state.decision.graphId, nodes: state.decision.nodes, edges: state.decision.edges },
     history: state.history.map(step => ({ requestId: step.requestId, episodeId: step.episodeId, inputs: step.inputs.slice(), available: step.available.slice(),
@@ -204,17 +205,32 @@ export function chooseServerBrains(controller: ConnectomeController, choices: Se
     if (!choices.length || choices.length > 2) throw new Error('한 번에 1~2개 회로를 요청할 수 있습니다.');
     const clientId = await digest(await deviceId() + ':' + selectedScope + ':' + graphId);
     const keys = choices.map(choice => clientId + ':' + choice.self.instanceId), saved = await readBrains(keys);
-    const requests = await Promise.all(choices.map(async choice => ({
-      requestId: await digest(clientId + ':' + choice.battleId + ':' + choice.self.instanceId + ':' + choice.turn + ':' + (choice.terminal ? 'finish' : 'act')),
-      episodeId: await digest(choice.battleId), inputs: controller.observe(choice.self, choice.foe, choice.turn, choice.context),
-      available: choice.context?.automatic ? automatedMoveMask(choice.self, choice.foe, choice.turn, choice.context) : availableMoveMask(choice.self),
-      reward: choice.reward, learning: choice.learning, terminal: choice.terminal ?? false,
-    })));
+    const requests = await Promise.all(choices.map(async (choice, index) => {
+      const episodeId = await digest(choice.battleId);
+      const inputs = controller.observe(choice.self, choice.foe, choice.turn, choice.context);
+      const available = choice.context?.automatic ? automatedMoveMask(choice.self, choice.foe, choice.turn, choice.context) : availableMoveMask(choice.self);
+      const identity = JSON.stringify({ battleId: choice.battleId, creatureId: choice.self.instanceId, turn: choice.turn,
+        terminal: choice.terminal ?? false, inputs, available, reward: choice.reward, learning: choice.learning });
+      const choiceId = await digest(clientId + ':' + identity);
+      // Reusing a battle/turn tuple later must create a new replay node. Tying the
+      // request to its durable parent keeps the node unique, while lastChoiceId
+      // makes an immediate retry resolve to the already committed response.
+      const previous = saved[index];
+      const requestId = previous?.lastChoiceId === choiceId || (!previous?.lastChoiceId && previous?.lastRequestId === choiceId)
+        ? previous.lastRequestId
+        : previous ? await digest(choiceId + ':' + previous.lastRequestId) : choiceId;
+      return {
+        requestId, choiceId, episodeId, inputs, available,
+        reward: choice.reward, learning: choice.learning, terminal: choice.terminal ?? false,
+      };
+    }));
     const missing = choices.map((_, index) => index).filter(index => saved[index]?.lastRequestId !== requests[index].requestId);
     if (missing.length) {
       saved.forEach(assertCompleteLineage);
       const response = await sendBatch({ clientId, steps: missing.map(index => ({
-        creatureId: choices[index].self.instanceId, ...requests[index], checkpoint: saved[index]?.checkpoint,
+        creatureId: choices[index].self.instanceId, requestId: requests[index].requestId, episodeId: requests[index].episodeId,
+        inputs: requests[index].inputs, available: requests[index].available, reward: requests[index].reward,
+        learning: requests[index].learning, terminal: requests[index].terminal, checkpoint: saved[index]?.checkpoint,
         checkpointId: saved[index]?.checkpointId, history: saved[index]?.history ?? [],
         returnCheckpoint: requests[index].terminal || (saved[index]?.history.length ?? 0) >= 7,
       })) });
@@ -224,8 +240,12 @@ export function chooseServerBrains(controller: ConnectomeController, choices: Se
         if (!decision || !Number.isInteger(decision.action) || decision.action < 0 || decision.action > 4 || !Number.isFinite(decision.activity) || decision.graphId !== graphId || (!requests[index].terminal && !requests[index].available[decision.action])) throw new Error('서버 회로 응답을 확인할 수 없습니다.');
         const previous = saved[index];
         const state: LocalBrain = row?.checkpoint
-          ? { checkpoint: row.checkpoint, checkpointId: requests[index].requestId, history: [], lastRequestId: requests[index].requestId, decision }
-          : { checkpoint: previous?.checkpoint, checkpointId: previous?.checkpointId, history: [...(previous?.history ?? []), requests[index]], lastRequestId: requests[index].requestId, decision };
+          ? { checkpoint: row.checkpoint, checkpointId: requests[index].requestId, history: [], lastRequestId: requests[index].requestId, lastChoiceId: requests[index].choiceId, decision }
+          : { checkpoint: previous?.checkpoint, checkpointId: previous?.checkpointId,
+            history: [...(previous?.history ?? []), {
+              requestId: requests[index].requestId, episodeId: requests[index].episodeId, inputs: requests[index].inputs,
+              available: requests[index].available, reward: requests[index].reward, learning: requests[index].learning, terminal: requests[index].terminal,
+            }], lastRequestId: requests[index].requestId, lastChoiceId: requests[index].choiceId, decision };
         if (state.history.length > 7) throw new Error('전체 회로 체크포인트가 누락됐습니다.');
         return { key: keys[index], previous: previous?.lastRequestId, state };
       });
