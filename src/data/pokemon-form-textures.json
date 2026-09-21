@@ -1,0 +1,1667 @@
+{
+  "schema": 3,
+  "source": {
+    "repository": "https://github.com/Lilothestitch16/Pokemon-HOME-Unity-Models",
+    "commit": "7b18d1a3e22df48329220ea99c4d2a6617d72345",
+    "rightsStatus": "unverified-do-not-redistribute"
+  },
+  "rationale": {
+    "color": "Unity HOME GLBs omit image/texture objects. Material names were joined to same-named pinned Unity .mat files, then texture GUIDs were joined to pinned PNG .meta files.",
+    "layer1": "Preserve USE_LAYER1 metadata. When overLerp is 1 and the layer PNG is fully opaque, layer1 is a source-faithful color replacement on the recorded UV channel. Muk BodyA meets this rule and its layer1 restores canonical teal/yellow/pink bands."
+  },
+  "forms": {
+    "raticate-alola": {
+      "speciesId": 20,
+      "materials": {
+        "pm0020_61_00-BodyVco01": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0020_61_00/fbx/textures/pm0020_61_00_Body_col.png",
+          "sha256": "4cbcb85be87b3d305f5043d594f0647a8b7706151e91d030a39a8650cf515c4b",
+          "gitBlobSha1": "200b0eed8a188fa08a3363c1fe489bea1a3d88fb",
+          "bytes": 22846,
+          "width": 512,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0020_61_00-Body01": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0020_61_00/fbx/textures/pm0020_61_00_Body_col.png",
+          "sha256": "4cbcb85be87b3d305f5043d594f0647a8b7706151e91d030a39a8650cf515c4b",
+          "gitBlobSha1": "200b0eed8a188fa08a3363c1fe489bea1a3d88fb",
+          "bytes": 22846,
+          "width": 512,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0020_61_00-Body00": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0020_61_00/fbx/textures/pm0020_61_00_Body_col.png",
+          "sha256": "4cbcb85be87b3d305f5043d594f0647a8b7706151e91d030a39a8650cf515c4b",
+          "gitBlobSha1": "200b0eed8a188fa08a3363c1fe489bea1a3d88fb",
+          "bytes": 22846,
+          "width": 512,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0020_61_00-Eye": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0020_61_00/fbx/textures/pm0020_61_00_Eye_col.png",
+          "sha256": "33a4a6f2d39613969d1ff4e5e6bb83b4d93985db7a3a4b3aaa5601b0906e7895",
+          "gitBlobSha1": "135a91140192b2d11de8f2ec0bb4f94917e1e7b9",
+          "bytes": 22400,
+          "width": 256,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0020_61_00-BodyVco00": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0020_61_00/fbx/textures/pm0020_61_00_Body_col.png",
+          "sha256": "4cbcb85be87b3d305f5043d594f0647a8b7706151e91d030a39a8650cf515c4b",
+          "gitBlobSha1": "200b0eed8a188fa08a3363c1fe489bea1a3d88fb",
+          "bytes": 22846,
+          "width": 512,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        }
+      }
+    },
+    "raichu-alola": {
+      "speciesId": 26,
+      "materials": {
+        "pm0026_61_00-BodyA00": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0026_61_00/fbx/textures/pm0026_61_00_BodyA_col.png",
+          "sha256": "bc723d721772c1e7a7d54fd77a7a8a6c11ba92c36c2b74acfe61410df47dd030",
+          "gitBlobSha1": "127f6df3319490738939029bc3730da65807204a",
+          "bytes": 33162,
+          "width": 512,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0026_61_00-Mouth": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0026_61_00/fbx/textures/pm0026_61_00_Mouth_col.png",
+          "sha256": "6681ea968db5d92fd859a12f72637fbda9df9d9a76eee0e8a04377f8ce29a56e",
+          "gitBlobSha1": "7648af6b1fcb9cd60cabe7ce79f7db208fd04fa0",
+          "bytes": 12441,
+          "width": 256,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0026_61_00-Eye": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0026_61_00/fbx/textures/pm0026_61_00_Eye_col.png",
+          "sha256": "4603ec4723f3e28a7b033f7d5c28a5d387c708dbcd9b161b1ed9fdc5fd405513",
+          "gitBlobSha1": "63661cea4d571ac2ef41548027a3aaed90a943a6",
+          "bytes": 28373,
+          "width": 256,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0026_61_00-BodyBInc": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0026_61_00/fbx/textures/pm0026_61_00_BodyB_col.png",
+          "sha256": "f7aa415768d0c5fe888ff5fb9154eb1af0c04ccaf940a177ad9d945e71bf3ba0",
+          "gitBlobSha1": "83eafbe1f8516ae7ae43c5c9c4e640f0bb9a4a38",
+          "bytes": 8234,
+          "width": 128,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0026_61_00-BodyA02": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0026_61_00/fbx/textures/pm0026_61_00_BodyA_col.png",
+          "sha256": "bc723d721772c1e7a7d54fd77a7a8a6c11ba92c36c2b74acfe61410df47dd030",
+          "gitBlobSha1": "127f6df3319490738939029bc3730da65807204a",
+          "bytes": 33162,
+          "width": 512,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0026_61_00-BodyA01": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0026_61_00/fbx/textures/pm0026_61_00_BodyA_col.png",
+          "sha256": "bc723d721772c1e7a7d54fd77a7a8a6c11ba92c36c2b74acfe61410df47dd030",
+          "gitBlobSha1": "127f6df3319490738939029bc3730da65807204a",
+          "bytes": 33162,
+          "width": 512,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0026_61_00-BodyC": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0026_61_00/fbx/textures/pm0026_61_00_BodyC_col.png",
+          "sha256": "c53d2748c05d3ede7e925a22f0e347dab3b0ae40f0f50e5162183bab1e2ecee7",
+          "gitBlobSha1": "ae0cb408b91a8abb9bbc4c8a69c930cfcb0a3909",
+          "bytes": 29664,
+          "width": 256,
+          "height": 256,
+          "alphaMin": 0,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 1,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 1,
+            "constantAlpha": 0,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 0
+          },
+          "channel": 0
+        }
+      }
+    },
+    "sandshrew-alola": {
+      "speciesId": 27,
+      "materials": {
+        "pm0027_61_00-BodySpc00": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0027_61_00/fbx/textures/pm0027_61_00_Body_col.png",
+          "sha256": "7e5d7b9db463a4ff456124443d21a10d9b008d22d5f2353264f4f445ebaa1b32",
+          "gitBlobSha1": "1305cea53d50d0a85bff16eabce6858f96f9beb8",
+          "bytes": 74538,
+          "width": 256,
+          "height": 512,
+          "alphaMin": 254,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0027_61_00-BodyIce00": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0027_61_00/fbx/textures/pm0027_61_00_Body_col.png",
+          "sha256": "7e5d7b9db463a4ff456124443d21a10d9b008d22d5f2353264f4f445ebaa1b32",
+          "gitBlobSha1": "1305cea53d50d0a85bff16eabce6858f96f9beb8",
+          "bytes": 74538,
+          "width": 256,
+          "height": 512,
+          "alphaMin": 254,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0027_61_00-Eye": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0027_61_00/fbx/textures/pm0027_61_00_Eye_col.png",
+          "sha256": "85e59623e20960b31079b9471316b018ca4d7a12b34cfddf769e0a55a78d2fc1",
+          "gitBlobSha1": "3d55999184607855fc6798e120eaf2a5f835251d",
+          "bytes": 63203,
+          "width": 256,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0027_61_00-BodyIce01": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0027_61_00/fbx/textures/pm0027_61_00_Body_col.png",
+          "sha256": "7e5d7b9db463a4ff456124443d21a10d9b008d22d5f2353264f4f445ebaa1b32",
+          "gitBlobSha1": "1305cea53d50d0a85bff16eabce6858f96f9beb8",
+          "bytes": 74538,
+          "width": 256,
+          "height": 512,
+          "alphaMin": 254,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0027_61_00-Body01": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0027_61_00/fbx/textures/pm0027_61_00_Body_col.png",
+          "sha256": "7e5d7b9db463a4ff456124443d21a10d9b008d22d5f2353264f4f445ebaa1b32",
+          "gitBlobSha1": "1305cea53d50d0a85bff16eabce6858f96f9beb8",
+          "bytes": 74538,
+          "width": 256,
+          "height": 512,
+          "alphaMin": 254,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0027_61_00-Body00": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0027_61_00/fbx/textures/pm0027_61_00_Body_col.png",
+          "sha256": "7e5d7b9db463a4ff456124443d21a10d9b008d22d5f2353264f4f445ebaa1b32",
+          "gitBlobSha1": "1305cea53d50d0a85bff16eabce6858f96f9beb8",
+          "bytes": 74538,
+          "width": 256,
+          "height": 512,
+          "alphaMin": 254,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        }
+      }
+    },
+    "sandslash-alola": {
+      "speciesId": 28,
+      "materials": {
+        "pm0028_61_00-BodyASpcVco": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0028_61_00/fbx/textures/pm0028_61_00_BodyA_col.png",
+          "sha256": "b91f37e2b24d9e99e6f96906ec0d1182ac1f9431d1fe742bab2adb6a3bd5b9ad",
+          "gitBlobSha1": "1590a35d77a581e5c2353b4f6e41af1ebeef7129",
+          "bytes": 13246,
+          "width": 512,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0028_61_00-BodyA": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0028_61_00/fbx/textures/pm0028_61_00_BodyA_col.png",
+          "sha256": "b91f37e2b24d9e99e6f96906ec0d1182ac1f9431d1fe742bab2adb6a3bd5b9ad",
+          "gitBlobSha1": "1590a35d77a581e5c2353b4f6e41af1ebeef7129",
+          "bytes": 13246,
+          "width": 512,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0028_61_00-Eye": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0028_61_00/fbx/textures/pm0028_61_00_Eye_col.png",
+          "sha256": "17359a1c3c8a0483e6e7c85157ba5646b214b5be969718423d0a69fcbceaaf4a",
+          "gitBlobSha1": "277194bde7d2c8e8f3032c2b5027fd2b7b02b6c1",
+          "bytes": 48598,
+          "width": 256,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0028_61_00-BodyPowalen": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0028_61_00/fbx/textures/pm0028_61_00_BodyB_col.png",
+          "sha256": "52f5953975ff630c32df23c1dfd79c10ca9e6e37eb6102843a4921ac3418bf4a",
+          "gitBlobSha1": "8009ab6b43437d7e2bbb0170d715c5c74b9d218a",
+          "bytes": 62928,
+          "width": 512,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 1,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0028_61_00-BodyPowalenVco": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0028_61_00/fbx/textures/pm0028_61_00_BodyB_col.png",
+          "sha256": "52f5953975ff630c32df23c1dfd79c10ca9e6e37eb6102843a4921ac3418bf4a",
+          "gitBlobSha1": "8009ab6b43437d7e2bbb0170d715c5c74b9d218a",
+          "bytes": 62928,
+          "width": 512,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 1,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        }
+      }
+    },
+    "geodude-alola": {
+      "speciesId": 74,
+      "materials": {
+        "pm0074_61_00-Body00": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0074_61_00/fbx/textures/pm0074_61_00_Body_col.png",
+          "sha256": "7910d242c13bfcf832b336443831edfa5c6d7670b593a7499a1f59887e763dd3",
+          "gitBlobSha1": "2329bf2d4e2609e36f2fc3c6f2b4b4672436e45d",
+          "bytes": 17549,
+          "width": 512,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0074_61_00-Body01": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0074_61_00/fbx/textures/pm0074_61_00_Body_col.png",
+          "sha256": "7910d242c13bfcf832b336443831edfa5c6d7670b593a7499a1f59887e763dd3",
+          "gitBlobSha1": "2329bf2d4e2609e36f2fc3c6f2b4b4672436e45d",
+          "bytes": 17549,
+          "width": 512,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0074_61_00-LEye": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0074_61_00/fbx/textures/pm0074_61_00_Iris_lyc.png",
+          "sha256": "0a37e1df629c3993eb280c1c098dff3287d229338ec923b43ddf707b6fc7448d",
+          "gitBlobSha1": "cf87c53cd12af940a7f5a63324c43e83d847a7ae",
+          "bytes": 1788,
+          "width": 128,
+          "height": 128,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 4,
+            "y": 4
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0,
+          "colorSource": "Opaque Unity layer1 over-lerp 1 replaces layer0"
+        },
+        "pm0074_61_00-REye": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0074_61_00/fbx/textures/pm0074_61_00_Iris_lyc.png",
+          "sha256": "0a37e1df629c3993eb280c1c098dff3287d229338ec923b43ddf707b6fc7448d",
+          "gitBlobSha1": "cf87c53cd12af940a7f5a63324c43e83d847a7ae",
+          "bytes": 1788,
+          "width": 128,
+          "height": 128,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 4,
+            "y": 4
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0,
+          "colorSource": "Opaque Unity layer1 over-lerp 1 replaces layer0"
+        },
+        "pm0074_61_00-BodyVco": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0074_61_00/fbx/textures/pm0074_61_00_Body_col.png",
+          "sha256": "7910d242c13bfcf832b336443831edfa5c6d7670b593a7499a1f59887e763dd3",
+          "gitBlobSha1": "2329bf2d4e2609e36f2fc3c6f2b4b4672436e45d",
+          "bytes": 17549,
+          "width": 512,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        }
+      }
+    },
+    "graveler-alola": {
+      "speciesId": 75,
+      "materials": {
+        "pm0075_61_00-BodyA": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0075_61_00/fbx/textures/pm0075_61_00_BodyA_col.png",
+          "sha256": "23a8a3bc3253bcb0bea23c2676f91a5fb05dab610d0e664a22fdcff7128a806f",
+          "gitBlobSha1": "b612f7cfd35f24f6111c07008577d8c7c4a166af",
+          "bytes": 7440,
+          "width": 512,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 1,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0075_61_00-BodyC00": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0075_61_00/fbx/textures/pm0075_61_00_BodyC_col.png",
+          "sha256": "523077367bfe72851f6428c3a49396512c724568c3f2e146b22e87e546d807f1",
+          "gitBlobSha1": "075a0dc5d0fc79676c6fba7846425a68aebf9272",
+          "bytes": 12792,
+          "width": 512,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0075_61_00-Eye": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0075_61_00/fbx/textures/pm0075_61_00_Eye_col.png",
+          "sha256": "220691f1c7bc68ef89095aa9d4f11d208a8369d49d50fbfc465add9e06bd248f",
+          "gitBlobSha1": "e35f71a7d6b27a59c26bc75946b8a261e0093a6b",
+          "bytes": 21104,
+          "width": 256,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0075_61_00-BodyB": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0075_61_00/fbx/textures/pm0075_61_00_BodyB_col.png",
+          "sha256": "6bd6ccd90e7ce10bb411d8a9a0e226cf48fa5fd6b411524af23fe0395953888a",
+          "gitBlobSha1": "cd0554d0820d452f4f7ffad12f4edcd6a064a783",
+          "bytes": 2255,
+          "width": 256,
+          "height": 256,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 1,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0075_61_00-BodyC01": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0075_61_00/fbx/textures/pm0075_61_00_BodyC_col.png",
+          "sha256": "523077367bfe72851f6428c3a49396512c724568c3f2e146b22e87e546d807f1",
+          "gitBlobSha1": "075a0dc5d0fc79676c6fba7846425a68aebf9272",
+          "bytes": 12792,
+          "width": 512,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        }
+      }
+    },
+    "golem-alola": {
+      "speciesId": 76,
+      "materials": {
+        "pm0076_61_00-BodyBInc": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0076_61_00/fbx/textures/pm0076_61_00_BodyB_col.png",
+          "sha256": "43d0c37fbbcf0f4677575552fcc19877c573b3bb53f64344731c614dbd091d29",
+          "gitBlobSha1": "5bd635eb9dcf6920bafd1e44431d12c38828dfa2",
+          "bytes": 4370,
+          "width": 256,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 1,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0076_61_00-BodyA01": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0076_61_00/fbx/textures/pm0076_61_00_BodyA_col.png",
+          "sha256": "a387e2b729af3766d3dfb1e5d85271c97539bebf7be5d3952dfbfb33c4f4ce15",
+          "gitBlobSha1": "5c694d8d11de71f4b4c317b77ef6f581e75af8f2",
+          "bytes": 25909,
+          "width": 256,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0076_61_00-BodyA00": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0076_61_00/fbx/textures/pm0076_61_00_BodyA_col.png",
+          "sha256": "a387e2b729af3766d3dfb1e5d85271c97539bebf7be5d3952dfbfb33c4f4ce15",
+          "gitBlobSha1": "5c694d8d11de71f4b4c317b77ef6f581e75af8f2",
+          "bytes": 25909,
+          "width": 256,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0076_61_00-Eye": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0076_61_00/fbx/textures/pm0076_61_00_Eye_col.png",
+          "sha256": "0e64cb12d06b12d2a62ce761d277843cb815f8d5dea2e45d6b80266dfa194f53",
+          "gitBlobSha1": "0e0655e04e274f20f42bcad52d359571237b88f6",
+          "bytes": 33044,
+          "width": 256,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0076_61_00-BodyC00": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0076_61_00/fbx/textures/pm0076_61_00_BodyC_col.png",
+          "sha256": "22a3cf847597b6b3fd2e6d60bc3256be161a1bc71de5ad7392c6341b366ac791",
+          "gitBlobSha1": "de0c25341f3031133b0fe1573aaeb3231ab110c6",
+          "bytes": 58914,
+          "width": 512,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 1,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0076_61_00-RockInc01": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0076_61_00/fbx/textures/pm0076_61_00_BodyB_col.png",
+          "sha256": "43d0c37fbbcf0f4677575552fcc19877c573b3bb53f64344731c614dbd091d29",
+          "gitBlobSha1": "5bd635eb9dcf6920bafd1e44431d12c38828dfa2",
+          "bytes": 4370,
+          "width": 256,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 1,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0076_61_00-RockInc00": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0076_61_00/fbx/textures/pm0076_61_00_BodyB_col.png",
+          "sha256": "43d0c37fbbcf0f4677575552fcc19877c573b3bb53f64344731c614dbd091d29",
+          "gitBlobSha1": "5bd635eb9dcf6920bafd1e44431d12c38828dfa2",
+          "bytes": 4370,
+          "width": 256,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 1,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0076_61_00-RockInc02": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0076_61_00/fbx/textures/pm0076_61_00_BodyB_col.png",
+          "sha256": "43d0c37fbbcf0f4677575552fcc19877c573b3bb53f64344731c614dbd091d29",
+          "gitBlobSha1": "5bd635eb9dcf6920bafd1e44431d12c38828dfa2",
+          "bytes": 4370,
+          "width": 256,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 1,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        }
+      }
+    },
+    "muk-alola": {
+      "speciesId": 89,
+      "materials": {
+        "pm0089_61_00-BodyA": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0089_61_00/fbx/textures/pm0089_61_00_BodyA_lyc.png",
+          "sha256": "baf89c0f15924bb958b8c165febcf2d5f701c488954e7c00af6af11d4e2f9485",
+          "gitBlobSha1": "ecf514eb93fa0ed679f591d1baddf606b70d055a",
+          "bytes": 4452,
+          "width": 256,
+          "height": 512,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 1,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 1,
+          "colorSource": "Opaque Unity layer1 over-lerp 1 replaces layer0"
+        },
+        "pm0089_61_00-BodyB": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0089_61_00/fbx/textures/pm0089_61_00_BodyB_col.png",
+          "sha256": "686a857e025e086bda7fffd268524fd22817a541a5c99cb37ac9494a4c4328ef",
+          "gitBlobSha1": "4b3f08c5cc613bff29fc6b081dbb813904934192",
+          "bytes": 3743,
+          "width": 256,
+          "height": 256,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0089_61_00-BodyC": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0089_61_00/fbx/textures/pm0089_61_00_BodyC_col.png",
+          "sha256": "35925486ec237e2a000e24b5bb0b520d39a5eed1874ad2d11290373a909563b0",
+          "gitBlobSha1": "99c3c086a9d0de5b52248d7ac8c7ec7be5f6ee55",
+          "bytes": 251,
+          "width": 32,
+          "height": 32,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0089_61_00-BodyCVco": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0089_61_00/fbx/textures/pm0089_61_00_BodyC_col.png",
+          "sha256": "35925486ec237e2a000e24b5bb0b520d39a5eed1874ad2d11290373a909563b0",
+          "gitBlobSha1": "99c3c086a9d0de5b52248d7ac8c7ec7be5f6ee55",
+          "bytes": 251,
+          "width": 32,
+          "height": 32,
+          "alphaMin": 255,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 0,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 1
+          },
+          "channel": 0
+        },
+        "pm0089_61_00-Eye": {
+          "colorUrl": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-Unity-Models/7b18d1a3e22df48329220ea99c4d2a6617d72345/Mitake09sm/Assets/sandbox/models/09sm/pm0089_61_00/fbx/textures/pm0089_61_00_Eye_col.png",
+          "sha256": "b358a3de4d79b52976b3eca07c23615f56ee87f7d44c93065e18a2e10172aee9",
+          "gitBlobSha1": "4bb20c9d0e0be001e03c82f9576d809da5f50ba8",
+          "bytes": 80568,
+          "width": 512,
+          "height": 512,
+          "alphaMin": 0,
+          "alphaMax": 255,
+          "repeat": {
+            "x": 2,
+            "y": 1
+          },
+          "offset": {
+            "x": 0,
+            "y": 0
+          },
+          "unityImport": {
+            "sRGBTexture": 1,
+            "alphaUsage": 1,
+            "alphaIsTransparency": 1,
+            "wrapU": 2,
+            "wrapV": 0,
+            "filterMode": 2
+          },
+          "shader": {
+            "blendMode": 1,
+            "constantAlpha": 1,
+            "cutoff": 0.5,
+            "cullMode": 2,
+            "colorMapUvIndex": 0,
+            "zWrite": 0
+          },
+          "channel": 0
+        }
+      }
+    }
+  }
+}

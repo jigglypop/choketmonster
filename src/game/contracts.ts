@@ -5,7 +5,7 @@ export type PokemonSpecies = {
   id: number; name: string; englishName: string; types: PokemonType[];
   baseStats: BaseStats; catchRate: number; baseExperience: number; growthRate: string; heightMeters?: number;
   frontSprite: string; backSprite: string; evolutions: Evolution[];
-  moves: { level: number; moveId: number }[]; habitat: string;
+  moves: { level: number; moveId: number }[]; machineMoves: number[]; habitat: string;
 };
 export type PokemonMove = {
   id: number; name: string; englishName: string; type: PokemonType;

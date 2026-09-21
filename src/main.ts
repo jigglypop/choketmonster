@@ -1,5 +1,6 @@
 import { hasPokemonModel } from './game/assets';
 import { getPokemonMotionSupport } from './data/model-motion';
+import { getPokemonFormModelSource } from './data/pokemon-form-models';
 import { getMoveLayout } from './game/move-layout';
 import { getWorldAtlas } from './openworld/atlas';
 import { getPlayableSpeciesIds, isPlayableSpecies, PLAYABLE_SPECIES_IDS, isPlayableAdventureVersion, isPlayableWorldRegion } from './openworld/availability';
@@ -560,8 +561,9 @@ function renderSelectedDetail() {
     detail.querySelectorAll<HTMLButtonElement>('[data-reorder-from],[data-replace-move],#recover-attack-move,[data-use-treat],#use-candy').forEach(button => { button.disabled = true; });
     if (isMonsterInBattle(game, selected.instanceId)) detail.querySelectorAll<HTMLButtonElement>('[data-evolve],[data-capsule-evolve]').forEach(button => { button.disabled = true; });
   }
-  if (hasPokemonModel(selected.speciesId) && !selected.regionalForm) {
-    try { getPokemonScene().showSpecimen($('.detail-portrait'), selected.speciesId); }
+  const selectedForm = game.battle?.transformations?.[selected.instanceId]?.formIdentifier ?? selected.regionalForm;
+  if (selectedForm ? getPokemonFormModelSource(selectedForm) : hasPokemonModel(selected.speciesId)) {
+    try { getPokemonScene().showSpecimen($('.detail-portrait'), selected.speciesId, selectedForm); }
     catch { detachPokemonScene(); }
   } else detachPokemonScene();
 }
@@ -725,7 +727,7 @@ function showModel(initialId: number, orderedIds = getPlayableSpeciesIds()) {
   const dialog = document.createElement('dialog');
   dialog.className = 'model-dialog';
   const renderDetail = () => {
-    const species = getSpecies(id), forms = getPokemonForms(id), index = orderedIds.indexOf(id), habitats = dexHabitats(id);
+    const species = getSpecies(id), forms = getPokemonForms(id).filter(form => !/-mega(?:-[xyz])?$/.test(form.identifier) || getPokemonFormModelSource(form.identifier)), index = orderedIds.indexOf(id), habitats = dexHabitats(id);
     const caught = game?.dex.caught.includes(id), seen = game?.dex.seen.includes(id), ownedCount = owned().filter(monster => monster.speciesId === id).length;
     const parents = POKEMON.filter(parent => parent.evolutions.some(evolution => evolution.target === id));
     const evolutions = species.evolutions.map(evolution => getSpecies(evolution.target));

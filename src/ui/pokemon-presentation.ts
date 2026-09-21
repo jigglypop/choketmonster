@@ -1,6 +1,7 @@
 import { getSpecies } from '../data/pokemon';
 import { getCombatForm, getMegaCombatForms, type PokemonCombatFormProfile } from '../data/pokemon-combat-forms';
 import { pokemonSpriteUrl } from '../game/assets';
+import { getPokemonFormModelSource } from '../data/pokemon-form-models';
 import type { GameState, Monster } from '../game/engine';
 
 export const POKEMON_TYPE_LABELS: Record<string, string> = { normal: '노말', fire: '불꽃', water: '물', electric: '전기', grass: '풀', ice: '얼음', fighting: '격투', poison: '독', ground: '땅', flying: '비행', psychic: '에스퍼', bug: '벌레', rock: '바위', ghost: '고스트', dragon: '드래곤', dark: '악', steel: '강철', fairy: '페어리' };
@@ -25,6 +26,6 @@ export function battleTransformationsHtml(state: GameState, disabled = false): s
   if (presentation.transformation?.kind === 'tera') return `<div class="battle-transformation-active" data-transformation-active="tera">${POKEMON_TYPE_LABELS[presentation.transformation.teraType!]} 테라스탈</div>`;
   if (presentation.transformation) return '';
   const blocked = disabled || battle.awaitingSwitch || monster.hp <= 0;
-  const megas = getMegaCombatForms(monster.speciesId).filter(form => combatFormSprite(form));
+  const megas = getMegaCombatForms(monster.speciesId).filter(form => getPokemonFormModelSource(form.identifier));
   return `<div class="battle-transformations">${megas.length ? `<div><select data-mega-form aria-label="메가진화 모습" ${blocked || battle.playerMegaUsed ? 'disabled' : ''}>${megas.map(form => `<option value="${escape(form.identifier)}">${escape(form.name || form.identifier)}</option>`).join('')}</select><button data-battle-transformation="mega" ${blocked || battle.playerMegaUsed ? 'disabled' : ''}>메가진화</button></div>` : ''}<div><select data-tera-type aria-label="테라 타입" ${blocked || battle.playerTeraUsed ? 'disabled' : ''}>${Object.entries(POKEMON_TYPE_LABELS).map(([type, label]) => `<option value="${type}" ${type === presentation.types[0] ? 'selected' : ''}>${label}</option>`).join('')}</select><button data-battle-transformation="tera" ${blocked || battle.playerTeraUsed ? 'disabled' : ''}>테라스탈</button></div></div>`;
 }

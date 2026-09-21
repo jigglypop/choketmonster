@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
-import { activateBattleTransformation, assignAlolaForm, createGame, createMonster } from '../../src/game/engine';
+import { activateBattleTransformation, assignAlolaForm, createGame, createMonster, replaceMonsterMove } from '../../src/game/engine';
 import { defaultView, packSave } from '../../src/game/storage';
 import { OpenWorldSimulation } from '../../src/openworld/simulation';
 import type { Graph } from '../../src/core/brain';
 
-test('WebGPU exploration renders Alola sprites, Mega aura and Tera crystal', async ({ page }, info) => {
+test('WebGPU exploration renders Alola geometry, Mega aura and Tera crystal', async ({ page }, info) => {
   test.setTimeout(90_000);
   const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
@@ -18,6 +18,7 @@ test('WebGPU exploration renders Alola sprites, Mega aura and Tera crystal', asy
     const game = createGame(152, `world-form-${kind}`), monster = createMonster(game, kind === 'alola' ? 26 : 6, 50);
     game.player.team = [monster];
     if (kind === 'alola') assignAlolaForm(game, monster.instanceId, true);
+    if (kind === 'tera') replaceMonsterMove(game, monster.instanceId, 0, 851);
     const world = new OpenWorldSimulation(graph, game, 420);
     world.setControlMode('manual'); world.setAutoHunt(false);
     if (kind !== 'alola') {
@@ -30,9 +31,20 @@ test('WebGPU exploration renders Alola sprites, Mega aura and Tera crystal', asy
     await page.locator('#import-file').setInputFiles({ name: 'world-form.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(save)) });
     await expect(page.locator('#toast')).toContainText('불러왔습니다');
     await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
-    const expected = kind === 'alola' ? 'pokemon-form:raichu-alola' : `pokemon-transformation:${kind}`;
-    await expect.poll(() => page.evaluate(() => (window as any).__renderProbe?.read().pokemonForms), { timeout: 20_000 }).toContain(expected);
-    if (kind === 'mega') expect(await page.evaluate(() => (window as any).__renderProbe.read().pokemonForms)).toContain('pokemon-form:charizard-mega-x');
+    if (kind === 'alola') {
+      await expect.poll(() => page.evaluate(() => (window as any).__renderProbe?.read().formModels.some((model: any) => model.identifier === 'raichu-alola' && model.meshes > 0 && model.drawn > 0)), { timeout: 20_000 }).toBe(true);
+      expect(await page.evaluate(() => (window as any).__renderProbe.read().pokemonForms)).not.toContain('pokemon-form:raichu-alola');
+    } else await expect.poll(() => page.evaluate(() => (window as any).__renderProbe?.read().pokemonForms), { timeout: 20_000 }).toContain(`pokemon-transformation:${kind}`);
+    if (kind === 'mega') {
+      await expect.poll(() => page.evaluate(() => (window as any).__renderProbe?.read().formModels.some((model: any) => model.identifier === 'charizard-mega-x' && model.drawn > 0)), { timeout: 20_000 }).toBe(true);
+      expect(await page.evaluate(() => (window as any).__renderProbe.read().pokemonForms)).not.toContain('pokemon-form:charizard-mega-x');
+    }
+    if (kind === 'tera') {
+      await expect.poll(() => page.evaluate(() => (window as any).__renderProbe.read().teraSurfaces), { timeout: 20_000 }).toBeGreaterThan(0);
+      expect(await page.evaluate(() => (window as any).__renderProbe.read().teraCrowns)).toContain('tera-crown:water');
+      await page.locator('.world-battle-hud > summary').click();
+      await expect(page.locator('[data-world-move-id="851"]')).toHaveClass(/type-water/);
+    }
     await page.screenshot({ path: info.outputPath(`world-${kind}.png`), fullPage: true });
   }
   expect(errors).toEqual([]);

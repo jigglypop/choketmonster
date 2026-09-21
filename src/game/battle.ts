@@ -38,9 +38,20 @@ export function typeMultiplier(attack: PokemonType, defenders: readonly PokemonT
   return defenders.reduce((total, defense) => total * (effectiveness[attack]?.[defense] ?? 1), 1);
 }
 
+export function resolveTeraMove(attacker: Combatant, source: PokemonMove): PokemonMove {
+  if (!attacker.teraType) return source;
+  const type = source.id === 851 ? attacker.teraType : source.type;
+  const damageClass = source.id === 851 && attacker.stats.attack > attacker.stats.specialAttack ? 'physical' : source.damageClass;
+  const multiHit = (source.minHits ?? 0) > 0 && (source.maxHits ?? 0) > 0;
+  const power = type === attacker.teraType && source.power > 0 && source.power < 60 && source.priority <= 0 && !multiHit ? 60 : source.power;
+  return type === source.type && damageClass === source.damageClass && power === source.power
+    ? source : { ...source, type, damageClass, power };
+}
+
 export function calculateDamage(attacker: Combatant, defender: Combatant, move: PokemonMove, randomFactor = 1): {
   damage: number; multiplier: number; abilityActivation?: 'immunity' | 'absorb' | 'sturdy' | 'focus-sash';
 } {
+  move = resolveTeraMove(attacker, move);
   if (move.damageClass === 'status' || move.power <= 0) return { damage: 0, multiplier: 1 };
   const immunity = abilityImmunity(defender.ability, move.type);
   if (immunity) return { damage: 0, multiplier: 0, abilityActivation: immunity.heal ? 'absorb' : 'immunity' };

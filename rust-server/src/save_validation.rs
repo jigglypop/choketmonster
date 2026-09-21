@@ -118,6 +118,8 @@ struct Species {
     id: i64,
     base_stats: Stats,
     moves: Vec<LearnedMove>,
+    #[serde(default)]
+    machine_moves: Vec<i64>,
     experience: Vec<i64>,
     #[serde(default)]
     evolutions: Vec<Evolution>,
@@ -779,6 +781,9 @@ fn validate_monster(
                 })
                 .map(|candidate| candidate.id),
         );
+    }
+    if let Some(entry) = catalog().species.get(&species_id) {
+        legal.extend(entry.machine_moves.iter().copied());
     }
     if let Some(form) = monster.get("regionalForm").and_then(Value::as_str).and_then(combat_form) { legal.extend(form.level_up_moves.iter().filter(|entry| entry.level <= level).map(|entry| entry.move_id)); }
     let mut move_ids = HashSet::new();

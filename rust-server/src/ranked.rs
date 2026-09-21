@@ -682,7 +682,7 @@ fn apply_transformation(side: &mut Side, request: &TransformationRequest) -> Res
         "mega" => {
             if side.mega_used { return Err(invalid("이미 메가진화를 사용했습니다.")); }
             let profile = request.form_identifier.as_deref().and_then(combat_form)
-                .filter(|form| form.kind == "mega" && form.species_id == monster.species_id)
+                .filter(|form| form.kind == "mega" && form.species_id == monster.species_id && crate::combat_forms::mega_model_available(&form.identifier))
                 .ok_or(invalid("메가진화 모습이 올바르지 않습니다."))?;
             let base = profile.base_stats;
             let base = Stats { hp: base.hp, attack: base.attack, defense: base.defense, special_attack: base.special_attack, special_defense: base.special_defense, speed: base.speed };
@@ -711,6 +711,34 @@ fn stab_multiplier(monster: &Fighter, move_type: &str) -> f64 {
     let original = monster.original_types.as_ref().unwrap_or(&monster.types).iter().any(|kind| kind == move_type);
     if monster.tera_type.as_deref() == Some(move_type) { if original { 2.0 } else { 1.5 } }
     else if original { 1.5 } else { 1.0 }
+}
+
+fn effective_tera_move(monster: &Fighter, mv: &Move) -> (String, String, i64) {
+    let move_type = if mv.id == 851 {
+        monster.tera_type.as_deref().unwrap_or(&mv.move_type)
+    } else {
+        &mv.move_type
+    };
+    let damage_class = if mv.id == 851
+        && monster.tera_type.is_some()
+        && effective_stat(monster, "attack") > effective_stat(monster, "specialAttack")
+    {
+        "physical"
+    } else {
+        &mv.damage_class
+    };
+    let multi_hit = matches!((mv.min_hits, mv.max_hits), (Some(min), Some(max)) if min > 0 && max > 0);
+    let power = if monster.tera_type.as_deref() == Some(move_type)
+        && mv.power > 0
+        && mv.power < 60
+        && mv.priority <= 0
+        && !multi_hit
+    {
+        60
+    } else {
+        mv.power
+    };
+    (move_type.to_owned(), damage_class.to_owned(), power)
 }
 
 fn selected_move(side: &Side, index: usize) -> Result<Move, ApiError> {
@@ -1008,6 +1036,7 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
     if matches!(active(attacker).held_tool.as_deref(), Some("choice-band" | "choice-specs" | "choice-scarf")) {
         attacker.team[attacker.active_index].choice_move = Some(mv.id);
     }
+    let (move_type, damage_class, move_power) = effective_tera_move(active(attacker), mv);
     let accuracy = (mv.accuracy as f64
         * stage_multiplier(*active(attacker).stages.get("accuracy").unwrap_or(&0))
         / stage_multiplier(*active(defender).stages.get("evasion").unwrap_or(&0)))
@@ -1026,13 +1055,13 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
     let immunity = if self_target(mv) {
         None
     } else {
-        ability_immunity(active(defender).ability.as_deref(), &mv.move_type)
+        ability_immunity(active(defender).ability.as_deref(), &move_type)
     };
     let mut total_damage = 0;
-    let mut type_mult = effectiveness(&mv.move_type, &active(defender).types);
+    let mut type_mult = effectiveness(&move_type, &active(defender).types);
     // Ordinary status moves are not damaging type matchups. Thunder Wave still
     // respects Ground immunity; ailment-specific immunities are checked below.
-    if mv.damage_class == "status" && (self_target(mv) || mv.move_type != "electric") {
+    if damage_class == "status" && (self_target(mv) || move_type != "electric") {
         type_mult = 1.0;
     }
     if let Some(heal) = immunity {
@@ -1067,7 +1096,7 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
             mv.name,
             total_damage
         ));
-    } else if mv.power > 0 && mv.damage_class != "status" {
+    } else if move_power > 0 && damage_class != "status" {
         let hits = match (mv.min_hits, mv.max_hits) {
             (Some(min), Some(max)) if min > 0 && max >= min => {
                 min + (deterministic(id, turn, if p1 { 41 } else { 42 }) % (max - min + 1) as u64)
@@ -1083,26 +1112,26 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
             let d = active(defender);
             let mut offense = effective_stat(
                 a,
-                if mv.damage_class == "special" {
+                if damage_class == "special" {
                     "specialAttack"
                 } else {
                     "attack"
                 },
             );
-            if mv.damage_class == "physical" && a.status.as_deref() == Some("burn") {
+            if damage_class == "physical" && a.status.as_deref() == Some("burn") {
                 offense = (offense / 2).max(1);
             }
             let defense = effective_stat(
                 d,
-                if mv.damage_class == "special" {
+                if damage_class == "special" {
                     "specialDefense"
                 } else {
                     "defense"
                 },
             );
-            let stab = stab_multiplier(a, &mv.move_type);
-            let base = (((22 * mv.power * offense / defense.max(1)) / 50) + 2) as f64;
-            let mut damage = (base * stab * type_mult * low_hp_power(a, &mv.move_type) * if a.held_tool.as_deref() == Some("life-orb") { 1.3 } else { 1.0 } * 0.925)
+            let stab = stab_multiplier(a, &move_type);
+            let base = (((22 * move_power * offense / defense.max(1)) / 50) + 2) as f64;
+            let mut damage = (base * stab * type_mult * low_hp_power(a, &move_type) * if a.held_tool.as_deref() == Some("life-orb") { 1.3 } else { 1.0 } * 0.925)
                 .floor()
                 .max(if type_mult > 0.0 { 1.0 } else { 0.0 }) as i64;
             let target = &mut defender.team[defender.active_index];
@@ -1342,6 +1371,18 @@ async fn current_match(
         None => Ok(None),
     }
 }
+fn presentation_side(mut side: Side) -> Side {
+    for fighter in &mut side.team {
+        fighter.moves = fighter.moves.iter().map(|source| {
+            let (move_type, damage_class, power) = effective_tera_move(fighter, source);
+            let mut view = source.clone();
+            view.move_type = move_type; view.damage_class = damage_class; view.power = power;
+            view
+        }).collect();
+    }
+    side
+}
+
 async fn match_value(state: &AppState, id: Uuid, viewer: Uuid) -> Result<Value, ApiError> {
     let row=sqlx::query("SELECT league,state,actions,turn,status,winner_id,result_reason,rating_changes,deadline_at::text deadline_at FROM ranked_matches WHERE id=$1").bind(id).fetch_optional(&state.db).await?.ok_or_else(not_found)?;
     let SqlJson(battle): SqlJson<Battle> = row.get("state");
@@ -1352,6 +1393,8 @@ async fn match_value(state: &AppState, id: Uuid, viewer: Uuid) -> Result<Value, 
         (battle.player2, battle.player1)
     };
     let actions = row.get::<SqlJson<Value>, _>("actions").0;
+    let p_self = presentation_side(p_self);
+    let p_other = presentation_side(p_other);
     let submitted = actions
         .as_object()
         .is_some_and(|m| m.contains_key(&viewer.to_string()));
@@ -1514,6 +1557,55 @@ mod tests {
         assert_eq!(stab_multiplier(active(&other), "fire"), 1.5);
         assert_eq!(stab_multiplier(active(&other), "water"), 1.5);
         assert_eq!(active(&other).types, vec!["water"]);
+    }
+
+    #[test]
+    fn tera_move_rules_match_gen_nine_power_and_tera_blast_behavior() {
+        let mut attacker = fighter(26, 33, None);
+        attacker.types = vec!["electric".into()];
+        attacker.original_types = Some(vec!["electric".into(), "psychic".into()]);
+        attacker.tera_type = Some("electric".into());
+        attacker.stats.attack = 140;
+        attacker.stats.special_attack = 90;
+
+        let mut tera_blast = catalog().moves[&33].clone();
+        tera_blast.id = 851;
+        tera_blast.move_type = "normal".into();
+        tera_blast.damage_class = "special".into();
+        tera_blast.power = 80;
+        assert_eq!(effective_tera_move(&attacker, &tera_blast), ("electric".into(), "physical".into(), 80));
+        attacker.stats.attack = 90;
+        attacker.stats.special_attack = 140;
+        assert_eq!(effective_tera_move(&attacker, &tera_blast).1, "special");
+
+        let mut weak = catalog().moves[&33].clone();
+        weak.move_type = "electric".into();
+        weak.power = 40;
+        weak.priority = 0;
+        weak.min_hits = None;
+        weak.max_hits = None;
+        assert_eq!(effective_tera_move(&attacker, &weak).2, 60);
+        weak.priority = 1;
+        assert_eq!(effective_tera_move(&attacker, &weak).2, 40);
+        weak.priority = 0;
+        weak.min_hits = Some(2);
+        weak.max_hits = Some(5);
+        assert_eq!(effective_tera_move(&attacker, &weak).2, 40);
+        weak.min_hits = None;
+        weak.max_hits = None;
+        weak.power = 0;
+        assert_eq!(effective_tera_move(&attacker, &weak).2, 0);
+        assert_eq!(stab_multiplier(&attacker, "electric"), 2.0);
+        assert_eq!(stab_multiplier(&attacker, "psychic"), 1.5);
+    }
+
+    #[test]
+    fn mega_without_3d_model_is_unusable() {
+        let mut side = battle(fighter(36, 33, None), fighter(7, 55, None)).player1;
+        let before = serde_json::to_value(&side).unwrap();
+        let request = TransformationRequest { kind: "mega".into(), form_identifier: Some("clefable-mega".into()), tera_type: None };
+        assert!(apply_transformation(&mut side, &request).is_err());
+        assert_eq!(serde_json::to_value(side).unwrap(), before);
     }
 
     #[test]

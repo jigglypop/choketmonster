@@ -77,6 +77,16 @@ export function RenderProbe() {
         loadedPokemon: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('pokemon-model:')).map(object => Number(object.name.slice('pokemon-model:'.length))),
         modelStatuses: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('pokemon-model-status:')).map(object => object.name.slice('pokemon-model-status:'.length)),
         pokemonForms: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('pokemon-form:') || object.name.startsWith('pokemon-transformation:')).map(object => object.name),
+        formModels: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('pokemon-model:') && object.userData.formIdentifier).map(object => {
+          let meshes = 0, skinned = 0, drawn = 0;
+          object.traverse(node => { if (node instanceof Mesh) { meshes++; if ('isSkinnedMesh' in node) skinned++; drawn += Number(node.userData.pokemonDrawCount ?? 0); } });
+          return { identifier: object.userData.formIdentifier, url: object.userData.sourceUrl, meshes, skinned, drawn };
+        }),
+        teraCrowns: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('tera-crown:')).map(object => object.name),
+        teraSurfaces: scene.getObjectsByProperty('isMesh', true).filter(object => {
+          const material = (object as Mesh).material;
+          return (Array.isArray(material) ? material : [material]).some(surface => surface.userData.terastal);
+        }).length,
         townBuildings: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('town-building:')).map(object => object.name),
         townPaving: scene.getObjectsByProperty('name', 'town-paving').map(object => {
           const mesh = object as InstancedMesh;

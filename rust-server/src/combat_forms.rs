@@ -66,3 +66,17 @@ fn forms() -> &'static HashMap<String, CombatForm> {
 pub(crate) fn combat_form(identifier: &str) -> Option<&'static CombatForm> {
     forms().get(identifier)
 }
+
+pub(crate) fn mega_model_available(identifier: &str) -> bool {
+    static MODELS: OnceLock<std::collections::HashSet<String>> = OnceLock::new();
+    MODELS.get_or_init(|| {
+        #[derive(Deserialize)]
+        struct Model { identifier: String }
+        #[derive(Deserialize)]
+        struct Manifest { entries: Vec<Model> }
+        let manifest: Manifest = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"), "/../src/data/pokemon-mega-models-manifest.json"
+        ))).expect("Mega model manifest");
+        manifest.entries.into_iter().map(|model| model.identifier).collect()
+    }).contains(identifier)
+}

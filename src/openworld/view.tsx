@@ -26,12 +26,9 @@ import {
   MathUtils,
   Mesh,
   MeshStandardMaterial,
-  NearestFilter,
   Object3D,
   Quaternion,
   SRGBColorSpace,
-  Texture,
-  TextureLoader,
   Vector3,
 } from 'three';
 import { type GLTF } from 'three/addons/loaders/GLTFLoader.js';
@@ -56,6 +53,8 @@ import { creatureLods, terrainChunks, TERRAIN_CHUNK_SIZE, type TerrainChunk, typ
 import { initialYaw, movementYaw, turnTowards } from './motion';
 import { normalizePokemonModel } from './model-normalization';
 import { disposeNormalizedPokemonMaterials } from './pokemon-materials';
+import { applyTerastalMaterials } from './terastal-materials';
+import { TeraCrown } from './tera-crown';
 import { createTerrainSurface } from './terrain-surface';
 import { getSpecies } from '../data/pokemon';
 import './view.css';
@@ -493,6 +492,10 @@ function PokemonModel({ creature, url, onStatus }: { creature: WorldCreature; ur
       return null;
     }
   }, [creature.displayHeight, creature.speciesId, gltf]);
+  useLayoutEffect(() => {
+    if (!normalized || creature.transformationKind !== 'tera') return;
+    return applyTerastalMaterials(normalized.visual, (MOVE_COLORS[creature.transformationType ?? 'normal'] ?? MOVE_COLORS.normal)[0]);
+  }, [normalized, creature.transformationKind, creature.transformationType]);
   const status = failed || renderFailed || (gltf && !normalized) ? 'failed' : normalized && drawnModel === normalized.visual ? 'ready' : 'loading';
   useLayoutEffect(() => { onStatus?.(creature.id, status, creature.speciesId); }, [creature.id, creature.speciesId, onStatus, status]);
   useLayoutEffect(() => () => onStatus?.(creature.id, 'untracked', creature.speciesId), [creature.id, creature.speciesId, onStatus]);
@@ -583,7 +586,10 @@ function PokemonModel({ creature, url, onStatus }: { creature: WorldCreature; ur
   }, [creature.action, gltf, normalized]);
 
   if (!normalized || renderFailed) return <ModelStatus name={status === 'failed' ? '모델 오류' : ''} />;
-  return <group ref={root} name={`pokemon-model:${creature.speciesId}`} dispose={null}><primitive object={normalized.visual} /></group>;
+  return <group ref={root} name={`pokemon-model:${creature.speciesId}`} userData={{ formIdentifier: creature.formIdentifier, sourceUrl: url }} dispose={null}>
+    <primitive object={normalized.visual} />
+    {creature.transformationKind === 'tera' && <TeraCrown type={creature.transformationType ?? 'normal'} color={(MOVE_COLORS[creature.transformationType ?? 'normal'] ?? MOVE_COLORS.normal)[0]} height={normalized.sourceSize.y * normalized.scale} anchor={normalized.animatedRoot.getObjectsByProperty('isBone', true).find(bone => /head/i.test(bone.name))} />}
+  </group>;
 }
 
 function ModelStatus({ name }: { name: string }) {
@@ -602,59 +608,11 @@ const MOVE_COLORS: Record<string, [string, string]> = {
   steel: ['#b8c4ce', '#66717d'], fairy: ['#ffa7d9', '#ad4f82'], normal: ['#eadfc9', '#827463'],
 };
 
-function PokemonFormSprite({ creature, url, onStatus }: { creature: WorldCreature; url: string; onStatus?: OpenWorldViewOptions['onModelStatus'] }) {
-  const root = useRef<Group>(null);
-  const [texture, setTexture] = useState<Texture | null>(null);
-  const [failed, setFailed] = useState(false);
-  useEffect(() => {
-    let active = true;
-    setTexture(null);
-    setFailed(false);
-    const loaded = new TextureLoader().load(url, next => {
-      if (!active) { next.dispose(); return; }
-      next.colorSpace = SRGBColorSpace;
-      next.magFilter = NearestFilter;
-      next.minFilter = NearestFilter;
-      next.needsUpdate = true;
-      setTexture(next);
-    }, undefined, () => { if (active) setFailed(true); });
-    return () => { active = false; loaded.dispose(); };
-  }, [url]);
-  const status = failed ? 'failed' : texture ? 'ready' : 'loading';
-  useLayoutEffect(() => { onStatus?.(creature.id, status, creature.speciesId); }, [creature.id, creature.speciesId, onStatus, status]);
-  useLayoutEffect(() => () => onStatus?.(creature.id, 'untracked', creature.speciesId), [creature.id, creature.speciesId, onStatus]);
-  useFrame(({ clock }) => {
-    if (!root.current) return;
-    const phase = clock.elapsedTime * 5 + creature.speciesId;
-    const pulse = creature.action === 'attack' ? 1 + Math.max(0, Math.sin(phase)) * .12 : 1;
-    root.current.scale.set(pulse, creature.action === 'hurt' ? .88 : 1, pulse);
-    root.current.rotation.z = creature.action === 'fainted' ? Math.PI / 2 : 0;
-  });
-  if (!texture || failed) return <ModelStatus name={failed ? '모습 오류' : ''} />;
-  const height = creature.displayHeight ?? 1.2;
-  const image = texture.image as { width?: number; height?: number } | undefined;
-  const aspect = MathUtils.clamp((image?.width ?? 1) / Math.max(1, image?.height ?? 1), .55, 1.8);
-  return <group ref={root} name={`pokemon-form:${creature.formIdentifier ?? creature.speciesId}`}>
-    <sprite position={[0, height / 2, 0]} scale={[height * aspect, height, 1]}>
-      <spriteMaterial map={texture} transparent alphaTest={.04} toneMapped={false} />
-    </sprite>
-  </group>;
-}
-
 function PokemonFormUnavailable({ creature, onStatus }: { creature: WorldCreature; onStatus?: OpenWorldViewOptions['onModelStatus'] }) {
   useLayoutEffect(() => {
-    // A missing source sprite must not substitute the base-species model or
-    // block simulation readiness. Keep a neutral footprint so the actor can
-    // still move while the UI filters this unsupported presentation choice.
-    onStatus?.(creature.id, 'ready', creature.speciesId);
-    return () => onStatus?.(creature.id, 'untracked', creature.speciesId);
+    onStatus?.(creature.id, 'untracked', creature.speciesId);
   }, [creature.id, creature.speciesId, onStatus]);
-  return <group name={`pokemon-form-unavailable:${creature.formIdentifier ?? creature.speciesId}`}>
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, .04, 0]}>
-      <ringGeometry args={[.34, .48, 24]} />
-      <meshBasicMaterial color="#d2d9d1" transparent opacity={.65} />
-    </mesh>
-  </group>;
+  return null;
 }
 
 function TransformationEffect({ creature }: { creature: WorldCreature }) {
@@ -663,20 +621,15 @@ function TransformationEffect({ creature }: { creature: WorldCreature }) {
   const colors = MOVE_COLORS[creature.transformationType ?? 'normal'] ?? MOVE_COLORS.normal;
   useFrame(({ clock }) => {
     if (!ref.current || !kind) return;
-    ref.current.rotation.y = clock.elapsedTime * (kind === 'tera' ? 1.25 : -.8);
+    ref.current.rotation.y = kind === 'tera' ? Math.sin(clock.elapsedTime * .7) * .15 : clock.elapsedTime * -.8;
     ref.current.scale.setScalar(1 + Math.sin(clock.elapsedTime * 3) * .035);
   });
   if (!kind) return null;
-  const height = creature.displayHeight ?? 1.2;
   return <group ref={ref} name={`pokemon-transformation:${kind}`}>
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, .07, 0]}>
       <torusGeometry args={[.68, kind === 'tera' ? .055 : .035, 8, 40]} />
       <meshStandardMaterial color={colors[0]} emissive={colors[1]} emissiveIntensity={1.5} transparent opacity={.82} />
     </mesh>
-    {kind === 'tera' && <mesh position={[0, height + .3, 0]} rotation={[0, 0, Math.PI / 4]}>
-      <octahedronGeometry args={[.18, 0]} />
-      <meshStandardMaterial color={colors[0]} emissive={colors[1]} emissiveIntensity={1.8} transparent opacity={.9} />
-    </mesh>}
   </group>;
 }
 
@@ -718,12 +671,13 @@ function Creature({ creature, selected, distance, options, showLabels, model }: 
   options: OpenWorldViewOptions;
 }) {
   const supportedModel = hasPokemonModel(creature.speciesId);
-  const [modelState, setModelState] = useState<{ speciesId: number; status: string }>({ speciesId: creature.speciesId, status: 'loading' });
+  const modelKey = creature.formModelUrl ?? creature.formIdentifier ?? String(creature.speciesId);
+  const [modelState, setModelState] = useState({ modelKey, status: 'loading' });
   const onModelStatus = useCallback<NonNullable<OpenWorldViewOptions['onModelStatus']>>((id, status, speciesId) => {
-    setModelState(previous => previous.speciesId === speciesId && previous.status === status ? previous : { speciesId, status });
+    setModelState(previous => previous.modelKey === modelKey && previous.status === status ? previous : { modelKey, status });
     options.onModelStatus?.(id, status, speciesId);
-  }, [options.onModelStatus]);
-  const modelReady = model && modelState.speciesId === creature.speciesId && modelState.status === 'ready';
+  }, [modelKey, options.onModelStatus]);
+  const modelReady = model && modelState.modelKey === modelKey && modelState.status === 'ready';
   useEffect(() => {
     if (supportedModel || creature.formIdentifier) return;
     options.onModelStatus?.(creature.id, 'failed', creature.speciesId);
@@ -763,6 +717,7 @@ function Creature({ creature, selected, distance, options, showLabels, model }: 
     if (lookAt) desiredYaw.current = movementYaw(lookAt.x - visual.current.x, lookAt.z - visual.current.z, desiredYaw.current);
     root.current.rotation.y = turnTowards(root.current.rotation.y, desiredYaw.current, delta);
   }, -2);
+  if (creature.formIdentifier && !creature.formModelUrl) return <PokemonFormUnavailable creature={creature} onStatus={onModelStatus} />;
   return (
     <group
       ref={root}
@@ -770,10 +725,10 @@ function Creature({ creature, selected, distance, options, showLabels, model }: 
       onClick={event => { event.stopPropagation(); if (!creature.remotePlayer) options.onSelect(creature.id); }}
       onDoubleClick={event => { event.stopPropagation(); if (!creature.remotePlayer) options.onInteract?.(creature.id); }}
     >
-      {model && creature.formIdentifier
-        ? creature.formSpriteUrl
-          ? <PokemonFormSprite creature={creature} url={creature.formSpriteUrl} onStatus={onModelStatus} />
-          : <PokemonFormUnavailable creature={creature} onStatus={onModelStatus} />
+      {model && creature.formModelUrl
+        ? <PokemonModel key={modelKey} creature={creature} url={creature.formModelUrl} onStatus={onModelStatus} />
+        : model && creature.formIdentifier
+        ? <PokemonFormUnavailable creature={creature} onStatus={onModelStatus} />
         : model && supportedModel
         ? <PokemonModel creature={creature} url={(options.modelUrl ?? (id => `/models/pokemon/${id}.glb`))(creature.speciesId)} onStatus={onModelStatus} />
         : !supportedModel ? <ModelStatus name="3D 미지원 · 이동 중지" /> : null}

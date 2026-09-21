@@ -24,6 +24,8 @@ export type WorldCreature = WorldPoint & {
   moveType?: string;
   /** Canonical form identifier when the base-species model is not the visible form. */
   formIdentifier?: string;
+  /** Verified pinned GLB for the exact regional or battle form. */
+  formModelUrl?: string;
   /** Form-specific sprite used instead of a misleading base-species GLB. */
   formSpriteUrl?: string;
   /** Temporary battle presentation applied to this creature. */

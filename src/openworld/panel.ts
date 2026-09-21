@@ -3,7 +3,7 @@ import { getMove, getSpecies } from '../data/pokemon';
 import { fieldTrainersAt, getFieldTrainer } from '../data/field-trainers';
 import { pokemonModelUrl, pokemonSpriteUrl } from '../game/assets';
 import { getMoveLayout } from '../game/move-layout';
-import { depositMonster, experienceAtLevel, firstUsableRegionalTeamIndex, heal, statsFor, withdrawMonster, type GameState, type Monster } from '../game/engine';
+import { battleMoveView, depositMonster, experienceAtLevel, firstUsableRegionalTeamIndex, heal, statsFor, withdrawMonster, type GameState, type Monster } from '../game/engine';
 import { monsterRegionalUseReason, REGIONAL_STARTERS, regionalLevelCap } from '../game/regional-policy';
 import { CAMPAIGN_TRAINERS, campaignTravelReason, getCampaignGyms, getNextCampaignTrainer, getRegionalBadges, regionalWildLevels, type CampaignRegion } from '../game/campaign';
 import { getWorldAtlas } from './atlas';
@@ -28,6 +28,7 @@ import { getCaveScene, cavePortalAtSurface, cavePortalAtInterior } from './caves
 import { nextDestinationGuide, type DestinationGuide } from './next-destination';
 import { pokemonPresentation, battleTransformationsHtml, combatFormSprite } from '../ui/pokemon-presentation';
 import { getAlolaCombatForm, getCombatForm } from '../data/pokemon-combat-forms';
+import { getPokemonFormModelSource } from '../data/pokemon-form-models';
 import { searchPokemon } from '../ui/pokemon-search';
 import type { PokemonType } from '../game/contracts';
 import { CARDINAL_CAMERA_HEADINGS, cameraMapRotation, compassLabel, mapKindLabel, mapKindSymbol, nearestMapOrientation, rotateMapPoint, unrotateMapPoint, type MapOrientation } from './map-presentation';
@@ -600,7 +601,6 @@ export class OpenWorldPanel {
     this.html('#world-recovery-message', escape(this.recovering ? '연결과 저장 상태를 확인하고 있습니다…'
       : this.recoveryError ? this.recoveryError.message
       : failed ? '포켓몬 3D 모델을 불러오지 못했습니다. 해당 개체의 이동·배틀을 멈췄습니다.'
-      : blocked ? '포켓몬 3D 모델 준비 중 · 완료 전에는 이동·배틀을 시작하지 않습니다.'
       : '탐험이 일시 정지되어 있습니다.'));
     const resume = this.button('#world-resume');
     resume.hidden = !this.paused && !this.recoveryError;
@@ -637,10 +637,11 @@ export class OpenWorldPanel {
         const speciesId = transformed?.speciesId ?? monster?.speciesId ?? entity.speciesId;
         const formIdentifier = transformed?.formIdentifier ?? monster?.regionalForm ?? (!monster && this.simulation.regionId === 'alola' ? getAlolaCombatForm(speciesId)?.identifier : undefined);
         const form = formIdentifier ? getCombatForm(formIdentifier) : undefined;
+        const formModel = getPokemonFormModelSource(formIdentifier);
         const stats = transformed?.stats ?? monster?.stats ?? statsFor(getSpecies(entity.speciesId), entity.level);
         const level = monster?.level ?? entity.level;
         return { id: entity.id, speciesId, name: form?.name || getSpecies(speciesId).name, level, hp: monster?.hp ?? stats.hp, maxHp: stats.hp,
-          formIdentifier, formSpriteUrl: form ? combatFormSprite(form) : undefined,
+          formIdentifier, formModelUrl: formModel?.url, formSpriteUrl: form ? combatFormSprite(form) : undefined,
           transformationKind: transformed?.kind === 'mega' || transformed?.kind === 'tera' ? transformed.kind : undefined,
           transformationType: transformed?.teraType,
           x: entity.x, z: entity.z,
@@ -652,7 +653,7 @@ export class OpenWorldPanel {
             return target ? { x: target.x, z: target.z } : undefined;
           })() : undefined,
           movementSpeed: movementSpeed(speciesId, level),
-          displayHeight: pokemonDisplayHeight(speciesId),
+          displayHeight: formModel ? pokemonWorldDisplayHeight(formModel.heightMeters) : pokemonDisplayHeight(speciesId),
         } as WorldCreature;
       }).concat(battle && battle.kind !== 'wild' && enemy ? [{ id: this.simulation.battleWildId!, speciesId: enemy.speciesId, name: enemy.nickname, level: enemy.level, hp: enemy.hp, maxHp: enemy.stats.hp, x: this.simulation.player.x, z: this.simulation.player.z - 3, heading: 2 as WorldHeading, action: attacking(enemy.instanceId) ? 'attack' as const : 'idle' as const, moveType: attacking(enemy.instanceId)?.type, inBattle: true, lookAt: this.simulation.player, displayHeight: pokemonDisplayHeight(enemy.speciesId), movementSpeed: movementSpeed(enemy.speciesId, enemy.level) }] : [])
         .concat(this.multiplayer?.creatures(this.simulation.player, id => movementSpeed(id)) ?? []),
@@ -923,7 +924,7 @@ export class OpenWorldPanel {
     });
     this.html('#world-moves', Array.from({ length: 4 }, (_, index) => {
       const slot = moveLayout[index]; if (!slot) return `<div class="world-move empty-slot"><span>${index + 1}</span><strong>미습득</strong><small>레벨을 올려 기술을 익히세요</small></div>`;
-      const move = getMove(slot.moveId);
+      const move = battle ? battleMoveView(battle, lead, slot.moveId) : getMove(slot.moveId);
       return `<button data-world-move="${slot.sourceIndex}" data-world-slot="${index}" data-world-move-id="${slot.moveId}" class="world-move type-${move.type}" ${!battle || (battle.choiceLocks?.[lead.instanceId] !== undefined && battle.choiceLocks[lead.instanceId] !== slot.moveId) ? 'disabled' : ''} title="${move.damageClass === 'physical' ? '물리' : move.damageClass === 'special' ? '특수' : '변화'} · 우선도 ${move.priority} · 위력 ${move.power || '—'} · 명중 ${move.accuracy || '—'} · 클릭하면 다음 턴에 사용"><span>${index + 1} · ${types[move.type]}</span><strong>${move.name}</strong><small><span class="move-details">위력 ${move.power || '—'} · 명중 ${move.accuracy || '—'}</span></small></button>`;
     }).join(''));
     this.html('#world-emergency-action', battle && !battle.awaitingSwitch && (!moves.length || (battle.choiceLocks?.[lead.instanceId] !== undefined && !moves.some(slot => slot.moveId === battle.choiceLocks![lead.instanceId]))) ? '<button id="world-struggle">발버둥</button>' : '');

@@ -388,6 +388,48 @@ export const MOVES: Record<number, PokemonMove> = {
     "maxHits": 0,
     "statChanges": []
   },
+  "3": {
+    "id": 3,
+    "name": "연속뺨치기",
+    "englishName": "Double Slap",
+    "type": "normal",
+    "power": 15,
+    "accuracy": 85,
+    "pp": 10,
+    "damageClass": "physical",
+    "priority": 0,
+    "effectId": 30,
+    "targetId": 10,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 0,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 2,
+    "maxHits": 5,
+    "statChanges": []
+  },
+  "4": {
+    "id": 4,
+    "name": "연속펀치",
+    "englishName": "Comet Punch",
+    "type": "normal",
+    "power": 18,
+    "accuracy": 85,
+    "pp": 15,
+    "damageClass": "physical",
+    "priority": 0,
+    "effectId": 30,
+    "targetId": 10,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 0,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 2,
+    "maxHits": 5,
+    "statChanges": []
+  },
   "5": {
     "id": 5,
     "name": "메가톤펀치",
@@ -556,6 +598,27 @@ export const MOVES: Record<number, PokemonMove> = {
     "healing": 0,
     "drain": 0,
     "metaCategory": 9,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": []
+  },
+  "13": {
+    "id": 13,
+    "name": "칼바람",
+    "englishName": "Razor Wind",
+    "type": "normal",
+    "power": 80,
+    "accuracy": 100,
+    "pp": 10,
+    "damageClass": "special",
+    "priority": 0,
+    "effectId": 40,
+    "targetId": 11,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 0,
     "ailmentChance": 0,
     "statChance": 0,
     "minHits": 0,
@@ -812,6 +875,27 @@ export const MOVES: Record<number, PokemonMove> = {
     "damageClass": "physical",
     "priority": 0,
     "effectId": 1,
+    "targetId": 10,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 0,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": []
+  },
+  "26": {
+    "id": 26,
+    "name": "점프킥",
+    "englishName": "Jump Kick",
+    "type": "fighting",
+    "power": 100,
+    "accuracy": 95,
+    "pp": 10,
+    "damageClass": "physical",
+    "priority": 0,
+    "effectId": 46,
     "targetId": 10,
     "healing": 0,
     "drain": 0,
@@ -1111,6 +1195,29 @@ export const MOVES: Record<number, PokemonMove> = {
     "statChanges": [],
     "ailment": "poison",
     "effectChance": 30
+  },
+  "41": {
+    "id": 41,
+    "name": "더블니들",
+    "englishName": "Twineedle",
+    "type": "bug",
+    "power": 25,
+    "accuracy": 100,
+    "pp": 20,
+    "damageClass": "physical",
+    "priority": 0,
+    "effectId": 78,
+    "targetId": 10,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 4,
+    "ailmentChance": 20,
+    "statChance": 0,
+    "minHits": 2,
+    "maxHits": 2,
+    "statChanges": [],
+    "ailment": "poison",
+    "effectChance": 20
   },
   "42": {
     "id": 42,
@@ -1992,6 +2099,27 @@ export const MOVES: Record<number, PokemonMove> = {
       }
     ]
   },
+  "82": {
+    "id": 82,
+    "name": "용의분노",
+    "englishName": "Dragon Rage",
+    "type": "dragon",
+    "power": 0,
+    "accuracy": 100,
+    "pp": 10,
+    "damageClass": "special",
+    "priority": 0,
+    "effectId": 42,
+    "targetId": 10,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 0,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": []
+  },
   "83": {
     "id": 83,
     "name": "회오리불꽃",
@@ -2284,6 +2412,32 @@ export const MOVES: Record<number, PokemonMove> = {
     "statChanges": [],
     "ailment": "sleep"
   },
+  "96": {
+    "id": 96,
+    "name": "요가포즈",
+    "englishName": "Meditate",
+    "type": "psychic",
+    "power": 0,
+    "accuracy": 0,
+    "pp": 40,
+    "damageClass": "status",
+    "priority": 0,
+    "effectId": 11,
+    "targetId": 7,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 2,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": [
+      {
+        "stat": "attack",
+        "change": 1
+      }
+    ]
+  },
   "97": {
     "id": 97,
     "name": "고속이동",
@@ -2321,6 +2475,27 @@ export const MOVES: Record<number, PokemonMove> = {
     "damageClass": "physical",
     "priority": 1,
     "effectId": 104,
+    "targetId": 10,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 0,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": []
+  },
+  "99": {
+    "id": 99,
+    "name": "분노",
+    "englishName": "Rage",
+    "type": "normal",
+    "power": 20,
+    "accuracy": 100,
+    "pp": 20,
+    "damageClass": "physical",
+    "priority": 0,
+    "effectId": 82,
     "targetId": 10,
     "healing": 0,
     "drain": 0,
@@ -2619,6 +2794,32 @@ export const MOVES: Record<number, PokemonMove> = {
       }
     ]
   },
+  "112": {
+    "id": 112,
+    "name": "배리어",
+    "englishName": "Barrier",
+    "type": "psychic",
+    "power": 0,
+    "accuracy": 0,
+    "pp": 20,
+    "damageClass": "status",
+    "priority": 0,
+    "effectId": 52,
+    "targetId": 7,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 2,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": [
+      {
+        "stat": "defense",
+        "change": 2
+      }
+    ]
+  },
   "113": {
     "id": 113,
     "name": "빛의장막",
@@ -2736,6 +2937,27 @@ export const MOVES: Record<number, PokemonMove> = {
     "priority": 0,
     "effectId": 84,
     "targetId": 7,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 13,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": []
+  },
+  "119": {
+    "id": 119,
+    "name": "따라하기",
+    "englishName": "Mirror Move",
+    "type": "flying",
+    "power": 0,
+    "accuracy": 0,
+    "pp": 20,
+    "damageClass": "status",
+    "priority": 0,
+    "effectId": 10,
+    "targetId": 10,
     "healing": 0,
     "drain": 0,
     "metaCategory": 13,
@@ -2946,6 +3168,32 @@ export const MOVES: Record<number, PokemonMove> = {
       {
         "stat": "special-defense",
         "change": 2
+      }
+    ]
+  },
+  "134": {
+    "id": 134,
+    "name": "숟가락휘기",
+    "englishName": "Kinesis",
+    "type": "psychic",
+    "power": 0,
+    "accuracy": 80,
+    "pp": 15,
+    "damageClass": "status",
+    "priority": 0,
+    "effectId": 24,
+    "targetId": 10,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 2,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": [
+      {
+        "stat": "accuracy",
+        "change": -1
       }
     ]
   },
@@ -3169,6 +3417,29 @@ export const MOVES: Record<number, PokemonMove> = {
     ],
     "effectChance": 10
   },
+  "146": {
+    "id": 146,
+    "name": "잼잼펀치",
+    "englishName": "Dizzy Punch",
+    "type": "normal",
+    "power": 70,
+    "accuracy": 100,
+    "pp": 10,
+    "damageClass": "physical",
+    "priority": 0,
+    "effectId": 77,
+    "targetId": 10,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 4,
+    "ailmentChance": 20,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": [],
+    "ailment": "confusion",
+    "effectChance": 20
+  },
   "147": {
     "id": 147,
     "name": "버섯포자",
@@ -3190,6 +3461,53 @@ export const MOVES: Record<number, PokemonMove> = {
     "maxHits": 0,
     "statChanges": [],
     "ailment": "sleep"
+  },
+  "148": {
+    "id": 148,
+    "name": "플래시",
+    "englishName": "Flash",
+    "type": "normal",
+    "power": 0,
+    "accuracy": 100,
+    "pp": 20,
+    "damageClass": "status",
+    "priority": 0,
+    "effectId": 24,
+    "targetId": 10,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 2,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": [
+      {
+        "stat": "accuracy",
+        "change": -1
+      }
+    ]
+  },
+  "149": {
+    "id": 149,
+    "name": "사이코웨이브",
+    "englishName": "Psywave",
+    "type": "psychic",
+    "power": 0,
+    "accuracy": 100,
+    "pp": 15,
+    "damageClass": "special",
+    "priority": 0,
+    "effectId": 89,
+    "targetId": 10,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 0,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": []
   },
   "150": {
     "id": 150,
@@ -3386,6 +3704,32 @@ export const MOVES: Record<number, PokemonMove> = {
     "maxHits": 0,
     "statChanges": [],
     "effectChance": 10
+  },
+  "159": {
+    "id": 159,
+    "name": "각지기",
+    "englishName": "Sharpen",
+    "type": "normal",
+    "power": 0,
+    "accuracy": 0,
+    "pp": 30,
+    "damageClass": "status",
+    "priority": 0,
+    "effectId": 11,
+    "targetId": 7,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 2,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": [
+      {
+        "stat": "attack",
+        "change": 1
+      }
+    ]
   },
   "160": {
     "id": 160,
@@ -3867,6 +4211,27 @@ export const MOVES: Record<number, PokemonMove> = {
       }
     ]
   },
+  "185": {
+    "id": 185,
+    "name": "속여때리기",
+    "englishName": "Feint Attack",
+    "type": "dark",
+    "power": 60,
+    "accuracy": 0,
+    "pp": 20,
+    "damageClass": "physical",
+    "priority": 0,
+    "effectId": 18,
+    "targetId": 10,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 0,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": []
+  },
   "186": {
     "id": 186,
     "name": "천사의키스",
@@ -4030,6 +4395,28 @@ export const MOVES: Record<number, PokemonMove> = {
     "statChanges": [],
     "ailment": "paralysis",
     "effectChance": 100
+  },
+  "193": {
+    "id": 193,
+    "name": "꿰뚫어보기",
+    "englishName": "Foresight",
+    "type": "normal",
+    "power": 0,
+    "accuracy": 0,
+    "pp": 40,
+    "damageClass": "status",
+    "priority": 0,
+    "effectId": 114,
+    "targetId": 10,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 1,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": [],
+    "ailment": "no-type-immunity"
   },
   "194": {
     "id": 194,
@@ -4521,6 +4908,27 @@ export const MOVES: Record<number, PokemonMove> = {
     "maxHits": 0,
     "statChanges": []
   },
+  "216": {
+    "id": 216,
+    "name": "은혜갚기",
+    "englishName": "Return",
+    "type": "normal",
+    "power": 0,
+    "accuracy": 100,
+    "pp": 20,
+    "damageClass": "physical",
+    "priority": 0,
+    "effectId": 122,
+    "targetId": 10,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 0,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": []
+  },
   "217": {
     "id": 217,
     "name": "프레젠트",
@@ -4606,6 +5014,27 @@ export const MOVES: Record<number, PokemonMove> = {
     "statChanges": [],
     "ailment": "burn",
     "effectChance": 50
+  },
+  "222": {
+    "id": 222,
+    "name": "매그니튜드",
+    "englishName": "Magnitude",
+    "type": "ground",
+    "power": 0,
+    "accuracy": 100,
+    "pp": 30,
+    "damageClass": "physical",
+    "priority": 0,
+    "effectId": 127,
+    "targetId": 9,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 0,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": []
   },
   "223": {
     "id": 223,
@@ -4710,6 +5139,27 @@ export const MOVES: Record<number, PokemonMove> = {
     "healing": 0,
     "drain": 0,
     "metaCategory": 13,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": []
+  },
+  "228": {
+    "id": 228,
+    "name": "따라가때리기",
+    "englishName": "Pursuit",
+    "type": "dark",
+    "power": 40,
+    "accuracy": 100,
+    "pp": 20,
+    "damageClass": "physical",
+    "priority": 0,
+    "effectId": 129,
+    "targetId": 10,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 0,
     "ailmentChance": 0,
     "statChance": 0,
     "minHits": 0,
@@ -6004,6 +6454,27 @@ export const MOVES: Record<number, PokemonMove> = {
     "maxHits": 0,
     "statChanges": []
   },
+  "287": {
+    "id": 287,
+    "name": "리프레시",
+    "englishName": "Refresh",
+    "type": "normal",
+    "power": 0,
+    "accuracy": 0,
+    "pp": 20,
+    "damageClass": "status",
+    "priority": 0,
+    "effectId": 194,
+    "targetId": 7,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 13,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": []
+  },
   "288": {
     "id": 288,
     "name": "원념",
@@ -6024,6 +6495,49 @@ export const MOVES: Record<number, PokemonMove> = {
     "minHits": 0,
     "maxHits": 0,
     "statChanges": []
+  },
+  "289": {
+    "id": 289,
+    "name": "가로채기",
+    "englishName": "Snatch",
+    "type": "dark",
+    "power": 0,
+    "accuracy": 0,
+    "pp": 10,
+    "damageClass": "status",
+    "priority": 4,
+    "effectId": 196,
+    "targetId": 7,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 13,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": []
+  },
+  "290": {
+    "id": 290,
+    "name": "비밀의힘",
+    "englishName": "Secret Power",
+    "type": "normal",
+    "power": 70,
+    "accuracy": 100,
+    "pp": 20,
+    "damageClass": "physical",
+    "priority": 0,
+    "effectId": 198,
+    "targetId": 10,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 0,
+    "ailmentChance": 30,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": [],
+    "effectChance": 30
   },
   "291": {
     "id": 291,
@@ -6217,6 +6731,27 @@ export const MOVES: Record<number, PokemonMove> = {
     "statChanges": [],
     "ailment": "burn",
     "effectChance": 10
+  },
+  "300": {
+    "id": 300,
+    "name": "흙놀이",
+    "englishName": "Mud Sport",
+    "type": "ground",
+    "power": 0,
+    "accuracy": 0,
+    "pp": 15,
+    "damageClass": "status",
+    "priority": 0,
+    "effectId": 202,
+    "targetId": 12,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 10,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": []
   },
   "303": {
     "id": 303,
@@ -6593,6 +7128,28 @@ export const MOVES: Record<number, PokemonMove> = {
       }
     ]
   },
+  "320": {
+    "id": 320,
+    "name": "풀피리",
+    "englishName": "Grass Whistle",
+    "type": "grass",
+    "power": 0,
+    "accuracy": 55,
+    "pp": 15,
+    "damageClass": "status",
+    "priority": 0,
+    "effectId": 2,
+    "targetId": 10,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 1,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": [],
+    "ailment": "sleep"
+  },
   "321": {
     "id": 321,
     "name": "간지르기",
@@ -6674,6 +7231,29 @@ export const MOVES: Record<number, PokemonMove> = {
     "maxHits": 0,
     "statChanges": []
   },
+  "324": {
+    "id": 324,
+    "name": "시그널빔",
+    "englishName": "Signal Beam",
+    "type": "bug",
+    "power": 75,
+    "accuracy": 100,
+    "pp": 15,
+    "damageClass": "special",
+    "priority": 0,
+    "effectId": 77,
+    "targetId": 10,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 4,
+    "ailmentChance": 10,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": [],
+    "ailment": "confusion",
+    "effectChance": 10
+  },
   "325": {
     "id": 325,
     "name": "섀도펀치",
@@ -6716,6 +7296,27 @@ export const MOVES: Record<number, PokemonMove> = {
     "maxHits": 0,
     "statChanges": [],
     "effectChance": 10
+  },
+  "327": {
+    "id": 327,
+    "name": "스카이어퍼",
+    "englishName": "Sky Uppercut",
+    "type": "fighting",
+    "power": 85,
+    "accuracy": 90,
+    "pp": 15,
+    "damageClass": "physical",
+    "priority": 0,
+    "effectId": 208,
+    "targetId": 10,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 0,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": []
   },
   "328": {
     "id": 328,
@@ -7347,6 +7948,28 @@ export const MOVES: Record<number, PokemonMove> = {
     "maxHits": 0,
     "statChanges": []
   },
+  "357": {
+    "id": 357,
+    "name": "미라클아이",
+    "englishName": "Miracle Eye",
+    "type": "psychic",
+    "power": 0,
+    "accuracy": 0,
+    "pp": 40,
+    "damageClass": "status",
+    "priority": 0,
+    "effectId": 217,
+    "targetId": 10,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 1,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": [],
+    "ailment": "no-type-immunity"
+  },
   "359": {
     "id": 359,
     "name": "암해머",
@@ -7657,6 +8280,28 @@ export const MOVES: Record<number, PokemonMove> = {
     "maxHits": 0,
     "statChanges": []
   },
+  "373": {
+    "id": 373,
+    "name": "금제",
+    "englishName": "Embargo",
+    "type": "dark",
+    "power": 0,
+    "accuracy": 100,
+    "pp": 15,
+    "damageClass": "status",
+    "priority": 0,
+    "effectId": 233,
+    "targetId": 10,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 1,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": [],
+    "ailment": "embargo"
+  },
   "374": {
     "id": 374,
     "name": "내던지기",
@@ -7699,6 +8344,28 @@ export const MOVES: Record<number, PokemonMove> = {
     "maxHits": 0,
     "statChanges": []
   },
+  "377": {
+    "id": 377,
+    "name": "회복봉인",
+    "englishName": "Heal Block",
+    "type": "psychic",
+    "power": 0,
+    "accuracy": 100,
+    "pp": 15,
+    "damageClass": "status",
+    "priority": 0,
+    "effectId": 237,
+    "targetId": 11,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 1,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": [],
+    "ailment": "heal-block"
+  },
   "379": {
     "id": 379,
     "name": "파워트릭",
@@ -7735,6 +8402,27 @@ export const MOVES: Record<number, PokemonMove> = {
     "healing": 0,
     "drain": 0,
     "metaCategory": 13,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": []
+  },
+  "382": {
+    "id": 382,
+    "name": "선취",
+    "englishName": "Me First",
+    "type": "normal",
+    "power": 0,
+    "accuracy": 0,
+    "pp": 20,
+    "damageClass": "status",
+    "priority": 0,
+    "effectId": 242,
+    "targetId": 2,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 0,
     "ailmentChance": 0,
     "statChance": 0,
     "minHits": 0,
@@ -7798,6 +8486,27 @@ export const MOVES: Record<number, PokemonMove> = {
     "healing": 0,
     "drain": 0,
     "metaCategory": 13,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": []
+  },
+  "386": {
+    "id": 386,
+    "name": "혼내기",
+    "englishName": "Punishment",
+    "type": "dark",
+    "power": 0,
+    "accuracy": 100,
+    "pp": 5,
+    "damageClass": "physical",
+    "priority": 0,
+    "effectId": 246,
+    "targetId": 10,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 0,
     "ailmentChance": 0,
     "statChance": 0,
     "minHits": 0,
@@ -8672,6 +9381,33 @@ export const MOVES: Record<number, PokemonMove> = {
     "maxHits": 0,
     "statChanges": []
   },
+  "426": {
+    "id": 426,
+    "name": "진흙폭탄",
+    "englishName": "Mud Bomb",
+    "type": "ground",
+    "power": 65,
+    "accuracy": 85,
+    "pp": 10,
+    "damageClass": "special",
+    "priority": 0,
+    "effectId": 74,
+    "targetId": 10,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 6,
+    "ailmentChance": 0,
+    "statChance": 30,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": [
+      {
+        "stat": "accuracy",
+        "change": -1
+      }
+    ],
+    "effectChance": 30
+  },
   "427": {
     "id": 427,
     "name": "사이코커터",
@@ -8992,6 +9728,32 @@ export const MOVES: Record<number, PokemonMove> = {
     "minHits": 0,
     "maxHits": 0,
     "statChanges": []
+  },
+  "445": {
+    "id": 445,
+    "name": "유혹",
+    "englishName": "Captivate",
+    "type": "normal",
+    "power": 0,
+    "accuracy": 100,
+    "pp": 20,
+    "damageClass": "status",
+    "priority": 0,
+    "effectId": 266,
+    "targetId": 11,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 2,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": [
+      {
+        "stat": "special-attack",
+        "change": -2
+      }
+    ]
   },
   "446": {
     "id": 446,
@@ -9619,6 +10381,28 @@ export const MOVES: Record<number, PokemonMove> = {
     "maxHits": 0,
     "statChanges": []
   },
+  "477": {
+    "id": 477,
+    "name": "텔레키네시스",
+    "englishName": "Telekinesis",
+    "type": "psychic",
+    "power": 0,
+    "accuracy": 0,
+    "pp": 15,
+    "damageClass": "status",
+    "priority": 0,
+    "effectId": 286,
+    "targetId": 10,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 1,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": [],
+    "ailment": "unknown"
+  },
   "478": {
     "id": 478,
     "name": "매직룸",
@@ -10056,6 +10840,27 @@ export const MOVES: Record<number, PokemonMove> = {
     "damageClass": "special",
     "priority": 0,
     "effectId": 303,
+    "targetId": 10,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 0,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": []
+  },
+  "498": {
+    "id": 498,
+    "name": "야금야금",
+    "englishName": "Chip Away",
+    "type": "normal",
+    "power": 70,
+    "accuracy": 100,
+    "pp": 20,
+    "damageClass": "physical",
+    "priority": 0,
+    "effectId": 304,
     "targetId": 10,
     "healing": 0,
     "drain": 0,
@@ -10672,6 +11477,27 @@ export const MOVES: Record<number, PokemonMove> = {
     "statChance": 0,
     "minHits": 0,
     "maxHits": 0,
+    "statChanges": []
+  },
+  "530": {
+    "id": 530,
+    "name": "더블촙",
+    "englishName": "Dual Chop",
+    "type": "dragon",
+    "power": 40,
+    "accuracy": 90,
+    "pp": 15,
+    "damageClass": "physical",
+    "priority": 0,
+    "effectId": 45,
+    "targetId": 10,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 0,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 2,
+    "maxHits": 2,
     "statChanges": []
   },
   "532": {
@@ -11452,6 +12278,27 @@ export const MOVES: Record<number, PokemonMove> = {
       }
     ],
     "effectChance": 100
+  },
+  "569": {
+    "id": 569,
+    "name": "플라스마샤워",
+    "englishName": "Ion Deluge",
+    "type": "electric",
+    "power": 0,
+    "accuracy": 0,
+    "pp": 25,
+    "damageClass": "status",
+    "priority": 1,
+    "effectId": 345,
+    "targetId": 12,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 10,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": []
   },
   "570": {
     "id": 570,
@@ -13379,6 +14226,33 @@ export const MOVES: Record<number, PokemonMove> = {
     "maxHits": 0,
     "statChanges": []
   },
+  "708": {
+    "id": 708,
+    "name": "섀도본",
+    "englishName": "Shadow Bone",
+    "type": "ghost",
+    "power": 85,
+    "accuracy": 100,
+    "pp": 10,
+    "damageClass": "physical",
+    "priority": 0,
+    "effectId": 70,
+    "targetId": 10,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 6,
+    "ailmentChance": 0,
+    "statChance": 20,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": [
+      {
+        "stat": "defense",
+        "change": -1
+      }
+    ],
+    "effectChance": 20
+  },
   "709": {
     "id": 709,
     "name": "액셀록",
@@ -14959,6 +15833,36 @@ export const MOVES: Record<number, PokemonMove> = {
     "maxHits": 0,
     "statChanges": []
   },
+  "851": {
+    "id": 851,
+    "name": "테라버스트",
+    "englishName": "Tera Blast",
+    "type": "normal",
+    "power": 80,
+    "accuracy": 100,
+    "pp": 10,
+    "damageClass": "special",
+    "priority": 0,
+    "effectId": 0,
+    "targetId": 10,
+    "healing": 0,
+    "drain": 0,
+    "metaCategory": 0,
+    "ailmentChance": 0,
+    "statChance": 0,
+    "minHits": 0,
+    "maxHits": 0,
+    "statChanges": [
+      {
+        "stat": "attack",
+        "change": -1
+      },
+      {
+        "stat": "special-attack",
+        "change": -1
+      }
+    ]
+  },
   "852": {
     "id": 852,
     "name": "스레드트랩",
@@ -16205,6 +17109,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 76
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -16297,6 +17204,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 50,
         "moveId": 76
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "grassland"
   },
@@ -16393,6 +17303,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 76
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -16473,6 +17386,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 394
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "mountain"
   },
   {
@@ -16548,6 +17464,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 54,
         "moveId": 394
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "mountain"
   },
@@ -16635,6 +17554,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 62,
         "moveId": 394
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "mountain"
   },
@@ -16724,6 +17646,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 834
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "waters-edge"
   },
   {
@@ -16812,6 +17737,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 834
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "waters-edge"
   },
   {
@@ -16898,6 +17826,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 834
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "waters-edge"
   },
   {
@@ -16942,6 +17873,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 450
       }
     ],
+    "machineMoves": [],
     "habitat": "forest"
   },
   {
@@ -16982,6 +17914,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 106
       }
     ],
+    "machineMoves": [],
     "habitat": "forest"
   },
   {
@@ -17085,6 +18018,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 483
       }
     ],
+    "machineMoves": [],
     "habitat": "forest"
   },
   {
@@ -17130,6 +18064,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 450
       }
     ],
+    "machineMoves": [],
     "habitat": "forest"
   },
   {
@@ -17171,6 +18106,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 106
       }
     ],
+    "machineMoves": [],
     "habitat": "forest"
   },
   {
@@ -17270,6 +18206,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 565
       }
     ],
+    "machineMoves": [],
     "habitat": "forest"
   },
   {
@@ -17359,6 +18296,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 542
       }
     ],
+    "machineMoves": [],
     "habitat": "forest"
   },
   {
@@ -17456,6 +18394,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 542
       }
     ],
+    "machineMoves": [],
     "habitat": "forest"
   },
   {
@@ -17555,6 +18494,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 542
       }
     ],
+    "machineMoves": [],
     "habitat": "forest"
   },
   {
@@ -17639,6 +18579,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 283
       }
     ],
+    "machineMoves": [],
     "habitat": "grassland"
   },
   {
@@ -17737,6 +18678,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 283
       }
     ],
+    "machineMoves": [],
     "habitat": "grassland"
   },
   {
@@ -17818,6 +18760,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 65
       }
     ],
+    "machineMoves": [],
     "habitat": "rough-terrain"
   },
   {
@@ -17909,6 +18852,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 529
       }
     ],
+    "machineMoves": [],
     "habitat": "rough-terrain"
   },
   {
@@ -18008,6 +18952,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 49,
         "moveId": 441
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "grassland"
   },
@@ -18118,6 +19065,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 63,
         "moveId": 441
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "grassland"
   },
@@ -18231,6 +19181,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 87
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "forest"
   },
   {
@@ -18341,6 +19294,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 85
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "forest"
   },
   {
@@ -18441,6 +19397,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 89
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "rough-terrain"
   },
   {
@@ -18539,6 +19498,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 89
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "rough-terrain"
   },
   {
@@ -18623,6 +19585,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 414
       }
     ],
+    "machineMoves": [],
     "habitat": "grassland"
   },
   {
@@ -18707,6 +19670,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 414
       }
     ],
+    "machineMoves": [],
     "habitat": "grassland"
   },
   {
@@ -18798,6 +19762,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 390
       }
     ],
+    "machineMoves": [],
     "habitat": "grassland"
   },
   {
@@ -18882,6 +19847,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 414
       }
     ],
+    "machineMoves": [],
     "habitat": "grassland"
   },
   {
@@ -18966,6 +19932,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 414
       }
     ],
+    "machineMoves": [],
     "habitat": "grassland"
   },
   {
@@ -19057,6 +20024,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 390
       }
     ],
+    "machineMoves": [],
     "habitat": "grassland"
   },
   {
@@ -19173,6 +20141,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 361
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "mountain"
   },
   {
@@ -19214,6 +20185,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 1,
         "moveId": 791
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "mountain"
   },
@@ -19307,6 +20281,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 126
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -19344,6 +20321,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 1,
         "moveId": 39
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "grassland"
   },
@@ -19458,6 +20438,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -19569,6 +20552,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 583
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -19630,6 +20616,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 141
       }
     ],
+    "machineMoves": [],
     "habitat": "cave"
   },
   {
@@ -19691,6 +20678,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 141
       }
     ],
+    "machineMoves": [],
     "habitat": "cave"
   },
   {
@@ -19779,6 +20767,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 40,
         "moveId": 80
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "grassland"
   },
@@ -19874,6 +20865,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 80
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -19961,6 +20955,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 585
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -20026,6 +21023,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 412
       }
     ],
+    "machineMoves": [],
     "habitat": "forest"
   },
   {
@@ -20085,6 +21083,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 412
       }
     ],
+    "machineMoves": [],
     "habitat": "forest"
   },
   {
@@ -20169,6 +21168,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 47,
         "moveId": 94
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "forest"
   },
@@ -20257,6 +21259,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 94
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "forest"
   },
   {
@@ -20340,6 +21345,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 44,
         "moveId": 90
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "cave"
   },
@@ -20431,6 +21439,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 90
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "cave"
   },
   {
@@ -20520,6 +21531,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 583
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "urban"
   },
   {
@@ -20605,6 +21619,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 54,
         "moveId": 583
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "urban"
   },
@@ -20693,6 +21710,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 39,
         "moveId": 472
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "waters-edge"
   },
@@ -20783,6 +21803,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 45,
         "moveId": 472
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "waters-edge"
   },
@@ -20879,6 +21902,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 48,
         "moveId": 515
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "mountain"
   },
@@ -20980,6 +22006,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 515
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "mountain"
   },
   {
@@ -21076,6 +22105,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 394
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -21170,6 +22202,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 53
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -21245,6 +22280,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 54,
         "moveId": 38
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "waters-edge"
   },
@@ -21327,6 +22365,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "waters-edge"
   },
   {
@@ -21370,6 +22411,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 95
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "waters-edge"
   },
   {
@@ -21406,6 +22450,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 100
       }
     ],
+    "machineMoves": [],
     "habitat": "urban"
   },
   {
@@ -21469,6 +22514,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 94
       }
     ],
+    "machineMoves": [],
     "habitat": "urban"
   },
   {
@@ -21527,6 +22573,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 94
       }
     ],
+    "machineMoves": [],
     "habitat": "urban"
   },
   {
@@ -21591,6 +22638,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 370
       }
     ],
+    "machineMoves": [],
     "habitat": "mountain"
   },
   {
@@ -21654,6 +22702,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 370
       }
     ],
+    "machineMoves": [],
     "habitat": "mountain"
   },
   {
@@ -21716,6 +22765,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 370
       }
     ],
+    "machineMoves": [],
     "habitat": "mountain"
   },
   {
@@ -21804,6 +22854,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 52,
         "moveId": 438
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "forest"
   },
@@ -21894,6 +22947,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 438
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "forest"
   },
   {
@@ -21944,6 +23000,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 44,
         "moveId": 348
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "forest"
   },
@@ -22034,6 +23093,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 56
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "sea"
   },
   {
@@ -22120,6 +23182,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 58,
         "moveId": 56
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "sea"
   },
@@ -22210,6 +23275,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 444
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "mountain"
   },
   {
@@ -22298,6 +23366,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 444
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "mountain"
   },
   {
@@ -22381,6 +23452,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 444
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "mountain"
   },
   {
@@ -22445,6 +23519,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 394
       }
     ],
+    "machineMoves": [],
     "habitat": "grassland"
   },
   {
@@ -22503,6 +23578,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 394
       }
     ],
+    "machineMoves": [],
     "habitat": "grassland"
   },
   {
@@ -22609,6 +23685,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 505
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "waters-edge"
   },
   {
@@ -22708,6 +23787,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 505
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "waters-edge"
   },
   {
@@ -22800,6 +23882,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 52,
         "moveId": 192
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "rough-terrain"
   },
@@ -22902,6 +23987,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 192
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "rough-terrain"
   },
   {
@@ -22995,6 +24083,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 413
       }
     ],
+    "machineMoves": [],
     "habitat": "grassland"
   },
   {
@@ -23080,6 +24169,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 37
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -23162,6 +24254,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 50,
         "moveId": 37
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "grassland"
   },
@@ -23263,6 +24358,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 883
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "sea"
   },
   {
@@ -23357,6 +24455,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 65,
         "moveId": 883
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "sea"
   },
@@ -23454,6 +24555,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 262
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "urban"
   },
   {
@@ -23544,6 +24648,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 262
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "urban"
   },
   {
@@ -23631,6 +24738,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 48,
         "moveId": 56
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "sea"
   },
@@ -23731,6 +24841,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 534
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "sea"
   },
   {
@@ -23819,6 +24932,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 48,
         "moveId": 138
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "cave"
   },
@@ -23911,6 +25027,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 60,
         "moveId": 138
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "cave"
   },
@@ -24007,6 +25126,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 138
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "cave"
   },
   {
@@ -24068,6 +25190,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 231
       }
     ],
+    "machineMoves": [],
     "habitat": "cave"
   },
   {
@@ -24156,6 +25279,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 248
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -24241,6 +25367,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 56,
         "moveId": 248
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "grassland"
   },
@@ -24330,6 +25459,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 12
       }
     ],
+    "machineMoves": [],
     "habitat": "waters-edge"
   },
   {
@@ -24420,6 +25550,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 12
       }
     ],
+    "machineMoves": [],
     "habitat": "waters-edge"
   },
   {
@@ -24520,6 +25651,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 243
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "urban"
   },
   {
@@ -24618,6 +25752,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 243
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "urban"
   },
   {
@@ -24702,6 +25839,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 55,
         "moveId": 76
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "forest"
   },
@@ -24802,6 +25942,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 202
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "forest"
   },
   {
@@ -24890,6 +26033,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [],
     "habitat": "mountain"
   },
   {
@@ -24972,6 +26116,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [],
     "habitat": "mountain"
   },
   {
@@ -25069,6 +26214,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 50,
         "moveId": 853
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "urban"
   },
@@ -25172,6 +26320,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 264
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "urban"
   },
   {
@@ -25232,6 +26383,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 416
       }
     ],
+    "machineMoves": [],
     "habitat": "grassland"
   },
   {
@@ -25323,6 +26475,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 52,
         "moveId": 194
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "urban"
   },
@@ -25418,6 +26573,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 194
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "urban"
   },
   {
@@ -25506,6 +26664,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 60,
         "moveId": 32
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "rough-terrain"
   },
@@ -25599,6 +26760,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 68,
         "moveId": 32
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "rough-terrain"
   },
@@ -25712,6 +26876,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 361
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "urban"
   },
   {
@@ -25776,6 +26943,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 79
       }
     ],
+    "machineMoves": [],
     "habitat": "grassland"
   },
   {
@@ -25862,6 +27030,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 387
       }
     ],
+    "machineMoves": [],
     "habitat": "grassland"
   },
   {
@@ -25945,6 +27114,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 55,
         "moveId": 240
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "sea"
   },
@@ -26030,6 +27202,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 240
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "sea"
   },
   {
@@ -26110,6 +27285,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 32
       }
     ],
+    "machineMoves": [],
     "habitat": "waters-edge"
   },
   {
@@ -26184,6 +27360,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 32
       }
     ],
+    "machineMoves": [],
     "habitat": "waters-edge"
   },
   {
@@ -26280,6 +27457,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 56
       }
     ],
+    "machineMoves": [],
     "habitat": "sea"
   },
   {
@@ -26371,6 +27549,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 55
       }
     ],
+    "machineMoves": [],
     "habitat": "sea"
   },
   {
@@ -26436,6 +27615,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 605
       }
     ],
+    "machineMoves": [],
     "habitat": "urban"
   },
   {
@@ -26526,6 +27706,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 14
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -26613,6 +27796,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 59
       }
     ],
+    "machineMoves": [],
     "habitat": "urban"
   },
   {
@@ -26704,6 +27888,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 64,
         "moveId": 416
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "grassland"
   },
@@ -26797,6 +27984,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 63
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "mountain"
   },
   {
@@ -26883,6 +28073,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 276
       }
     ],
+    "machineMoves": [],
     "habitat": "forest"
   },
   {
@@ -26965,6 +28156,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 416
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -27009,6 +28203,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 175
       }
     ],
+    "machineMoves": [],
     "habitat": "waters-edge"
   },
   {
@@ -27112,6 +28307,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 63
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "waters-edge"
   },
   {
@@ -27199,6 +28397,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 329
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "sea"
   },
   {
@@ -27229,6 +28430,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 144
       }
     ],
+    "machineMoves": [],
     "habitat": "urban"
   },
   {
@@ -27360,6 +28562,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 387
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "urban"
   },
   {
@@ -27481,6 +28686,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 55,
         "moveId": 387
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "urban"
   },
@@ -27604,6 +28812,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 387
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "urban"
   },
   {
@@ -27722,6 +28933,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 387
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "urban"
   },
   {
@@ -27809,6 +29023,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 60,
         "moveId": 192
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "urban"
   },
@@ -27899,6 +29116,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 56
       }
     ],
+    "machineMoves": [],
     "habitat": "sea"
   },
   {
@@ -27990,6 +29208,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 56
       }
     ],
+    "machineMoves": [],
     "habitat": "sea"
   },
   {
@@ -28079,6 +29298,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 444
       }
     ],
+    "machineMoves": [],
     "habitat": "sea"
   },
   {
@@ -28178,6 +29398,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 444
       }
     ],
+    "machineMoves": [],
     "habitat": "sea"
   },
   {
@@ -28261,6 +29482,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 416
       }
     ],
+    "machineMoves": [],
     "habitat": "mountain"
   },
   {
@@ -28395,6 +29617,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 416
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "mountain"
   },
   {
@@ -28485,6 +29710,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 70,
         "moveId": 329
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "rare"
   },
@@ -28577,6 +29805,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 192
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "rare"
   },
   {
@@ -28668,6 +29899,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 143
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "rare"
   },
   {
@@ -28756,6 +29990,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 63
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "waters-edge"
   },
   {
@@ -28843,6 +30080,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 74,
         "moveId": 63
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "waters-edge"
   },
@@ -28951,6 +30191,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 63
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "waters-edge"
   },
   {
@@ -29041,6 +30284,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 248
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "rare"
   },
   {
@@ -29114,6 +30360,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 100,
         "moveId": 94
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "rare"
   },
@@ -29203,6 +30452,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 76
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -29290,6 +30542,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 54,
         "moveId": 76
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "grassland"
   },
@@ -29380,6 +30635,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 65,
         "moveId": 76
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "grassland"
   },
@@ -29477,6 +30735,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 284
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -29573,6 +30834,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 284
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -29667,6 +30931,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 315
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -29754,6 +31021,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 50,
         "moveId": 56
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "waters-edge"
   },
@@ -29843,6 +31113,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 56
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "waters-edge"
   },
   {
@@ -29929,6 +31202,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 56
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "waters-edge"
   },
   {
@@ -30012,6 +31288,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 47,
         "moveId": 304
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "grassland"
   },
@@ -30098,6 +31377,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 56,
         "moveId": 304
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "grassland"
   },
@@ -30192,6 +31474,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 138
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "forest"
   },
   {
@@ -30278,6 +31563,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 53,
         "moveId": 138
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "forest"
   },
@@ -30368,6 +31656,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [],
     "habitat": "forest"
   },
   {
@@ -30459,6 +31748,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [],
     "habitat": "forest"
   },
   {
@@ -30555,6 +31845,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 51,
         "moveId": 672
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "forest"
   },
@@ -30663,6 +31956,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 672
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "forest"
   },
   {
@@ -30718,6 +32014,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 141
       }
     ],
+    "machineMoves": [],
     "habitat": "cave"
   },
   {
@@ -30802,6 +32099,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 44,
         "moveId": 56
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "sea"
   },
@@ -30898,6 +32198,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 56
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "sea"
   },
   {
@@ -30957,6 +32260,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 20,
         "moveId": 204
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "forest"
   },
@@ -31021,6 +32327,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 20,
         "moveId": 204
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "mountain"
   },
@@ -31087,6 +32396,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 204
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -31147,6 +32459,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 585
       }
     ],
+    "machineMoves": [],
     "habitat": "forest"
   },
   {
@@ -31216,6 +32529,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 585
       }
     ],
+    "machineMoves": [],
     "habitat": "forest"
   },
   {
@@ -31297,6 +32611,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 248
       }
     ],
+    "machineMoves": [],
     "habitat": "forest"
   },
   {
@@ -31384,6 +32699,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 248
       }
     ],
+    "machineMoves": [],
     "habitat": "forest"
   },
   {
@@ -31476,6 +32792,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 87
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -31567,6 +32886,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 56,
         "moveId": 87
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "grassland"
   },
@@ -31674,6 +32996,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 87
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -31763,6 +33088,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 1,
         "moveId": 585
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "grassland"
   },
@@ -31865,6 +33193,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 276
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "waters-edge"
   },
   {
@@ -31959,6 +33290,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 50,
         "moveId": 276
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "waters-edge"
   },
@@ -32058,6 +33392,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 457
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "forest"
   },
   {
@@ -32103,6 +33440,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 1,
         "moveId": 240
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "waters-edge"
   },
@@ -32209,6 +33549,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 262
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -32314,6 +33657,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 262
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -32413,6 +33759,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 262
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -32501,6 +33850,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 387
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "forest"
   },
   {
@@ -32584,6 +33936,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 39,
         "moveId": 402
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "grassland"
   },
@@ -32679,6 +34034,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 572
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -32772,6 +34130,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 405
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "forest"
   },
   {
@@ -32862,6 +34223,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 89
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "waters-edge"
   },
   {
@@ -32940,6 +34304,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 52,
         "moveId": 89
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "waters-edge"
   },
@@ -33058,6 +34425,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 55,
         "moveId": 387
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "urban"
   },
@@ -33181,6 +34551,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 387
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "urban"
   },
   {
@@ -33265,6 +34638,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 60,
         "moveId": 511
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "forest"
   },
@@ -33369,6 +34745,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 505
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "waters-edge"
   },
   {
@@ -33449,6 +34828,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 408
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "cave"
   },
   {
@@ -33479,6 +34861,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 237
       }
     ],
+    "machineMoves": [],
     "habitat": "rare"
   },
   {
@@ -33553,6 +34936,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 150
       }
     ],
+    "machineMoves": [],
     "habitat": "cave"
   },
   {
@@ -33650,6 +35034,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 94
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -33737,6 +35124,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 45,
         "moveId": 38
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "forest"
   },
@@ -33837,6 +35227,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "forest"
   },
   {
@@ -33929,6 +35322,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 283
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "cave"
   },
   {
@@ -34018,6 +35414,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 14
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "mountain"
   },
   {
@@ -34073,6 +35472,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 231
       }
     ],
+    "machineMoves": [],
     "habitat": "cave"
   },
   {
@@ -34169,6 +35569,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 242
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "urban"
   },
   {
@@ -34262,6 +35665,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 59,
         "moveId": 242
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "urban"
   },
@@ -34364,6 +35770,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 194
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "sea"
   },
   {
@@ -34459,6 +35868,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 14
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -34550,6 +35962,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 504
       }
     ],
+    "machineMoves": [],
     "habitat": "mountain"
   },
   {
@@ -34637,6 +36050,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 370
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "forest"
   },
   {
@@ -34722,6 +36138,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 60,
         "moveId": 163
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "forest"
   },
@@ -34814,6 +36233,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 41,
         "moveId": 37
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "mountain"
   },
@@ -34915,6 +36337,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 359
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "mountain"
   },
   {
@@ -35007,6 +36432,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 414
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "mountain"
   },
   {
@@ -35098,6 +36526,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 53
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "mountain"
   },
   {
@@ -35178,6 +36609,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 50,
         "moveId": 59
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "cave"
   },
@@ -35272,6 +36706,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 37
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "cave"
   },
   {
@@ -35357,6 +36794,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 243
       }
     ],
+    "machineMoves": [],
     "habitat": "sea"
   },
   {
@@ -35417,6 +36855,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 63
       }
     ],
+    "machineMoves": [],
     "habitat": "sea"
   },
   {
@@ -35475,6 +36914,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 63
       }
     ],
+    "machineMoves": [],
     "habitat": "sea"
   },
   {
@@ -35509,6 +36949,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 25,
         "moveId": 65
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "mountain"
   },
@@ -35569,6 +37012,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [],
     "habitat": "sea"
   },
   {
@@ -35655,6 +37099,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 52,
         "moveId": 413
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "rough-terrain"
   },
@@ -35753,6 +37200,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 517
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "rough-terrain"
   },
   {
@@ -35848,6 +37298,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 517
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "rough-terrain"
   },
   {
@@ -35939,6 +37392,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 834
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "sea"
   },
   {
@@ -36018,6 +37474,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 42,
         "moveId": 38
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "rough-terrain"
   },
@@ -36108,6 +37567,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 50,
         "moveId": 416
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "rough-terrain"
   },
@@ -36201,6 +37663,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 63
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "urban"
   },
   {
@@ -36285,6 +37750,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "forest"
   },
   {
@@ -36315,6 +37783,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 166
       }
     ],
+    "machineMoves": [],
     "habitat": "urban"
   },
   {
@@ -36372,6 +37841,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 1,
         "moveId": 270
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "urban"
   },
@@ -36471,6 +37943,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 283
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "urban"
   },
   {
@@ -36560,6 +38035,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 59
       }
     ],
+    "machineMoves": [],
     "habitat": "urban"
   },
   {
@@ -36647,6 +38123,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 48,
         "moveId": 87
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "grassland"
   },
@@ -36736,6 +38215,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 126
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "mountain"
   },
   {
@@ -36814,6 +38296,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 667
       }
     ],
+    "machineMoves": [],
     "habitat": "grassland"
   },
   {
@@ -36920,6 +38403,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 361
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "urban"
   },
   {
@@ -37018,6 +38504,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 192
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -37112,6 +38601,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 284
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -37205,6 +38697,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 78,
         "moveId": 59
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "grassland"
   },
@@ -37302,6 +38797,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 42,
         "moveId": 63
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "mountain"
   },
@@ -37403,6 +38901,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 52,
         "moveId": 63
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "mountain"
   },
@@ -37519,6 +39020,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 416
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "mountain"
   },
   {
@@ -37601,6 +39105,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 90,
         "moveId": 143
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "rare"
   },
@@ -37689,6 +39196,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 315
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "rare"
   },
   {
@@ -37764,6 +39274,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 195
       }
     ],
+    "machineMoves": [],
     "habitat": "forest"
   },
   {
@@ -37855,6 +39366,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 39,
         "moveId": 437
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "forest"
   },
@@ -37948,6 +39462,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 437
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "forest"
   },
   {
@@ -38033,6 +39550,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 56,
         "moveId": 437
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "forest"
   },
@@ -38125,6 +39645,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 39,
         "moveId": 394
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "grassland"
   },
@@ -38223,6 +39746,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 394
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -38313,6 +39839,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 63,
         "moveId": 413
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "grassland"
   },
@@ -38405,6 +39934,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 39,
         "moveId": 56
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "waters-edge"
   },
@@ -38499,6 +40031,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 56
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "waters-edge"
   },
   {
@@ -38585,6 +40120,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 63,
         "moveId": 56
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "waters-edge"
   },
@@ -38677,6 +40215,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 44,
         "moveId": 583
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "grassland"
   },
@@ -38784,6 +40325,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 583
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -38872,6 +40416,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [],
     "habitat": "grassland"
   },
   {
@@ -38980,6 +40525,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [],
     "habitat": "grassland"
   },
   {
@@ -39025,6 +40571,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 33
       }
     ],
+    "machineMoves": [],
     "habitat": "forest"
   },
   {
@@ -39069,6 +40616,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 33
       }
     ],
+    "machineMoves": [],
     "habitat": "forest"
   },
   {
@@ -39132,6 +40680,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 405
       }
     ],
+    "machineMoves": [],
     "habitat": "forest"
   },
   {
@@ -39176,6 +40725,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 33
       }
     ],
+    "machineMoves": [],
     "habitat": "forest"
   },
   {
@@ -39239,6 +40789,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 405
       }
     ],
+    "machineMoves": [],
     "habitat": "forest"
   },
   {
@@ -39323,6 +40874,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 43,
         "moveId": 412
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "waters-edge"
   },
@@ -39425,6 +40979,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 56
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "waters-edge"
   },
   {
@@ -39463,6 +41020,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 1,
         "moveId": 61
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "waters-edge"
   },
@@ -39547,6 +41107,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 33,
         "moveId": 153
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "forest"
   },
@@ -39657,6 +41220,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 348
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "forest"
   },
   {
@@ -39703,6 +41269,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 1,
         "moveId": 542
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "forest"
   },
@@ -39789,6 +41358,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 179
       }
     ],
+    "machineMoves": [],
     "habitat": "grassland"
   },
   {
@@ -39888,6 +41458,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 179
       }
     ],
+    "machineMoves": [],
     "habitat": "grassland"
   },
   {
@@ -39964,6 +41535,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 45,
         "moveId": 542
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "sea"
   },
@@ -40068,6 +41642,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 56
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "sea"
   },
   {
@@ -40160,6 +41737,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 39,
         "moveId": 248
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "urban"
   },
@@ -40258,6 +41838,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 53,
         "moveId": 248
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "urban"
   },
@@ -40370,6 +41953,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 248
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "urban"
   },
   {
@@ -40442,6 +42028,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 38,
         "moveId": 564
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "waters-edge"
   },
@@ -40522,6 +42111,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 483
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "waters-edge"
   },
   {
@@ -40601,6 +42193,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 40,
         "moveId": 147
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "forest"
   },
@@ -40701,6 +42296,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 264
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "forest"
   },
   {
@@ -40777,6 +42375,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 583
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "forest"
   },
   {
@@ -40852,6 +42453,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 43,
         "moveId": 179
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "forest"
   },
@@ -40935,6 +42539,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 359
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "forest"
   },
   {
@@ -41013,6 +42620,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 91
       }
     ],
+    "machineMoves": [],
     "habitat": "forest"
   },
   {
@@ -41132,6 +42740,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 404
       }
     ],
+    "machineMoves": [],
     "habitat": "forest"
   },
   {
@@ -41227,6 +42836,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 566
       }
     ],
+    "machineMoves": [],
     "habitat": "forest"
   },
   {
@@ -41307,6 +42917,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 304
       }
     ],
+    "machineMoves": [],
     "habitat": "cave"
   },
   {
@@ -41395,6 +43006,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 304
       }
     ],
+    "machineMoves": [],
     "habitat": "cave"
   },
   {
@@ -41501,6 +43113,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 63
       }
     ],
+    "machineMoves": [],
     "habitat": "cave"
   },
   {
@@ -41600,6 +43213,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 46,
         "moveId": 484
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "mountain"
   },
@@ -41703,6 +43319,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 838
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "mountain"
   },
   {
@@ -41767,6 +43386,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 15,
         "moveId": 340
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "waters-edge"
   },
@@ -41863,6 +43485,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 43,
         "moveId": 199
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "cave"
   },
@@ -41964,6 +43589,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 583
       }
     ],
+    "machineMoves": [],
     "habitat": "forest"
   },
   {
@@ -42058,6 +43684,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 39
       }
     ],
+    "machineMoves": [],
     "habitat": "forest"
   },
   {
@@ -42153,6 +43780,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 492
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "cave"
   },
   {
@@ -42244,6 +43874,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 583
       }
     ],
+    "machineMoves": [],
     "habitat": "cave"
   },
   {
@@ -42345,6 +43976,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 368
       }
     ],
+    "machineMoves": [],
     "habitat": "mountain"
   },
   {
@@ -42446,6 +44078,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 368
       }
     ],
+    "machineMoves": [],
     "habitat": "mountain"
   },
   {
@@ -42541,6 +44174,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 368
       }
     ],
+    "machineMoves": [],
     "habitat": "mountain"
   },
   {
@@ -42637,6 +44271,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 44,
         "moveId": 68
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "mountain"
   },
@@ -42741,6 +44378,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 853
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "mountain"
   },
   {
@@ -42825,6 +44465,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 87
       }
     ],
+    "machineMoves": [],
     "habitat": "grassland"
   },
   {
@@ -42911,6 +44552,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 604
       }
     ],
+    "machineMoves": [],
     "habitat": "grassland"
   },
   {
@@ -43012,6 +44654,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 49,
         "moveId": 494
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "grassland"
   },
@@ -43115,6 +44760,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 494
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -43196,6 +44844,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 47,
         "moveId": 611
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "forest"
   },
@@ -43283,6 +44934,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 611
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "forest"
   },
   {
@@ -43348,6 +45002,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 80
       }
     ],
+    "machineMoves": [],
     "habitat": "grassland"
   },
   {
@@ -43444,6 +45099,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 441
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -43534,6 +45192,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 562
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -43619,6 +45280,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 36
       }
     ],
+    "machineMoves": [],
     "habitat": "sea"
   },
   {
@@ -43710,6 +45372,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 36
       }
     ],
+    "machineMoves": [],
     "habitat": "sea"
   },
   {
@@ -43806,6 +45469,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 323
       }
     ],
+    "machineMoves": [],
     "habitat": "sea"
   },
   {
@@ -43904,6 +45568,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 323
       }
     ],
+    "machineMoves": [],
     "habitat": "sea"
   },
   {
@@ -43992,6 +45657,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 47,
         "moveId": 38
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "mountain"
   },
@@ -44083,6 +45751,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 46,
         "moveId": 89
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "mountain"
   },
@@ -44182,6 +45853,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 284
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "mountain"
   },
   {
@@ -44265,6 +45939,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 50,
         "moveId": 340
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "mountain"
   },
@@ -44352,6 +46029,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 340
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "mountain"
   },
   {
@@ -44430,6 +46110,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 37
       }
     ],
+    "machineMoves": [],
     "habitat": "mountain"
   },
   {
@@ -44513,6 +46194,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 48,
         "moveId": 90
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "rough-terrain"
   },
@@ -44607,6 +46291,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 586
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "rough-terrain"
   },
   {
@@ -44697,6 +46384,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 68,
         "moveId": 586
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "rough-terrain"
   },
@@ -44798,6 +46488,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 194
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "rough-terrain"
   },
   {
@@ -44897,6 +46590,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 201
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "rough-terrain"
   },
   {
@@ -44981,6 +46677,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 44,
         "moveId": 195
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "forest"
   },
@@ -45073,6 +46772,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 143
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "forest"
   },
   {
@@ -45162,6 +46864,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 50,
         "moveId": 370
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "grassland"
   },
@@ -45257,6 +46962,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 188
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -45348,6 +47056,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 153
       }
     ],
+    "machineMoves": [],
     "habitat": "cave"
   },
   {
@@ -45439,6 +47148,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 153
       }
     ],
+    "machineMoves": [],
     "habitat": "cave"
   },
   {
@@ -45515,6 +47225,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 48,
         "moveId": 90
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "waters-edge"
   },
@@ -45602,6 +47315,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 56,
         "moveId": 90
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "waters-edge"
   },
@@ -45695,6 +47411,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 12
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "waters-edge"
   },
   {
@@ -45785,6 +47504,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 64,
         "moveId": 12
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "waters-edge"
   },
@@ -45887,6 +47609,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 153
       }
     ],
+    "machineMoves": [],
     "habitat": "rough-terrain"
   },
   {
@@ -45994,6 +47717,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 153
       }
     ],
+    "machineMoves": [],
     "habitat": "rough-terrain"
   },
   {
@@ -46087,6 +47811,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 412
       }
     ],
+    "machineMoves": [],
     "habitat": "sea"
   },
   {
@@ -46178,6 +47903,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 412
       }
     ],
+    "machineMoves": [],
     "habitat": "sea"
   },
   {
@@ -46263,6 +47989,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 404
       }
     ],
+    "machineMoves": [],
     "habitat": "waters-edge"
   },
   {
@@ -46342,6 +48069,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 404
       }
     ],
+    "machineMoves": [],
     "habitat": "waters-edge"
   },
   {
@@ -46385,6 +48113,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 25,
         "moveId": 175
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "waters-edge"
   },
@@ -46488,6 +48219,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 56
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "waters-edge"
   },
   {
@@ -46566,6 +48300,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 542
       }
     ],
+    "machineMoves": [],
     "habitat": "grassland"
   },
   {
@@ -46668,6 +48403,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 492
       }
     ],
+    "machineMoves": [],
     "habitat": "forest"
   },
   {
@@ -46752,6 +48488,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 566
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "urban"
   },
   {
@@ -46829,6 +48568,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 53,
         "moveId": 566
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "urban"
   },
@@ -46913,6 +48655,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 44,
         "moveId": 248
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "forest"
   },
@@ -47022,6 +48767,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 248
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "forest"
   },
   {
@@ -47109,6 +48857,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 76
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "forest"
   },
   {
@@ -47191,6 +48942,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 505
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "grassland"
   },
   {
@@ -47269,6 +49023,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 195
       }
     ],
+    "machineMoves": [],
     "habitat": "mountain"
   },
   {
@@ -47333,6 +49088,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 150
       }
     ],
+    "machineMoves": [],
     "habitat": "cave"
   },
   {
@@ -47430,6 +49186,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 59
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "cave"
   },
   {
@@ -47524,6 +49283,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 59
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "cave"
   },
   {
@@ -47585,6 +49347,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 59
       }
     ],
+    "machineMoves": [],
     "habitat": "sea"
   },
   {
@@ -47646,6 +49409,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 59
       }
     ],
+    "machineMoves": [],
     "habitat": "sea"
   },
   {
@@ -47701,6 +49465,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 59
       }
     ],
+    "machineMoves": [],
     "habitat": "sea"
   },
   {
@@ -47754,6 +49519,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 504
       }
     ],
+    "machineMoves": [],
     "habitat": "sea"
   },
   {
@@ -47852,6 +49618,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 56
       }
     ],
+    "machineMoves": [],
     "habitat": "sea"
   },
   {
@@ -47950,6 +49717,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 56
       }
     ],
+    "machineMoves": [],
     "habitat": "sea"
   },
   {
@@ -48029,6 +49797,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 457
       }
     ],
+    "machineMoves": [],
     "habitat": "sea"
   },
   {
@@ -48119,6 +49888,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 219
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "sea"
   },
   {
@@ -48202,6 +49974,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 55,
         "moveId": 38
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "rough-terrain"
   },
@@ -48290,6 +50065,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 67,
         "moveId": 38
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "rough-terrain"
   },
@@ -48386,6 +50164,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "rough-terrain"
   },
   {
@@ -48422,6 +50203,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 1,
         "moveId": 33
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "rough-terrain"
   },
@@ -48516,6 +50300,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 63
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "rough-terrain"
   },
   {
@@ -48603,6 +50390,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 63
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "rough-terrain"
   },
   {
@@ -48689,6 +50479,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 153
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "cave"
   },
   {
@@ -48774,6 +50567,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 78,
         "moveId": 153
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "cave"
   },
@@ -48869,6 +50665,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 153
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "cave"
   },
   {
@@ -48959,6 +50758,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 70,
         "moveId": 361
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "waters-edge"
   },
@@ -49051,6 +50853,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 262
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "waters-edge"
   },
   {
@@ -49133,6 +50938,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 323
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "sea"
   },
   {
@@ -49214,6 +51022,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 90,
         "moveId": 284
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "rough-terrain"
   },
@@ -49302,6 +51113,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 63
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "rare"
   },
   {
@@ -49389,6 +51203,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 353
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "mountain"
   },
   {
@@ -49471,6 +51288,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 63
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "rare"
   },
   {
@@ -49551,6 +51371,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 437
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -49630,6 +51453,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 52,
         "moveId": 437
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -49718,6 +51544,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 838
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -49801,6 +51630,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 47,
         "moveId": 53
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -49891,6 +51723,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 394
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -49973,6 +51808,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 65,
         "moveId": 833
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -50058,6 +51896,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 56
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -50141,6 +51982,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 50,
         "moveId": 56
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -50233,6 +52077,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 834
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -50313,6 +52160,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 41,
         "moveId": 515
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -50395,6 +52245,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 515
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -50474,6 +52327,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 515
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -50534,6 +52390,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -50597,6 +52454,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -50644,6 +52502,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 16,
         "moveId": 450
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -50730,6 +52591,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 50,
         "moveId": 195
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -50819,6 +52683,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 528
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -50907,6 +52774,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 528
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -50993,6 +52863,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 528
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -51058,6 +52931,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 80
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -51117,6 +52991,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 80
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -51197,6 +53072,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 457
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -51274,6 +53152,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 58,
         "moveId": 457
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -51356,6 +53237,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 484
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -51435,6 +53319,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 484
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -51476,6 +53363,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 522
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -51531,6 +53419,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 405
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -51586,6 +53475,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 405
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -51634,6 +53524,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 1,
         "moveId": 522
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -51738,6 +53631,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 194
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -51823,6 +53719,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 49,
         "moveId": 87
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -51916,6 +53815,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 834
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -52006,6 +53908,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 834
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -52070,6 +53975,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 80
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -52128,6 +54034,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 80
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -52204,6 +54111,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 262
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -52274,6 +54184,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 53,
         "moveId": 262
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -52356,6 +54269,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 43,
         "moveId": 387
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -52449,6 +54365,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 44,
         "moveId": 153
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -52545,6 +54464,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 153
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -52605,6 +54527,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -52667,6 +54590,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 370
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -52720,6 +54644,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 1,
         "moveId": 595
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -52792,6 +54719,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 894
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -52852,6 +54782,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -52906,6 +54837,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -52969,6 +54901,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 32,
         "moveId": 253
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -53067,6 +55002,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 153
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -53158,6 +55096,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 153
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -53242,6 +55183,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 44,
         "moveId": 248
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -53338,6 +55282,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 240
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -53422,6 +55369,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -53483,6 +55433,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 347
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -53542,6 +55493,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 20,
         "moveId": 204
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -53606,6 +55560,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 542
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -53689,6 +55644,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 138
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -53769,6 +55727,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 60,
         "moveId": 407
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -53851,6 +55812,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 407
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -53929,6 +55893,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 82,
         "moveId": 407
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -54026,6 +55993,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 387
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -54121,6 +56091,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 56,
         "moveId": 179
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -54253,6 +56226,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 370
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -54344,6 +56320,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 52,
         "moveId": 303
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -54443,6 +56422,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 303
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -54504,6 +56486,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 242
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -54559,6 +56542,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 242
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -54648,6 +56632,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 562
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -54731,6 +56718,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 562
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -54785,6 +56775,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 412
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -54869,6 +56860,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 487
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -54947,6 +56941,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 366
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -55012,6 +57009,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -55092,6 +57090,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 50,
         "moveId": 329
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -55175,6 +57176,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 56,
         "moveId": 329
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -55274,6 +57278,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 66,
         "moveId": 399
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -55378,6 +57385,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 192
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -55432,6 +57442,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 416
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -55523,6 +57534,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 439
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -55585,6 +57599,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 188
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -55670,6 +57685,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 64,
         "moveId": 416
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -55757,6 +57775,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 63
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -55820,6 +57841,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 585
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -55906,6 +57928,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 49,
         "moveId": 369
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -56029,6 +58054,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 387
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -56147,6 +58175,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 387
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -56238,6 +58269,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 14
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -56328,6 +58362,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 65,
         "moveId": 37
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -56426,6 +58463,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 65,
         "moveId": 63
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -56586,6 +58626,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 370
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -56693,6 +58736,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 199
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -56798,6 +58844,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 54,
         "moveId": 194
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -56910,6 +58959,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 59
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -56988,6 +59040,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 55,
         "moveId": 253
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -57071,6 +59126,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 832
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -57152,6 +59210,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 84,
         "moveId": 832
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -57235,6 +59296,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 832
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -57314,6 +59378,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 459
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -57388,6 +59455,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 88,
         "moveId": 56
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -57471,6 +59541,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 72,
         "moveId": 463
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -57558,6 +59631,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 462
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -57640,6 +59716,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 84,
         "moveId": 194
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -57727,6 +59806,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 849
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -57796,6 +59878,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 75,
         "moveId": 850
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -57875,6 +59960,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 850
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -57944,6 +60032,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 93,
         "moveId": 399
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -58019,6 +60110,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 465
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -58092,6 +60186,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 100,
         "moveId": 449
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -58192,6 +60289,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 515
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -58279,6 +60377,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 40,
         "moveId": 437
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -58368,6 +60469,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 437
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -58449,6 +60553,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 56,
         "moveId": 437
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -58541,6 +60648,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 43,
         "moveId": 394
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -58639,6 +60749,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 394
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -58725,6 +60838,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 62,
         "moveId": 394
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -58818,6 +60934,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 56
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -58909,6 +61028,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 53,
         "moveId": 56
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -59003,6 +61125,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 63,
         "moveId": 56
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -59104,6 +61229,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 21
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -59222,6 +61348,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 21
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -59310,6 +61437,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 416
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -59398,6 +61526,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 416
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -59492,6 +61621,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 416
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -59572,6 +61702,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 583
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -59646,6 +61777,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 583
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -59742,6 +61874,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 242
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -59784,6 +61917,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 402
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -59880,6 +62014,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 242
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -59922,6 +62057,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 481
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -60018,6 +62154,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 242
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -60060,6 +62197,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 503
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -60152,6 +62290,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 472
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -60242,6 +62381,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 60
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -60327,6 +62467,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 143
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -60412,6 +62553,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 143
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -60491,6 +62633,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 143
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -60571,6 +62714,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 37
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -60644,6 +62790,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 53,
         "moveId": 37
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -60729,6 +62878,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 153
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -60820,6 +62970,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 153
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -60902,6 +63053,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 153
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -60987,6 +63139,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 493
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -61066,6 +63219,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 493
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -61154,6 +63308,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 90
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -61240,6 +63397,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 58,
         "moveId": 90
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -61335,6 +63495,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 387
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -61423,6 +63584,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 264
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -61510,6 +63674,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 264
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -61591,6 +63758,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 60,
         "moveId": 264
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -61680,6 +63850,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 56
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -61769,6 +63940,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 56
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -61864,6 +64036,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 56
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -61942,6 +64115,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 276
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -62020,6 +64194,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 370
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -62088,6 +64263,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 43,
         "moveId": 175
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -62161,6 +64339,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 43,
         "moveId": 175
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -62240,6 +64421,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 50,
         "moveId": 437
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -62326,6 +64510,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -62419,6 +64604,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -62510,6 +64696,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 224
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -62610,6 +64797,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 48,
         "moveId": 76
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -62726,6 +64916,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 16
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -62821,6 +65014,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 42,
         "moveId": 437
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -62928,6 +65124,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 345
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -63024,6 +65223,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 457
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -63116,6 +65318,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 39,
         "moveId": 37
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -63210,6 +65415,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 37
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -63301,6 +65509,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 200
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -63389,6 +65600,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 276
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -63479,6 +65691,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 276
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -63585,6 +65798,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 538
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -63674,6 +65888,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 439
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -63757,6 +65972,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 439
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -63850,6 +66066,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 457
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -63936,6 +66155,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 60,
         "moveId": 457
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -64024,6 +66246,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 285
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -64125,6 +66348,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 194
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -64227,6 +66451,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 194
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -64328,6 +66553,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 504
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -64423,6 +66649,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 504
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -64524,6 +66751,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 283
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -64619,6 +66847,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 283
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -64719,6 +66948,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 153
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -64821,6 +67051,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 153
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -64909,6 +67140,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 492
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -64994,6 +67228,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 58,
         "moveId": 492
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -65083,6 +67320,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 387
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -65128,6 +67368,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 1,
         "moveId": 331
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -65217,6 +67460,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 478
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -65301,6 +67547,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 478
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -65382,6 +67631,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 64,
         "moveId": 478
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -65475,6 +67727,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 472
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -65567,6 +67822,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 472
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -65657,6 +67915,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 472
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -65746,6 +68007,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 542
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -65828,6 +68092,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 55,
         "moveId": 542
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -65917,6 +68184,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 329
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -66005,6 +68273,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 329
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -66099,6 +68368,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 329
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -66179,6 +68449,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 42,
         "moveId": 76
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -66263,6 +68536,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 76
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -66342,6 +68618,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 97
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -66430,6 +68707,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -66541,6 +68819,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 368
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -66630,6 +68909,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 147
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -66712,6 +68994,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 54,
         "moveId": 147
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -66802,6 +69087,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 323
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -66889,6 +69175,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 323
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -66974,6 +69261,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 55,
         "moveId": 56
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -67064,6 +69354,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 405
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -67151,6 +69444,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 405
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -67232,6 +69528,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 153
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -67315,6 +69612,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 153
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -67403,6 +69701,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 63
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -67491,6 +69790,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 63
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -67585,6 +69885,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 604
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -67632,6 +69933,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 1,
         "moveId": 451
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -67725,6 +70029,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 37
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -67790,6 +70097,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 5,
         "moveId": 528
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -67875,6 +70185,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 94
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -67957,6 +70268,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 94
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -68053,6 +70365,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 56,
         "moveId": 262
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -68151,6 +70466,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 262
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -68241,6 +70559,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 1,
         "moveId": 517
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -68346,6 +70667,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 416
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -68450,6 +70774,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 416
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -68548,6 +70875,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 416
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -68643,6 +70973,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 42,
         "moveId": 329
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -68750,6 +71083,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 276
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -68852,6 +71188,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 329
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -68940,6 +71279,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 515
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -69054,6 +71394,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 92
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -69141,6 +71482,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 90
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -69229,6 +71571,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 136
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -69315,6 +71660,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 136
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -69393,6 +71741,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 276
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -69490,6 +71839,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 223
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -69580,6 +71932,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 64,
         "moveId": 223
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -69673,6 +72028,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 65,
         "moveId": 12
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -69771,6 +72129,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 12
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -69849,6 +72210,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 416
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -69938,6 +72300,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 413
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -70024,6 +72389,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 72,
         "moveId": 37
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -70113,6 +72481,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 72,
         "moveId": 413
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -70209,6 +72580,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 413
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -70299,6 +72673,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 394
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -70390,6 +72765,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 12
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -70490,6 +72866,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 60,
         "moveId": 200
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -70595,6 +72974,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 66,
         "moveId": 200
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -70703,6 +73085,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 63
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -70787,6 +73172,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 66,
         "moveId": 394
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -70903,6 +73291,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 476
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -70985,6 +73376,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 70,
         "moveId": 370
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -71069,6 +73463,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 370
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -71151,6 +73548,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 70,
         "moveId": 370
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -71245,6 +73645,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 77,
         "moveId": 846
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -71341,6 +73744,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 847
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -71428,6 +73834,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 551
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -71514,6 +73923,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 88,
         "moveId": 550
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -71610,6 +74022,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 848
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -71696,6 +74111,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 88,
         "moveId": 329
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -71784,6 +74202,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 370
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -71870,6 +74291,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 85,
         "moveId": 195
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -71958,6 +74382,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 120
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -72037,6 +74462,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 48,
         "moveId": 452
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -72121,6 +74549,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 53,
         "moveId": 452
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -72221,6 +74652,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 416
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -72308,6 +74742,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 48,
         "moveId": 126
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -72400,6 +74837,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 59,
         "moveId": 126
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -72508,6 +74948,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 126
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -72596,6 +75039,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 56
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -72683,6 +75129,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 56,
         "moveId": 56
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -72783,6 +75232,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 56
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -72875,6 +75327,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 162
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -72966,6 +75419,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 359
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -73046,6 +75500,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 50,
         "moveId": 19
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -73135,6 +75592,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 64,
         "moveId": 19
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -73227,6 +75687,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 413
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -73275,6 +75738,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 450
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -73314,6 +75780,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 1,
         "moveId": 106
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -73393,6 +75862,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 50,
         "moveId": 542
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -73487,6 +75959,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 315
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -73578,6 +76053,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 315
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -73665,6 +76143,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 48,
         "moveId": 76
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -73754,6 +76235,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 76
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -73827,6 +76311,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 5,
         "moveId": 585
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -73919,6 +76406,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 45,
         "moveId": 348
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -74018,6 +76508,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 208
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -74102,6 +76595,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 494
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -74197,6 +76691,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 359
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -74275,6 +76770,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 538
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -74346,6 +76842,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 33,
         "moveId": 473
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -74449,6 +76948,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 581
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -74538,6 +77040,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 533
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -74627,6 +77130,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 533
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -74722,6 +77226,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 475
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -74814,6 +77319,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 285
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -74912,6 +77418,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 244
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -75004,6 +77511,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 283
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -75094,6 +77602,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 564
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -75187,6 +77696,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 276
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -75278,6 +77790,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 276
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -75363,6 +77878,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 238
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -75450,6 +77966,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 444
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -75535,6 +78052,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 56
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -75618,6 +78138,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 200
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -75697,6 +78220,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 55,
         "moveId": 152
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -75784,6 +78310,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 152
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -75869,6 +78398,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 87
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -75956,6 +78486,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 84
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -76045,6 +78576,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 32
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -76136,6 +78668,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 457
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -76233,6 +78766,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 63
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -76324,6 +78858,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 63
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -76442,6 +78977,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 387
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -76533,6 +79071,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 143
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -76620,6 +79161,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 87
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -76703,6 +79247,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 444
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -76782,6 +79329,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 50,
         "moveId": 330
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -76870,6 +79420,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 56,
         "moveId": 330
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -76965,6 +79518,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 438
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -77047,6 +79603,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 52,
         "moveId": 387
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -77140,6 +79699,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 571
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -77230,6 +79792,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 52,
         "moveId": 571
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -77327,6 +79892,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 220
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -77430,6 +79996,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 566
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -77525,6 +80092,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 42,
         "moveId": 38
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -77628,6 +80198,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 556
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -77720,6 +80293,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 52,
         "moveId": 542
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -77819,6 +80395,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 62,
         "moveId": 586
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -77922,6 +80501,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 416
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -78025,6 +80605,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 63
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -78124,6 +80705,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 200
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -78210,6 +80792,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 84,
         "moveId": 444
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -78310,6 +80895,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 593
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -78409,6 +80997,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 153
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -78498,6 +81089,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 413
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -78586,6 +81180,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 50,
         "moveId": 413
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -78690,6 +81287,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 413
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -78777,6 +81377,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 36,
         "moveId": 394
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -78866,6 +81469,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 394
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -78952,6 +81558,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 58,
         "moveId": 394
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -79041,6 +81650,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 56
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -79129,6 +81741,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 56
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -79216,6 +81831,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 56
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -79301,6 +81919,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 304
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -79385,6 +82006,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 45,
         "moveId": 304
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -79472,6 +82096,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 50,
         "moveId": 304
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -79561,6 +82188,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 156
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -79643,6 +82273,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 156
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -79714,6 +82347,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 40,
         "moveId": 91
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -79800,6 +82436,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 435
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -79878,6 +82517,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 64,
         "moveId": 192
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -79959,6 +82601,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 370
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -80037,6 +82682,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 49,
         "moveId": 370
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -80125,6 +82773,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 542
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -80202,6 +82853,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 483
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -80276,6 +82930,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 64,
         "moveId": 483
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -80364,6 +83021,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 48,
         "moveId": 444
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -80463,6 +83123,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 444
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -80545,6 +83208,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -80626,6 +83290,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 92
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -80704,6 +83371,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 56,
         "moveId": 92
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -80789,6 +83459,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 276
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -80866,6 +83539,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 52,
         "moveId": 276
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -80956,6 +83632,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 243
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -81043,6 +83722,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 243
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -81122,6 +83804,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 50,
         "moveId": 76
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -81209,6 +83894,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 669
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -81294,6 +83982,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 138
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -81373,6 +84062,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 138
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -81457,6 +84147,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 55,
         "moveId": 283
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -81565,6 +84258,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 92
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -81654,6 +84350,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 276
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -81745,6 +84442,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 276
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -81812,6 +84510,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 32,
         "moveId": 597
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -81888,6 +84589,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 46,
         "moveId": 437
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -81974,6 +84678,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 58,
         "moveId": 136
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -82073,6 +84780,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 580
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -82156,6 +84866,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 248
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -82238,6 +84951,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 416
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -82283,6 +84999,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 111
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -82378,6 +85095,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 710
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -82467,6 +85185,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 201
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -82550,6 +85271,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 201
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -82632,6 +85356,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 262
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -82716,6 +85441,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -82834,6 +85560,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 575
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -82921,6 +85648,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 153
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -82998,6 +85728,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 46,
         "moveId": 37
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -83086,6 +85819,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 153
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -83169,6 +85903,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 596
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -83256,6 +85991,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 220
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -83330,6 +86068,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 44,
         "moveId": 834
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -83410,6 +86151,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 200
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -83509,6 +86251,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 438
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -83592,6 +86335,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 44,
         "moveId": 200
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -83681,6 +86427,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 56,
         "moveId": 370
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -83777,6 +86526,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 586
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -83872,6 +86624,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 604
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -83967,6 +86720,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 678
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -84062,6 +86816,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 580
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -84161,6 +86916,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 581
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -84201,6 +86957,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 100
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -84246,6 +87003,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 100
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -84341,6 +87099,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 416
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -84431,6 +87192,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 77,
         "moveId": 469
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -84527,6 +87291,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 457
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -84618,6 +87383,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 264
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -84709,6 +87475,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 136
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -84799,6 +87566,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 192
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -84890,6 +87658,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 130
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -84981,6 +87750,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 12
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -85076,6 +87846,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 416
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -85165,6 +87936,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 88,
         "moveId": 711
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -85260,6 +88034,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 90,
         "moveId": 705
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -85360,6 +88137,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 370
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -85448,6 +88226,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 92
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -85547,6 +88326,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 407
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -85638,6 +88418,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -85729,6 +88510,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 720
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -85827,6 +88609,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 370
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -85881,6 +88664,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 430
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -85971,6 +88755,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 63
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -86046,6 +88831,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 36,
         "moveId": 283
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -86126,6 +88914,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 48,
         "moveId": 283
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -86217,6 +89008,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 586
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -86293,6 +89087,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -86368,6 +89165,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 48,
         "moveId": 38
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -86451,6 +89251,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 756
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -86527,6 +89330,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 240
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -86602,6 +89408,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 48,
         "moveId": 240
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -86684,6 +89493,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 62,
         "moveId": 56
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -86769,6 +89581,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 562
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -86851,6 +89666,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 562
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -86927,6 +89745,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 413
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -87002,6 +89823,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 46,
         "moveId": 413
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -87090,6 +89914,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 413
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -87126,6 +89953,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 522
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -87187,6 +90015,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 522
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -87278,6 +90107,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 678
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -87354,6 +90184,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 492
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -87436,6 +90267,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 575
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -87512,6 +90344,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 437
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -87594,6 +90427,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 538
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -87674,6 +90508,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -87752,6 +90587,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 387
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -87819,6 +90655,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 49,
         "moveId": 34
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -87903,6 +90742,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 457
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -87979,6 +90821,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 583
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -88057,6 +90900,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 604
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -88128,6 +90972,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 40,
         "moveId": 350
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -88210,6 +91057,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 444
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -88289,6 +91139,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 444
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -88339,6 +91192,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 1,
         "moveId": 110
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -88435,6 +91291,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 407
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -88530,6 +91389,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 412
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -88610,6 +91472,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 328
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -88683,6 +91548,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 51,
         "moveId": 328
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -88759,6 +91627,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 56
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -88831,6 +91702,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -88901,6 +91775,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -88957,6 +91834,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 1,
         "moveId": 715
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -89077,6 +91957,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 508
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -89162,6 +92045,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 682
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -89245,6 +92129,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 682
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -89321,6 +92206,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 276
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -89407,6 +92293,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 576
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -89482,6 +92369,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 60,
         "moveId": 504
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -89569,6 +92459,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 174
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -89644,6 +92537,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 45,
         "moveId": 361
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -89724,6 +92620,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 51,
         "moveId": 361
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -89807,6 +92706,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 64,
         "moveId": 750
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -89892,6 +92794,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 44,
         "moveId": 492
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -89981,6 +92886,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 52,
         "moveId": 492
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -90076,6 +92984,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 64,
         "moveId": 359
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -90192,6 +93103,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -90282,6 +93194,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 37
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -90364,6 +93279,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 243
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -90466,6 +93382,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 794
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -90613,6 +93530,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 298
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -90716,6 +93634,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 194
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -90796,6 +93715,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 494
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -90873,6 +93795,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 50,
         "moveId": 494
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -90956,6 +93881,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 68
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -91038,6 +93966,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 435
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -91078,6 +94009,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 1,
         "moveId": 181
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -91178,6 +94112,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 483
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -91256,6 +94193,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 25
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -91329,6 +94269,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 60,
         "moveId": 59
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -91408,6 +94351,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 55,
         "moveId": 387
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -91491,6 +94437,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 60,
         "moveId": 37
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -91576,6 +94525,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 276
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -91658,6 +94610,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 276
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -91737,6 +94692,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 407
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -91816,6 +94772,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 59
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -91895,6 +94852,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 407
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -91974,6 +94932,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 59
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -92059,6 +95018,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 63
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -92107,6 +95069,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 1,
         "moveId": 611
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -92209,6 +95174,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 387
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -92308,6 +95276,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 387
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -92390,6 +95361,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 416
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -92467,6 +95441,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 88,
         "moveId": 416
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -92554,6 +95531,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 88,
         "moveId": 200
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -92646,6 +95626,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 52,
         "moveId": 264
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -92742,6 +95725,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 264
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -92837,6 +95823,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 816
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -92923,6 +95912,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 153
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -93000,6 +95992,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 78,
         "moveId": 153
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -93083,6 +96078,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 14
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -93164,6 +96162,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 72,
         "moveId": 417
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -93256,6 +96257,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 248
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -93343,6 +96347,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 224
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -93425,6 +96432,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 44,
         "moveId": 14
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -93525,6 +96535,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 359
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -93624,6 +96637,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 457
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -93710,6 +96726,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 60,
         "moveId": 370
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -93806,6 +96825,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 194
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -93901,6 +96923,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 831
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -93984,6 +97009,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 36,
         "moveId": 583
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -94072,6 +97100,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 46,
         "moveId": 437
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -94172,6 +97203,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 437
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -94251,6 +97285,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 36,
         "moveId": 126
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -94339,6 +97376,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 47,
         "moveId": 126
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -94439,6 +97479,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 315
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -94518,6 +97561,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 35,
         "moveId": 710
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -94610,6 +97656,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 48,
         "moveId": 297
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -94714,6 +97763,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 834
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -94797,6 +97849,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 35,
         "moveId": 38
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -94883,6 +97938,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 54,
         "moveId": 562
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -94972,6 +98030,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 806
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -95058,6 +98119,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 806
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -95141,6 +98205,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 41,
         "moveId": 660
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -95245,6 +98312,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 853
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -95336,6 +98406,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 44,
         "moveId": 528
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -95433,6 +98506,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 52,
         "moveId": 528
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -95537,6 +98613,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 892
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -95624,6 +98703,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 46,
         "moveId": 860
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -95714,6 +98796,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 53,
         "moveId": 860
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -95807,6 +98892,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 387
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -95893,6 +98981,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 387
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -95978,6 +99069,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 805
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -96062,6 +99156,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 42,
         "moveId": 805
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -96158,6 +99255,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 80
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -96249,6 +99349,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 179
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -96336,6 +99439,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 45,
         "moveId": 444
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -96428,6 +99534,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 51,
         "moveId": 444
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -96531,6 +99640,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 153
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -96607,6 +99719,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 32,
         "moveId": 436
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -96707,6 +99822,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 890
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -96798,6 +99916,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 394
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -96882,6 +100003,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 192
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -96964,6 +100088,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 192
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -97044,6 +100171,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 43,
         "moveId": 435
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -97127,6 +100257,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 55,
         "moveId": 542
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -97219,6 +100352,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 49,
         "moveId": 38
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -97314,6 +100450,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 200
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -97407,6 +100546,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 441
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -97493,6 +100635,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 51,
         "moveId": 441
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -97587,6 +100732,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 438
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -97673,6 +100821,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 55,
         "moveId": 438
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -97775,6 +100926,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 438
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -97874,6 +101028,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 438
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -97956,6 +101113,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 12
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -98035,6 +101195,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 48,
         "moveId": 76
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -98131,6 +101294,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 315
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -98202,6 +101368,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 35,
         "moveId": 679
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -98298,6 +101467,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 94
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -98369,6 +101541,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 34,
         "moveId": 253
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -98459,6 +101634,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 54,
         "moveId": 387
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -98557,6 +101735,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 282
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -98654,6 +101835,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 282
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -98749,6 +101933,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 282
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -98829,6 +102016,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 710
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -98906,6 +102096,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 54,
         "moveId": 710
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -98998,6 +102191,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 575
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -99081,6 +102277,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 50,
         "moveId": 56
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -99176,6 +102375,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 834
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -99268,6 +102470,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 50,
         "moveId": 441
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -99364,6 +102569,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 441
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -99447,6 +102655,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 407
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -99528,6 +102739,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 52,
         "moveId": 880
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -99617,6 +102831,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 46,
         "moveId": 482
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -99713,6 +102930,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 482
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -99805,6 +103025,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -99895,6 +103118,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 38
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -99981,6 +103207,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 54,
         "moveId": 413
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -100074,6 +103303,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 59
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -100160,6 +103392,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 59
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -100238,6 +103473,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 55,
         "moveId": 515
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -100333,6 +103571,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 834
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -100407,6 +103648,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 52,
         "moveId": 406
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -100511,6 +103755,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 515
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -100589,6 +103834,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 48,
         "moveId": 89
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -100680,6 +103928,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 50,
         "moveId": 94
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -100774,6 +104025,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 62,
         "moveId": 586
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -100870,6 +104124,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 12
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -100965,6 +104222,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 838
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -101056,6 +104316,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 586
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -101142,6 +104405,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 91,
         "moveId": 76
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -101233,6 +104499,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 91,
         "moveId": 195
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -101329,6 +104598,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 37
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -101424,6 +104696,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 602
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -101515,6 +104790,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 798
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -101597,6 +104875,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 91,
         "moveId": 59
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -101693,6 +104974,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 264
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -101787,6 +105071,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 91,
         "moveId": 63
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -101883,6 +105170,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 315
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -101978,6 +105268,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 416
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -102063,6 +105356,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 556
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -102143,6 +105439,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 55,
         "moveId": 556
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -102239,6 +105538,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 556
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -102278,6 +105580,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 1,
         "moveId": 33
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -102353,6 +105658,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 70,
         "moveId": 262
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -102457,6 +105765,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 437
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -102560,6 +105871,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 329
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -102658,6 +105972,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 75,
         "moveId": 90
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -102758,6 +106075,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 315
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -102852,6 +106172,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 91,
         "moveId": 38
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -102952,6 +106275,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 789
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -103042,6 +106368,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 98,
         "moveId": 416
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -103134,6 +106463,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 63
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -103220,6 +106552,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 84,
         "moveId": 56
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -103316,6 +106651,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 669
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -103409,6 +106747,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 164
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -103494,6 +106835,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 437
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -103577,6 +106921,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 437
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -103651,6 +106998,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 72,
         "moveId": 416
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -103730,6 +107080,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 72,
         "moveId": 575
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -103813,6 +107166,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 72,
         "moveId": 585
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -103900,6 +107256,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 452
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -103982,6 +107341,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 66,
         "moveId": 63
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -104073,6 +107435,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 54,
         "moveId": 438
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -104169,6 +107534,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 833
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -104263,6 +107631,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 91,
         "moveId": 87
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   },
@@ -104359,6 +107730,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 416
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -104454,6 +107828,9 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 63
       }
     ],
+    "machineMoves": [
+      851
+    ],
     "habitat": "unknown"
   },
   {
@@ -104528,6 +107905,7 @@ export const POKEMON: PokemonSpecies[] = [
         "moveId": 360
       }
     ],
+    "machineMoves": [],
     "habitat": "unknown"
   },
   {
@@ -104606,6 +107984,9 @@ export const POKEMON: PokemonSpecies[] = [
         "level": 72,
         "moveId": 105
       }
+    ],
+    "machineMoves": [
+      851
     ],
     "habitat": "unknown"
   }

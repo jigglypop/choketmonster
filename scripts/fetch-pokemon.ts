@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import { appendFile, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { parse } from 'csv-parse/sync';
+import { pokemonFormKoreanName } from '../src/data/pokemon-form-names';
+import { COMBAT_FORMS } from '../src/data/pokemon-combat-forms';
 
 const ROOT = new URL('../', import.meta.url);
 const CACHE_DIR = new URL('src/data/.cache/pokeapi/', ROOT);
@@ -10,6 +12,7 @@ const OUTPUTS = {
   versions: new URL('src/data/pokemon-versions.ts', ROOT),
   experience: new URL('src/data/pokemon-experience.ts', ROOT),
   validation: new URL('rust-server/data/pokemon-validation.json', ROOT),
+  ranked: new URL('rust-server/data/ranked-catalog.json', ROOT),
 };
 const SOURCE_MANIFEST = new URL('src/data/source-manifest.json', ROOT);
 const SPRITE_MANIFEST = new URL('public/pokemon/manifest.json', ROOT);
@@ -30,7 +33,7 @@ type FileEntry = { file?: string; path?: string; url: string; sha256: string; by
 type PreviousManifest = { resolvedCommit: string; csvFiles?: FileEntry[]; sourceFiles?: FileEntry[]; files?: FileEntry[] };
 const sha256 = (data: Uint8Array | string) => createHash('sha256').update(data).digest('hex');
 const exists = async (path: URL) => { try { await stat(path); return true; } catch { return false; } };
-const rows = (bytes: Buffer) => parse(bytes, { columns: true, skip_empty_lines: true }) as Row[];
+const rows = (bytes: Buffer) => parse(bytes, { columns: true, skip_empty_lines: true, relax_quotes: true }) as Row[];
 const byId = (data: Row[]) => new Map(data.map(row => [Number(row.id), row]));
 const ts = (value: unknown) => JSON.stringify(value, null, 2);
 const num = (value: string | undefined) => value ? Number(value) : 0;
@@ -138,7 +141,12 @@ for (const pokemon of defaults) {
 }
 const selectedLearnRows = allLearnRows.filter(row => selectedGroup.get(Number(row.pokemon_id)) === Number(row.version_group_id));
 const selectedLearnByPokemon = groupBy(selectedLearnRows, row => Number(row.pokemon_id));
-const moveIds = [...new Set(selectedLearnRows.map(row => Number(row.move_id)))].sort((a, b) => a - b);
+// Machine moves need an explicit runtime acquisition path. Start with Tera Blast,
+// whose source compatibility table is version group 25 (Scarlet/Violet).
+const runtimeMachineMoveIds = new Set([851]);
+const machineRows = table('pokemon_moves.csv').filter(row => row.pokemon_move_method_id === '4' && runtimeMachineMoveIds.has(Number(row.move_id)));
+const machineMovesBySpecies = groupBy(machineRows, row => Number(pokemonById.get(Number(row.pokemon_id))?.species_id));
+const moveIds = [...new Set([...selectedLearnRows.map(row => Number(row.move_id)), ...runtimeMachineMoveIds, ...COMBAT_FORMS.flatMap(form => form.levelUpMoves.map(move => move.moveId))])].sort((a, b) => a - b);
 const statChanges = groupBy(table('move_meta_stat_changes.csv'), row => Number(row.move_id));
 const standardTypes = [...types.values()].filter(row => Number(row.id) <= 18);
 const efficacy = table('type_efficacy.csv');
@@ -181,6 +189,7 @@ const species = speciesRows.map(speciesRow => {
     .sort((a, b) => a.level - b.level || a.order - b.order || a.moveId - b.moveId)
     .filter((entry, index, all) => !all.slice(0, index).some(other => other.level === entry.level && other.moveId === entry.moveId))
     .map(({ level, moveId }) => ({ level, moveId }));
+  const machineMoves = [...new Set((machineMovesBySpecies.get(id) ?? []).map(row => Number(row.move_id)))].sort((a, b) => a - b);
   const seen = new Set<number>();
   const evolutions = (evolutionRows.get(id) ?? []).sort((a, b) => num(a.version_group_id) - num(b.version_group_id))
     .filter(row => { const target = Number(row.evolved_species_id); if (seen.has(target)) return false; seen.add(target); return true; })
@@ -201,7 +210,7 @@ const species = speciesRows.map(speciesRow => {
     baseStats: { hp: values.hp, attack: values.attack, defense: values.defense, specialAttack: values['special-attack'], specialDefense: values['special-defense'], speed: values.speed },
     catchRate: Number(speciesRow.capture_rate), baseExperience: num(pokemon.base_experience), heightMeters: Number(pokemon.height) / 10,
     growthRate: growth.get(Number(speciesRow.growth_rate_id))?.identifier, frontSprite: `/pokemon/${pokemonId}.png`, backSprite: `/pokemon/back/${pokemonId}.png`,
-    evolutions, moves: learned, habitat: habitatKo.get(habitatId) ?? habitats.get(habitatId)?.identifier ?? 'unknown',
+    evolutions, moves: learned, machineMoves, habitat: habitatKo.get(habitatId) ?? habitats.get(habitatId)?.identifier ?? 'unknown',
   };
 });
 
@@ -243,11 +252,12 @@ const forms = table('pokemon_forms.csv').map(row => {
   const names = formNames.get(Number(row.id)) ?? [], koName = names.find(name => Number(name.local_language_id) === ko), enName = names.find(name => Number(name.local_language_id) === en);
   const baseName = speciesKo.get(Number(pokemon.species_id)) ?? speciesEn.get(Number(pokemon.species_id)) ?? row.identifier;
   const localizedFormName = koName?.form_name || enName?.form_name || row.form_identifier || '';
+  const koreanForm = pokemonFormKoreanName(baseName, row.identifier);
   const spriteKey = spriteKeyByIdentifier.get(row.identifier) ?? row.pokemon_id;
   return {
     formId: Number(row.id), pokemonId: Number(row.pokemon_id), speciesId: Number(pokemon.species_id), identifier: row.identifier,
-    name: koName?.pokemon_name || enName?.pokemon_name || (localizedFormName ? `${baseName} (${localizedFormName})` : baseName),
-    formName: localizedFormName, introducedInVersionGroupId: Number(row.introduced_in_version_group_id),
+    name: koreanForm?.name || koName?.pokemon_name || enName?.pokemon_name || (localizedFormName ? `${baseName} (${localizedFormName})` : baseName),
+    formName: koreanForm?.formName || localizedFormName, introducedInVersionGroupId: Number(row.introduced_in_version_group_id),
     isDefault: row.is_default === '1', isBattleOnly: row.is_battle_only === '1', isMega: row.is_mega === '1',
     order: Number(row.order), formOrder: Number(row.form_order), spriteKey, frontSprite: `/pokemon/${spriteKey}.png`, backSprite: `/pokemon/back/${spriteKey}.png`,
   };
@@ -336,7 +346,7 @@ export function getExperienceForLevel(growthRate: string, level: number): number
 await writeFile(OUTPUTS.experience, experienceOutput);
 
 const validation = {
-  species: species.map(entry => ({ id: entry.id, growthRate: entry.growthRate, experience: experience[String(entry.growthRate)], baseStats: entry.baseStats, moves: entry.moves, evolutions: entry.evolutions.map(evolution => ({ target: evolution.target })) })),
+  species: species.map(entry => ({ id: entry.id, growthRate: entry.growthRate, experience: experience[String(entry.growthRate)], baseStats: entry.baseStats, moves: entry.moves, machineMoves: entry.machineMoves, evolutions: entry.evolutions.map(evolution => ({ target: evolution.target })) })),
   moves: moveIds.map(id => ({ id, pp: moves[id].pp })),
   versions: [
     { id: 'national', speciesIds: species.map(entry => entry.id) },
@@ -344,6 +354,16 @@ const validation = {
   ],
 };
 await writeFile(OUTPUTS.validation, JSON.stringify(validation));
+const rankedCatalog = {
+  source: { dataset: 'PokeAPI data', commit: dataCommit, derivedFrom: ['src/data/pokemon.ts', 'src/data/.cache/pokeapi/pokemon_species.csv'] },
+  species: species.map((entry, index) => ({
+    id: entry.id, name: entry.name, types: entry.types, baseStats: entry.baseStats,
+    restricted: speciesRows[index].is_legendary === '1' || speciesRows[index].is_mythical === '1',
+  })),
+  moves: moveIds.map(id => moves[id]),
+  typeEffectiveness,
+};
+await writeFile(OUTPUTS.ranked, JSON.stringify(rankedCatalog));
 await download(`https://raw.githubusercontent.com/PokeAPI/pokeapi/${dataCommit}/LICENSE.md`, new URL('public/data/POKEAPI-LICENSE.txt', ROOT));
 await download(`https://raw.githubusercontent.com/PokeAPI/sprites/${spritesCommit}/LICENCE.txt`, new URL('public/data/POKEAPI-SPRITES-LICENCE.txt', ROOT), undefined, true);
 
@@ -363,12 +383,14 @@ await writeFile(SOURCE_MANIFEST, JSON.stringify({
     forms: `All ${forms.length} pokemon_forms rows; sprite paths use pinned sprites forms.json where present`,
     versionSpeciesBasis: 'Union of pokemon_dex_numbers for Pokedexes linked to each version group; catalog membership, not encounter availability',
     learnsets: 'Newest version group by source order with level-up rows for each default Pokemon variety',
+    machineMoves: `Runtime-supported machine move compatibility (${[...runtimeMachineMoveIds].join(', ')}) from all matching Pokemon varieties`,
     evolutions: 'Simple level, item, and trade rows preserve their method; compound and other trigger rows are preserved as unsupported special requirements', specialEvolutionConditions,
   },
   output: {
     species: species.length, forms: forms.length, versions: versions.length, versionGroups: groups.length, moves: moveIds.length,
     pokemonSha256: sha256(pokemonOutput), versionsSha256: sha256(versionsOutput), experienceSha256: sha256(experienceOutput),
     validationSha256: sha256(await readFile(OUTPUTS.validation)),
+    rankedSha256: sha256(await readFile(OUTPUTS.ranked)),
   },
 }, null, 2) + '\n');
 console.log(`Generated ${species.length} species, ${forms.length} forms, ${versions.length} versions, ${moveIds.length} moves, and ${spriteFiles.length}/${spriteKeys.length * 2} sprites.`);

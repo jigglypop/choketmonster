@@ -3,8 +3,9 @@ import { getMove, getSpecies, POKEMON } from '../data/pokemon';
 import { getExperienceForLevel, EXPERIENCE_BY_GROWTH_RATE } from '../data/pokemon-experience';
 import { getVersionSpeciesIds } from '../data/pokemon-versions';
 import { getAlolaCombatForm, getCombatForm, getMegaCombatForm, type PokemonCombatFormProfile } from '../data/pokemon-combat-forms';
+import { getPokemonFormModelSource } from '../data/pokemon-form-models';
 import type { BaseStats, Evolution, PokemonMove, PokemonSpecies, PokemonType } from './contracts';
-import { calculateDamage, catchProbability, turnOrder, typeMultiplier } from './battle';
+import { calculateDamage, catchProbability, resolveTeraMove, turnOrder, typeMultiplier } from './battle';
 import { getMoveLayout, reconcileMoveOrder } from './move-layout';
 import { getRegion, REGIONS } from './regions';
 import { CAMPAIGN_REGIONS, CAMPAIGN_TRAINERS, campaignProgress, campaignTravelReason, canChallengeRed, getRegionalBadges, getNextCampaignTrainer, getCampaignGyms, recordCampaignGymVictory, recordCampaignLeagueVictory, validateExpansionCampaign, type CampaignRegion, type CampaignProgress } from './campaign';
@@ -294,7 +295,7 @@ export function availableMonsterMoveIds(monster: Pick<Monster, 'speciesId' | 'le
     forms.push(...(PRE_EVOLUTIONS.get(form) ?? []));
   }
   entries.sort((a, b) => a.level - b.level || a.order - b.order);
-  return [...new Set(entries.map((entry) => entry.moveId))];
+  return [...new Set([...entries.map((entry) => entry.moveId), ...getSpecies(monster.speciesId).machineMoves])];
 }
 
 function takeStoredMovePp(monster: Monster, moveId: number): number {
@@ -536,8 +537,10 @@ function effectiveTypes(battle: BattleState, monster: Monster): readonly Pokemon
 function effectiveAbility(battle: BattleState, monster: Monster): MonsterAbility | undefined { return battle.transformations?.[monster.instanceId]?.ability ?? monster.ability; }
 export function battleMonsterTypes(state: GameState, monster: Monster): readonly PokemonType[] { return state.battle ? effectiveTypes(state.battle, monster) : regionalProfile(monster)?.types ?? getSpecies(monster.speciesId).types; }
 export function battleMonsterView(battle: BattleState, monster: Monster) {
+  const transformation = battle.transformations?.[monster.instanceId];
   return { ...monster, speciesId: effectiveSpeciesId(battle, monster), stats: effectiveStats(battle, monster),
     moves: effectiveMoves(battle, monster), types: effectiveTypes(battle, monster), ability: effectiveAbility(battle, monster),
+    teraType: transformation?.kind === 'tera' ? transformation.teraType : undefined,
     lockedMoveId: battle.choiceLocks?.[monster.instanceId] };
 }
 function activeHeldTool(battle: BattleState, monster: Monster): HeldTool | undefined {
@@ -564,6 +567,10 @@ function combatant(monster: Monster, battle: BattleState) {
 function validMoveIndexes(monster: Monster, battle: BattleState): number[] {
   const lock = battle.choiceLocks?.[monster.instanceId];
   return effectiveMoves(battle, monster).flatMap((slot, index) => lock === undefined || slot.moveId === lock ? [index] : []);
+}
+
+export function battleMoveView(battle: BattleState, monster: Monster, moveId: number): PokemonMove {
+  return resolveTeraMove(combatant(monster, battle), getMove(moveId));
 }
 
 function circularMoveIndex(monster: Monster, battle: BattleState, requested: number): number {
@@ -640,7 +647,7 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
       typeMultiplier: 1, damage, category: 'damage', hpRecovered: 0, statStageDelta: 0, ailmentApplied: false, strategicEffect: false, result: 'struggle' });
     return;
   }
-  const move = getMove(slot.moveId);
+  const move = resolveTeraMove(combatant(attacker, battle), getMove(slot.moveId));
   if (attacker.heldTool?.startsWith('choice-')) (battle.choiceLocks ??= {})[attacker.instanceId] = move.id;
   const growth = evolutionProgress(attacker);
   growth.moveUses[String(move.id)] = Math.min(1e9, (growth.moveUses[String(move.id)] ?? 0) + 1);
@@ -1076,7 +1083,7 @@ export function activateBattleTransformation(state: GameState, kind: 'mega' | 't
   if (kind === 'mega') {
     if (battle.playerMegaUsed) throw new Error('이 전투에서는 이미 메가진화를 사용했습니다.');
     const profile = getMegaCombatForm(monster.speciesId, option.formIdentifier);
-    if (!profile) throw new Error('메가진화할 수 없는 포켓몬입니다.');
+    if (!profile || !getPokemonFormModelSource(profile.identifier)) throw new Error('메가진화할 수 없는 포켓몬입니다.');
     transformation = { kind, speciesId: monster.speciesId, formIdentifier: profile.identifier, types: [...profile.types], ability: combatFormAbility(profile), stats: formStats(monster, profile), moves: monster.moves.map(slot => ({ ...slot })) };
     battle.playerMegaUsed = true;
   } else {
@@ -1744,7 +1751,8 @@ export function validateGame(value: unknown): GameState {
         if (member.gender === undefined) member.gender = owned.gender;
         if (member.ivs === undefined) member.ivs = structuredClone(owned.ivs);
         if (member.ability === undefined) member.ability = structuredClone(owned.ability);
-        else if (!canonicalAbility(member.ability, member.speciesId)) throw new Error('전투 특성이 원본 종/슬롯 데이터와 맞지 않습니다.');
+        else if (!owned.ability || member.ability.id !== owned.ability.id || member.ability.slot !== owned.ability.slot
+          || member.ability.hidden !== owned.ability.hidden || member.ability.slug !== owned.ability.slug) throw new Error('전투 특성이 소유 개체 데이터와 맞지 않습니다.');
         else member.ability = structuredClone(owned.ability);
         member.heldTool = owned.heldTool;
         member.regionalForm = owned.regionalForm;
@@ -1782,6 +1790,10 @@ export function validateGame(value: unknown): GameState {
       }
       if (form.kind === 'mega') {
         const profile = form.formIdentifier && getMegaCombatForm(form.speciesId, form.formIdentifier);
+        if (profile && !getPokemonFormModelSource(profile.identifier)) {
+          delete battle.transformations[instanceId];
+          continue;
+        }
         const source = [...state.player.team, ...battle.enemy.team].find(monster => monster.instanceId === instanceId);
         if (!profile || !source || profile.identifier !== form.formIdentifier || JSON.stringify(form.types) !== JSON.stringify(profile.types)) throw new Error('메가진화 모습이 손상되었습니다.');
         const expected = formStats(source, profile), expectedAbility = combatFormAbility(profile);

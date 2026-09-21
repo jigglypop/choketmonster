@@ -3,6 +3,7 @@ import type { GameState } from './engine';
 import { isLegendarySpecies } from './legendary';
 import { pokemonSpriteUrl } from './assets';
 import { getCombatForm, getMegaCombatForms } from '../data/pokemon-combat-forms';
+import { getPokemonFormModelSource } from '../data/pokemon-form-models';
 import { combatFormSprite, POKEMON_TYPE_LABELS } from '../ui/pokemon-presentation';
 import { confirmAction } from '../ui/confirm-action';
 import './ranked.css';
@@ -76,13 +77,13 @@ export function mountRankedPanel(options: RankedPanelOptions) {
   const fighterCard = (side: Side, self: boolean) => {
     const fighter = active(side), form = fighter.regionalForm ? getCombatForm(fighter.regionalForm) : undefined, hp = Math.max(0, Math.min(100, fighter.hp / fighter.maxHp * 100));
     return `<article class="ranked-fighter ${self ? 'is-self' : 'is-opponent'}">${trainerName(side, self)}
-      <img src="${(form && combatFormSprite(form)) ?? pokemonSpriteUrl(fighter.speciesId)}" alt=""><div><span>Lv.50</span><h3>${escape(form?.name ?? fighter.nickname)}</h3><small>${fighter.types.map(escape).join(' · ')}${fighter.status ? ` · ${escape(fighter.status)}` : ''}</small>
+      <img src="${(form && combatFormSprite(form)) ?? pokemonSpriteUrl(fighter.speciesId)}" alt=""><div><span>Lv.50</span><h3>${escape(form?.name ?? fighter.nickname)}</h3><small>${fighter.types.map(type => escape(POKEMON_TYPE_LABELS[type] ?? type)).join(' · ')}${fighter.status ? ` · ${escape(fighter.status)}` : ''}</small>
       <div class="ranked-hp"><i style="width:${hp}%"></i></div><b>HP ${fighter.hp} / ${fighter.maxHp}</b></div></article>`;
   };
   const transformations = (side: Side) => {
     const fighter = active(side);
     if (fighter.transformationKind) return `<div class="battle-transformation-active">${fighter.transformationKind === 'tera' ? `${POKEMON_TYPE_LABELS[fighter.teraType!]} 테라스탈` : '메가진화'}</div>`;
-    const forms = getMegaCombatForms(fighter.speciesId).filter(form => combatFormSprite(form));
+    const forms = getMegaCombatForms(fighter.speciesId).filter(form => getPokemonFormModelSource(form.identifier));
     return `<div class="battle-transformations">${forms.length && !side.megaUsed ? `<div><select data-ranked-mega-form aria-label="메가진화 모습">${forms.map(form => `<option value="${escape(form.identifier)}">${escape(form.name)}</option>`).join('')}</select><button data-ranked-transform="mega">메가진화</button></div>` : ''}${!side.teraUsed ? `<div><select data-ranked-tera-type aria-label="테라 타입">${Object.entries(POKEMON_TYPE_LABELS).map(([type, label]) => `<option value="${type}" ${type === fighter.types[0] ? 'selected' : ''}>${label}</option>`).join('')}</select><button data-ranked-transform="tera">테라스탈</button></div>` : ''}</div>`;
   };
   const battle = (match: RankedMatch) => {
@@ -95,7 +96,7 @@ export function mountRankedPanel(options: RankedPanelOptions) {
       ${completed ? `<div class="ranked-result"><strong>${result}</strong><span>레이팅 ${match.ratingChange >= 0 ? '+' : ''}${match.ratingChange}</span><button data-ranked-refresh>순위 확인</button></div>`
         : `<div class="ranked-actions" ${match.awaitingOpponent || busy ? 'inert' : ''}>
           ${self.hp > 0 ? transformations(match.selfSide) : ''}
-          <div class="ranked-moves">${self.moves.map((move, index) => `<button data-ranked-move="${index}" ${match.awaitingOpponent || self.hp <= 0 || (self.choiceMove != null && self.choiceMove !== move.id) ? 'disabled' : ''}><strong>${escape(move.name)}</strong><small>${escape(move.type)} · ${move.power ? `위력 ${move.power}` : '변화'} · 명중 ${move.accuracy || '—'}</small></button>`).join('')}</div>
+          <div class="ranked-moves">${self.moves.map((move, index) => `<button data-ranked-move="${index}" ${match.awaitingOpponent || self.hp <= 0 || (self.choiceMove != null && self.choiceMove !== move.id) ? 'disabled' : ''}><strong>${escape(move.name)}</strong><small>${escape(POKEMON_TYPE_LABELS[move.type] ?? move.type)} · ${move.power ? `위력 ${move.power}` : '변화'} · 명중 ${move.accuracy || '—'}</small></button>`).join('')}</div>
           <details><summary>포켓몬 교체</summary><div>${match.selfSide.team.map((fighter, index) => `<button data-ranked-switch="${index}" ${match.awaitingOpponent || index === match.selfSide.activeIndex || fighter.hp <= 0 ? 'disabled' : ''}>${escape(fighter.nickname)} · HP ${fighter.hp}/${fighter.maxHp}</button>`).join('')}</div></details>
           <button class="ranked-surrender" data-ranked-surrender ${match.awaitingOpponent ? 'disabled' : ''}>항복</button>
           ${match.awaitingOpponent ? '<p class="ranked-wait">행동 제출 완료 · 상대 선택을 기다립니다.</p>' : ''}

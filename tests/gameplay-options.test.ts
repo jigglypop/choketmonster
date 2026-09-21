@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { Brain } from '../src/core/brain';
-import { calculateDamage } from '../src/game/battle';
+import { calculateDamage, resolveTeraMove } from '../src/game/battle';
 import { getMove, getSpecies } from '../src/data/pokemon';
+import { COMBAT_FORMS } from '../src/data/pokemon-combat-forms';
+import { getPokemonFormModelSource } from '../src/data/pokemon-form-models';
+import { battleTransformationsHtml } from '../src/ui/pokemon-presentation';
 import { FIELD_TRAINERS } from '../src/data/field-trainers';
 import { automatedMoveMask, battleMoveSenses } from '../src/game/connectome';
+import { getMoveLayout } from '../src/game/move-layout';
 import {
   actBattle, battleMonsterView, challengeFieldTrainer, experienceAtLevel, useItem, activateBattleTransformation, assignAlolaForm, assignHeldTool, assignMonsterAbility, captureDefeatedWild, createGame, createMonster, evolve,
   evolutionPurchaseQuote, ITEM_PRICES, mergeCollectionDuplicates,
-  previewCollectionMerge, restoreGame, serializeGame, setAutoMergeDuplicates, statsFor,
+  previewCollectionMerge, restoreGame, serializeGame, setAutoMergeDuplicates, statsFor, availableMonsterMoveIds, replaceMonsterMove,
 } from '../src/game/engine';
 
 describe('collection merge options', () => {
@@ -109,6 +113,27 @@ describe('held tools', () => {
   });
 });
 
+describe('unavailable Mega models', () => {
+  it('hides and rejects every Mega form without verified 3D geometry', () => {
+    const missing = COMBAT_FORMS.filter(form => form.kind === 'mega' && !getPokemonFormModelSource(form.identifier));
+    expect(missing).toHaveLength(33);
+    for (const form of missing) {
+      const game = createGame(4, form.identifier), monster = createMonster(game, form.speciesId, 50);
+      game.player.team = [monster];
+      game.battle = { kind: 'wild', regionId: game.regionId, player: { team: game.player.team, activeIndex: 0 }, enemy: { team: [createMonster(game, 7, 50)], activeIndex: 0 }, turn: 1, canRun: true };
+      expect(battleTransformationsHtml(game)).not.toContain(`value="${form.identifier}"`);
+      expect(() => activateBattleTransformation(game, 'mega', { formIdentifier: form.identifier })).toThrow();
+      expect(game.battle.playerMegaUsed).toBeUndefined();
+      expect(game.battle.transformations).toBeUndefined();
+    }
+  });
+  it('includes every regional move referenced by the move editor', () => {
+    for (const form of COMBAT_FORMS.filter(form => form.kind === 'alola')) {
+      for (const entry of form.levelUpMoves) expect(getMove(entry.moveId).id).toBe(entry.moveId);
+    }
+  });
+});
+
 describe('battle forms', () => {
   it('uses canonical Mega stats and limits Mega evolution to once per battle', () => {
     const game = createGame(4, 'mega-battle'), charizard = createMonster(game, 6, 50), enemy = createMonster(game, 7, 50);
@@ -131,6 +156,55 @@ describe('battle forms', () => {
     const originalStabAfterWaterTera = calculateDamage({ level: 50, hp: 100, stats, types: ['water'], originalTypes: ['electric'], teraType: 'water' }, { level: 50, hp: 100, stats, types: ['normal'] }, electricMove, 1).damage;
     const noStab = calculateDamage({ level: 50, hp: 100, stats, types: ['water'], originalTypes: ['normal'], teraType: 'water' }, { level: 50, hp: 100, stats, types: ['normal'] }, electricMove, 1).damage;
     expect(originalStabAfterWaterTera).toBeGreaterThan(noStab);
+  });
+
+  it('resolves Tera Blast and the Gen 9 minimum power rule with its exclusions', () => {
+    const stats = { hp: 100, attack: 140, defense: 100, specialAttack: 90, specialDefense: 100, speed: 100 };
+    const attacker = { level: 50, hp: 100, stats, types: ['electric'] as const, originalTypes: ['normal'] as const, teraType: 'electric' as const };
+    const teraBlast = { ...getMove(33), id: 851, name: '테라버스트', englishName: 'Tera Blast', type: 'normal' as const, power: 80, damageClass: 'special' as const };
+    expect(resolveTeraMove(attacker, teraBlast)).toMatchObject({ type: 'electric', power: 80, damageClass: 'physical' });
+    expect(resolveTeraMove({ ...attacker, stats: { ...stats, attack: 90, specialAttack: 140 } }, teraBlast).damageClass).toBe('special');
+
+    const weak = { ...getMove(33), type: 'electric' as const, power: 40, priority: 0 };
+    expect(resolveTeraMove(attacker, weak).power).toBe(60);
+    expect(resolveTeraMove(attacker, { ...weak, priority: 1 }).power).toBe(40);
+    expect(resolveTeraMove(attacker, { ...weak, minHits: 2, maxHits: 5 }).power).toBe(40);
+    expect(resolveTeraMove(attacker, { ...weak, power: 0 }).power).toBe(0);
+  });
+
+  it('loads Tera Blast from the generated catalog and equips it through the move layout flow', () => {
+    const game = createGame(1, 'tera-blast-machine'), raichu = createMonster(game, 26, 30);
+    game.player.box.push(raichu); assignAlolaForm(game, raichu.instanceId, true);
+    expect(getMove(851)).toMatchObject({ englishName: 'Tera Blast', type: 'normal', power: 80, damageClass: 'special' });
+    expect(getSpecies(26).machineMoves).toContain(851);
+    expect(availableMonsterMoveIds(raichu)).toContain(851);
+    replaceMonsterMove(game, raichu.instanceId, 0, 851);
+    expect(getMoveLayout(raichu)[0]).toMatchObject({ moveId: 851, pp: 10 });
+    expect(getMoveLayout(restoreGame(serializeGame(game)).player.box[0])[0]).toMatchObject({ moveId: 851, pp: 10 });
+  });
+
+  it('keeps Alola original STAB and Tera state through switching and reload', () => {
+    const game = createGame(1, 'alola-tera-reload'), raichu = createMonster(game, 26, 30), reserve = createMonster(game, 7, 30);
+    game.player.team = [raichu, reserve]; assignAlolaForm(game, raichu.instanceId, true);
+    const enemy = createMonster(game, 143, 30);
+    game.battle = { kind: 'wild', regionId: game.regionId, player: { team: game.player.team, activeIndex: 0 }, enemy: { team: [enemy], activeIndex: 0 }, turn: 1, canRun: true };
+    activateBattleTransformation(game, 'tera', { teraType: 'electric' });
+    const loaded = restoreGame(serializeGame(game));
+    const transformed = loaded.battle!.transformations![raichu.instanceId];
+    expect(transformed).toMatchObject({ kind: 'tera', teraType: 'electric', types: ['electric'] });
+    expect(() => activateBattleTransformation(loaded, 'tera', { instanceId: reserve.instanceId, teraType: 'water' })).toThrow();
+    actBattle(loaded, { type: 'switch', index: 1 }, 4);
+    actBattle(loaded, { type: 'switch', index: 0 }, 4);
+    expect(battleMonsterView(loaded.battle!, loaded.player.team[0])).toMatchObject({ types: ['electric'], teraType: 'electric' });
+
+    const stats = { hp: 100, attack: 100, defense: 100, specialAttack: 100, specialDefense: 100, speed: 100 };
+    const move = { ...getMove(84), power: 80, type: 'electric' as const };
+    const defender = { level: 50, hp: 100, stats, types: ['normal'] as const };
+    const alolaTera = calculateDamage({ level: 50, hp: 100, stats, types: ['electric'], originalTypes: ['electric', 'psychic'], teraType: 'electric' }, defender, move, 1).damage;
+    const changedTera = calculateDamage({ level: 50, hp: 100, stats, types: ['water'], originalTypes: ['electric', 'psychic'], teraType: 'water' }, defender, move, 1).damage;
+    const noOriginalStab = calculateDamage({ level: 50, hp: 100, stats, types: ['water'], originalTypes: ['normal'], teraType: 'water' }, defender, move, 1).damage;
+    expect(alolaTera).toBeGreaterThan(changedTera);
+    expect(changedTera).toBeGreaterThan(noOriginalStab);
   });
 
   it('persists a canonical Alola form and rejects it on the wrong species', () => {

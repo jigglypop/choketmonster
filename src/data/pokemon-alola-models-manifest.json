@@ -1,0 +1,514 @@
+{
+  "schema": 1,
+  "generatedAt": "2026-09-21T16:15:38.371Z",
+  "scope": {
+    "requested": 18,
+    "resolved": 18,
+    "primary": 10,
+    "fallback": 8
+  },
+  "sources": [
+    {
+      "name": "pokemon-3d-api",
+      "repository": "https://github.com/Pokemon-3D-api/assets",
+      "commit": "429de1288cea0d43f5b4f56305d2276e94239d65",
+      "licenseFile": "LICENSE",
+      "licenseText": "MIT License file exists; README separately states all 3D assets are property of Nintendo/Creatures Inc./GAME FREAK inc. The code/repository MIT file does not by itself establish redistribution rights for those model assets.",
+      "rightsStatus": "unverified-do-not-assert-cleared"
+    },
+    {
+      "name": "pokemon-home-glb-models",
+      "repository": "https://github.com/Lilothestitch16/Pokemon-HOME-GLB-Models",
+      "commit": "27703273836f38f0e185976d955b1fbfb15448af",
+      "licenseFile": null,
+      "licenseText": "No README, LICENSE, or COPYING file exists in the pinned tree.",
+      "rightsStatus": "unverified-do-not-redistribute"
+    }
+  ],
+  "entries": [
+    {
+      "identifier": "rattata-alola",
+      "speciesId": 19,
+      "source": "pokemon-3d-api",
+      "sourcePath": "models/opt/alolan/19.glb",
+      "url": "https://raw.githubusercontent.com/Pokemon-3D-api/assets/429de1288cea0d43f5b4f56305d2276e94239d65/models/opt/alolan/19.glb",
+      "gitBlobSha1": "9e6cd2e8f2415cde82204af19f904c6be10443eb",
+      "sha256": "10e88225be618d9c4b4ffa47505295b724bcec859dfe1e02ec93b9f351c5ed63",
+      "bytes": 265056,
+      "meshes": 1,
+      "primitives": 1,
+      "skins": 1,
+      "animations": 2,
+      "materials": 1,
+      "materialNames": [
+        "rattata_alola"
+      ],
+      "textures": 1,
+      "images": 1,
+      "imageMimeTypes": [
+        "image/webp"
+      ],
+      "draco": true,
+      "heightMeters": 0.3
+    },
+    {
+      "identifier": "raticate-alola",
+      "speciesId": 20,
+      "source": "pokemon-home-glb-models",
+      "sourcePath": "Pokemon (Generation 1)/pm0020_61_00.glb",
+      "url": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-GLB-Models/27703273836f38f0e185976d955b1fbfb15448af/Pokemon%20(Generation%201)/pm0020_61_00.glb",
+      "gitBlobSha1": "8a91b233f6d85e7dd8363eede7964f24ca210c73",
+      "sha256": "ac82e1ad369b10c543c32e5e0d6b4a53dab44597b743b9c948eb12a796aaad0a",
+      "bytes": 348604,
+      "meshes": 1,
+      "primitives": 5,
+      "skins": 1,
+      "animations": 0,
+      "materials": 5,
+      "materialNames": [
+        "pm0020_61_00-BodyVco01",
+        "pm0020_61_00-Body01",
+        "pm0020_61_00-Body00",
+        "pm0020_61_00-Eye",
+        "pm0020_61_00-BodyVco00"
+      ],
+      "textures": 0,
+      "images": 0,
+      "imageMimeTypes": [],
+      "draco": false,
+      "heightMeters": 0.7
+    },
+    {
+      "identifier": "raichu-alola",
+      "speciesId": 26,
+      "source": "pokemon-home-glb-models",
+      "sourcePath": "Pokemon (Generation 1)/pm0026_61_00.glb",
+      "url": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-GLB-Models/27703273836f38f0e185976d955b1fbfb15448af/Pokemon%20(Generation%201)/pm0026_61_00.glb",
+      "gitBlobSha1": "54ef00b164c6e2633d853715c063b300b74fc717",
+      "sha256": "650df793d2120fe8d2177ded535774bc6bd0b92bad66a0d54aa4c687f36ceb51",
+      "bytes": 306480,
+      "meshes": 2,
+      "primitives": 7,
+      "skins": 2,
+      "animations": 0,
+      "materials": 7,
+      "materialNames": [
+        "pm0026_61_00-BodyA00",
+        "pm0026_61_00-Mouth",
+        "pm0026_61_00-Eye",
+        "pm0026_61_00-BodyBInc",
+        "pm0026_61_00-BodyA02",
+        "pm0026_61_00-BodyA01",
+        "pm0026_61_00-BodyC"
+      ],
+      "textures": 0,
+      "images": 0,
+      "imageMimeTypes": [],
+      "draco": false,
+      "selectionReason": "Pokemon-3D-api alolan/26.glb visually renders ordinary Raichu; HOME pm0026_61_00 is selected for canonical Alolan identity pending final render verification.",
+      "heightMeters": 0.7
+    },
+    {
+      "identifier": "sandshrew-alola",
+      "speciesId": 27,
+      "source": "pokemon-home-glb-models",
+      "sourcePath": "Pokemon (Generation 1)/pm0027_61_00.glb",
+      "url": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-GLB-Models/27703273836f38f0e185976d955b1fbfb15448af/Pokemon%20(Generation%201)/pm0027_61_00.glb",
+      "gitBlobSha1": "7f06f61a348d506cdd0f149345a84e64da667400",
+      "sha256": "69c202e5a13daf48c1e5468ef9726ba461c227fe830cd7337d033eefbe70cd10",
+      "bytes": 290464,
+      "meshes": 2,
+      "primitives": 8,
+      "skins": 2,
+      "animations": 0,
+      "materials": 6,
+      "materialNames": [
+        "pm0027_61_00-BodySpc00",
+        "pm0027_61_00-BodyIce00",
+        "pm0027_61_00-Eye",
+        "pm0027_61_00-BodyIce01",
+        "pm0027_61_00-Body01",
+        "pm0027_61_00-Body00"
+      ],
+      "textures": 0,
+      "images": 0,
+      "imageMimeTypes": [],
+      "draco": false,
+      "heightMeters": 0.7
+    },
+    {
+      "identifier": "sandslash-alola",
+      "speciesId": 28,
+      "source": "pokemon-home-glb-models",
+      "sourcePath": "Pokemon (Generation 1)/pm0028_61_00.glb",
+      "url": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-GLB-Models/27703273836f38f0e185976d955b1fbfb15448af/Pokemon%20(Generation%201)/pm0028_61_00.glb",
+      "gitBlobSha1": "a3e7daeaec82b651ed01e03ff400e72cafc5dbbf",
+      "sha256": "341523a6879f7b8785b62e32a3e1234c1fa23f5310a3fe86333d6eaaa8b5d091",
+      "bytes": 302392,
+      "meshes": 2,
+      "primitives": 6,
+      "skins": 2,
+      "animations": 0,
+      "materials": 5,
+      "materialNames": [
+        "pm0028_61_00-BodyASpcVco",
+        "pm0028_61_00-BodyA",
+        "pm0028_61_00-Eye",
+        "pm0028_61_00-BodyPowalen",
+        "pm0028_61_00-BodyPowalenVco"
+      ],
+      "textures": 0,
+      "images": 0,
+      "imageMimeTypes": [],
+      "draco": false,
+      "heightMeters": 1.2
+    },
+    {
+      "identifier": "vulpix-alola",
+      "speciesId": 37,
+      "source": "pokemon-3d-api",
+      "sourcePath": "models/opt/alolan/37.glb",
+      "url": "https://raw.githubusercontent.com/Pokemon-3D-api/assets/429de1288cea0d43f5b4f56305d2276e94239d65/models/opt/alolan/37.glb",
+      "gitBlobSha1": "13a92309734dba1044f9d123c940fa16c698d010",
+      "sha256": "53a41caf019e34db17fdd4bb89b4699a3db41464ea0d63714d77585abffc986f",
+      "bytes": 31272,
+      "meshes": 2,
+      "primitives": 2,
+      "skins": 0,
+      "animations": 0,
+      "materials": 2,
+      "materialNames": [
+        "BodyB_mat_004",
+        "Eye_mat_003"
+      ],
+      "textures": 2,
+      "images": 2,
+      "imageMimeTypes": [
+        "image/webp"
+      ],
+      "draco": true,
+      "heightMeters": 0.6
+    },
+    {
+      "identifier": "ninetales-alola",
+      "speciesId": 38,
+      "source": "pokemon-3d-api",
+      "sourcePath": "models/opt/alolan/38.glb",
+      "url": "https://raw.githubusercontent.com/Pokemon-3D-api/assets/429de1288cea0d43f5b4f56305d2276e94239d65/models/opt/alolan/38.glb",
+      "gitBlobSha1": "159e4db4b3e9a838a6bbd1921901d9744e32c009",
+      "sha256": "517c4123ca9842e77e2ae390c96c2f3c2cee4c6b9209765a2ba0ab7bb6f32b7d",
+      "bytes": 118008,
+      "meshes": 3,
+      "primitives": 6,
+      "skins": 1,
+      "animations": 0,
+      "materials": 2,
+      "materialNames": [
+        "Body00",
+        "Eye"
+      ],
+      "textures": 2,
+      "images": 2,
+      "imageMimeTypes": [
+        "image/webp"
+      ],
+      "draco": true,
+      "heightMeters": 1.1
+    },
+    {
+      "identifier": "diglett-alola",
+      "speciesId": 50,
+      "source": "pokemon-3d-api",
+      "sourcePath": "models/opt/alolan/50.glb",
+      "url": "https://raw.githubusercontent.com/Pokemon-3D-api/assets/429de1288cea0d43f5b4f56305d2276e94239d65/models/opt/alolan/50.glb",
+      "gitBlobSha1": "a4895d7c6ada5905514fc5c4c4c12e205453f4f2",
+      "sha256": "00e354512274b43a0c150c34345aa07c4d46c0e5d4b026fb6eadd30fd46c7f67",
+      "bytes": 39984,
+      "meshes": 2,
+      "primitives": 4,
+      "skins": 1,
+      "animations": 0,
+      "materials": 3,
+      "materialNames": [
+        "Eye.001",
+        "BodyA01",
+        "BodyB"
+      ],
+      "textures": 3,
+      "images": 3,
+      "imageMimeTypes": [
+        "image/webp"
+      ],
+      "draco": true,
+      "heightMeters": 0.2
+    },
+    {
+      "identifier": "dugtrio-alola",
+      "speciesId": 51,
+      "source": "pokemon-3d-api",
+      "sourcePath": "models/opt/alolan/51.glb",
+      "url": "https://raw.githubusercontent.com/Pokemon-3D-api/assets/429de1288cea0d43f5b4f56305d2276e94239d65/models/opt/alolan/51.glb",
+      "gitBlobSha1": "64d683777b7736ff0899da26d59dd97b8e393bdc",
+      "sha256": "b0d3bbb587990d1adf6778f0dc0aa6f14137217b6bffccb74862433f3371c3f2",
+      "bytes": 139472,
+      "meshes": 3,
+      "primitives": 3,
+      "skins": 0,
+      "animations": 0,
+      "materials": 3,
+      "materialNames": [
+        "body_a.001",
+        "eye_a.001",
+        "body_b_00.001"
+      ],
+      "textures": 2,
+      "images": 2,
+      "imageMimeTypes": [
+        "image/webp"
+      ],
+      "draco": true,
+      "heightMeters": 0.7
+    },
+    {
+      "identifier": "meowth-alola",
+      "speciesId": 52,
+      "source": "pokemon-3d-api",
+      "sourcePath": "models/opt/alolan/52.glb",
+      "url": "https://raw.githubusercontent.com/Pokemon-3D-api/assets/429de1288cea0d43f5b4f56305d2276e94239d65/models/opt/alolan/52.glb",
+      "gitBlobSha1": "0d6b5eb147fa9661e96b9bcebadddddc0755c5f0",
+      "sha256": "1d17d52877d692d43c66978cc174cced6b8367f407b4759d41ed58c185935da8",
+      "bytes": 52804,
+      "meshes": 2,
+      "primitives": 2,
+      "skins": 0,
+      "animations": 0,
+      "materials": 2,
+      "materialNames": [
+        "body_00",
+        "l_eye"
+      ],
+      "textures": 2,
+      "images": 2,
+      "imageMimeTypes": [
+        "image/webp"
+      ],
+      "draco": true,
+      "heightMeters": 0.4
+    },
+    {
+      "identifier": "persian-alola",
+      "speciesId": 53,
+      "source": "pokemon-3d-api",
+      "sourcePath": "models/opt/alolan/53.glb",
+      "url": "https://raw.githubusercontent.com/Pokemon-3D-api/assets/429de1288cea0d43f5b4f56305d2276e94239d65/models/opt/alolan/53.glb",
+      "gitBlobSha1": "f41c9873af7113375473da6223c54296c29e31da",
+      "sha256": "fe18348ab7cfcbe99bc2a98ce212ddb1d62ffcf1d844da9824ce60d47d8b0cba",
+      "bytes": 75216,
+      "meshes": 3,
+      "primitives": 3,
+      "skins": 0,
+      "animations": 0,
+      "materials": 3,
+      "materialNames": [
+        "body_00",
+        "l_eye",
+        "body_01"
+      ],
+      "textures": 2,
+      "images": 2,
+      "imageMimeTypes": [
+        "image/webp"
+      ],
+      "draco": true,
+      "heightMeters": 1.1
+    },
+    {
+      "identifier": "geodude-alola",
+      "speciesId": 74,
+      "source": "pokemon-home-glb-models",
+      "sourcePath": "Pokemon (Generation 1)/pm0074_61_00.glb",
+      "url": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-GLB-Models/27703273836f38f0e185976d955b1fbfb15448af/Pokemon%20(Generation%201)/pm0074_61_00.glb",
+      "gitBlobSha1": "4fea38ce18d5693c1ac0f96f6003c14103132da9",
+      "sha256": "2c45d5b5e9ce3629a53b990ea65b273209d9a64772a1a1dc7c5f91e62d0ea319",
+      "bytes": 268400,
+      "meshes": 2,
+      "primitives": 5,
+      "skins": 2,
+      "animations": 0,
+      "materials": 5,
+      "materialNames": [
+        "pm0074_61_00-Body00",
+        "pm0074_61_00-Body01",
+        "pm0074_61_00-LEye",
+        "pm0074_61_00-REye",
+        "pm0074_61_00-BodyVco"
+      ],
+      "textures": 0,
+      "images": 0,
+      "imageMimeTypes": [],
+      "draco": false,
+      "heightMeters": 0.4
+    },
+    {
+      "identifier": "graveler-alola",
+      "speciesId": 75,
+      "source": "pokemon-home-glb-models",
+      "sourcePath": "Pokemon (Generation 1)/pm0075_61_00.glb",
+      "url": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-GLB-Models/27703273836f38f0e185976d955b1fbfb15448af/Pokemon%20(Generation%201)/pm0075_61_00.glb",
+      "gitBlobSha1": "490fafb4e615a2dd1777123c2fd0250bc9e233df",
+      "sha256": "1a7c162cecdabc526cd1cfa677f51a3a31d0edfa282bb784c909466d66a1315f",
+      "bytes": 398436,
+      "meshes": 3,
+      "primitives": 5,
+      "skins": 3,
+      "animations": 0,
+      "materials": 5,
+      "materialNames": [
+        "pm0075_61_00-BodyA",
+        "pm0075_61_00-BodyC00",
+        "pm0075_61_00-Eye",
+        "pm0075_61_00-BodyB",
+        "pm0075_61_00-BodyC01"
+      ],
+      "textures": 0,
+      "images": 0,
+      "imageMimeTypes": [],
+      "draco": false,
+      "heightMeters": 1.0
+    },
+    {
+      "identifier": "golem-alola",
+      "speciesId": 76,
+      "source": "pokemon-home-glb-models",
+      "sourcePath": "Pokemon (Generation 1)/pm0076_61_00.glb",
+      "url": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-GLB-Models/27703273836f38f0e185976d955b1fbfb15448af/Pokemon%20(Generation%201)/pm0076_61_00.glb",
+      "gitBlobSha1": "23621dd619d562bf4792f3c2814fa39e91268f59",
+      "sha256": "d55661faad2762daa2fed7a5d541522a5b786fa1f6fd8af468690598e82a64af",
+      "bytes": 383280,
+      "meshes": 5,
+      "primitives": 9,
+      "skins": 5,
+      "animations": 0,
+      "materials": 8,
+      "materialNames": [
+        "pm0076_61_00-BodyBInc",
+        "pm0076_61_00-BodyA01",
+        "pm0076_61_00-BodyA00",
+        "pm0076_61_00-Eye",
+        "pm0076_61_00-BodyC00",
+        "pm0076_61_00-RockInc01",
+        "pm0076_61_00-RockInc00",
+        "pm0076_61_00-RockInc02"
+      ],
+      "textures": 0,
+      "images": 0,
+      "imageMimeTypes": [],
+      "draco": false,
+      "heightMeters": 1.7
+    },
+    {
+      "identifier": "grimer-alola",
+      "speciesId": 88,
+      "source": "pokemon-3d-api",
+      "sourcePath": "models/opt/alolan/88.glb",
+      "url": "https://raw.githubusercontent.com/Pokemon-3D-api/assets/429de1288cea0d43f5b4f56305d2276e94239d65/models/opt/alolan/88.glb",
+      "gitBlobSha1": "16ab7695af706a4e0fa16fa52ae812aae4e606ea",
+      "sha256": "33dcad57207c9a5521b33b2ee5321c096459758686cdf3fb0fdf8a71b4028743",
+      "bytes": 67412,
+      "meshes": 2,
+      "primitives": 2,
+      "skins": 0,
+      "animations": 0,
+      "materials": 2,
+      "materialNames": [
+        "body_00",
+        "l_eye.002"
+      ],
+      "textures": 1,
+      "images": 1,
+      "imageMimeTypes": [
+        "image/webp"
+      ],
+      "draco": true,
+      "heightMeters": 0.7
+    },
+    {
+      "identifier": "muk-alola",
+      "speciesId": 89,
+      "source": "pokemon-home-glb-models",
+      "sourcePath": "Pokemon (Generation 1)/pm0089_61_00.glb",
+      "url": "https://raw.githubusercontent.com/Lilothestitch16/Pokemon-HOME-GLB-Models/27703273836f38f0e185976d955b1fbfb15448af/Pokemon%20(Generation%201)/pm0089_61_00.glb",
+      "gitBlobSha1": "cb81d1cb6fce88bb1786c24641e91cb842ad25a8",
+      "sha256": "2c2bbc44abad2958c6be58137aca77c79cfa762eceada515c174a878bad6bc11",
+      "bytes": 440392,
+      "meshes": 4,
+      "primitives": 6,
+      "skins": 4,
+      "animations": 0,
+      "materials": 5,
+      "materialNames": [
+        "pm0089_61_00-BodyA",
+        "pm0089_61_00-BodyB",
+        "pm0089_61_00-BodyC",
+        "pm0089_61_00-BodyCVco",
+        "pm0089_61_00-Eye"
+      ],
+      "textures": 0,
+      "images": 0,
+      "imageMimeTypes": [],
+      "draco": false,
+      "heightMeters": 1.0
+    },
+    {
+      "identifier": "exeggutor-alola",
+      "speciesId": 103,
+      "source": "pokemon-3d-api",
+      "sourcePath": "models/opt/alolan/103.glb",
+      "url": "https://raw.githubusercontent.com/Pokemon-3D-api/assets/429de1288cea0d43f5b4f56305d2276e94239d65/models/opt/alolan/103.glb",
+      "gitBlobSha1": "c45916c0ae79b44395b070ac690b7790aba94509",
+      "sha256": "e45b6f980ea676589b9c14d691cffe2c3361f57e5866ae67827328b1f9bf5d38",
+      "bytes": 54160,
+      "meshes": 1,
+      "primitives": 1,
+      "skins": 1,
+      "animations": 0,
+      "materials": 1,
+      "materialNames": [
+        "nassya"
+      ],
+      "textures": 1,
+      "images": 1,
+      "imageMimeTypes": [
+        "image/webp"
+      ],
+      "draco": true,
+      "heightMeters": 10.9
+    },
+    {
+      "identifier": "marowak-alola",
+      "speciesId": 105,
+      "source": "pokemon-3d-api",
+      "sourcePath": "models/opt/alolan/105.glb",
+      "url": "https://raw.githubusercontent.com/Pokemon-3D-api/assets/429de1288cea0d43f5b4f56305d2276e94239d65/models/opt/alolan/105.glb",
+      "gitBlobSha1": "8c3e477d49a1d101cfff427202339ed3e62fbb55",
+      "sha256": "2648d2bad8d15c1ede881f763f7f188d09201c6221089f4610810caa5bef7c28",
+      "bytes": 31204,
+      "meshes": 2,
+      "primitives": 2,
+      "skins": 1,
+      "animations": 0,
+      "materials": 2,
+      "materialNames": [
+        "pm0105_61_Body_tga",
+        "pm0105_61_Eye_tga"
+      ],
+      "textures": 2,
+      "images": 2,
+      "imageMimeTypes": [
+        "image/webp"
+      ],
+      "draco": true,
+      "heightMeters": 1.0
+    }
+  ]
+}

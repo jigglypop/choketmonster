@@ -8,9 +8,10 @@ import type { MapPosition } from '../game/map';
 import { pokemonModelUrl } from '../game/assets';
 import { selectPokemonMotionClip, type PokemonMotionKind } from '../data/model-motion';
 import { getSpecies } from '../data/pokemon';
+import { getPokemonFormModelSource } from '../data/pokemon-form-models';
 import { disposeNormalizedPokemonMaterials, normalizePokemonMaterials } from '../openworld/pokemon-materials';
 
-type Actor = { group: THREE.Group; model: THREE.Object3D; mixer: THREE.AnimationMixer; clips: THREE.AnimationClip[]; action?: THREE.AnimationAction; target: THREE.Vector3; heading: number; restingY: number; id: number };
+type Actor = { group: THREE.Group; model: THREE.Object3D; mixer: THREE.AnimationMixer; clips: THREE.AnimationClip[]; action?: THREE.AnimationAction; target: THREE.Vector3; heading: number; restingY: number; id: number; url: string };
 type SceneMode = 'map' | 'battle' | 'specimen';
 export type FieldScene = {
   entities: readonly { id: string; speciesId: number; x: number; y: number; action: number }[];
@@ -43,8 +44,8 @@ export class PokemonScene {
   }
   private arena = new THREE.Group();
   private actors = new Map<string, Actor>();
-  private pending = new Map<string, { token: number; id: number }>();
-  private desired = new Map<string, { id: number; position: THREE.Vector3; heading: number; height: number }>();
+  private pending = new Map<string, { token: number; url: string }>();
+  private desired = new Map<string, { id: number; url: string; position: THREE.Vector3; heading: number; height: number }>();
   private epoch = 0;
   private then = 0;
   private observer: ResizeObserver;
@@ -85,7 +86,7 @@ export class PokemonScene {
     this.controls = new OrbitControls(this.camera, this.canvas);
     this.controls.enableDamping = true; this.controls.dampingFactor = .09; this.controls.enablePan = false;
     this.controls.minPolarAngle = .2; this.controls.maxPolarAngle = Math.PI / 2.1;
-    this.notice.className = 'scene-loading'; this.notice.textContent = '3D 장면을 준비하고 있어요…';
+    this.notice.className = 'scene-loading'; this.notice.hidden = true;
     const ground = new THREE.Mesh(new THREE.CylinderGeometry(6.8, 7.1, .3, 64), new THREE.MeshStandardMaterial({ color: '#abc994', roughness: .95 }));
     ground.position.y = -.18; ground.receiveShadow = true; this.arena.add(ground);
     const ring = new THREE.Mesh(new THREE.RingGeometry(2.7, 2.75, 80), new THREE.MeshBasicMaterial({ color: '#e4e6c8', side: THREE.DoubleSide }));
@@ -152,8 +153,9 @@ export class PokemonScene {
     this.attach(host, 'battle', `battle-${b.kind}-${b.enemy.team[0].instanceId}`);
     this.desired.clear();
     const species = (id: string, original: number) => b.transformations?.[id]?.speciesId ?? original;
-    this.want('player', species(self.instanceId, self.speciesId), new THREE.Vector3(-2.15, .01, 1), 2, 1.95);
-    this.want('enemy', species(enemy.instanceId, enemy.speciesId), new THREE.Vector3(2.15, .01, -1), -1.15, 1.95);
+    const formUrl = (monster: typeof self) => getPokemonFormModelSource(b.transformations?.[monster.instanceId]?.formIdentifier ?? monster.regionalForm)?.url;
+    this.want('player', species(self.instanceId, self.speciesId), new THREE.Vector3(-2.15, .01, 1), 2, 1.95, formUrl(self));
+    this.want('enemy', species(enemy.instanceId, enemy.speciesId), new THREE.Vector3(2.15, .01, -1), -1.15, 1.95, formUrl(enemy));
     if (this.lastTurn >= 0 && b.turn !== this.lastTurn) {
       this.hitTime = performance.now();
       for (const [key, mon] of [['player', self], ['enemy', enemy]] as const) {
@@ -163,9 +165,10 @@ export class PokemonScene {
     this.lastTurn = b.turn; this.lastHp.set('player', self.hp); this.lastHp.set('enemy', enemy.hp);
     this.synchronize();
   }
-  showSpecimen(host: HTMLElement, id: number) {
-    this.attach(host, 'specimen', `specimen-${id}`);
-    this.desired.clear(); this.want('specimen', id, new THREE.Vector3(0, .01, 0), .25, 2.1); this.synchronize();
+  showSpecimen(host: HTMLElement, id: number, formIdentifier?: string) {
+    const source = getPokemonFormModelSource(formIdentifier);
+    this.attach(host, 'specimen', `specimen-${formIdentifier ?? id}`);
+    this.desired.clear(); this.want('specimen', id, new THREE.Vector3(0, .01, 0), .25, 2.1, source?.url); this.synchronize();
   }
   detach() { this.host = undefined; this.observer.disconnect(); this.canvas.remove(); this.notice.remove(); }
   followSelected() {
@@ -201,20 +204,20 @@ export class PokemonScene {
       for (const [key, actor] of fieldActors) { let object: THREE.Object3D | null = hit.object; while (object) { if (object === actor.group) { this.field.onSelect(key.slice(6)); return; } object = object.parent; } }
     }
   }
-  private want(key: string, id: number, position: THREE.Vector3, heading: number, height: number) {
-    this.desired.set(key, { id, position, heading, height });
+  private want(key: string, id: number, position: THREE.Vector3, heading: number, height: number, url = id ? pokemonModelUrl(id) : '/models/trainer.glb') {
+    this.desired.set(key, { id, url, position, heading, height });
   }
   private synchronize() {
-    for (const [key, actor] of this.actors) if (!this.desired.has(key) || this.desired.get(key)!.id !== actor.id) { this.removeActor(actor); this.actors.delete(key); }
+    for (const [key, actor] of this.actors) if (this.desired.get(key)?.url !== actor.url) { this.removeActor(actor); this.actors.delete(key); }
     for (const [key, spec] of this.desired) {
       const actor = this.actors.get(key);
       if (actor) { actor.target.copy(spec.position); actor.heading = spec.heading; continue; }
-      if (this.pending.get(key)?.id === spec.id) continue;
-      const token = ++this.epoch; this.pending.set(key, { token, id: spec.id });
-      this.notice.hidden = false; this.notice.textContent = '3D 친구를 불러오고 있어요…';
-      const url = spec.id ? pokemonModelUrl(spec.id) : '/models/trainer.glb';
+      if (this.pending.get(key)?.url === spec.url) continue;
+      const token = ++this.epoch; this.pending.set(key, { token, url: spec.url });
+      this.notice.hidden = true;
+      const url = spec.url;
       void this.load(url).then(asset => {
-        if (this.disposed || this.pending.get(key)?.token !== token || this.desired.get(key)?.id !== spec.id) { this.trimCache(); return; }
+        if (this.disposed || this.pending.get(key)?.token !== token || this.desired.get(key)?.url !== spec.url) { this.trimCache(); return; }
         const model = clone(asset.scene), group = new THREE.Group(); group.add(model);
         if (spec.id) normalizePokemonMaterials(model, { speciesId: spec.id, types: getSpecies(spec.id).types });
         model.traverse(obj => { if (obj instanceof THREE.Mesh) { obj.castShadow = true; obj.receiveShadow = true; obj.frustumCulled = false; } });
@@ -227,7 +230,7 @@ export class PokemonScene {
         model.position.sub(new THREE.Vector3(center.x, box.min.y, center.z));
         const scale = Math.min(spec.height / Math.max(size.y, .001), spec.height * 2.15 / Math.max(size.x, size.z, .001));
         group.scale.setScalar(scale); group.position.copy(this.desired.get(key)!.position); group.rotation.y = spec.heading;
-        const newActor: Actor = { id: spec.id, group, model, mixer, clips: asset.animations, action, target: this.desired.get(key)!.position.clone(), heading: spec.heading, restingY: group.position.y };
+        const newActor: Actor = { id: spec.id, url, group, model, mixer, clips: asset.animations, action, target: this.desired.get(key)!.position.clone(), heading: spec.heading, restingY: group.position.y };
         this.actors.set(key, newActor); this.scene.add(group); this.pending.delete(key); this.ready(); this.trimCache();
       }).catch(error => { if (this.pending.get(key)?.token === token) { this.pending.delete(key); this.error(`3D 모델을 불러오지 못했어요: ${error.message}`); } });
     }
@@ -252,6 +255,7 @@ export class PokemonScene {
     const ready = this.pending.size === 0 && this.actors.size === this.desired.size && (this.mode !== 'map' || !!this.world);
     this.canvas.dataset.ready = String(ready); this.canvas.dataset.actorCount = String(this.actors.size);
     this.canvas.dataset.species = [...this.actors.values()].filter(a => a.id).map(a => a.id).join(',');
+    this.canvas.dataset.modelUrls = [...this.actors.values()].filter(a => a.id).map(a => a.url).join(',');
     if (ready) this.notice.hidden = true;
   }
   private error(message: string) { this.notice.textContent = message; this.notice.hidden = false; this.canvas.dataset.ready = 'error'; }
@@ -293,7 +297,7 @@ export class PokemonScene {
   }
   private clearActors() { for (const actor of this.actors.values()) this.removeActor(actor); this.actors.clear(); }
   private trimCache() {
-    const protectedUrls = new Set(['/models/world.glb', '/models/trainer.glb', ...[...this.desired.values(), ...this.actors.values()].map(a => pokemonModelUrl(a.id))]);
+    const protectedUrls = new Set(['/models/world.glb', '/models/trainer.glb', ...[...this.desired.values(), ...this.actors.values()].map(a => a.url)]);
     for (const [url, lease] of this.leases) {
       if (!protectedUrls.has(url)) { lease.release(); this.leases.delete(url); }
     }

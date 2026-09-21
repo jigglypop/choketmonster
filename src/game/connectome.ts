@@ -1,12 +1,17 @@
 import { Brain, validateGraph, type Graph } from '../core/brain';
 import { clamp } from '../core/random';
 import { getMove, getSpecies } from '../data/pokemon';
-import { typeMultiplier } from './battle';
+import { resolveTeraMove, typeMultiplier } from './battle';
 import type { PokemonType } from './contracts';
 import { getCombatForm } from '../data/pokemon-combat-forms';
 
-export type NeuralMonster = { instanceId: string; speciesId: number; level: number; hp: number; stats: { hp: number; speed: number }; moves: { pp: number; moveId?: number }[]; types?: readonly PokemonType[]; regionalForm?: string; lockedMoveId?: number; status?: string; brain?: ReturnType<Brain['snapshot']> };
+export type NeuralMonster = { instanceId: string; speciesId: number; level: number; hp: number; stats: { hp: number; attack?: number; defense?: number; specialAttack?: number; specialDefense?: number; speed: number }; moves: { pp: number; moveId?: number }[]; types?: readonly PokemonType[]; teraType?: PokemonType; regionalForm?: string; lockedMoveId?: number; status?: string; brain?: ReturnType<Brain['snapshot']> };
 const monsterTypes = (monster: NeuralMonster) => monster.types ?? (monster.regionalForm ? getCombatForm(monster.regionalForm)?.types : undefined) ?? getSpecies(monster.speciesId).types;
+const effectiveMove = (monster: NeuralMonster, moveId: number) => resolveTeraMove({
+  level: monster.level, hp: monster.hp,
+  stats: { hp: monster.stats.hp, attack: monster.stats.attack ?? 1, defense: monster.stats.defense ?? 1, specialAttack: monster.stats.specialAttack ?? 1, specialDefense: monster.stats.specialDefense ?? 1, speed: monster.stats.speed },
+  types: monsterTypes(monster), teraType: monster.teraType,
+}, getMove(moveId));
 export type BattleSenseContext = {
   selfStatStages?: Readonly<Record<string, number>>;
   otherStatStages?: Readonly<Record<string, number>>;
@@ -31,12 +36,12 @@ export function automatedMoveMask(self: NeuralMonster, other: NeuralMonster, _tu
   if (!moveMask.slice(0, 4).some(Boolean)) return [true, false, false, false, false];
   const attacks = [0, 1, 2, 3].map(index => {
     const slot = self.moves[index]; if (!moveMask[index] || !slot || slot.moveId === undefined) return false;
-    const move = getMove(slot.moveId);
+    const move = effectiveMove(self, slot.moveId);
     return move.damageClass !== 'status' && (move.power > 0 || FIXED_DAMAGE_MOVES.has(move.id)) && typeMultiplier(move.type, defenderTypes) > 0;
   });
   const strategic = [0, 1, 2, 3].map(index => {
     const slot = self.moves[index]; if (!slot || slot.moveId === undefined) return false;
-    const move = getMove(slot.moveId);
+    const move = effectiveMove(self, slot.moveId);
     if (move.damageClass !== 'status') return false;
     const healing = ((move.healing ?? 0) > 0 || move.id === 156) && self.hp < self.stats.hp;
     const selfTarget = move.metaCategory === 8 || (move.metaCategory !== 7 && SELF_TARGETS.has(move.targetId ?? 10));
@@ -81,7 +86,7 @@ export function battleMoveSenses(self: NeuralMonster, other: NeuralMonster, cont
     const slot = self.moves[index];
     if (!slot) return -1;
     if (slot.moveId === undefined) return 1;
-    const move = getMove(slot.moveId);
+    const move = effectiveMove(self, slot.moveId);
     const signals: number[] = [];
     if (move.damageClass !== 'status' && move.power > 0) {
       const multiplier = typeMultiplier(move.type, defenderTypes);
