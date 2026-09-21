@@ -474,7 +474,10 @@ export async function adoptTradeResult(result: TradeSaveResult, checkpoint: Trad
       const receipt = receiptRequest?.result as TradeReceipt | undefined;
       const localEpoch = validRemote(local) ? normalizeTradeEpoch(local.tradeEpoch) : 0;
       if (receipt) {
-        if (!validRemote(local) || localEpoch < resultEpoch || receipt.profileId !== profile.id || receipt.tradeId !== tradeId || receipt.revision !== result.revision || receipt.tradeEpoch !== resultEpoch) { tx.abort(); return; }
+        // The result endpoint returns the account's current save. Autosaves
+        // after a completed trade legitimately advance its revision/epoch.
+        // The receipt prevents applying that trade again; keep the local save.
+        if (!validRemote(local) || localEpoch < resultEpoch || receipt.profileId !== profile.id || receipt.tradeId !== tradeId || receipt.revision > result.revision || receipt.tradeEpoch > resultEpoch) { tx.abort(); return; }
         chosen = { save: structuredClone(local), newlyApplied: false }; return;
       }
       if (validRemote(local) && localEpoch === resultEpoch && equivalentSave(local, adopted) && sync?.serverRevision === result.revision && !sync.dirty) {
