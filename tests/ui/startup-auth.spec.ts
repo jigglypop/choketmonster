@@ -3,10 +3,12 @@ import { mockAuthenticatedSession, QA_PROFILE } from './helpers/authenticated-se
 
 test('requires login before loading the game, restores illustrated loading and returns to login after logout', async ({ page }, info) => {
   let authenticated = false;
+  let releaseSession: () => void = () => {};
+  const session = new Promise<void>(resolve => { releaseSession = resolve; });
   let release: () => void = () => {};
   const loading = new Promise<void>(resolve => { release = resolve; });
   await mockAuthenticatedSession(page);
-  await page.route('**/api/auth/me', route => route.fulfill({ json: { user: authenticated ? QA_PROFILE : null } }));
+  await page.route('**/api/auth/me', async route => { await session; return route.fulfill({ json: { user: authenticated ? QA_PROFILE : null } }); });
   await page.route('**/api/auth/login', route => {
     if (route.request().postDataJSON().password !== 'correct-password') return route.fulfill({ status: 401, json: { message: '아이디 또는 비밀번호가 올바르지 않습니다.' } });
     authenticated = true; return route.fulfill({ json: { user: QA_PROFILE } });
@@ -17,7 +19,11 @@ test('requires login before loading the game, restores illustrated loading and r
   await page.route('**/data/connectome.json', async route => { await loading; await route.continue(); });
   await page.goto('/');
   const form = page.locator('#startup-auth');
-  await expect(form).toBeVisible(); await expect(form.locator('[type="submit"]')).toBeEnabled();
+  await expect(form).toBeVisible();
+  await expect(form.locator('[data-auth-mode="register"]')).toBeDisabled();
+  releaseSession();
+  await expect(form.locator('[type="submit"]')).toBeEnabled();
+  await expect(form.locator('[data-auth-mode="register"]')).toBeEnabled();
   await expect(page.locator('#app')).toBeEmpty();
   await expect(page.locator('.adventure-loading__art')).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });

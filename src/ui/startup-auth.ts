@@ -29,6 +29,7 @@ export async function requireStartupAccount(): Promise<User> {
     password.autocomplete = mode === 'register' ? 'new-password' : 'current-password';
     submit.textContent = mode === 'register' ? '회원가입' : '로그인'; error.hidden = true;
   });
+  modes.forEach(button => { button.disabled = false; });
   return new Promise<User>(resolve => {
     form.onsubmit = event => {
       event.preventDefault(); if (busy) return;
