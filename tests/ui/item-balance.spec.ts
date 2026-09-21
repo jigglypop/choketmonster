@@ -1,3 +1,4 @@
+import { mockAuthenticatedSession } from './helpers/authenticated-session';
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { createGame, createMonster, ITEM_PRICES, SHOP_ITEMS } from '../../src/game/engine';
@@ -10,7 +11,7 @@ test('shop quantities, held-tool stock, healing and treats persist on mobile', a
   test.setTimeout(120000);
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await page.routeWebSocket('**', socket => socket.close());
-  await page.route('**/api/auth/me', route => route.fulfill({ json: { user: null } }));
+  await mockAuthenticatedSession(page);
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   const game = createGame(1, 'item-balance-ui'), monster = createMonster(game, 133, 50);
   game.player.team = [monster]; game.player.money = 30000; game.inventory.potion = 0; monster.hp -= 80;
@@ -62,7 +63,7 @@ test('shop quantities, held-tool stock, healing and treats persist on mobile', a
 
 test('open-world battle allows Super Potion when regular Potion stock is empty', async ({ page }) => {
   await page.routeWebSocket('**', socket => socket.close());
-  await page.route('**/api/auth/me', route => route.fulfill({ json: { user: null } }));
+  await mockAuthenticatedSession(page);
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   const game = createGame(1, 'super-potion-world'), monster = createMonster(game, 6, 50);
   game.player.team = [monster]; monster.hp -= 80; game.inventory.potion = 0; game.inventory['super-potion'] = 1;

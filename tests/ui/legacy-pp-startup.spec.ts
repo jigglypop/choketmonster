@@ -1,3 +1,4 @@
+import { mockAuthenticatedSession, QA_PROFILE } from './helpers/authenticated-session';
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { createGame, createMonster } from '../../src/game/engine';
@@ -9,7 +10,7 @@ import type { Graph } from '../../src/core/brain';
 for (const inBattle of [false, true]) test(`starts from an existing save with obsolete PP and keeps progress after reload (battle=${inBattle})`, async ({ page }, info) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await page.routeWebSocket('**', socket => socket.close());
-  await page.route('**/api/auth/me', route => route.fulfill({ json: { user: null } }));
+  await mockAuthenticatedSession(page);
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
   const game = createGame(152, 'legacy-pp-startup'), monster = createMonster(game, 54, 39);
@@ -30,22 +31,22 @@ for (const inBattle of [false, true]) test(`starts from an existing save with ob
   await page.goto('/'); await page.locator('[data-starter="152"]').click();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30000 });
   await page.locator('[data-tab="team"]').click();
-  await page.evaluate(async save => {
+  await page.evaluate(async ({save, slot}) => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => { const request = indexedDB.open('choketmon-151', 2); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
-    await new Promise<void>((resolve, reject) => { const tx = db.transaction('saves', 'readwrite'); tx.objectStore('saves').put(save, 'current'); tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); });
+    await new Promise<void>((resolve, reject) => { const tx = db.transaction('saves', 'readwrite'); tx.objectStore('saves').put(save, slot); tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); });
     db.close();
-  }, envelope);
+  }, {save: envelope, slot: `account:${QA_PROFILE.id}:current`});
   await page.reload();
   await expect(page.locator('#money')).toContainText('4,321', { timeout: 30000 });
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30000 });
   await page.locator('[data-tab="team"]').click();
   await expect(page.locator(`.monster-card[data-monster="${monster.instanceId}"]`)).toContainText('고라파덕');
   await page.locator('#save-now').click(); await expect(page.locator('#save-state')).toContainText('저장됨');
-  const saved = await page.evaluate(async () => {
+  const saved = await page.evaluate(async slot => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => { const request = indexedDB.open('choketmon-151', 2); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
-    const save = await new Promise<any>((resolve, reject) => { const tx = db.transaction('saves', 'readonly'), request = tx.objectStore('saves').get('current'); tx.oncomplete = () => resolve(request.result); tx.onerror = () => reject(tx.error); });
+    const save = await new Promise<any>((resolve, reject) => { const tx = db.transaction('saves', 'readonly'), request = tx.objectStore('saves').get(slot); tx.oncomplete = () => resolve(request.result); tx.onerror = () => reject(tx.error); });
     db.close(); return save.game.player.team[0];
-  });
+  }, `account:${QA_PROFILE.id}:current`);
   expect(saved.instanceId).toBe(monster.instanceId);
   expect(saved.xp).toBe(monster.xp);
   expect(saved.moves).toEqual(monster.moves);

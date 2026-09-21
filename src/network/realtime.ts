@@ -188,8 +188,9 @@ export function realtimeUrl(locationLike?: Pick<Location, 'protocol' | 'host'>):
 async function fetchRealtimeTicket(): Promise<string> {
   const response=await fetch('/api/auth/realtime-ticket',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:'{}',signal:AbortSignal.timeout(10_000)});
   const body=await response.json().catch(()=>({})) as {ticket?:unknown;message?:string};
-  if(response.status===401) throw new RealtimeAuthRequiredError();
+  if(response.status===401) { expiredAuthSession(); throw new RealtimeAuthRequiredError(); }
   if(!response.ok||typeof body.ticket!=='string'||!body.ticket) throw new Error(body.message??'로그인 후 실시간 채팅을 사용할 수 있습니다.');
   return body.ticket;
 }
 class RealtimeAuthRequiredError extends Error {}
+import { expiredAuthSession } from '../game/auth-session';

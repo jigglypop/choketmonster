@@ -10,6 +10,8 @@ export type AccountPanelOptions = {
   onSwitchError?: (change: AccountSwitch, error: unknown) => void | Promise<void>;
   notify?: (message: string, error?: boolean) => void;
   checkpointIntervalMs?: number;
+  requireLogin?: boolean;
+  canClose?: () => boolean;
 };
 
 const field = (form: HTMLFormElement, name: string) => (new FormData(form).get(name) ?? '').toString();
@@ -123,7 +125,9 @@ export function mountAccountPanel(options: AccountPanelOptions) {
     })();
   };
   open.onclick = () => { error.hidden = true; dialog.showModal(); usernameInput.focus(); };
-  dialog.querySelector<HTMLButtonElement>('.account-close')!.onclick = () => { setPasswordVisible(false); dialog.close(); };
+  const canClose = () => (!options.requireLogin || Boolean(currentAccount())) && (options.canClose?.() ?? true);
+  dialog.addEventListener('cancel', event => { if (!canClose()) event.preventDefault(); });
+  dialog.querySelector<HTMLButtonElement>('.account-close')!.onclick = () => { if (!canClose()) return; setPasswordVisible(false); dialog.close(); };
   form.addEventListener('submit', event => {
     event.preventDefault();
     if (busy) return;
@@ -171,10 +175,10 @@ export function mountAccountPanel(options: AccountPanelOptions) {
         const checkpoint = checkpointSave('logout').then(() => true).catch(() => false);
         await Promise.race([checkpoint, new Promise<boolean>(resolve => window.setTimeout(() => resolve(false), 1000))]);
         const { serverCleared } = await logout();
-        const save = await activateSaveProfile(null, { continueLocally: true });
+        const save = await activateSaveProfile(null, { continueLocally: !options.requireLogin });
         if (disposed) return;
         await options.afterSwitch?.({ from, to: null, reason: 'logout', save });
-        options.notify?.(serverCleared ? '로그아웃했습니다. 방금 하던 모험은 이 기기에서 이어갑니다.' : '이 기기에서 로그아웃했습니다. 새로고침 시 서버 세션 종료를 다시 시도합니다.');
+        options.notify?.(serverCleared ? (options.requireLogin ? '로그아웃했습니다.' : '로그아웃했습니다. 방금 하던 모험은 이 기기에서 이어갑니다.') : '이 기기에서 로그아웃했습니다. 새로고침 시 서버 세션 종료를 다시 시도합니다.');
       } catch (failure) {
         try { await options.onSwitchError?.(change, failure); } catch { /* Preserve the original error. */ }
         showError(failure);
@@ -185,6 +189,7 @@ export function mountAccountPanel(options: AccountPanelOptions) {
   setBusy(true);
   const ready = getAccount().then(async user => {
     if (disposed) return null;
+    if (options.requireLogin && !user) { location.reload(); return null; }
     const save = await activateSaveProfile(user);
     if (!disposed) await options.afterSwitch?.({ from: null, to: user, reason: 'initialize', save });
     return user;

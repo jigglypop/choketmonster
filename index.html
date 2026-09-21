@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <link rel="preload" href="/fonts/ChoketSansVariable.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/chocketmon.png?v=__SHARE_IMAGE_HASH__" as="image" fetchpriority="high" />
     <link rel="stylesheet" href="/src/ui/loading-screen.css" />
     <meta name="theme-color" content="#173f39" />
     <meta name="description" content="버전별 포켓몬 수집과 개체별 기억, 실제 초파리 커넥톰 일부가 행동에 관여하는 포획·배틀·육성 모험" />
@@ -29,9 +30,28 @@
     <link rel="apple-touch-icon" href="/chocketmon.png?v=__SHARE_IMAGE_HASH__" />
   </head>
   <body>
-    <section id="startup-loading" class="startup-error" aria-label="시작 오류" hidden>
-      <p data-loading-status role="alert"></p><button type="button" data-loading-retry hidden>다시 시도</button>
-      <noscript>JavaScript를 켜 주세요.</noscript>
+    <section id="startup-loading" class="adventure-loading" aria-label="초켓몬스터 시작">
+      <div class="adventure-loading__card">
+        <img class="adventure-loading__art" src="/chocketmon.png?v=__SHARE_IMAGE_HASH__" width="1024" height="1536" fetchpriority="high" alt="초켓몬스터" />
+        <div class="adventure-loading__body">
+          <h1>초켓몬스터</h1>
+          <form id="startup-auth" class="startup-auth" novalidate>
+            <div class="startup-auth__modes"><button type="button" data-auth-mode="login" aria-pressed="true">로그인</button><button type="button" data-auth-mode="register" aria-pressed="false">회원가입</button></div>
+            <label>아이디<input name="username" autocomplete="username" maxlength="32" required /></label>
+            <label>비밀번호<input name="password" type="password" autocomplete="current-password" maxlength="128" required /></label>
+            <label data-auth-confirm hidden>비밀번호 확인<input name="passwordConfirmation" type="password" autocomplete="new-password" maxlength="128" /></label>
+            <p data-auth-error class="startup-auth__error" role="alert" hidden></p>
+            <button type="submit" class="startup-auth__submit" disabled>로그인</button>
+          </form>
+          <div data-loading-stages hidden>
+            <div class="adventure-loading__stage"><div class="adventure-loading__label"><strong>회로</strong><span data-loading-percent="connectome">0%</span></div><progress data-loading-bar="connectome" aria-label="회로 준비" max="100" value="0"></progress><p class="adventure-loading__detail" data-loading-detail="connectome"></p></div>
+            <div class="adventure-loading__stage"><div class="adventure-loading__label"><strong>3D 월드</strong><span data-loading-percent="world">0%</span></div><progress data-loading-bar="world" aria-label="3D 월드 준비" max="100" value="0"></progress><p class="adventure-loading__detail" data-loading-detail="world"></p></div>
+          </div>
+          <p class="adventure-loading__status" data-loading-status role="status" aria-live="polite">로그인 확인 중</p>
+          <button type="button" class="adventure-loading__retry" data-loading-retry hidden>다시 시도</button>
+          <noscript>JavaScript를 켜 주세요.</noscript>
+        </div>
+      </div>
     </section>
     <div id="app"></div><script type="module" src="/src/bootstrap.ts"></script>
   </body>

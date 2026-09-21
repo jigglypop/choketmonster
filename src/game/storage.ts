@@ -1,4 +1,5 @@
 import { validateGraph, type Graph } from '../core/brain';
+import { AuthSessionExpiredError, expiredAuthSession } from './auth-session';
 import { parseJson } from '../core/json';
 import { validateGame, type GameState } from './engine';
 import { BRAIN_MODEL } from './connectome';
@@ -205,6 +206,7 @@ export class SaveConflictError extends Error {
 async function loadRemote(profileId: string): Promise<RemoteSave | undefined> {
   const response = await fetch('/api/saves/current', { credentials: 'same-origin', cache: 'no-store', headers: profileHeaders(profileId), signal: AbortSignal.timeout(10000) });
   if (response.status === 404) return undefined;
+  if (response.status === 401) throw expiredAuthSession();
   const body = await response.json().catch(() => ({})) as Partial<RemoteSave> & { message?: string };
   if (!response.ok) throw new Error(body.message ?? '서버 저장을 불러오지 못했습니다.');
   if (!validRemote(body.save) || !Number.isSafeInteger(body.revision) || Number(body.revision) < 0) throw new Error('서버 저장 응답이 올바르지 않습니다.');
@@ -294,6 +296,7 @@ export async function activateSaveProfile(profile: SaveProfile, options: { conti
   catch (error) {
     if (generation !== profileGeneration || activeProfile?.id !== profile.id) return undefined;
     if (generation === profileGeneration && activeProfile?.id === profile.id) announceStorage({ state: 'error', profileId: profile.id, message: error instanceof Error ? error.message : String(error) });
+    if (error instanceof AuthSessionExpiredError) throw error;
     const local = await readLocal(profileSlot('current', profile));
     if (local === undefined) throw error;
     activeTradeEpoch = validRemote(local) ? normalizeTradeEpoch(local.tradeEpoch) : 0; tradeEpochReady = true;
@@ -355,6 +358,7 @@ async function performCheckpoint(reason: CheckpointReason, expectedProfile: Save
       const response = await fetch('/api/saves/current', { method: 'PUT', credentials: 'same-origin', headers: { 'content-type': 'application/json', ...profileHeaders(profile.id) }, body: JSON.stringify({ save: prepared!.save, revision: pending.revision, requestId: pending.requestId }), signal: AbortSignal.timeout(20000) });
       const body = await response.json().catch(() => ({})) as { revision?: number; message?: string };
       if (!scopeValid()) return { uploaded: false, reason };
+      if (response.status === 401) throw expiredAuthSession();
       if (response.status === 409) {
         const remote = await loadRemote(profile.id);
         if (!scopeValid()) return { uploaded: false, reason };

@@ -37,6 +37,8 @@ export function createWorldLoading(host: HTMLElement): LoadingScreen | undefined
   if (!template) return undefined;
   const element = template.cloneNode(true) as HTMLElement;
   element.hidden = true;
+  element.querySelector('#startup-auth')?.remove();
+  element.querySelector<HTMLElement>('[data-loading-stages]')!.hidden = false;
   element.removeAttribute('id');
   element.classList.add('adventure-loading--world');
   element.setAttribute('aria-label', '3D 모험 준비');

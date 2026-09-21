@@ -1,3 +1,4 @@
+import { mockAuthenticatedSession } from './helpers/authenticated-session';
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { assignPreferredTransformation, assignAlolaForm, createGame, createMonster, replaceMonsterMove } from '../../src/game/engine';
@@ -10,7 +11,7 @@ test('WebGPU exploration renders Alola geometry, Mega aura and Tera crystal', as
   const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await page.routeWebSocket('**', socket => socket.close());
-  await page.route('**/api/auth/me', route => route.fulfill({ json: { user: null } }));
+  await mockAuthenticatedSession(page);
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   await page.goto('/?renderProbe');
   await page.locator('[data-starter="152"]').click();

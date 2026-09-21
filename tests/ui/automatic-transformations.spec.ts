@@ -1,3 +1,4 @@
+import { mockAuthenticatedSession } from './helpers/authenticated-session';
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { createGame, createMonster } from '../../src/game/engine';
@@ -8,7 +9,7 @@ import type { Graph } from '../../src/core/brain';
 test('team setup saves Korean Mega and Tera choices without a battle click', async ({ page }, info) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await page.routeWebSocket('**', socket => socket.close());
-  await page.route('**/api/auth/me', route => route.fulfill({ json: { user: null } }));
+  await mockAuthenticatedSession(page);
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
   const game = createGame(4, 'automatic-setup-ui'); game.player.team = [createMonster(game, 6, 50)];

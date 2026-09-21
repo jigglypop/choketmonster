@@ -1,3 +1,4 @@
+import { mockAuthenticatedSession } from './helpers/authenticated-session';
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import type { Graph } from '../../src/core/brain';
@@ -24,7 +25,7 @@ test('a wild victory shows the field item reward and makes it available to equip
   }
   expect(itemId).not.toBe('');
   await page.routeWebSocket('**', socket => socket.close());
-  await page.route('**/api/auth/me', route => route.fulfill({ json: { user: null } }));
+  await mockAuthenticatedSession(page);
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   await page.goto('/'); await page.locator('[data-starter="152"]').click();
   await page.locator('#import-file').setInputFiles({ name: 'field-drop.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(packSave(game, graph, { ...defaultView(), openWorld: snapshot, openWorldPaused: true }))) });

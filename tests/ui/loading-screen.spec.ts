@@ -1,12 +1,13 @@
+import { mockAuthenticatedSession } from './helpers/authenticated-session';
 import { test, expect, type Page } from '@playwright/test';
 
-async function guest(page: Page) {
-  await page.route('**/api/auth/me', route => route.fulfill({ json: { user: null } }));
+async function authenticated(page: Page) {
+  await mockAuthenticatedSession(page);
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
 }
 
 test('illustrated loading shell is visible before the game module, including mobile', async ({ page }) => {
-  await guest(page);
+  await authenticated(page);
   await page.setViewportSize({ width: 390, height: 844 });
   let release!: () => void;
   const held = new Promise<void>(resolve => { release = resolve; });
@@ -16,7 +17,7 @@ test('illustrated loading shell is visible before the game module, including mob
   await expect(loading).toBeVisible();
   await expect(loading.locator('img')).toHaveJSProperty('naturalWidth', 1024);
   await loading.locator('img').evaluate((image: HTMLImageElement) => image.decode());
-  await expect(loading.getByRole('progressbar', { name: 'Male CNS 준비' })).toHaveAttribute('value', '0');
+  await expect(loading.getByRole('progressbar', { name: '회로 준비' })).toHaveAttribute('value', '0');
   await expect(loading.getByRole('progressbar', { name: '3D 월드 준비' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: 'artifacts/loading-mobile.png' });
@@ -26,7 +27,7 @@ test('illustrated loading shell is visible before the game module, including mob
 });
 
 test('startup requests run together and query the server connectome only once', async ({ page }) => {
-  await guest(page);
+  await authenticated(page);
   let release!: () => void;
   const held = new Promise<void>(resolve => { release = resolve; });
   let requests = 0;
@@ -41,7 +42,7 @@ test('startup requests run together and query the server connectome only once', 
 });
 
 test('failed circuit load offers a working retry', async ({ page }) => {
-  await guest(page);
+  await authenticated(page);
   await page.route('**/data/connectome.json', route => route.fulfill({ status: 503, body: 'unavailable' }));
   await page.goto('/');
   await expect(page.locator('#startup-loading')).toHaveAttribute('data-failed', 'true');
@@ -54,7 +55,7 @@ test('failed circuit load offers a working retry', async ({ page }) => {
 
 test('3D loading stays until the real partner model draws and also covers save restoration', async ({ page }) => {
   test.setTimeout(120_000);
-  await guest(page);
+  await authenticated(page);
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   let release!: () => void;
@@ -83,7 +84,7 @@ test('3D loading stays until the real partner model draws and also covers save r
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
   await expect(loading).toHaveCount(0);
   await page.locator('#save-now').click();
-  await expect(page.locator('#save-state')).toHaveAttribute('data-state', /local|saved/);
+  await expect(page.locator('#save-state')).toHaveAttribute('data-state', /local|saved|synced/);
   await page.reload();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
   await expect(page.locator('.adventure-loading')).toHaveCount(0);

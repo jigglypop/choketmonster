@@ -1,3 +1,4 @@
+import { mockAuthenticatedSession } from './helpers/authenticated-session';
 import { expect, test } from '@playwright/test';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { createGame, createMonster, ITEM_PRICES } from '../../src/game/engine';
@@ -8,7 +9,7 @@ import { defaultView, packSave } from '../../src/game/storage';
 test('auto-buys a missing Metal Coat from evolution and keeps regular shop purchases', async ({ page }) => {
   test.setTimeout(150_000);
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
-  await page.route('**/api/auth/me', route => route.fulfill({ json: { user: null } }));
+  await mockAuthenticatedSession(page);
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8'));
   const game = createGame(152, 'evolution-shop-ui'), onix = createMonster(game, 95, 25), scyther = createMonster(game, 123, 25);
