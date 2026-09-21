@@ -319,6 +319,25 @@ export function availableMonsterMoveIds(monster: Pick<Monster, 'speciesId' | 'le
   return [...new Set([...entries.map((entry) => entry.moveId), ...getSpecies(monster.speciesId).machineMoves])];
 }
 
+/** Discard obsolete PP cache entries without changing the saved monster. */
+function normalizeMovePpReserve(monster: Monster): void {
+  const reserve = monster.movePpReserve;
+  if (reserve === undefined) return;
+  if (!reserve || typeof reserve !== 'object' || Array.isArray(reserve)) {
+    delete monster.movePpReserve;
+    return;
+  }
+  const legal = new Set(availableMonsterMoveIds(monster)), equipped = new Set(monster.moves.map(slot => slot.moveId));
+  const normalized: Record<string, number> = {};
+  for (const [key, pp] of Object.entries(reserve)) {
+    const moveId = Number(key);
+    if (String(moveId) !== key || !legal.has(moveId) || equipped.has(moveId) || !Number.isInteger(pp) || pp < 0) continue;
+    normalized[key] = Math.min(pp, getMove(moveId).pp);
+  }
+  if (Object.keys(normalized).length) monster.movePpReserve = normalized;
+  else delete monster.movePpReserve;
+}
+
 function takeStoredMovePp(monster: Monster, moveId: number): number {
   const stored = monster.movePpReserve?.[String(moveId)];
   if (monster.movePpReserve) {
@@ -1122,6 +1141,7 @@ export function assignAlolaForm(state: GameState, instanceId: string, enabled: b
   monster.ability = enabled ? combatFormAbility(profile!) ?? monster.ability : abilityForSpecies(monster.speciesId, monster.ability?.slot ?? 1, monster.ability?.hidden);
   monster.moves = enabled ? formMoves(profile!, monster.level) : knownMoves(getSpecies(monster.speciesId), monster.level);
   reconcileMoveOrder(monster);
+  normalizeMovePpReserve(monster);
   return monster.regionalForm;
 }
 
@@ -1360,6 +1380,7 @@ function applyEvolution(state: GameState, monster: Monster, evolution: Evolution
     learnMove(monster, learned.moveId);
   }
   reconcileMoveOrder(monster);
+  normalizeMovePpReserve(monster);
   state.dex.seen = uniqueSorted([...state.dex.seen, evolution.target]); recordCapture(state, evolution.target);
   addLog(state, `${monster.nickname}(으)로 진화했다.`); return monster;
 }
@@ -1793,14 +1814,7 @@ export function validateGame(value: unknown): GameState {
     if (monster.moveOrder !== undefined) {
       if (!Array.isArray(monster.moveOrder) || monster.moveOrder.length > 4 || monster.moveOrder.length !== new Set(monster.moveOrder).size || monster.moveOrder.some((moveId) => !Number.isSafeInteger(moveId) || !knownMoveIds.has(moveId))) throw new Error('기술 배치가 잘못되었습니다.');
     }
-    if (monster.movePpReserve !== undefined) {
-      const legalMoveIds = new Set(availableMonsterMoveIds(monster));
-      if (!monster.movePpReserve || typeof monster.movePpReserve !== 'object' || Array.isArray(monster.movePpReserve) || Object.keys(monster.movePpReserve).length > legalMoveIds.size) throw new Error('미장착 기술 PP가 잘못되었습니다.');
-      for (const [moveIdText, pp] of Object.entries(monster.movePpReserve)) {
-        const moveId = Number(moveIdText);
-        if (!/^\d+$/.test(moveIdText) || String(moveId) !== moveIdText || !legalMoveIds.has(moveId) || knownMoveIds.has(moveId) || !Number.isInteger(pp) || pp < 0 || pp > getMove(moveId).pp) throw new Error('미장착 기술 PP가 잘못되었습니다.');
-      }
-    }
+    normalizeMovePpReserve(monster);
     if (monster.status !== undefined && (typeof monster.status !== 'string' || !monster.status || monster.status.length > 40)) throw new Error('상태이상이 잘못되었습니다.');
     if (monster.statusTurns !== undefined && (!Number.isInteger(monster.statusTurns) || monster.statusTurns < 1 || monster.statusTurns > 10)) throw new Error('상태이상 지속 시간이 잘못되었습니다.');
     if (monster.moveLearning !== undefined) for (const [moveId, stats] of Object.entries(monster.moveLearning)) {

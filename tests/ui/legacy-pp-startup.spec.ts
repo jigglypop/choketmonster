@@ -1,0 +1,52 @@
+import { expect, test } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import { createGame, createMonster } from '../../src/game/engine';
+import { getMove } from '../../src/data/pokemon';
+import { defaultView, packSave } from '../../src/game/storage';
+import { OpenWorldSimulation } from '../../src/openworld/simulation';
+import type { Graph } from '../../src/core/brain';
+
+test('starts from an existing save with obsolete unequipped PP and keeps its progress after reload', async ({ page }, info) => {
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  await page.routeWebSocket('**', socket => socket.close());
+  await page.route('**/api/auth/me', route => route.fulfill({ json: { user: null } }));
+  await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
+  const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
+  const game = createGame(152, 'legacy-pp-startup'), monster = createMonster(game, 54, 39);
+  monster.moves = [487, 401, 133, 472].map(moveId => ({ moveId, pp: getMove(moveId).pp }));
+  monster.moveOrder = [401, 487, 133, 472];
+  monster.moveLearning = { '401': { choices: 7, executed: 6, effective: 4, reward: 2 } };
+  monster.xp += 12;
+  monster.movePpReserve = { '401': 0, '0244': 0, '999999': 0, '244': getMove(244).pp + 1 };
+  game.player.team = [monster]; game.player.money = 4321;
+  const world = new OpenWorldSimulation(graph, game, 719); world.setControlMode('manual'); world.setAutoHunt(false);
+  const envelope = packSave(game, graph, { ...defaultView(), openWorld: world.snapshot(), openWorldPaused: true });
+  await page.goto('/'); await page.locator('[data-starter="152"]').click();
+  await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30000 });
+  await page.locator('[data-tab="team"]').click();
+  await page.evaluate(async save => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => { const request = indexedDB.open('choketmon-151', 2); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
+    await new Promise<void>((resolve, reject) => { const tx = db.transaction('saves', 'readwrite'); tx.objectStore('saves').put(save, 'current'); tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); });
+    db.close();
+  }, envelope);
+  await page.reload();
+  await expect(page.locator('#money')).toContainText('4,321', { timeout: 30000 });
+  await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30000 });
+  await page.locator('[data-tab="team"]').click();
+  await expect(page.locator(`.monster-card[data-monster="${monster.instanceId}"]`)).toContainText('고라파덕');
+  await page.locator('#save-now').click(); await expect(page.locator('#save-state')).toContainText('저장됨');
+  const saved = await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => { const request = indexedDB.open('choketmon-151', 2); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
+    const save = await new Promise<any>((resolve, reject) => { const tx = db.transaction('saves', 'readonly'), request = tx.objectStore('saves').get('current'); tx.oncomplete = () => resolve(request.result); tx.onerror = () => reject(tx.error); });
+    db.close(); return save.game.player.team[0];
+  });
+  expect(saved.instanceId).toBe(monster.instanceId);
+  expect(saved.xp).toBe(monster.xp);
+  expect(saved.moves).toEqual(monster.moves);
+  expect(saved.moveOrder).toEqual(monster.moveOrder);
+  expect(saved.moveLearning).toEqual(monster.moveLearning);
+  expect(saved.movePpReserve).toEqual({ '244': getMove(244).pp });
+  await page.reload(); await expect(page.locator('#money')).toContainText('4,321', { timeout: 30000 });
+  await page.screenshot({ path: info.outputPath('restored-save.png'), fullPage: true });
+  expect(errors).toEqual([]);
+});

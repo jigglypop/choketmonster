@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Brain } from '../src/core/brain';
 import { getMove } from '../src/data/pokemon';
-import { availableMonsterMoveIds, createGame, createMonster, evolve, heal, recoverableAttackMoveIds, recoverAttackMove, reorderMonsterMoves, replaceMonsterMove, restoreGame, serializeGame, useItem } from '../src/game/engine';
+import { assignAlolaForm, availableMonsterMoveIds, createGame, createMonster, evolve, heal, recoverableAttackMoveIds, recoverAttackMove, reorderMonsterMoves, replaceMonsterMove, restoreGame, serializeGame, useItem } from '../src/game/engine';
 import { getMoveLayout } from '../src/game/move-layout';
 
 const engineDamageIds = new Set([12, 32, 49, 69, 82, 90, 101, 149, 162]);
@@ -121,11 +121,31 @@ describe('move presentation layout', () => {
     expect(monster.moves[1].pp).toBe(2);
     expect(restoreGame(serializeGame(game)).player.team[0].movePpReserve).toEqual(monster.movePpReserve);
 
-    for (const invalid of [{ '401': 0 }, { '244': getMove(244).pp + 1 }, { '0244': 0 }, { '999999': 0 }] as Array<Record<string, number>>) {
+    for (const invalid of [{ '401': 0 }, { '0244': 0 }, { '999999': 0 }, { '244': -1 }, { '244': 1.5 }, null, []]) {
       const edited = structuredClone(game);
-      edited.player.team[0].movePpReserve = invalid;
-      expect(() => restoreGame(serializeGame(edited))).toThrow(/미장착 기술 PP/);
+      edited.player.team[0].movePpReserve = invalid as never;
+      const restored = restoreGame(serializeGame(edited)).player.team[0];
+      expect(restored.movePpReserve).toBeUndefined();
+      expect(restored).toEqual({ ...monster, movePpReserve: undefined });
     }
+    const edited = structuredClone(game);
+    edited.player.team[0].movePpReserve = { '244': getMove(244).pp + 1 };
+    expect(restoreGame(serializeGame(edited)).player.team[0].movePpReserve).toEqual({ '244': getMove(244).pp });
+  });
+
+  it('removes PP reserve entries re-equipped by an Alola form change before saving', () => {
+    const game = createGame(1, 'alola-reserve'), monster = createMonster(game, 26, 50);
+    game.player.team = [monster];
+    const preview = structuredClone(game);
+    assignAlolaForm(preview, monster.instanceId, true);
+    monster.movePpReserve = Object.fromEntries(preview.player.team[0].moves.map(slot => [String(slot.moveId), 0]));
+    monster.brain = new Brain(23).state;
+    const brain = structuredClone(monster.brain), xp = monster.xp;
+    assignAlolaForm(game, monster.instanceId, true);
+    expect(monster.movePpReserve).toBeUndefined();
+    expect(monster.brain).toEqual(brain);
+    expect(monster.xp).toBe(xp);
+    expect(restoreGame(serializeGame(game)).player.team[0]).toEqual(monster);
   });
 
   it('blocks illegal, duplicate, battle-time and capture-time slot changes', () => {
