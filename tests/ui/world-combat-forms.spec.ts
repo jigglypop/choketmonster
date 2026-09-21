@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
-import { activateBattleTransformation, assignAlolaForm, createGame, createMonster, replaceMonsterMove } from '../../src/game/engine';
+import { assignPreferredTransformation, assignAlolaForm, createGame, createMonster, replaceMonsterMove } from '../../src/game/engine';
 import { defaultView, packSave } from '../../src/game/storage';
 import { OpenWorldSimulation } from '../../src/openworld/simulation';
 import type { Graph } from '../../src/core/brain';
@@ -19,13 +19,14 @@ test('WebGPU exploration renders Alola geometry, Mega aura and Tera crystal', as
     game.player.team = [monster];
     if (kind === 'alola') assignAlolaForm(game, monster.instanceId, true);
     if (kind === 'tera') replaceMonsterMove(game, monster.instanceId, 0, 851);
+    if (kind === 'mega') assignPreferredTransformation(game, monster.instanceId, { kind, formIdentifier: 'charizard-mega-x' });
+    if (kind === 'tera') assignPreferredTransformation(game, monster.instanceId, { kind, teraType: 'water' });
     const world = new OpenWorldSimulation(graph, game, 420);
     world.setControlMode('manual'); world.setAutoHunt(false);
     if (kind !== 'alola') {
       const wild = world.entities.find(entity => entity.kind === 'wild')!;
       world.battleWildId = wild.id;
       game.battle = { kind: 'wild', regionId: game.regionId, player: { team: game.player.team, activeIndex: 0 }, enemy: { team: [createMonster(game, wild.speciesId, wild.level)], activeIndex: 0 }, turn: 1, canRun: true };
-      activateBattleTransformation(game, kind, kind === 'mega' ? { formIdentifier: 'charizard-mega-x' } : { teraType: 'water' });
     }
     const save = packSave(game, graph, { ...defaultView(), openWorld: world.snapshot(), openWorldPaused: true });
     await page.locator('#import-file').setInputFiles({ name: 'world-form.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(save)) });

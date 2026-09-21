@@ -14,6 +14,7 @@ test('search, bulk merge, automatic merge setting and assignment persist on mobi
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   await page.route(/\.(?:glb|gltf)(?:\?.*)?$/, route => route.abort());
   const game = createGame(1, 'streamlined-box'), survivor = game.player.team[0];
+  game.inventory.leftovers = 1;
   game.player.box = Array.from({ length: 105 }, (_, index) => createMonster(game, index % 2 ? 25 : 1, 5 + index % 15));
   await page.goto('/');
   await page.locator('[data-starter="152"]').click();

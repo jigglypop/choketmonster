@@ -1,5 +1,6 @@
 import { getMove, getSpecies } from '../data/pokemon';
 import { EVOLUTION_SOURCE_RULES, EVOLUTION_SOURCE_ITEMS, EVOLUTION_SPECIES_TRAITS, EVOLUTION_CONDITION_NAMES, type EvolutionSourceRule } from '../data/evolution-rules';
+import { getAlolaCombatForm, getCombatForm } from '../data/pokemon-combat-forms';
 import type { Evolution } from './contracts';
 import type { GameState, InventoryItem, Monster } from './engine';
 import { initialEvolutionProgress } from './evolution-progress';
@@ -14,6 +15,35 @@ const sourceItem = (value: string) => EVOLUTION_SOURCE_ITEMS[Number(value)];
 export function sourceEvolutionItems(from: number, to: number): string[] {
   const rules = [...sourceEvolutionRules(from, to)].sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
   const items = rules.flatMap(rule => {
+    const item = sourceItem(rule.conditions.trigger_item_id || rule.conditions.held_item_id);
+    return item ? [item.id] : rule.trigger === 2 ? ['link-cable'] : [];
+  });
+  return [...new Set(items)];
+}
+
+function currentFormId(monster: Monster): number | undefined {
+  return monster.regionalForm ? getCombatForm(monster.regionalForm)?.formId : EVOLUTION_SPECIES_TRAITS[monster.speciesId]?.defaultFormId;
+}
+
+function resultingFormId(state: GameState, monster: Monster, target: number): number | undefined {
+  const current = monster.regionalForm ? getCombatForm(monster.regionalForm) : undefined;
+  const becomesAlola = current?.kind === 'alola' || (state.evolutionContext?.regionId === 'alola' && [25, 102, 104].includes(monster.speciesId));
+  return (becomesAlola ? getAlolaCombatForm(target)?.formId : undefined) ?? EVOLUTION_SPECIES_TRAITS[target]?.defaultFormId;
+}
+
+function ruleMatchesForm(state: GameState, monster: Monster, rule: EvolutionSourceRule): boolean {
+  const base = Number(rule.conditions.base_form_id || 0), evolved = Number(rule.conditions.evolved_form_id || 0);
+  return (!base || base === currentFormId(monster)) && (!evolved || evolved === resultingFormId(state, monster, rule.to));
+}
+
+/** True when at least one source route belongs to the monster's represented form and resulting represented form. */
+export function evolutionFormSupported(state: GameState, monster: Monster, evolution: Evolution): boolean {
+  const rules = sourceEvolutionRules(monster.speciesId, evolution.target);
+  return !rules.length || rules.some(rule => ruleMatchesForm(state, monster, rule));
+}
+
+export function sourceEvolutionItemsForMonster(state: GameState, monster: Monster, evolution: Evolution): string[] {
+  const items = sourceEvolutionRules(monster.speciesId, evolution.target).filter(rule => ruleMatchesForm(state, monster, rule)).flatMap(rule => {
     const item = sourceItem(rule.conditions.trigger_item_id || rule.conditions.held_item_id);
     return item ? [item.id] : rule.trigger === 2 ? ['link-cable'] : [];
   });
@@ -68,7 +98,7 @@ export function sourceEvolutionDescriptions(from: number, to: number): string[] 
  * their explicitly labelled shop substitutes are evaluated separately by the engine. */
 export function nativeEvolutionReady(state: GameState, monster: Monster, rule: EvolutionSourceRule): boolean {
   const progress = monster.evolutionProgress ?? initialEvolutionProgress(monster), c = rule.conditions, context = state.evolutionContext;
-  if (rule.from !== monster.speciesId) return false;
+  if (rule.from !== monster.speciesId || !ruleMatchesForm(state, monster, rule)) return false;
   // Friendship values remain in old saves for compatibility, but friendship is
   // no longer a playable evolution route. Special evolutions use the catalyst.
   if ('minimum_happiness' in c) return false;
@@ -95,8 +125,7 @@ export function nativeEvolutionReady(state: GameState, monster: Monster, rule: E
       case 'region_id': if (!context || context.regionId !== EVOLUTION_CONDITION_NAMES[key]?.[value]) return false; break;
       case 'needs_overworld_rain': if (!context?.raining) return false; break;
       case 'needs_multiplayer': if (!context?.multiplayer) return false; break;
-      case 'base_form_id': if (n !== EVOLUTION_SPECIES_TRAITS[monster.speciesId]?.defaultFormId) return false; break;
-      case 'evolved_form_id': if (n !== EVOLUTION_SPECIES_TRAITS[rule.to]?.defaultFormId) return false; break;
+      case 'base_form_id': case 'evolved_form_id': break;
       case 'minimum_steps': if (progress.steps < n) return false; break;
       case 'minimum_damage_taken': if ((rule.trigger === 13 ? progress.recoilDamage : progress.damageTaken) < n || monster.hp <= 0) return false; break;
       case 'used_move_id': if ((progress.moveUses[value] ?? 0) < Number(c.minimum_move_count || 1)) return false; break;
@@ -113,10 +142,17 @@ export function evolutionGrowthSummary(monster: Monster): string {
   const p = monster.evolutionProgress ?? initialEvolutionProgress(monster);
   return `${p.gender === 'female' ? '암컷' : p.gender === 'male' ? '수컷' : '성별 없음'} · 친밀도 ${p.friendship}/255 · 아름다움 ${p.beauty}/255 · 애정 ${p.affection}/255 · ${p.steps.toLocaleString()}걸음`;
 }
+
+export const EVOLUTION_TREAT_EFFECTS = {
+  'friendship-treat': { key: 'friendship', amount: 20 },
+  'beauty-treat': { key: 'beauty', amount: 20 },
+  'affection-treat': { key: 'affection', amount: 1 },
+} as const;
+
 export function feedEvolutionTreat(monster: Monster, item: InventoryItem, quantity: number): boolean {
-  const key = ({ 'friendship-treat': 'friendship', 'beauty-treat': 'beauty', 'affection-treat': 'affection' } as const)[item as 'friendship-treat'];
-  if (!key) return false;
+  const effect = EVOLUTION_TREAT_EFFECTS[item as keyof typeof EVOLUTION_TREAT_EFFECTS];
+  if (!effect) return false;
   const p = monster.evolutionProgress ?? initialEvolutionProgress(monster);
-  if (p[key] >= 255 || quantity > Math.ceil((255 - p[key]) / 20)) throw new Error('최대 성장치를 넘는 간식은 사용할 수 없습니다.');
-  p[key] = Math.min(255, p[key] + quantity * 20); monster.evolutionProgress = p; return true;
+  if (p[effect.key] >= 255 || quantity > Math.ceil((255 - p[effect.key]) / effect.amount)) throw new Error('최대 성장치를 넘는 간식은 사용할 수 없습니다.');
+  p[effect.key] = Math.min(255, p[effect.key] + quantity * effect.amount); monster.evolutionProgress = p; return true;
 }

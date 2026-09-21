@@ -9,9 +9,9 @@ import { FIELD_TRAINERS } from '../src/data/field-trainers';
 import { automatedMoveMask, battleMoveSenses } from '../src/game/connectome';
 import { getMoveLayout } from '../src/game/move-layout';
 import {
-  actBattle, battleMonsterView, challengeFieldTrainer, experienceAtLevel, useItem, activateBattleTransformation, assignAlolaForm, assignHeldTool, assignMonsterAbility, captureDefeatedWild, createGame, createMonster, evolve,
-  evolutionPurchaseQuote, ITEM_PRICES, mergeCollectionDuplicates,
-  previewCollectionMerge, restoreGame, serializeGame, setAutoMergeDuplicates, statsFor, availableMonsterMoveIds, replaceMonsterMove,
+  actBattle, battleMonsterView, buyItem, challengeFieldTrainer, experienceAtLevel, useItem, activateBattleTransformation, assignAlolaForm, assignHeldTool, assignMonsterAbility, captureDefeatedWild, createGame, createMonster, evolve,
+  evolutionPurchaseQuote, HEALING_ITEM_HP, HELD_TOOL_DESCRIPTIONS, HELD_TOOL_LABELS, HELD_TOOL_PRICES, HELD_TOOLS, ITEM_PRICES, mergeCollectionDuplicates, mergeDuplicateMonsters,
+  previewCollectionMerge, releaseMonster, restoreGame, serializeGame, setAutoMergeDuplicates, statsFor, availableMonsterMoveIds, replaceMonsterMove,
 } from '../src/game/engine';
 
 describe('collection merge options', () => {
@@ -49,6 +49,36 @@ describe('collection merge options', () => {
     expect(plan.groups.find(group => group.speciesId === 25)).toMatchObject({ targetId: survivor.instanceId, toLevel: 100, gainedXp: 0 });
     mergeCollectionDuplicates(game, plan);
     expect(game.player.box.filter(monster => monster.speciesId === 25)).toEqual([survivor]);
+  });
+
+  it('returns only removed individuals held tools and keeps the survivor equipment', () => {
+    const game = createGame(1, 'collection-tools'), target = game.player.team[0];
+    const first = createMonster(game, 1, 8), second = createMonster(game, 1, 10), released = createMonster(game, 4, 8);
+    target.heldTool = 'leftovers'; first.heldTool = 'focus-sash'; second.heldTool = 'life-orb'; released.heldTool = 'choice-band';
+    game.player.box.push(first, second, released);
+    mergeDuplicateMonsters(game, target.instanceId, [first.instanceId, second.instanceId]);
+    expect(target.heldTool).toBe('leftovers'); expect(game.inventory.leftovers).toBe(0);
+    expect(game.inventory['focus-sash']).toBe(1); expect(game.inventory['life-orb']).toBe(1);
+    releaseMonster(game, released.instanceId);
+    expect(game.inventory['choice-band']).toBe(1);
+  });
+
+  it('rejects an overflowing bulk tool return before changing any collection or stock', () => {
+    const game = createGame(1, 'collection-tool-overflow');
+    const first = createMonster(game, 1, 8), second = createMonster(game, 1, 10);
+    first.heldTool = 'focus-sash'; second.heldTool = 'focus-sash'; game.player.box.push(first, second);
+    game.inventory['focus-sash'] = 999_999_999;
+    const plan = previewCollectionMerge(game), before = serializeGame(game);
+    expect(() => mergeCollectionDuplicates(game, plan)).toThrow(/재고가 너무 많습니다/);
+    expect(serializeGame(game)).toBe(before);
+  });
+
+  it('rejects an overflowing released tool return without removing the individual', () => {
+    const game = createGame(1, 'release-tool-overflow'), released = createMonster(game, 4, 8);
+    released.heldTool = 'focus-sash'; game.player.box.push(released); game.inventory['focus-sash'] = 1_000_000_000;
+    const before = serializeGame(game);
+    expect(() => releaseMonster(game, released.instanceId)).toThrow(/재고가 너무 많습니다/);
+    expect(serializeGame(game)).toBe(before);
   });
 });
 
@@ -94,14 +124,60 @@ describe('transactional evolution purchases', () => {
 });
 
 describe('held tools', () => {
-  it('assigns one tool to one owned individual and applies battle damage effects', () => {
+  it('publishes the complete balanced shop catalog for held tools', () => {
+    expect(HELD_TOOL_PRICES).toEqual({
+      leftovers: 4000, 'choice-band': 6000, 'choice-specs': 6000,
+      'choice-scarf': 6000, 'life-orb': 8000, 'focus-sash': 4000,
+    });
+    for (const tool of HELD_TOOLS) {
+      expect(ITEM_PRICES[tool]).toBe(HELD_TOOL_PRICES[tool]);
+      expect(HELD_TOOL_LABELS[tool]).not.toBe('');
+      expect(HELD_TOOL_DESCRIPTIONS[tool]).not.toBe('');
+    }
+  });
+
+  it('buys finite tools, moves stock transactionally between individuals, and preserves it across saves', () => {
     const game = createGame(1, 'held-tools'), attacker = game.player.team[0], other = createMonster(game, 4, 5);
-    game.player.box.push(other); assignHeldTool(game, attacker.instanceId, 'focus-sash');
+    game.player.box.push(other); game.player.money = 100_000;
+    buyItem(game, 'focus-sash', 2); buyItem(game, 'leftovers');
+    expect(game.player.money).toBe(100_000 - ITEM_PRICES['focus-sash'] * 2 - ITEM_PRICES.leftovers);
+    assignHeldTool(game, attacker.instanceId, 'focus-sash');
+    expect(game.inventory['focus-sash']).toBe(1);
+    const unchanged = serializeGame(game); assignHeldTool(game, attacker.instanceId, 'focus-sash');
+    expect(serializeGame(game)).toBe(unchanged);
     assignHeldTool(game, other.instanceId, 'focus-sash');
+    expect(game.inventory['focus-sash']).toBe(0);
+    assignHeldTool(game, attacker.instanceId, 'leftovers');
+    expect(game.inventory.leftovers).toBe(0); expect(game.inventory['focus-sash']).toBe(1);
+    const beforeFailure = serializeGame(game);
+    expect(() => assignHeldTool(game, attacker.instanceId, 'life-orb')).toThrow(/재고/);
+    expect(serializeGame(game)).toBe(beforeFailure);
+    const restored = restoreGame(serializeGame(game));
+    expect(restored.player.team[0].heldTool).toBe('leftovers');
+    expect(restored.player.box[0].heldTool).toBe('focus-sash');
+    expect(restored.inventory['focus-sash']).toBe(1); expect(restored.inventory.leftovers).toBe(0);
     const move = { ...getMove(33), power: 1000 };
     const stats = { hp: 100, attack: 100, defense: 100, specialAttack: 100, specialDefense: 100, speed: 100 };
     expect(calculateDamage({ level: 100, hp: 100, stats, types: ['normal'] }, { level: 5, hp: 100, stats, types: ['normal'], heldTool: 'focus-sash' }, move, 1).damage).toBe(99);
-    expect(restoreGame(serializeGame(game)).player.team[0].heldTool).toBe('focus-sash');
+  });
+
+  it('migrates absent tool stock to zero without removing a legacy equipped tool', () => {
+    const game = createGame(1, 'legacy-held-tool'); game.player.team[0].heldTool = 'choice-scarf';
+    const legacy = JSON.parse(serializeGame(game));
+    for (const tool of HELD_TOOLS) delete legacy.inventory[tool];
+    const restored = restoreGame(JSON.stringify(legacy));
+    expect(restored.player.team[0].heldTool).toBe('choice-scarf');
+    for (const tool of HELD_TOOLS) expect(restored.inventory[tool]).toBe(0);
+  });
+
+  it('uses the exported healing amounts for both medicines', () => {
+    const game = createGame(1, 'healing-items'), monster = createMonster(game, 1, 50);
+    game.player.team = [monster]; monster.hp = 1;
+    game.inventory.potion = 1; useItem(game, 'potion', monster.instanceId);
+    expect(monster.hp).toBe(1 + HEALING_ITEM_HP.potion);
+    monster.hp = 1; game.inventory['super-potion'] = 1; useItem(game, 'super-potion', monster.instanceId);
+    expect(monster.hp).toBe(1 + HEALING_ITEM_HP['super-potion']);
+    expect(HEALING_ITEM_HP['super-potion']).toBe(60);
   });
 
   it('assigns only a canonical ability slot and persists its identity', () => {

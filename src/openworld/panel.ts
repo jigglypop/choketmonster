@@ -3,7 +3,7 @@ import { getMove, getSpecies } from '../data/pokemon';
 import { fieldTrainersAt, getFieldTrainer } from '../data/field-trainers';
 import { pokemonModelUrl, pokemonSpriteUrl } from '../game/assets';
 import { getMoveLayout } from '../game/move-layout';
-import { battleMoveView, depositMonster, experienceAtLevel, firstUsableRegionalTeamIndex, heal, statsFor, withdrawMonster, type GameState, type Monster } from '../game/engine';
+import { battleMoveView, depositMonster, experienceAtLevel, firstUsableRegionalTeamIndex, heal, HEALING_ITEM_HP, ITEM_LABELS, statsFor, withdrawMonster, type GameState, type Monster } from '../game/engine';
 import { monsterRegionalUseReason, REGIONAL_STARTERS, regionalLevelCap } from '../game/regional-policy';
 import { CAMPAIGN_TRAINERS, campaignTravelReason, getCampaignGyms, getNextCampaignTrainer, getRegionalBadges, regionalWildLevels, type CampaignRegion } from '../game/campaign';
 import { getWorldAtlas } from './atlas';
@@ -142,7 +142,7 @@ export class OpenWorldPanel {
           <div class="world-battle-deck">
             <div id="world-combatants"></div><div id="world-moves" class="world-moves"></div><div id="world-transformations"></div><button id="world-edit-moves" class="world-edit-moves">특성 · 도구 · 기술 배치</button><div id="world-emergency-action"></div>
             <details class="world-switch"><summary>포켓몬 교체</summary><div id="world-switch-options"></div></details>
-            <div class="world-battle-actions"><button id="world-catch" disabled>몬스터볼 ∞</button><button id="world-potion" disabled>상처약</button><button id="world-run" disabled>도망</button><span id="world-battle-state">자동 배틀 대기</span></div>
+            <div class="world-battle-actions"><button id="world-catch" disabled>몬스터볼 ∞</button><button id="world-potion" disabled>상처약</button><button id="world-super-potion" disabled>좋은상처약</button><button id="world-run" disabled>도망</button><span id="world-battle-state">자동 배틀 대기</span></div>
             <details class="world-rewards"><summary>이 개체의 보상 기록</summary><div id="world-rewards"></div><small>게임에서 설계한 보상이며 생물학적 학습의 증거가 아닙니다.</small></details>
           </div>
         </details>
@@ -342,7 +342,7 @@ export class OpenWorldPanel {
       heal(this.options.game); playGameSound('heal'); this.options.notify('캠프에서 HP·상태 이상을 회복했습니다.'); this.options.changed(); this.refresh();
     };
     this.button('#world-catch').onclick = () => { if (this.options.game.captureOffer) this.catchVictory(); else if (this.simulation.requestCapture()) this.options.notify('다음 턴에 몬스터볼을 던집니다.'); };
-    this.button('#world-potion').onclick = () => { if (this.simulation.requestAction({ type: 'item', item: 'potion' })) this.options.notify('다음 턴에 상처약을 사용합니다.'); };
+    for (const item of ['potion', 'super-potion'] as const) this.button(`#world-${item}`).onclick = () => { if (this.simulation.requestAction({ type: 'item', item })) this.options.notify(`다음 턴에 ${ITEM_LABELS[item]}을 사용합니다.`); };
     this.button('#world-run').onclick = () => { if (this.simulation.requestAction({ type: 'run' })) this.options.notify('다음 턴에 도망을 시도합니다.'); };
     this.input('#world-auto-catch').onchange = e => { this.simulation.setAutoCapture((e.target as HTMLInputElement).checked); if (this.simulation.autoCapture && this.simulation.hasBalls && this.options.game.captureOffer) this.catchVictory(); this.options.changed(); this.refresh(); };
     this.input('#world-learning').checked = this.options.learning();
@@ -1004,7 +1004,12 @@ export class OpenWorldPanel {
     const respawns = world.respawnQueue;
     this.html('#world-respawn', respawns.length ? `${respawns.length}마리 리젠 대기 · ${Math.ceil(Math.min(...respawns.map(spawn => spawn.remainingSeconds)))}초` : '');
     this.button('#world-catch').disabled = !offer && battle?.kind !== 'wild';
-    this.button('#world-potion').disabled = !battle || game.inventory.potion <= 0 || lead.hp <= 0 || lead.hp >= lead.stats.hp;
+    for (const item of ['potion', 'super-potion'] as const) {
+      const button = this.button(`#world-${item}`);
+      button.disabled = !battle || game.inventory[item] <= 0 || lead.hp <= 0 || lead.hp >= lead.stats.hp;
+      button.textContent = `${ITEM_LABELS[item]} ×${game.inventory[item]}`;
+      button.title = `HP +${HEALING_ITEM_HP[item]}`;
+    }
     this.button('#world-run').disabled = !battle?.canRun;
     this.button('#world-heal').disabled = Boolean(battle);
     this.button('#world-trainer-open').disabled = Boolean(battle || offer);

@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { Brain } from '../src/core/brain';
 import { getSpecies } from '../src/data/pokemon';
-import { availableEvolutions, buyItem, createGame, createMonster, evolve, evolutionItemUses, ITEM_PRICES, restoreGame, serializeGame, validateGame } from '../src/game/engine';
+import { assignAlolaForm, availableEvolutions, buyItem, createGame, createMonster, evolve, evolutionItemUses, HELD_TOOLS, ITEM_PRICES, restoreGame, serializeGame, SHOP_ITEMS, useItem, validateGame } from '../src/game/engine';
 import { EXTRA_EVOLUTION_ITEM_IDS, ITEM_EVOLUTION_RULES } from '../src/game/evolution-items';
+import { EVOLUTION_TREAT_EFFECTS } from '../src/game/evolution-conditions';
+import { evolutionProgress } from '../src/game/evolution-progress';
 
 function fixture(speciesId: number) {
   const game = createGame(152, `item-evolution-${speciesId}`), mon = createMonster(game, speciesId, 25);
@@ -52,14 +54,16 @@ describe('purchasable evolution tools', () => {
     evolve(game, mon.instanceId, { targetId: 368 });
     expect(game.inventory['deep-sea-scale']).toBe(0); expect(game.inventory['deep-sea-tooth']).toBe(1);
     const sneasel = fixture(215); buyItem(sneasel.game, 'razor-claw');
-    expect(availableEvolutions(sneasel.game, sneasel.mon.instanceId).map(evolution => evolution.target)).toEqual([461, 903]);
+    expect(availableEvolutions(sneasel.game, sneasel.mon.instanceId).map(evolution => evolution.target)).toEqual([461]);
   });
 
   it('restores old 12-item inventories and preserves new purchases across saves', () => {
     const { game } = fixture(95), old = JSON.parse(serializeGame(game));
     for (const id of EXTRA_EVOLUTION_ITEM_IDS) delete old.inventory[id];
+    for (const id of HELD_TOOLS) delete old.inventory[id];
     const restored = restoreGame(JSON.stringify(old));
     for (const id of EXTRA_EVOLUTION_ITEM_IDS) expect(restored.inventory[id]).toBe(0);
+    for (const id of HELD_TOOLS) expect(restored.inventory[id]).toBe(0);
     buyItem(restored, 'metal-coat', 2);
     expect(restoreGame(serializeGame(restored)).inventory['metal-coat']).toBe(2);
     for (const bad of [-1, null, .5, 1_000_000_001]) {
@@ -68,5 +72,46 @@ describe('purchasable evolution tools', () => {
     }
     const missing = structuredClone(old); delete missing.inventory.potion;
     expect(() => restoreGame(JSON.stringify(missing))).toThrow(/가방/);
+  });
+
+  it('uses distinct exported treat effects and charges the balanced catalyst price', () => {
+    const { game, mon } = fixture(133), progress = evolutionProgress(mon);
+    game.inventory['friendship-treat'] = 1; game.inventory['beauty-treat'] = 1; game.inventory['affection-treat'] = 1;
+    const before = { friendship: progress.friendship, beauty: progress.beauty, affection: progress.affection };
+    useItem(game, 'friendship-treat', mon.instanceId);
+    useItem(game, 'beauty-treat', mon.instanceId);
+    useItem(game, 'affection-treat', mon.instanceId);
+    expect(progress.friendship).toBe(before.friendship + EVOLUTION_TREAT_EFFECTS['friendship-treat'].amount);
+    expect(progress.beauty).toBe(before.beauty + EVOLUTION_TREAT_EFFECTS['beauty-treat'].amount);
+    expect(progress.affection).toBe(before.affection + EVOLUTION_TREAT_EFFECTS['affection-treat'].amount);
+    expect(EVOLUTION_TREAT_EFFECTS['affection-treat'].amount).toBe(1);
+    expect(ITEM_PRICES['evolution-catalyst']).toBe(8000);
+  });
+
+  it('blocks items and the catalyst from unsupported regional-form evolutions', () => {
+    const cases = [
+      [79, 80, 'galarica-cuff'], [79, 199, 'galarica-wreath'], [554, 555, 'ice-stone'],
+      [215, 903, 'razor-claw'], [100, 101, 'leaf-stone'],
+    ] as const;
+    for (const [from, to, item] of cases) {
+      const { game, mon } = fixture(from); mon.level = 50; game.inventory[item] = 1;
+      expect(() => evolve(game, mon.instanceId, { targetId: to, item })).toThrow();
+      game.inventory['evolution-catalyst'] = 1;
+      if (from === 215) expect(() => evolve(game, mon.instanceId, { targetId: to, item: 'evolution-catalyst' })).toThrow();
+      expect(mon.speciesId).toBe(from); expect(game.inventory[item]).toBe(1);
+    }
+    expect(SHOP_ITEMS).not.toContain('galarica-cuff'); expect(SHOP_ITEMS).not.toContain('galarica-wreath');
+  });
+
+  it('preserves supported Alola form IDs through Diglett and Geodude evolution chains', () => {
+    const diglett = fixture(50); diglett.mon.level = 30; assignAlolaForm(diglett.game, diglett.mon.instanceId, true);
+    evolve(diglett.game, diglett.mon.instanceId, { targetId: 51 });
+    expect(diglett.mon.regionalForm).toBe('dugtrio-alola');
+
+    const geodude = fixture(74); geodude.mon.level = 30; assignAlolaForm(geodude.game, geodude.mon.instanceId, true);
+    evolve(geodude.game, geodude.mon.instanceId, { targetId: 75 });
+    expect(geodude.mon.regionalForm).toBe('graveler-alola');
+    geodude.game.inventory['link-cable'] = 1; evolve(geodude.game, geodude.mon.instanceId, { targetId: 76, item: 'link-cable' });
+    expect(geodude.mon.regionalForm).toBe('golem-alola');
   });
 });

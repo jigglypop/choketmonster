@@ -7,7 +7,7 @@ import {
   restoreGame, serializeGame, SHOP_ITEMS, statsFor, useItem, type GameState, type InventoryItem,
 } from '../src/game/engine';
 import {
-  nativeEvolutionReady, naturalEvolution, needsSpecialEvolution, sourceEvolutionRules,
+  evolutionFormSupported, nativeEvolutionReady, naturalEvolution, needsSpecialEvolution, sourceEvolutionRules,
 } from '../src/game/evolution-conditions';
 import { evolutionProgress } from '../src/game/evolution-progress';
 
@@ -41,12 +41,16 @@ describe('complete source-backed evolution reachability', () => {
     ]);
   });
 
-  it('can execute and restore all 483 authored edges through a native, direct-item, or labelled fallback route', () => {
+  it('executes every represented-form edge and blocks unsupported-form fallbacks', () => {
     for (const { species, evolution } of evolutionEdges) {
       const edge = `${species.id}>${evolution.target}`;
       const game = ownedFixture(species.id), monster = game.player.team[0];
       const fallback = needsSpecialEvolution(species.id, evolution) ? 'evolution-catalyst' : undefined;
       const route = evolutionRoute(game, monster, evolution, fallback);
+      if (!evolutionFormSupported(game, monster, evolution)) {
+        expect(route, `${edge} must stay locked until its form is represented`).toBeUndefined();
+        continue;
+      }
       expect(route, `${edge} has no executable evolution route`).toBeDefined();
       if (!fallback && route?.item) expect(evolutionItemsFor(species.id, evolution), edge).toContain(route.item);
       const stockItem = route?.item;

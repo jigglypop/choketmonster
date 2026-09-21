@@ -1,5 +1,5 @@
 import { Brain, type BrainState } from '../core/brain';
-import { getMove, getSpecies, POKEMON } from '../data/pokemon';
+import { getMove, getSpecies, POKEMON, TYPE_EFFECTIVENESS } from '../data/pokemon';
 import { getExperienceForLevel, EXPERIENCE_BY_GROWTH_RATE } from '../data/pokemon-experience';
 import { getVersionSpeciesIds } from '../data/pokemon-versions';
 import { getAlolaCombatForm, getCombatForm, getMegaCombatForm, type PokemonCombatFormProfile } from '../data/pokemon-combat-forms';
@@ -12,7 +12,7 @@ import { CAMPAIGN_REGIONS, CAMPAIGN_TRAINERS, campaignProgress, campaignTravelRe
 import { duplicateMergeValue } from './growth';
 import { EXTRA_EVOLUTION_ITEM_IDS, EXTRA_EVOLUTION_PRICES, EXTRA_EVOLUTION_LABELS, emptyExtraEvolutionInventory, ITEM_EVOLUTION_RULES, type ExtraEvolutionItem } from './evolution-items';
 import { initialEvolutionProgress, evolutionProgress, validateEvolutionProgress, validateEvolutionContext, type EvolutionProgress, type EvolutionContext } from './evolution-progress';
-import { feedEvolutionTreat, naturalEvolution, needsSpecialEvolution, sourceEvolutionItems, sourceEvolutionRules, specialEvolutionLevel } from './evolution-conditions';
+import { evolutionFormSupported, feedEvolutionTreat, naturalEvolution, needsSpecialEvolution, sourceEvolutionItems, sourceEvolutionItemsForMonster, sourceEvolutionRules, specialEvolutionLevel } from './evolution-conditions';
 import { getFieldTrainer, type FieldTrainer } from '../data/field-trainers';
 import { genderFor, isValidGender, validateEgg, type Egg, type MonsterGender } from './breeding';
 import { abilityForSpecies, abilityImmunity, canonicalAbility, createIndividualTraits, hasSturdy, isValidIndividualValues, speciesAbilities,
@@ -23,11 +23,14 @@ export { abilityForSpecies, createIndividualTraits, speciesAbilities, type Indiv
 
 export const SAVE_SCHEMA_VERSION = 2 as const;
 export type BallItem = 'poke-ball' | 'great-ball' | 'ultra-ball';
-export type InventoryItem = BallItem | 'potion' | 'super-potion' | 'rare-candy' | 'fire-stone' | 'water-stone' | 'thunder-stone' | 'leaf-stone' | 'moon-stone' | 'link-cable' | ExtraEvolutionItem;
+export const HELD_TOOLS = ['leftovers', 'choice-band', 'choice-specs', 'choice-scarf', 'life-orb', 'focus-sash'] as const;
+export type HeldTool = typeof HELD_TOOLS[number];
+export type InventoryItem = BallItem | 'potion' | 'super-potion' | 'rare-candy' | 'fire-stone' | 'water-stone' | 'thunder-stone' | 'leaf-stone' | 'moon-stone' | 'link-cable' | ExtraEvolutionItem | HeldTool;
 export type BattleKind = 'wild' | 'gym' | 'trainer' | 'champion' | 'elite' | 'red';
 
 export type MonsterStats = BaseStats;
 export type MonsterMove = { moveId: number; pp: number };
+export type PreferredTransformation = { kind: 'mega'; formIdentifier: string } | { kind: 'tera'; teraType: PokemonType };
 export type MoveLearningStat = { choices: number; executed: number; effective: number; reward: number };
 export type Monster = {
   instanceId: string;
@@ -46,6 +49,7 @@ export type Monster = {
   ability?: MonsterAbility;
   /** Optional battle equipment. Legacy saves omit it. */
   heldTool?: HeldTool;
+  preferredTransformation?: PreferredTransformation;
   /** Optional canonical regional combat form; currently supports Alola forms. */
   regionalForm?: string;
   moves: MonsterMove[];
@@ -160,8 +164,23 @@ export type GameState = {
   logs: string[];
 };
 
-export const HELD_TOOLS = ['leftovers', 'choice-band', 'choice-specs', 'choice-scarf', 'life-orb', 'focus-sash'] as const;
-export type HeldTool = typeof HELD_TOOLS[number];
+export const HELD_TOOL_LABELS: Readonly<Record<HeldTool, string>> = {
+  leftovers: '먹다남은음식', 'choice-band': '구애머리띠', 'choice-specs': '구애안경',
+  'choice-scarf': '구애스카프', 'life-orb': '생명의구슬', 'focus-sash': '기합의띠',
+};
+export const HELD_TOOL_DESCRIPTIONS: Readonly<Record<HeldTool, string>> = {
+  leftovers: '턴이 끝날 때 최대 HP의 1/16을 회복합니다.',
+  'choice-band': '공격이 1.5배가 되고 처음 사용한 기술로 고정됩니다.',
+  'choice-specs': '특수공격이 1.5배가 되고 처음 사용한 기술로 고정됩니다.',
+  'choice-scarf': '스피드가 1.5배가 되고 처음 사용한 기술로 고정됩니다.',
+  'life-orb': '공격 피해가 1.3배가 되고 적중 후 최대 HP의 1/10을 잃습니다.',
+  'focus-sash': 'HP가 가득 찼을 때 한 번만 HP 1로 버팁니다.',
+};
+export const HELD_TOOL_PRICES: Readonly<Record<HeldTool, number>> = {
+  leftovers: 4000, 'choice-band': 6000, 'choice-specs': 6000,
+  'choice-scarf': 6000, 'life-orb': 8000, 'focus-sash': 4000,
+};
+export const HEALING_ITEM_HP: Readonly<Record<'potion' | 'super-potion', number>> = { potion: 20, 'super-potion': 60 };
 
 export type ExploreResult = { kind: 'encounter' | 'item' | 'money'; speciesId?: number; item?: InventoryItem; amount: number; text: string };
 
@@ -171,6 +190,7 @@ export const ITEM_PRICES: Readonly<Record<InventoryItem, number>> = {
   'fire-stone': 3000, 'water-stone': 3000, 'thunder-stone': 3000,
   'leaf-stone': 3000, 'moon-stone': 3000, 'link-cable': 4000,
   ...EXTRA_EVOLUTION_PRICES,
+  ...HELD_TOOL_PRICES,
 };
 export const ITEM_LABELS: Readonly<Record<InventoryItem, string>> = {
   'poke-ball': '몬스터볼', 'great-ball': '슈퍼볼', 'ultra-ball': '하이퍼볼',
@@ -178,9 +198,10 @@ export const ITEM_LABELS: Readonly<Record<InventoryItem, string>> = {
   'fire-stone': '불꽃의돌', 'water-stone': '물의돌', 'thunder-stone': '천둥의돌',
   'leaf-stone': '리프의돌', 'moon-stone': '달의돌', 'link-cable': '연결의끈',
   ...EXTRA_EVOLUTION_LABELS,
+  ...HELD_TOOL_LABELS,
 };
 const INVENTORY_ITEMS = Object.keys(ITEM_PRICES) as InventoryItem[];
-export const SHOP_ITEMS: readonly InventoryItem[] = INVENTORY_ITEMS.filter(item => !['poke-ball', 'great-ball', 'ultra-ball', 'friendship-treat'].includes(item));
+export const SHOP_ITEMS: readonly InventoryItem[] = INVENTORY_ITEMS.filter(item => !['poke-ball', 'great-ball', 'ultra-ball', 'friendship-treat', 'galarica-cuff', 'galarica-wreath'].includes(item));
 
 /** Legacy ball counts stay finite for save/server compatibility; one finite token represents unlimited basic balls. */
 export function normalizeBalls(state: GameState): void {
@@ -387,6 +408,7 @@ export function createGame(starterId: 1 | 4 | 7 | 152 | 155 | 158, seed: number 
       'rare-candy': 0, 'fire-stone': 0, 'water-stone': 0, 'thunder-stone': 0,
       'leaf-stone': 0, 'moon-stone': 0, 'link-cable': 0,
       ...emptyExtraEvolutionInventory(),
+      ...Object.fromEntries(HELD_TOOLS.map(tool => [tool, 0])) as Record<HeldTool, number>,
     },
     dex: { seen: [starterId], caught: [starterId] }, regionId: REGIONS[0].id,
     defeatedGyms: [], defeatedFieldTrainers: [], championDefeated: false, experienceShare: true, autoMergeDuplicates: false, adventureVersion: 'red', versionCaught: { red: [starterId] }, ballRefillSeconds: 0, logs: [],
@@ -435,6 +457,7 @@ export function explore(state: GameState, regionId: string): ExploreResult {
       kind: 'wild', regionId, policyRegion: 'kanto', player: { team: state.player.team, activeIndex: firstRegionalHealthy(state, 'kanto') },
       enemy: { team: [wild], activeIndex: 0 }, turn: 1, canRun: true,
     };
+    applyPreferredBattleTransformation(state);
     const text = `야생 ${getSpecies(speciesId).name}이(가) 나타났다.`;
     addLog(state, text);
     return { kind: 'encounter', speciesId, amount: 1, text };
@@ -466,6 +489,7 @@ export function challengeGym(state: GameState, regionId: string): BattleState {
   const enemy = createMonster(state, region.gym.speciesId, region.gym.level, 'kanto');
   state.battle = { kind: 'gym', regionId, policyRegion: 'kanto', player: { team: state.player.team, activeIndex: firstRegionalHealthy(state, 'kanto') }, enemy: { team: [enemy], activeIndex: 0 }, turn: 1, canRun: false, gymBadge: region.gym.badge };
   addLog(state, `${region.gym.leader}에게 도전했다.`);
+  applyPreferredBattleTransformation(state);
   return state.battle;
 }
 
@@ -486,6 +510,7 @@ export function challengeCampaignGym(state: GameState, region: CampaignRegion, l
   state.battle = { kind: 'gym', campaignRegion: region, policyRegion: region, regionId: state.regionId, gymBadge: gym.badge,
     player: { team: state.player.team, activeIndex: healthy }, enemy: { team: [enemy], activeIndex: 0 }, turn: 1, canRun: false };
   addLog(state, `${region === 'johto' ? '성도' : '관동'} ${gym.name}에게 도전했다.`);
+  applyPreferredBattleTransformation(state);
   return state.battle;
 }
 
@@ -504,6 +529,7 @@ export function challengeCampaignTrainer(state: GameState, region: CampaignRegio
     regionId: trainer.kind === 'red' ? 'mt-silver' : 'pokemon-league',
     player: { team: state.player.team, activeIndex: healthy }, enemy: { team: enemy, activeIndex: 0 }, turn: 1, canRun: false };
   addLog(state, `${trainer.name}에게 도전했다.`);
+  applyPreferredBattleTransformation(state);
   return state.battle;
 }
 
@@ -524,6 +550,7 @@ export function challengeFieldTrainer(state: GameState, trainer: FieldTrainer): 
   state.battle = { kind: 'trainer', campaignRegion: trainer.region, policyRegion: trainer.region, trainerId: trainer.id, regionId: trainer.locationId,
     player: { team: state.player.team, activeIndex: healthy }, enemy: { team: enemy, activeIndex: 0 }, turn: 1, canRun: false };
   addLog(state, `${trainer.name}에게 트레이너 배틀을 신청했다.`);
+  applyPreferredBattleTransformation(state);
   return state.battle;
 }
 
@@ -922,6 +949,7 @@ export function actBattle(state: GameState, action: BattleAction, aiChoice?: num
   if (action.type === 'catch' && !['poke-ball', 'great-ball', 'ultra-ball'].includes(action.ball)) throw new Error('올바른 볼을 선택하세요.');
   const battle = state.battle;
   if (!battle) throw new Error('진행 중인 전투가 없습니다.');
+  applyPreferredBattleTransformation(state);
   const events: BattleLogEntry[] = [];
   const enemyPick = pickEnemyMove(state, battle, active(battle.enemy), aiChoice);
   const executedMoves: ExecutedMove[] = [];
@@ -944,6 +972,7 @@ export function actBattle(state: GameState, action: BattleAction, aiChoice?: num
     delete battle.choiceLocks?.[outgoing.instanceId];
     if (!battle.transformations?.[outgoing.instanceId]?.kind || battle.transformations[outgoing.instanceId]?.kind === 'transform') delete battle.transformations?.[outgoing.instanceId];
     battle.player.activeIndex = action.index; battle.awaitingSwitch = undefined;
+    applyPreferredBattleTransformation(state);
     events.push(event(battle, `${target.nickname}, 부탁해!`));
     enemyActs(target);
   } else if (action.type === 'run') {
@@ -1034,6 +1063,24 @@ export function buyItem(state: GameState, item: InventoryItem, quantity = 1): vo
 
 function allOwned(state: GameState): Monster[] { return [...state.player.team, ...state.player.box]; }
 
+function heldToolReturnCounts(monsters: readonly Monster[]): Map<HeldTool, number> {
+  const counts = new Map<HeldTool, number>();
+  for (const monster of monsters) if (monster.heldTool) counts.set(monster.heldTool, (counts.get(monster.heldTool) ?? 0) + 1);
+  return counts;
+}
+
+function assertHeldToolsCanReturn(state: GameState, monsters: readonly Monster[]): Map<HeldTool, number> {
+  const counts = heldToolReturnCounts(monsters);
+  for (const [tool, count] of counts) {
+    if (state.inventory[tool] > 1_000_000_000 - count) throw new Error(`${HELD_TOOL_LABELS[tool]} 재고가 너무 많습니다.`);
+  }
+  return counts;
+}
+
+function returnHeldTools(state: GameState, counts: ReadonlyMap<HeldTool, number>): void {
+  for (const [tool, count] of counts) state.inventory[tool] += count;
+}
+
 export function isMonsterInBattle(state: GameState, instanceId: string): boolean {
   return Boolean(state.battle?.player.team.some(monster => monster.instanceId === instanceId));
 }
@@ -1046,6 +1093,12 @@ export function assignHeldTool(state: GameState, instanceId: string, tool?: Held
   if (state.battle || state.captureOffer) throw new Error('전투와 포획 선택을 마친 뒤 도구를 바꿀 수 있습니다.');
   if (tool !== undefined && !HELD_TOOLS.includes(tool)) throw new Error('장착할 수 없는 도구입니다.');
   const monster = findOwned(state, instanceId);
+  const previous = monster.heldTool;
+  if (previous === tool) return;
+  if (tool !== undefined && state.inventory[tool] <= 0) throw new Error(`${HELD_TOOL_LABELS[tool]} 재고가 없습니다.`);
+  if (previous !== undefined && state.inventory[previous] >= 1_000_000_000) throw new Error('도구 재고가 너무 많습니다.');
+  if (tool !== undefined) state.inventory[tool]--;
+  if (previous !== undefined) state.inventory[previous]++;
   monster.heldTool = tool;
 }
 
@@ -1096,6 +1149,34 @@ export function activateBattleTransformation(state: GameState, kind: 'mega' | 't
   battle.transformations ??= {};
   battle.transformations[monster.instanceId] = transformation;
   return transformation;
+}
+
+function preferredTransformationValid(monster: Monster, preference: PreferredTransformation): boolean {
+  if (!preference || typeof preference !== 'object' || Array.isArray(preference)) return false;
+  if (preference.kind === 'mega') {
+    const profile = typeof preference.formIdentifier === 'string' && getMegaCombatForm(monster.speciesId, preference.formIdentifier);
+    return Boolean(profile && getPokemonFormModelSource(profile.identifier)) && Object.keys(preference).every(key => key === 'kind' || key === 'formIdentifier');
+  }
+  return preference.kind === 'tera' && typeof preference.teraType === 'string' && Object.hasOwn(TYPE_EFFECTIVENESS, preference.teraType)
+    && Object.keys(preference).every(key => key === 'kind' || key === 'teraType');
+}
+
+export function assignPreferredTransformation(state: GameState, instanceId: string, preference?: PreferredTransformation): void {
+  if (state.battle || state.captureOffer) throw new Error('전투와 포획 선택을 마친 뒤 변신 설정을 바꿀 수 있습니다.');
+  const monster = findOwned(state, instanceId);
+  if (preference !== undefined && !preferredTransformationValid(monster, preference)) throw new Error('설정할 수 없는 변신입니다.');
+  monster.preferredTransformation = preference ? { ...preference } : undefined;
+}
+
+/** Resolve the saved setup before the entrant's first decision, without using a turn. */
+export function applyPreferredBattleTransformation(state: GameState): void {
+  const battle = state.battle;
+  if (!battle || battle.awaitingSwitch) return;
+  const monster = active(battle.player), preference = monster?.preferredTransformation;
+  if (!monster || monster.hp <= 0 || !preference || battle.transformations?.[monster.instanceId]) return;
+  if (preference.kind === 'mega' ? battle.playerMegaUsed : battle.playerTeraUsed) return;
+  if (!preferredTransformationValid(monster, preference)) return;
+  activateBattleTransformation(state, preference.kind, preference);
 }
 
 export function firstUsableRegionalTeamIndex(state: GameState, region: CampaignRegion, startIndex = 0): number {
@@ -1162,7 +1243,7 @@ function useHealingItem(state: GameState, item: 'potion' | 'super-potion', targe
   const monster = findOwned(state, targetInstanceId);
   if (monster.hp <= 0) throw new Error('기절한 포켓몬에는 사용할 수 없습니다.');
   if (monster.hp >= monster.stats.hp) throw new Error('이미 HP가 가득 찼습니다.');
-  monster.hp = Math.min(monster.stats.hp, monster.hp + (item === 'potion' ? 20 : 50)); state.inventory[item]--;
+  monster.hp = Math.min(monster.stats.hp, monster.hp + HEALING_ITEM_HP[item]); state.inventory[item]--;
 }
 
 export function useItem(state: GameState, item: InventoryItem, targetInstanceId?: string, quantity = 1, policyRegion?: CampaignRegion): void {
@@ -1208,7 +1289,7 @@ export function evolutionPurchaseQuote(state: GameState, monster: Monster, evolu
   if (supplied === 'evolution-catalyst') {
     if (needsSpecialEvolution(monster.speciesId, evolution) && monster.level >= specialEvolutionLevel(monster.speciesId, evolution.target)) requiredItem = supplied;
   } else {
-    const candidates = monsterEvolutionItemsFor(monster, evolution);
+    const candidates = monsterEvolutionItemsFor(monster, evolution, state);
     requiredItem = supplied && candidates.includes(supplied) ? supplied : supplied === undefined ? candidates[0] : undefined;
   }
   if (!requiredItem || !SHOP_ITEMS.includes(requiredItem)) return { ready: false, requiredItem, missing: 0, cost: 0, affordable: false };
@@ -1266,6 +1347,7 @@ function applyEvolution(state: GameState, monster: Monster, evolution: Evolution
   const oldMax = monster.stats.hp;
   const previousAbility = monsterAbility(monster);
   monster.speciesId = evolution.target; monster.nickname = getSpecies(evolution.target).name;
+  if (monster.preferredTransformation && !preferredTransformationValid(monster, monster.preferredTransformation)) delete monster.preferredTransformation;
   const regionalTarget = state.evolutionContext?.regionId === 'alola' && [25, 102, 104].includes(before.id);
   const evolvedForm = wasAlola || regionalTarget ? getAlolaCombatForm(evolution.target) : undefined;
   monster.regionalForm = evolvedForm?.identifier;
@@ -1298,12 +1380,16 @@ export function evolutionItemsFor(speciesId: number, evolution: Evolution): Inve
   return [...new Set([...(explicit ? [explicit] : []), ...source])];
 }
 
-export function monsterEvolutionItemsFor(monster: Monster, evolution: Evolution): InventoryItem[] {
+export function monsterEvolutionItemsFor(monster: Monster, evolution: Evolution, state?: GameState): InventoryItem[] {
   if (monster.regionalForm === 'sandshrew-alola' || monster.regionalForm === 'vulpix-alola') return ['ice-stone'];
   if (monster.regionalForm === 'meowth-alola' || monster.regionalForm === 'rattata-alola') return [];
   if (monster.speciesId === 27) return [];
   if (monster.speciesId === 37) return ['fire-stone'];
-  return evolutionItemsFor(monster.speciesId, evolution);
+  const explicit = ITEM_EVOLUTION_RULES.find(rule => rule.from === monster.speciesId && rule.to === evolution.target)?.item;
+  const source = state ? sourceEvolutionItemsForMonster(state, monster, evolution) : sourceEvolutionItems(monster.speciesId, evolution.target);
+  const filteredSource = source.map(normalizeEvolutionItem).filter((item): item is InventoryItem => !!item);
+  if (!state) return [...new Set([...(explicit ? [explicit] : []), ...filteredSource])];
+  return evolutionFormSupported(state, monster, evolution) ? [...new Set([...(explicit ? [explicit] : []), ...filteredSource])] : [];
 }
 
 let evolutionUses: Map<InventoryItem, string> | undefined;
@@ -1319,7 +1405,7 @@ export function evolutionItemUses(item: InventoryItem): string {
     evolutionUses = new Map([...names].map(([id, list]) => [id, list.join(' · ')]));
   }
   return ({ 'evolution-catalyst': '원본의 별도 진화 조건을 대체합니다. 필요한 레벨은 유지합니다.',
-    'friendship-treat': '개체 친밀도 +20 · 걷기와 레벨업으로도 상승합니다.', 'beauty-treat': '개체 아름다움 +20', 'affection-treat': '개체 애정 +20' } as Partial<Record<InventoryItem, string>>)[item] ?? evolutionUses.get(item) ?? '';
+    'friendship-treat': '개체 친밀도 +20 · 걷기와 레벨업으로도 상승합니다.', 'beauty-treat': '개체 아름다움 +20', 'affection-treat': '개체 애정 +1' } as Partial<Record<InventoryItem, string>>)[item] ?? evolutionUses.get(item) ?? '';
 }
 
 export function evolutionRoute(state: GameState, monster: Monster, evolution: Evolution, supplied?: InventoryItem): { item?: InventoryItem; shed?: boolean } | undefined {
@@ -1338,7 +1424,7 @@ export function evolutionRoute(state: GameState, monster: Monster, evolution: Ev
     return monster.speciesId === 52 ? evolutionProgress(monster).friendship >= 160 ? {} : undefined
       : monster.level >= 20 && state.evolutionContext?.period === 'night' ? {} : undefined;
   }
-  if (supplied === 'evolution-catalyst') return needsSpecialEvolution(monster.speciesId, evolution)
+  if (supplied === 'evolution-catalyst') return evolutionFormSupported(state, monster, evolution) && needsSpecialEvolution(monster.speciesId, evolution)
     && monster.level >= specialEvolutionLevel(monster.speciesId, evolution.target) && state.inventory[supplied] > 0 ? { item: supplied } : undefined;
   if (supplied === undefined) {
     const natural = naturalEvolution(state, monster, evolution);
@@ -1346,7 +1432,7 @@ export function evolutionRoute(state: GameState, monster: Monster, evolution: Ev
     // Compatibility for authored data without a source row. Source-backed rows never bypass predicates.
     if (!sourceEvolutionRules(monster.speciesId, evolution.target).length && evolution.method === 'level' && monster.level >= (evolution.level ?? 1)) return {};
   }
-  const item = monsterEvolutionItemsFor(monster, evolution).find(item => state.inventory[item] > 0 && (supplied === undefined || item === supplied));
+  const item = monsterEvolutionItemsFor(monster, evolution, state).find(item => state.inventory[item] > 0 && (supplied === undefined || item === supplied));
   return item ? { item } : undefined;
 }
 function evolutionReady(state: GameState, monster: Monster, evolution: Evolution, supplied?: InventoryItem): boolean {
@@ -1479,6 +1565,8 @@ export function releaseMonster(state: GameState, instanceId: string, policyRegio
     && !allOwned(state).some(candidate => candidate !== monster && !monsterRegionalUseReason(state, policyRegion, candidate)))
     throw new Error('현재 지방에서 사용할 수 있는 마지막 포켓몬은 놓아줄 수 없습니다.');
   const removed = new Set([instanceId]), activeId = battleRemovalActiveId(state, removed);
+  const returnedTools = assertHeldToolsCanReturn(state, [monster]);
+  returnHeldTools(state, returnedTools);
   if (teamIndex >= 0) state.player.team.splice(teamIndex, 1);
   else state.player.box.splice(state.player.box.findIndex(item => item.instanceId === instanceId), 1);
   reconcileBattleRemoval(state, removed, activeId);
@@ -1519,6 +1607,8 @@ export function previewDuplicateMerge(state: GameState, targetId: string, donorI
 export function mergeDuplicateMonsters(state: GameState, targetId: string, donorIds: readonly string[], policyRegion?: CampaignRegion) {
   const plan = previewDuplicateMerge(state, targetId, donorIds, policyRegion), target = findOwned(state, targetId);
   const ids = new Set(plan.donorIds);
+  const donors = plan.donorIds.map(id => findOwned(state, id));
+  const returnedTools = assertHeldToolsCanReturn(state, donors);
   const activeId = battleRemovalActiveId(state, ids);
   const team = state.player.team.filter(monster => !ids.has(monster.instanceId));
   const box = state.player.box.filter(monster => !ids.has(monster.instanceId) && (!plan.movesToTeam || monster !== target));
@@ -1528,6 +1618,7 @@ export function mergeDuplicateMonsters(state: GameState, targetId: string, donor
   gainExperience(grown, plan.gainedXp);
   Object.assign(target, { xp: grown.xp, level: grown.level, stats: grown.stats, hp: grown.hp,
     moves: grown.moves, moveOrder: grown.moveOrder, movePpReserve: grown.movePpReserve, evolutionProgress: grown.evolutionProgress });
+  returnHeldTools(state, returnedTools);
   state.player.team = team; state.player.box = box;
   reconcileBattleRemoval(state, ids, activeId);
   addLog(state, `${target.nickname} · ${plan.count}마리 합치기 · Lv.${plan.toLevel}`);
@@ -1559,10 +1650,15 @@ export function previewCollectionMerge(state: GameState, policyRegion?: Campaign
 }
 
 export function mergeCollectionDuplicates(state: GameState, plan: CollectionMergePlan, policyRegion?: CampaignRegion): CollectionMergePlan {
+  const allDonors: Monster[] = [], involvedIds = new Set<string>();
   for (const group of plan.groups) {
+    if (involvedIds.has(group.targetId) || group.donorIds.some(id => involvedIds.has(id))) throw new Error('합치기 대상이 중복되었습니다. 다시 확인해 주세요.');
+    involvedIds.add(group.targetId); for (const id of group.donorIds) involvedIds.add(id);
     const current = previewDuplicateMerge(state, group.targetId, group.donorIds, policyRegion);
     if (group.speciesId !== findOwned(state, group.targetId).speciesId || current.gainedXp !== group.gainedXp || current.toLevel !== group.toLevel) throw new Error('합치기 대상이 변경되었습니다. 다시 확인해 주세요.');
+    allDonors.push(...group.donorIds.map(id => findOwned(state, id)));
   }
+  assertHeldToolsCanReturn(state, allDonors);
   for (const group of plan.groups) mergeDuplicateMonsters(state, group.targetId, group.donorIds, policyRegion);
   return plan;
 }
@@ -1625,6 +1721,7 @@ export function validateGame(value: unknown): GameState {
   if (Array.isArray(state.inventory) || Object.keys(state.inventory).some(item => !INVENTORY_ITEMS.includes(item as InventoryItem))) throw new Error('가방 품목 구성이 올바르지 않습니다.');
   // Only genuinely absent new keys are legacy defaults; explicit invalid values still fail.
   for (const item of EXTRA_EVOLUTION_ITEM_IDS) if (!Object.hasOwn(state.inventory, item)) state.inventory[item] = 0;
+  for (const tool of HELD_TOOLS) if (!Object.hasOwn(state.inventory, tool)) state.inventory[tool] = 0;
   for (const item of INVENTORY_ITEMS) if (!Number.isSafeInteger(state.inventory[item]) || state.inventory[item] < 0 || state.inventory[item] > 1_000_000_000) throw new Error(`가방 수량이 잘못되었습니다: ${item}`);
   normalizeBalls(state);
   for (const id of [...state.dex.seen, ...state.dex.caught]) if (!Number.isInteger(id) || !POKEMON.some(species => species.id === id)) throw new Error('도감 번호가 잘못되었습니다.');
@@ -1662,6 +1759,7 @@ export function validateGame(value: unknown): GameState {
     else if (monster.ivs === undefined || monster.ability === undefined) throw new Error('개체값/특성 데이터가 일부만 있습니다.');
     if (!isValidIndividualValues(monster.ivs)) throw new Error('개체값이 잘못되었습니다.');
     if (monster.heldTool !== undefined && !HELD_TOOLS.includes(monster.heldTool)) throw new Error('장착 도구가 잘못되었습니다.');
+    if (monster.preferredTransformation !== undefined && !preferredTransformationValid(monster, monster.preferredTransformation)) throw new Error('자동 변신 설정이 잘못되었습니다.');
     let form: PokemonCombatFormProfile | undefined;
     if (monster.regionalForm !== undefined) {
       form = getCombatForm(monster.regionalForm);
@@ -1809,6 +1907,7 @@ export function validateGame(value: unknown): GameState {
     battle.player.team = state.player.team;
   }
 
+  applyPreferredBattleTransformation(state);
   return state;
 }
 

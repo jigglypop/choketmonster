@@ -144,3 +144,6 @@
 .attack-recovery p { margin-top: 0; font-size:calc(12px * var(--ui-font-scale, 1)); line-height: 1.6; }
 .attack-recovery label { display: block; font-size:calc(12px * var(--ui-font-scale, 1)); margin-bottom: 6px; }
 .attack-recovery select, .attack-recovery button { display: block; width: 100%; min-height: 44px; margin-top: 8px; }
+ .healing-items{display:grid;gap:6px;margin:10px 0}.treat-use{display:grid;grid-template-columns:minmax(0,1fr) 58px auto;align-items:center;gap:8px;margin:10px 0}.treat-use label{min-width:0;font-size:13px}.treat-use small{display:block;font-size:11px;margin-top:4px;color:var(--muted)}.treat-use input{width:58px;min-width:0;padding:7px}.treat-use button{padding:8px 10px}.shop-categories{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}.shop-categories button.active{background:var(--accent,#176751);color:white}
+
+.shop-purchase{display:flex;gap:8px;align-items:center;grid-column:1/-1}.shop-purchase input{width:70px;min-width:0}.shop-purchase button{flex:1}

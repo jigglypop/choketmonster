@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use crate::combat_forms::combat_form;
+use crate::combat_forms::{combat_form, mega_model_available};
 use serde_json::{Map, Value};
 use std::{
     collections::{HashMap, HashSet},
@@ -51,7 +51,7 @@ const REQUIRED_INVENTORY_ITEMS: [&str; 12] = [
 
 // Added after schemaVersion 2 shipped. Their absence is interpreted as zero by the client,
 // while the original inventory shape remains mandatory for legacy-save integrity.
-const OPTIONAL_EVOLUTION_ITEMS: [&str; 42] = [
+const OPTIONAL_INVENTORY_ITEMS: [&str; 48] = [
     "sun-stone",
     "shiny-stone",
     "dusk-stone",
@@ -94,6 +94,12 @@ const OPTIONAL_EVOLUTION_ITEMS: [&str; 42] = [
     "friendship-treat",
     "beauty-treat",
     "affection-treat",
+    "leftovers",
+    "choice-band",
+    "choice-specs",
+    "choice-scarf",
+    "life-orb",
+    "focus-sash",
 ];
 
 #[derive(Deserialize)]
@@ -653,6 +659,49 @@ fn validate_monster(
         .ok_or("지원하지 않는 포켓몬 종입니다.")?;
     if owned {
         owned_species.insert(species_id);
+    }
+    if let Some(preferred) = monster.get("preferredTransformation") {
+        if !owned {
+            return Err("소유 포켓몬만 선호 변신을 설정할 수 있습니다.");
+        }
+        let preferred = preferred
+            .as_object()
+            .ok_or("선호 변신 설정이 올바르지 않습니다.")?;
+        match preferred.get("kind").and_then(Value::as_str) {
+            Some("mega") => {
+                if preferred.len() != 2
+                    || !preferred.contains_key("formIdentifier")
+                    || preferred
+                        .get("formIdentifier")
+                        .and_then(Value::as_str)
+                        .and_then(combat_form)
+                        .filter(|form| {
+                            form.kind == "mega"
+                                && form.species_id == species_id
+                                && mega_model_available(&form.identifier)
+                        })
+                        .is_none()
+                {
+                    return Err("선호 메가진화 설정이 올바르지 않습니다.");
+                }
+            }
+            Some("tera") => {
+                if preferred.len() != 2
+                    || !matches!(
+                        preferred.get("teraType").and_then(Value::as_str),
+                        Some(
+                            "normal" | "fire" | "water" | "electric" | "grass" | "ice"
+                                | "fighting" | "poison" | "ground" | "flying" | "psychic"
+                                | "bug" | "rock" | "ghost" | "dragon" | "dark" | "steel"
+                                | "fairy"
+                        )
+                    )
+                {
+                    return Err("선호 테라스탈 설정이 올바르지 않습니다.");
+                }
+            }
+            _ => return Err("선호 변신 종류가 올바르지 않습니다."),
+        }
     }
     let ivs = validate_individual_traits(monster, species_id)?;
     if monster.get("heldTool").is_some_and(|value| {
@@ -1704,7 +1753,7 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
         .any(|item| !inventory.contains_key(*item))
         || inventory.keys().any(|item| {
             !REQUIRED_INVENTORY_ITEMS.contains(&item.as_str())
-                && !OPTIONAL_EVOLUTION_ITEMS.contains(&item.as_str())
+                && !OPTIONAL_INVENTORY_ITEMS.contains(&item.as_str())
         })
     {
         return Err("가방 품목 구성이 올바르지 않습니다.");
@@ -2270,24 +2319,25 @@ mod tests {
     }
 
     #[test]
-    fn accepts_legacy_partial_and_complete_evolution_item_inventories() {
+    fn accepts_legacy_partial_and_complete_optional_inventories() {
         validate_save(&valid_save()).unwrap();
 
         let mut partial = valid_save();
         partial["game"]["inventory"]["metal-coat"] = Value::from(2);
         partial["game"]["inventory"]["up-grade"] = Value::from(1);
+        partial["game"]["inventory"]["focus-sash"] = Value::from(2);
         validate_save(&partial).unwrap();
 
         let mut complete = valid_save();
-        for item in OPTIONAL_EVOLUTION_ITEMS {
+        for item in OPTIONAL_INVENTORY_ITEMS {
             complete["game"]["inventory"][item] = Value::from(0);
         }
-        assert_eq!(complete["game"]["inventory"].as_object().unwrap().len(), 54);
+        assert_eq!(complete["game"]["inventory"].as_object().unwrap().len(), 60);
         validate_save(&complete).unwrap();
     }
 
     #[test]
-    fn rejects_invalid_evolution_item_inventory_shapes_and_amounts() {
+    fn rejects_invalid_optional_inventory_shapes_and_amounts() {
         let mut missing_required = valid_save();
         missing_required["game"]["inventory"]
             .as_object_mut()
@@ -2807,6 +2857,53 @@ mod tests {
         let mut bad_tool = save;
         bad_tool["game"]["player"]["team"][0]["heldTool"] = Value::from("unknown-tool");
         assert!(validate_save(&bad_tool).is_err());
+    }
+
+    #[test]
+    fn validates_owned_preferred_transformations_and_legacy_absence() {
+        validate_save(&valid_save()).unwrap();
+
+        let mut tera = valid_save();
+        tera["game"]["player"]["team"][0]["preferredTransformation"] =
+            serde_json::json!({"kind":"tera","teraType":"fairy"});
+        validate_save(&tera).unwrap();
+
+        for invalid in [
+            serde_json::json!(null),
+            serde_json::json!({"kind":"unknown","teraType":"fire"}),
+            serde_json::json!({"kind":"tera","teraType":"stellar"}),
+            serde_json::json!({"kind":"tera","teraType":"fire","formIdentifier":"charizard-mega-x"}),
+            serde_json::json!({"kind":"mega","formIdentifier":"charizard-mega-x"}),
+        ] {
+            let mut edited = valid_save();
+            edited["game"]["player"]["team"][0]["preferredTransformation"] = invalid;
+            assert!(validate_save(&edited).is_err());
+        }
+
+        let make_monster = |species_id: i64, instance_id: &str| {
+            let species = &catalog().species[&species_id];
+            let stats = expected_stats(species, 100);
+            serde_json::json!({
+                "instanceId":instance_id,"speciesId":species_id,"nickname":"test","level":100,
+                "xp":species.experience[99],"hp":stats[0],
+                "stats":{"hp":stats[0],"attack":stats[1],"defense":stats[2],"specialAttack":stats[3],"specialDefense":stats[4],"speed":stats[5]},
+                "moves":[]
+            })
+        };
+        let mut charizard = make_monster(6, "mega-6");
+        charizard["preferredTransformation"] =
+            serde_json::json!({"kind":"mega","formIdentifier":"charizard-mega-x"});
+        validate_monster(&charizard, &mut HashSet::new(), true, &mut HashSet::new()).unwrap();
+
+        let mut unavailable = make_monster(36, "mega-36");
+        unavailable["preferredTransformation"] =
+            serde_json::json!({"kind":"mega","formIdentifier":"clefable-mega"});
+        assert!(validate_monster(&unavailable, &mut HashSet::new(), true, &mut HashSet::new()).is_err());
+
+        let mut encounter = make_monster(25, "enemy-25");
+        encounter["preferredTransformation"] =
+            serde_json::json!({"kind":"tera","teraType":"electric"});
+        assert!(validate_monster(&encounter, &mut HashSet::new(), false, &mut HashSet::new()).is_err());
     }
 
     #[test]

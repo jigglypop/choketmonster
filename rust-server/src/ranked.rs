@@ -189,6 +189,8 @@ struct Fighter {
     #[serde(default)]
     individual_values: Option<Stats>,
     #[serde(default)]
+    preferred_transformation: Option<TransformationRequest>,
+    #[serde(default)]
     transformation_kind: Option<String>,
     #[serde(default)]
     tera_type: Option<String>,
@@ -354,6 +356,12 @@ fn snapshot(
             choice_move: None,
             regional_form: form.map(|form| form.identifier.clone()),
             individual_values: Some(Stats { hp: iv(monster, "hp"), attack: iv(monster, "attack"), defense: iv(monster, "defense"), special_attack: iv(monster, "specialAttack"), special_defense: iv(monster, "specialDefense"), speed: iv(monster, "speed") }),
+            preferred_transformation: monster
+                .get("preferredTransformation")
+                .cloned()
+                .map(serde_json::from_value)
+                .transpose()
+                .map_err(|_| invalid("선호 변신 설정이 올바르지 않습니다."))?,
             transformation_kind: None, tera_type: None, original_types: None,
             status: None,
             status_turns: None,
@@ -488,7 +496,7 @@ async fn queue(
     if let Some(other)=sqlx::query("SELECT user_id,team FROM ranked_queue WHERE league=$1 AND user_id<>$2 ORDER BY joined_at FOR UPDATE SKIP LOCKED LIMIT 1").bind(league.as_str()).bind(account.id).fetch_optional(&mut *tx).await?{
         let other_id:Uuid=other.get("user_id"); let SqlJson(other_team):SqlJson<Side>=other.get("team"); let id=Uuid::new_v4();
         ensure_rating(&mut tx,other_id,league).await?;
-        let battle=Battle{player1:other_team,player2:team,events:vec!["랭크전이 시작되었습니다.".into()]};
+        let battle=initial_battle(other_team,team);
         sqlx::query("INSERT INTO ranked_matches(id,league,player1_id,player2_id,state,deadline_at) VALUES($1,$2,$3,$4,$5,now()+interval '90 seconds')")
             .bind(id).bind(league.as_str()).bind(other_id).bind(account.id).bind(SqlJson(battle)).execute(&mut *tx).await?;
         sqlx::query("DELETE FROM ranked_queue WHERE user_id=$1 OR user_id=$2").bind(other_id).bind(account.id).execute(&mut *tx).await?;
@@ -662,6 +670,7 @@ fn auto_switch(side: &mut Side) {
     if side.team[side.active_index].hp <= 0 {
         if let Some(i) = side.team.iter().position(|m| m.hp > 0) {
             side.active_index = i;
+            apply_preferred_transformation(side);
         }
     }
 }
@@ -672,7 +681,31 @@ fn apply_switch(side: &mut Side, index: usize) -> Result<(), ApiError> {
     side.team[side.active_index].stages.clear();
     side.team[side.active_index].choice_move = None;
     side.active_index = index;
+    apply_preferred_transformation(side);
     Ok(())
+}
+
+fn apply_preferred_transformation(side: &mut Side) {
+    let Some(request) = side.team[side.active_index].preferred_transformation.clone() else {
+        return;
+    };
+    if side.team[side.active_index].transformation_kind.is_some()
+        || (request.kind == "mega" && side.mega_used)
+        || (request.kind == "tera" && side.tera_used)
+    {
+        return;
+    }
+    let _ = apply_transformation(side, &request);
+}
+
+fn initial_battle(mut player1: Side, mut player2: Side) -> Battle {
+    apply_preferred_transformation(&mut player1);
+    apply_preferred_transformation(&mut player2);
+    Battle {
+        player1,
+        player2,
+        events: vec!["랭크전이 시작되었습니다.".into()],
+    }
 }
 
 fn apply_transformation(side: &mut Side, request: &TransformationRequest) -> Result<(), ApiError> {
@@ -1458,7 +1491,7 @@ mod tests {
             held_tool_used: false,
             choice_move: None,
             regional_form: None,
-            individual_values: None, transformation_kind: None, tera_type: None, original_types: None,
+            individual_values: None, preferred_transformation: None, transformation_kind: None, tera_type: None, original_types: None,
             status: None,
             status_turns: None,
             stages: HashMap::new(),
@@ -1495,6 +1528,29 @@ mod tests {
         assert_eq!(fighter.stats.speed, 92);
         assert_eq!(effective_stat(fighter, "speed"), 138);
         assert_eq!(fighter.held_tool.as_deref(), Some("choice-scarf"));
+    }
+
+    #[test]
+    fn ranked_snapshot_carries_preferred_transformation() {
+        let save = json!({"game":{"player":{"team":[{
+            "instanceId":"mon-6","speciesId":6,"nickname":"Charizard",
+            "ivs":{"hp":31,"attack":31,"defense":31,"specialAttack":31,"specialDefense":31,"speed":31},
+            "moves":[{"moveId":53}],
+            "preferredTransformation":{"kind":"mega","formIdentifier":"charizard-mega-x"}
+        }]}}});
+        let side = snapshot(&save, Uuid::nil(), "ranked".into(), League::Open).unwrap();
+        let preferred = side.team[0].preferred_transformation.as_ref().unwrap();
+        assert_eq!(preferred.kind, "mega");
+        assert_eq!(preferred.form_identifier.as_deref(), Some("charizard-mega-x"));
+
+        let loaded: Side = serde_json::from_value(serde_json::to_value(side).unwrap()).unwrap();
+        assert_eq!(
+            loaded.team[0]
+                .preferred_transformation
+                .as_ref()
+                .and_then(|request| request.form_identifier.as_deref()),
+            Some("charizard-mega-x")
+        );
     }
 
     #[test]
@@ -1557,6 +1613,58 @@ mod tests {
         assert_eq!(stab_multiplier(active(&other), "fire"), 1.5);
         assert_eq!(stab_multiplier(active(&other), "water"), 1.5);
         assert_eq!(active(&other).types, vec!["water"]);
+    }
+
+    #[test]
+    fn preferred_transformations_apply_on_entry_and_respect_side_limits_after_switches() {
+        let mega = TransformationRequest { kind: "mega".into(), form_identifier: Some("charizard-mega-x".into()), tera_type: None };
+        let tera = TransformationRequest { kind: "tera".into(), form_identifier: None, tera_type: Some("electric".into()) };
+
+        let mut lead = fighter(6, 53, None);
+        lead.preferred_transformation = Some(mega.clone());
+        let mut reserve = fighter(6, 53, None);
+        reserve.instance_id = "mon-6-reserve".into();
+        reserve.preferred_transformation = Some(mega);
+        let mut tera_lead = fighter(25, 85, None);
+        tera_lead.preferred_transformation = Some(tera.clone());
+        let game = initial_battle(
+            Side { user_id: Uuid::from_u128(1), username: "one".into(), active_index: 0, team: vec![lead, reserve], mega_used: false, tera_used: false },
+            Side { user_id: Uuid::from_u128(2), username: "two".into(), active_index: 0, team: vec![tera_lead], mega_used: false, tera_used: false },
+        );
+
+        assert_eq!(active(&game.player1).transformation_kind.as_deref(), Some("mega"));
+        assert_eq!(active(&game.player2).transformation_kind.as_deref(), Some("tera"));
+        assert!(game.player1.mega_used && game.player2.tera_used);
+
+        let mut loaded: Battle = serde_json::from_value(serde_json::to_value(game).unwrap()).unwrap();
+        apply_switch(&mut loaded.player1, 1).unwrap();
+        assert_eq!(active(&loaded.player1).transformation_kind, None);
+        assert_eq!(active(&loaded.player1).regional_form, None);
+
+        loaded.player1.team[1].hp = 0;
+        loaded.player1.team[0].hp = loaded.player1.team[0].max_hp;
+        auto_switch(&mut loaded.player1);
+        assert_eq!(loaded.player1.active_index, 0);
+        assert_eq!(active(&loaded.player1).transformation_kind.as_deref(), Some("mega"));
+    }
+
+    #[test]
+    fn preferred_transformation_applies_after_manual_and_faint_switches() {
+        let tera = TransformationRequest { kind: "tera".into(), form_identifier: None, tera_type: Some("water".into()) };
+        let lead = fighter(25, 85, None);
+        let mut manual_reserve = fighter(7, 55, None);
+        manual_reserve.preferred_transformation = Some(tera.clone());
+        let mut side = Side { user_id: Uuid::nil(), username: "one".into(), active_index: 0, team: vec![lead, manual_reserve], mega_used: false, tera_used: false };
+        apply_switch(&mut side, 1).unwrap();
+        assert_eq!(active(&side).tera_type.as_deref(), Some("water"));
+
+        let mut faint_side = Side { user_id: Uuid::nil(), username: "two".into(), active_index: 0, team: vec![fighter(25, 85, None), fighter(7, 55, None)], mega_used: false, tera_used: false };
+        faint_side.team[0].hp = 0;
+        faint_side.team[1].preferred_transformation = Some(tera);
+        auto_switch(&mut faint_side);
+        assert_eq!(faint_side.active_index, 1);
+        assert_eq!(active(&faint_side).tera_type.as_deref(), Some("water"));
+        assert!(faint_side.tera_used);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 import { expect, test, type BrowserContext } from '@playwright/test';
 import { readFileSync } from 'node:fs';
-import { assignAlolaForm, createGame, createMonster, replaceMonsterMove } from '../../src/game/engine';
+import { assignPreferredTransformation, assignAlolaForm, createGame, createMonster, replaceMonsterMove } from '../../src/game/engine';
 import { defaultView, packSave } from '../../src/game/storage';
 import { OpenWorldSimulation } from '../../src/openworld/simulation';
 import type { Graph } from '../../src/core/brain';
@@ -17,6 +17,7 @@ async function prepare(context: BrowserContext, index: number) {
   const game = createGame(4, username);
   game.player.team = [createMonster(game, index ? 26 : 6, 50), createMonster(game, 25, 50)];
   if (index) { assignAlolaForm(game, game.player.team[0].instanceId, true); replaceMonsterMove(game, game.player.team[0].instanceId, 0, 851); }
+  assignPreferredTransformation(game, game.player.team[0].instanceId, index ? { kind: 'tera', teraType: 'water' } : { kind: 'mega', formIdentifier: 'charizard-mega-x' });
   game.player.team[0].heldTool = index ? 'focus-sash' : 'choice-scarf';
   game.dex.caught = [...new Set([4, ...game.player.team.map(m => m.speciesId)])].sort((a, b) => a - b);
   game.dex.seen = game.dex.caught.slice();
@@ -30,7 +31,7 @@ async function prepare(context: BrowserContext, index: number) {
   return { context, page, headers, errors };
 }
 
-test('real ranked Mega, Alola and Tera survive reload and enforce Choice tools', async ({ browser }) => {
+test('real ranked applies preset Mega and Tera before the first move, then survives reload', async ({ browser }) => {
   test.setTimeout(120_000);
   const a = await browser.newContext(), b = await browser.newContext();
   try {
@@ -47,16 +48,13 @@ test('real ranked Mega, Alola and Tera survive reload and enforce Choice tools',
     }
     await expect(right.page.locator('.ranked-fighter.is-self img')).toHaveAttribute('src', /10100/);
     await expect(right.page.locator('.ranked-fighter.is-self h3')).toHaveText('알로라 라이츄');
-    await left.page.locator('[data-ranked-mega-form]').selectOption('charizard-mega-x');
-    await left.page.locator('[data-ranked-transform="mega"]').click();
     await expect(left.page.locator('.battle-transformation-active')).toHaveText('메가진화');
     await expect(left.page.locator('.ranked-fighter.is-self img')).toHaveAttribute('src', /10034/);
     await expect(left.page.locator('.ranked-fighter.is-self h3')).toHaveText('메가리자몽 X');
-    await right.page.locator('[data-ranked-tera-type]').selectOption('water');
-    await right.page.locator('[data-ranked-transform="tera"]').click();
     await expect(right.page.locator('.battle-transformation-active')).toHaveText('물 테라스탈');
     const status = async () => (await (await a.request.get(`${base}/api/ranked?league=standard`, { headers: left.headers })).json()).currentMatch;
     let match = await status();
+    expect(match.turn).toBe(1);
     expect(match.selfSide.team[0].types).toEqual(['fire', 'dragon']);
     expect(match.opponentSide.team[0].types).toEqual(['water']);
     expect(match.opponentSide.team[0].moves.find((move: { id: number }) => move.id === 851).type).toBe('water');

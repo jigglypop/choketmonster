@@ -40,7 +40,7 @@ export const EXTRA_EVOLUTION_ITEMS = {
   'malicious-armor': { name: '저주받은갑옷', price: 4000, sourceId: 1677 },
   'unremarkable-teacup': { name: '범작찻잔', price: 3000, sourceId: 2110 },
   'masterpiece-teacup': { name: '걸작찻잔', price: 3000, sourceId: 2111 },
-  'evolution-catalyst': { name: '특수진화 캡슐', price: 5000, sourceId: 0 },
+  'evolution-catalyst': { name: '특수진화 캡슐', price: 8000, sourceId: 0 },
   'friendship-treat': { name: '친밀도 간식', price: 500, sourceId: 0 },
   'beauty-treat': { name: '아름다움 간식', price: 500, sourceId: 0 },
   'affection-treat': { name: '애정 간식', price: 500, sourceId: 0 },

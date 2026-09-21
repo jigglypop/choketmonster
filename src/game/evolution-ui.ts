@@ -1,7 +1,7 @@
 import { getSpecies } from '../data/pokemon';
 import type { Evolution } from './contracts';
 import { monsterEvolutionItemsFor, evolutionPurchaseQuote, evolutionRoute, ITEM_LABELS, type GameState, type InventoryItem, type Monster } from './engine';
-import { needsSpecialEvolution, sourceEvolutionDescriptions, specialEvolutionLevel } from './evolution-conditions';
+import { evolutionFormSupported, needsSpecialEvolution, sourceEvolutionDescriptions, specialEvolutionLevel } from './evolution-conditions';
 
 const escapeHtml = (value: unknown) => String(value).replace(/[&<>'"]/g, character => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
@@ -18,7 +18,7 @@ function routeButton(state: GameState, monster: Monster, evolution: Evolution, i
 }
 
 function evolutionCard(state: GameState, monster: Monster, evolution: Evolution): string {
-  const items = monsterEvolutionItemsFor(monster, evolution), defaultRoute = evolutionRoute(state, monster, evolution);
+  const items = monsterEvolutionItemsFor(monster, evolution, state), defaultRoute = evolutionRoute(state, monster, evolution);
   const buttons = [
     ...(!items.length || (defaultRoute && !defaultRoute.item) ? [routeButton(state, monster, evolution)] : []),
     ...items.map(item => routeButton(state, monster, evolution, item)),
@@ -35,7 +35,7 @@ function evolutionCard(state: GameState, monster: Monster, evolution: Evolution)
 }
 
 export function evolutionSectionHtml(state: GameState, monster: Monster): string {
-  const species = getSpecies(monster.speciesId);
-  if (!species.evolutions.length) return '';
-  return `<details class="evolution-panel collection-fold"><summary>진화 선택</summary><div class="evolution-list">${species.evolutions.map(evolution => evolutionCard(state, monster, evolution)).join('')}</div></details>`;
+  const evolutions = getSpecies(monster.speciesId).evolutions.filter(evolution => evolutionFormSupported(state, monster, evolution));
+  if (!evolutions.length) return '';
+  return `<details class="evolution-panel collection-fold"><summary>진화 선택</summary><div class="evolution-list">${evolutions.map(evolution => evolutionCard(state, monster, evolution)).join('')}</div></details>`;
 }

@@ -24,9 +24,8 @@ import { pokemonSpriteUrl } from './game/assets';
 import { drawBrain } from './render';
 import {
   actBattle, battleMonsterView, buyItem, createGame, setAutoMergeDuplicates, previewCollectionMerge, mergeCollectionDuplicates,
-  assignHeldTool, assignMonsterAbility, assignAlolaForm, activateBattleTransformation, HELD_TOOLS, monsterAbilities, type HeldTool,
-  evolutionItemUses,
-  depositMonster, evolve, heal, individualValues, isMonsterInBattle, monsterAbility, mergeDuplicateMonster, mergeDuplicateMonsters, previewDuplicateMerge, releaseMonster, reorderMonsterMoves, availableMonsterMoveIds, replaceMonsterMove, recoverableAttackMoveIds, recoverAttackMove, ITEM_LABELS, ITEM_PRICES, SHOP_ITEMS, useItem, withdrawMonster,
+  assignHeldTool, assignMonsterAbility, assignAlolaForm, assignPreferredTransformation, activateBattleTransformation, HEALING_ITEM_HP, HELD_TOOLS, HELD_TOOL_LABELS, monsterAbilities, type HeldTool,
+  depositMonster, evolve, heal, individualValues, isMonsterInBattle, monsterAbility, mergeDuplicateMonster, mergeDuplicateMonsters, previewDuplicateMerge, releaseMonster, reorderMonsterMoves, availableMonsterMoveIds, replaceMonsterMove, recoverableAttackMoveIds, recoverAttackMove, ITEM_LABELS, useItem, withdrawMonster,
   type BattleAction, type GameState, type InventoryItem, type Monster,
 } from './game/engine';
 import { BRAIN_ASSUMPTIONS, ConnectomeController } from './game/connectome';
@@ -44,6 +43,7 @@ import './ui/fonts.css';
 import './ui/collection-layout.css';
 import './ui/hud-layout.css';
 import { mountInterfaceSettings } from './ui/settings';
+import { transformationPreference, transformationSettingsHtml } from './ui/transformation-settings';
 import { confirmAction } from './ui/confirm-action';
 import { showGymVictory } from './ui/gym-victory';
 import { attachGameAudio, playGameSound } from './audio';
@@ -58,6 +58,9 @@ import { legendaryClass } from './game/legendary';
 import { searchPokemon } from './ui/pokemon-search';
 import { pokemonPresentation, battleTransformationsHtml } from './ui/pokemon-presentation';
 import { getAlolaCombatForm } from './data/pokemon-combat-forms';
+import { EVOLUTION_TREAT_EFFECTS } from './game/evolution-conditions';
+import { evolutionProgress } from './game/evolution-progress';
+import { itemShopHtml, type ShopCategory } from './ui/item-shop';
 import type { PokemonType } from './game/contracts';
 
 type Tab = 'map' | 'team' | 'dex' | 'shop' | 'ranked' | 'lab';
@@ -66,7 +69,6 @@ const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>
 const app = $('#app');
 const escapeHtml = (value: unknown) => String(value).replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[c]!);
 const typeLabel: Record<string, string> = { normal: '노말', fire: '불꽃', water: '물', electric: '전기', grass: '풀', ice: '얼음', fighting: '격투', poison: '독', ground: '땅', flying: '비행', psychic: '에스퍼', bug: '벌레', rock: '바위', ghost: '고스트', dragon: '드래곤', dark: '악', steel: '강철', fairy: '페어리' };
-const itemKeys = SHOP_ITEMS;
 
 let controller: ConnectomeController;
 let worldPanel: OpenWorldPanel | undefined;
@@ -265,11 +267,11 @@ function renderBattle() {
   $('#screen').innerHTML = `<div class="battle-page page"><div class="battle-top"><div><span class="kicker">${battle.kind.toUpperCase()} BATTLE · TURN ${battle.turn}</span><h1>${escapeHtml(battleTitle)}</h1></div><div class="brain-controls"><label><input id="learning" type="checkbox" ${view.learning ? 'checked' : ''}> 기술 학습</label><label class="switch"><input id="auto" type="checkbox" ${autoBattle ? 'checked' : ''}><span></span> 커넥톰 자동 배틀</label><button id="brain-turn" class="primary">회로로 한 턴</button></div></div>
     <section class="battle-stage panel"><div class="opponent combatant"><div class="battle-info"><span>Lv.${enemy.level} ${eDisplay.types.map(type => `<span class="type type-${type}">${typeLabel[type]}</span>`).join('')}</span><h2>${escapeHtml(eDisplay.name)}</h2><div class="hp"><i style="width:${eHp}%"></i></div><small>HP ${enemy.hp}/${eView.stats.hp}${enemy.status ? ` · ${enemy.status}` : ''}</small></div><img src="${eDisplay.sprite}" alt="${eDisplay.name}"></div><div class="battle-ground"></div><div class="player combatant"><img src="${pDisplay.form ? pDisplay.sprite : pSpecies.backSprite}" alt="${pDisplay.name}"><div class="battle-info"><span>Lv.${player.level} ${pDisplay.types.map(type => `<span class="type type-${type}">${typeLabel[type]}</span>`).join('')}</span><h2>${escapeHtml(pDisplay.name)}</h2><div class="hp"><i style="width:${pHp}%"></i></div><small>HP ${player.hp}/${pView.stats.hp}${player.status ? ` · ${player.status}` : ''}</small></div></div></section>
     <div class="battle-console"><section class="move-grid">${getMoveLayout({ ...player, moves: pView.moves }).map(slot => { const move = getMove(slot.moveId); return `<button data-battle-move="${slot.sourceIndex}" ${brainTurnPending || (pView.lockedMoveId !== undefined && pView.lockedMoveId !== slot.moveId) ? 'disabled' : ''}><span>${typeLabel[move.type]} · ${move.damageClass === 'status' ? '변화' : move.power}</span><strong>${move.name}</strong><small>명중 ${move.accuracy || '—'}</small></button>`; }).join('') || '<button data-battle-wait="1"><strong>기다리기</strong></button>'}${pView.lockedMoveId !== undefined && !pView.moves.some(slot => slot.moveId === pView.lockedMoveId) ? '<button data-battle-move="0"><strong>발버둥</strong></button>' : ''}</section>
-      <aside class="battle-menu">${battleTransformationsHtml(game, brainTurnPending)}<div class="ball-row"><span class="infinite-ball">${ITEM_LABELS['poke-ball']} ∞</span><button id="catch" ${battle.kind !== 'wild' ? 'disabled' : ''}>잡기</button></div><button id="battle-heal">상처약 사용 ×${game.inventory.potion}</button><button id="switch-mon">포켓몬 교체</button><button id="run" ${!battle.canRun ? 'disabled' : ''}>도망치기</button><p><b>회로:</b> ${escapeHtml(lastDecision)}</p></aside></div>
+      <aside class="battle-menu">${battleTransformationsHtml(game, brainTurnPending)}<div class="ball-row"><span class="infinite-ball">${ITEM_LABELS['poke-ball']} ∞</span><button id="catch" ${battle.kind !== 'wild' ? 'disabled' : ''}>잡기</button></div>${(['potion', 'super-potion'] as const).map(item => `<button data-battle-heal="${item}" ${!game!.inventory[item] || player.hp <= 0 || player.hp >= player.stats.hp ? 'disabled' : ''}>${ITEM_LABELS[item]} +${HEALING_ITEM_HP[item]} HP ? ?${game!.inventory[item]}</button>`).join('')}<button id="switch-mon">포켓몬 교체</button><button id="run" ${!battle.canRun ? 'disabled' : ''}>도망치기</button><p><b>회로:</b> ${escapeHtml(lastDecision)}</p></aside></div>
     <section class="battle-log panel">${game.logs.slice(-5).reverse().map(log => `<p>${escapeHtml(log)}</p>`).join('')}</section></div>`;
   document.querySelectorAll<HTMLButtonElement>('[data-battle-move]').forEach(b => b.onclick = () => submitTurn({ type: 'move', index: Number(b.dataset.battleMove) }, false)); const wait = document.querySelector<HTMLButtonElement>('[data-battle-wait]'); if (wait) wait.onclick = () => submitTurn({ type: 'wait' }, false);
   $('#learning').onchange = e => { view.learning = (e.target as HTMLInputElement).checked; queueSave(); }; $('#auto').onchange = e => { autoBattle = (e.target as HTMLInputElement).checked; if (autoBattle) scheduleAutoTurn(); }; $('#brain-turn').onclick = performBrainTurn;
-  $('#catch').onclick = () => submitTurn({ type: 'catch', ball: 'poke-ball' }, false); $('#battle-heal').onclick = () => submitTurn({ type: 'item', item: game!.inventory.potion > 0 ? 'potion' : 'super-potion' }, false); $('#run').onclick = () => submitTurn({ type: 'run' }, false); $('#switch-mon').onclick = showSwitchMenu;
+  $('#catch').onclick = () => submitTurn({ type: 'catch', ball: 'poke-ball' }, false); document.querySelectorAll<HTMLButtonElement>('[data-battle-heal]').forEach(button => button.onclick = () => submitTurn({ type: 'item', item: button.dataset.battleHeal as 'potion' | 'super-potion' }, false)); $('#run').onclick = () => submitTurn({ type: 'run' }, false); $('#switch-mon').onclick = showSwitchMenu;
   document.querySelectorAll<HTMLButtonElement>('[data-battle-transformation]').forEach(button => button.onclick = () => action(() => {
     if (brainTurnPending) return;
     activateBattleTransformation(game!, button.dataset.battleTransformation as 'mega' | 'tera', {
@@ -421,9 +423,18 @@ function quickCollectionActionsHtml(selected: Monster, candyMax: number) {
 function individualTraitsHtml(selected: Monster) {
   const ivs = individualValues(selected), ability = monsterAbility(selected), alola = getAlolaCombatForm(selected.speciesId);
   const disabled = game?.battle || game?.captureOffer;
-  const toolNames: Record<HeldTool, string> = { 'leftovers': '먹다남은음식', 'choice-band': '구애머리띠', 'choice-specs': '구애안경', 'choice-scarf': '구애스카프', 'life-orb': '생명의구슬', 'focus-sash': '기합의띠' };
+  const toolNames = HELD_TOOL_LABELS;
   const values = [['HP', ivs.hp], ['공격', ivs.attack], ['방어', ivs.defense], ['특공', ivs.specialAttack], ['특방', ivs.specialDefense], ['스피드', ivs.speed]] as const;
-  return `<section class="individual-traits" aria-label="특성과 도구">${alola ? `<label class="equipment-field"><span>모습</span><select id="monster-form" ${disabled ? 'disabled' : ''}><option value="">기본</option><option value="alola" ${selected.regionalForm ? 'selected' : ''}>알로라</option></select></label>` : ''}<label class="equipment-field"><span>특성</span><select id="monster-ability" ${disabled ? 'disabled' : ''}>${monsterAbilities(selected).map(option => `<option value="${option.slot}" ${option.slot === ability.slot ? 'selected' : ''}>${escapeHtml(option.name)}${option.hidden ? ' · 숨겨진 특성' : ''}</option>`).join('')}</select></label><label class="equipment-field"><span>도구</span><select id="monster-tool" ${disabled ? 'disabled' : ''}><option value="">없음</option>${HELD_TOOLS.map(tool => `<option value="${tool}" ${selected.heldTool === tool ? 'selected' : ''}>${toolNames[tool]}</option>`).join('')}</select></label><details><summary>특성 · 개체값</summary><p>${escapeHtml(ability.description)}</p><div class="iv-grid">${values.map(([label, value]) => `<span><small>${label}</small><b>${value}</b></span>`).join('')}</div></details></section>`;
+  return `<section class="individual-traits" aria-label="특성과 도구">${transformationSettingsHtml(selected, !!disabled)}${alola ? `<label class="equipment-field"><span>모습</span><select id="monster-form" ${disabled ? 'disabled' : ''}><option value="">기본</option><option value="alola" ${selected.regionalForm ? 'selected' : ''}>알로라</option></select></label>` : ''}<label class="equipment-field"><span>특성</span><select id="monster-ability" ${disabled ? 'disabled' : ''}>${monsterAbilities(selected).map(option => `<option value="${option.slot}" ${option.slot === ability.slot ? 'selected' : ''}>${escapeHtml(option.name)}${option.hidden ? ' · 숨겨진 특성' : ''}</option>`).join('')}</select></label><label class="equipment-field"><span>도구</span><select id="monster-tool" ${disabled ? 'disabled' : ''}><option value="">없음</option>${HELD_TOOLS.map(tool => `<option value="${tool}" ${selected.heldTool === tool ? 'selected' : ''} ${selected.heldTool !== tool && !game!.inventory[tool] ? 'disabled' : ''}>${toolNames[tool]}</option>`).join('')}</select></label><details><summary>특성 · 개체값</summary><p>${escapeHtml(ability.description)}</p><div class="iv-grid">${values.map(([label, value]) => `<span><small>${label}</small><b>${value}</b></span>`).join('')}</div></details></section>`;
+}
+function consumableItemsHtml(selected: Monster) {
+  const progress = evolutionProgress(selected), blocked = Boolean(game!.battle || game!.captureOffer);
+  const healing = (Object.keys(HEALING_ITEM_HP) as (keyof typeof HEALING_ITEM_HP)[]).map(item => `<button data-heal-item="${item}" ${blocked || !game!.inventory[item] || selected.hp <= 0 || selected.hp >= selected.stats.hp ? 'disabled' : ''}>${ITEM_LABELS[item]} · HP +${HEALING_ITEM_HP[item]} · ×${game!.inventory[item]}</button>`).join('');
+  const treats = (['beauty-treat', 'affection-treat'] as const).map(item => {
+    const effect = EVOLUTION_TREAT_EFFECTS[item], max = Math.min(game!.inventory[item], Math.ceil((255 - progress[effect.key]) / effect.amount));
+    return `<div class="treat-use"><label>${ITEM_LABELS[item]}<small>${progress[effect.key]}/255 · +${effect.amount} · 보유 ${game!.inventory[item]}개</small></label><input data-treat-quantity="${item}" aria-label="${ITEM_LABELS[item]} 수량" type="number" min="1" max="${Math.max(1, max)}" value="1" ${blocked || !max ? 'disabled' : ''}><button data-use-treat="${item}" ${blocked || !max ? 'disabled' : ''}>먹이기</button></div>`;
+  }).join('');
+  return `<details class="collection-fold item-use-fold"><summary>물품</summary><div class="healing-items">${healing}</div>${treats}</details>`;
 }
 function compactMoveManagementHtml(selected: Monster) {
   const species = getSpecies(selected.speciesId);
@@ -432,7 +443,7 @@ function compactMoveManagementHtml(selected: Monster) {
 function detailHtml(selected: Monster) {
   if (!game) return ''; const species = getSpecies(selected.speciesId), presentation = pokemonPresentation(selected, game.battle), candyMax = Math.max(0, Math.min(game.inventory['rare-candy'], regionalLevelCap(game, currentCollectionRegion()) - selected.level));
   const gender = selected.gender === 'female' ? '암컷' : selected.gender === 'male' ? '수컷' : '성별 없음';
-  return `${detailNavigatorHtml(selected)}<div class="detail-portrait"><span>No.${String(species.id).padStart(3, '0')}</span><img src="${presentation.sprite}" alt="${escapeHtml(presentation.name)}"></div><div class="detail-title${legendaryClass(species.id)}"><div>${presentation.types.map(type => `<span class="type type-${type}">${typeLabel[type]}</span>`).join('')}</div><h2>${escapeHtml(presentation.name)}</h2><p>Lv.${selected.level} · ${gender}</p>${regionalUseHtml(selected)}</div>${quickCollectionActionsHtml(selected, candyMax)}${compactMoveManagementHtml(selected)}${individualTraitsHtml(selected)}<div class="stat-list">${([['HP', `${selected.hp}/${selected.stats.hp}`], ['공격', selected.stats.attack], ['방어', selected.stats.defense], ['특공', selected.stats.specialAttack], ['특방', selected.stats.specialDefense], ['스피드', selected.stats.speed], ['이동 속도', `${movementSpeed(selected.speciesId, selected.level).toFixed(1)} m/s`]] as const).map(([label, value]) => `<span>${label}<b>${value}</b></span>`).join('')}</div><div class="detail-xp"><span>누적 경험치</span><strong>${selected.xp.toLocaleString()}</strong></div>${evolutionSectionHtml(game, selected)}`;
+  return `${detailNavigatorHtml(selected)}<div class="detail-portrait"><span>No.${String(species.id).padStart(3, '0')}</span><img src="${presentation.sprite}" alt="${escapeHtml(presentation.name)}"></div><div class="detail-title${legendaryClass(species.id)}"><div>${presentation.types.map(type => `<span class="type type-${type}">${typeLabel[type]}</span>`).join('')}</div><h2>${escapeHtml(presentation.name)}</h2><p>Lv.${selected.level} · ${gender}</p>${regionalUseHtml(selected)}</div>${quickCollectionActionsHtml(selected, candyMax)}${consumableItemsHtml(selected)}${compactMoveManagementHtml(selected)}${individualTraitsHtml(selected)}<div class="stat-list">${([['HP', `${selected.hp}/${selected.stats.hp}`], ['공격', selected.stats.attack], ['방어', selected.stats.defense], ['특공', selected.stats.specialAttack], ['특방', selected.stats.specialDefense], ['스피드', selected.stats.speed], ['이동 속도', `${movementSpeed(selected.speciesId, selected.level).toFixed(1)} m/s`]] as const).map(([label, value]) => `<span>${label}<b>${value}</b></span>`).join('')}</div><div class="detail-xp"><span>누적 경험치</span><strong>${selected.xp.toLocaleString()}</strong></div>${evolutionSectionHtml(game, selected)}`;
 }
 function renderSelectedDetail() {
   if (!game) return; const selected = owned().find(monster => monster.instanceId === selectedMonsterId) ?? game.player.team[0]; selectedMonsterId = selected.instanceId;
@@ -448,6 +459,10 @@ function renderSelectedDetail() {
   detail.querySelector<HTMLSelectElement>('#monster-tool')!.onchange = event => action(() => {
     assignHeldTool(game!, selected.instanceId, ((event.target as HTMLSelectElement).value || undefined) as HeldTool | undefined);
   });
+  detail.querySelector<HTMLSelectElement>('#monster-transformation')!.onchange = event => action(() => {
+    assignPreferredTransformation(game!, selected.instanceId, transformationPreference((event.target as HTMLSelectElement).value));
+  });
+  detail.querySelectorAll<HTMLButtonElement>('[data-heal-item]').forEach(button => button.onclick = () => action(() => useItem(game!, button.dataset.healItem as InventoryItem, selected.instanceId)));
   detail.querySelectorAll<HTMLButtonElement>('[data-reorder-from]').forEach(button => button.onclick = async () => {
     try {
       const from = Number(button.dataset.reorderFrom), to = Number(button.dataset.reorderTo);
@@ -690,7 +705,23 @@ function renderDex() {
   });
   bindDexResults(filtered, pages);
 }
-function renderShop() { if (!game) return; detachPokemonScene(); $('#screen').innerHTML = `<div class="page shop-page"><section class="section-heading"><div><span class="kicker">ROUTE MARKET</span><h1>모험 상점</h1><p>판매 목록 ${itemKeys.length}가지 · 진화 도구는 팀·박스에서 대상 개체를 골라 사용합니다.</p></div><strong class="wallet">₩${game.player.money.toLocaleString()}</strong></section><div class="shop-grid">${itemKeys.map(item => { const uses = evolutionItemUses(item); return `<article class="shop-card"><span class="item-icon">${item.includes('ball') ? '◉' : item.includes('stone') ? '◆' : item === 'link-cable' ? '∞' : '✦'}</span><div><strong>${ITEM_LABELS[item]}</strong><small>보유 ${game!.inventory[item]}개</small></div><b>₩${ITEM_PRICES[item].toLocaleString()}</b>${uses ? `<details class="item-detail"><summary>사용 대상 보기</summary><small>${escapeHtml(uses)}</small></details>` : ''}<button data-buy="${item}" ${game!.player.money < ITEM_PRICES[item] ? 'disabled' : ''}>1개 구매</button></article>`; }).join('')}</div><section class="center-banner"><div><span class="eyebrow">POKÉMON CENTER</span><h2>팀을 무료로 회복하세요</h2><p>HP와 상태 이상을 한 번에 회복합니다.</p></div><button id="shop-heal" class="primary" ${game.battle ? 'disabled' : ''}>무료 회복</button></section></div>`; document.querySelectorAll<HTMLButtonElement>('[data-buy]').forEach(b => b.onclick = () => action(() => buyItem(game!, b.dataset.buy as InventoryItem), `${ITEM_LABELS[b.dataset.buy as InventoryItem]}을(를) 샀습니다.`)); $('#shop-heal').onclick = () => action(() => heal(game!), '팀을 모두 회복했습니다.'); }
+let shopCategory: ShopCategory = 'all';
+function renderShop() {
+  if (!game) return;
+  detachPokemonScene(); $('#screen').innerHTML = itemShopHtml(game, shopCategory);
+  document.querySelectorAll<HTMLButtonElement>('[data-shop-category]').forEach(button => button.onclick = () => {
+    shopCategory = button.dataset.shopCategory as ShopCategory; renderShop();
+  });
+  document.querySelectorAll<HTMLInputElement>('[data-buy-quantity]').forEach(input => input.oninput = () => {
+    const quantity = Number(input.value);
+    input.parentElement!.querySelector<HTMLButtonElement>('[data-buy]')!.disabled = !Number.isSafeInteger(quantity) || quantity < 1 || quantity > Number(input.max);
+  });
+  document.querySelectorAll<HTMLButtonElement>('[data-buy]').forEach(button => button.onclick = () => {
+    const item = button.dataset.buy as InventoryItem, quantity = Number(button.parentElement!.querySelector<HTMLInputElement>('[data-buy-quantity]')!.value);
+    action(() => buyItem(game!, item, quantity));
+  });
+  $('#shop-heal').onclick = () => action(() => heal(game!));
+}
 
 function serverCircuitHtml() {
   const remote = serverConnectome, available = Boolean(remote?.available);
