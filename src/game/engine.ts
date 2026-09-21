@@ -81,6 +81,8 @@ export type BattleState = {
   transformations?: Record<string, BattleTransformation>;
   playerMegaUsed?: boolean;
   playerTeraUsed?: boolean;
+  choiceLocks?: Record<string, number>;
+  consumedTools?: string[];
 };
 
 export type BattleAction =
@@ -533,12 +535,20 @@ function effectiveMoves(battle: BattleState, monster: Monster): MonsterMove[] { 
 function effectiveTypes(battle: BattleState, monster: Monster): readonly PokemonType[] { return battle.transformations?.[monster.instanceId]?.types ?? regionalProfile(monster)?.types ?? getSpecies(effectiveSpeciesId(battle, monster)).types; }
 function effectiveAbility(battle: BattleState, monster: Monster): MonsterAbility | undefined { return battle.transformations?.[monster.instanceId]?.ability ?? monster.ability; }
 export function battleMonsterTypes(state: GameState, monster: Monster): readonly PokemonType[] { return state.battle ? effectiveTypes(state.battle, monster) : regionalProfile(monster)?.types ?? getSpecies(monster.speciesId).types; }
+export function battleMonsterView(battle: BattleState, monster: Monster) {
+  return { ...monster, speciesId: effectiveSpeciesId(battle, monster), stats: effectiveStats(battle, monster),
+    moves: effectiveMoves(battle, monster), types: effectiveTypes(battle, monster), ability: effectiveAbility(battle, monster),
+    lockedMoveId: battle.choiceLocks?.[monster.instanceId] };
+}
+function activeHeldTool(battle: BattleState, monster: Monster): HeldTool | undefined {
+  return battle.consumedTools?.includes(monster.instanceId) ? undefined : monster.heldTool;
+}
 function stageMultiplier(stage = 0): number { return stage >= 0 ? (2 + stage) / 2 : 2 / (2 - stage); }
 function combatant(monster: Monster, battle: BattleState) {
   const base = effectiveStats(battle, monster); const stages = battle.statStages?.[monster.instanceId] ?? {};
   const transformation = battle.transformations?.[monster.instanceId];
-  const physical = monster.heldTool === 'choice-band' ? 1.5 : monster.heldTool === 'life-orb' ? 1.3 : 1;
-  const special = monster.heldTool === 'choice-specs' ? 1.5 : monster.heldTool === 'life-orb' ? 1.3 : 1;
+  const physical = monster.heldTool === 'choice-band' ? 1.5 : 1;
+  const special = monster.heldTool === 'choice-specs' ? 1.5 : 1;
   const speed = monster.heldTool === 'choice-scarf' ? 1.5 : 1;
   return { level: monster.level, hp: monster.hp, stats: {
     hp: base.hp,
@@ -548,16 +558,19 @@ function combatant(monster: Monster, battle: BattleState) {
     specialDefense: Math.max(1, Math.floor(base.specialDefense * stageMultiplier(stages.specialDefense))),
     speed: Math.max(1, Math.floor(base.speed * stageMultiplier(stages.speed) * speed)),
   }, types: effectiveTypes(battle, monster), originalTypes: regionalProfile(monster)?.types ?? getSpecies(monster.speciesId).types,
-    teraType: transformation?.kind === 'tera' ? transformation.teraType : undefined, status: monster.status, ability: effectiveAbility(battle, monster), heldTool: monster.heldTool };
+    teraType: transformation?.kind === 'tera' ? transformation.teraType : undefined, status: monster.status, ability: effectiveAbility(battle, monster), heldTool: activeHeldTool(battle, monster) };
 }
 
 function validMoveIndexes(monster: Monster, battle: BattleState): number[] {
-  return effectiveMoves(battle, monster).map((_, index) => index);
+  const lock = battle.choiceLocks?.[monster.instanceId];
+  return effectiveMoves(battle, monster).flatMap((slot, index) => lock === undefined || slot.moveId === lock ? [index] : []);
 }
 
 function circularMoveIndex(monster: Monster, battle: BattleState, requested: number): number {
   const moves = effectiveMoves(battle, monster); const count = moves.length;
   if (!count) return -1;
+  const lock = battle.choiceLocks?.[monster.instanceId];
+  if (lock !== undefined) return moves.findIndex(slot => slot.moveId === lock);
   const start = ((Math.floor(requested) % count) + count) % count;
   return start;
 }
@@ -628,6 +641,7 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
     return;
   }
   const move = getMove(slot.moveId);
+  if (attacker.heldTool?.startsWith('choice-')) (battle.choiceLocks ??= {})[attacker.instanceId] = move.id;
   const growth = evolutionProgress(attacker);
   growth.moveUses[String(move.id)] = Math.min(1e9, (growth.moveUses[String(move.id)] ?? 0) + 1);
   let hpRecovered = 0, statStageDelta = 0, ailmentApplied = false;
@@ -695,11 +709,13 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
   if ((isOhko || fixed !== undefined) && immunity) { multiplier = 0; activatedAbility = immunity.heal ? 'absorb' : 'immunity'; }
   else if ((isOhko || fixed !== undefined) && matchup === 0) { multiplier = 0; events.push(event(battle, '타입 면역으로 효과가 없었다.')); }
   else if (isOhko && attacker.level < defender.level) events.push(event(battle, '상대의 레벨이 높아 일격필살이 통하지 않았다.'));
-  else if (isOhko && (hasSturdy(effectiveAbility(battle, defender)) || defender.heldTool === 'focus-sash') && defender.hp === effectiveStats(battle, defender).hp) { activatedAbility = hasSturdy(effectiveAbility(battle, defender)) ? 'sturdy' : 'focus-sash'; }
+  else if (isOhko && hasSturdy(effectiveAbility(battle, defender))) { activatedAbility = 'sturdy'; }
+  else if (isOhko && activeHeldTool(battle, defender) === 'focus-sash' && defender.hp === effectiveStats(battle, defender).hp) { activatedAbility = 'focus-sash'; totalDamage = Math.max(0, defender.hp - 1); defender.hp -= totalDamage; }
   else if (isOhko) { totalDamage = defender.hp; defender.hp = 0; multiplier = 1; }
   else if (fixed !== undefined) {
-    const capped = hasSturdy(effectiveAbility(battle, defender)) && defender.hp === effectiveStats(battle, defender).hp && fixed >= defender.hp ? defender.hp - 1 : fixed;
-    if (capped !== fixed) activatedAbility = 'sturdy';
+    const sturdy = hasSturdy(effectiveAbility(battle, defender)), sash = activeHeldTool(battle, defender) === 'focus-sash';
+    const capped = (sturdy || sash) && defender.hp === effectiveStats(battle, defender).hp && fixed >= defender.hp ? defender.hp - 1 : fixed;
+    if (capped !== fixed) activatedAbility = sturdy ? 'sturdy' : 'focus-sash';
     totalDamage = Math.min(defender.hp, Math.max(0, capped)); defender.hp -= totalDamage;
   }
   else if (move.power > 0) {
@@ -715,6 +731,7 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
     defender.hp = Math.min(defender.stats.hp, defender.hp + Math.max(1, Math.floor(defender.stats.hp / 4)));
   }
   if (activatedAbility) {
+    if (activatedAbility === 'focus-sash') (battle.consumedTools ??= []).push(defender.instanceId);
     const source = activatedAbility === 'focus-sash' ? '기합의띠' : monsterAbility(defender).name;
     const detail = activatedAbility === 'sturdy' || activatedAbility === 'focus-sash' ? '쓰러지지 않았다' : activatedAbility === 'absorb' ? '공격을 흡수해 회복했다' : '공격을 무효화했다';
     events.push(event(battle, `${defender.nickname}의 ${source}: ${detail}.`, 'status'));
@@ -826,6 +843,12 @@ function gainExperience(monster: Monster, amount: number, events?: BattleLogEntr
     }
     if (events && battle) events.push(event(battle, `${monster.nickname}은(는) 레벨 ${monster.level}이 되었다.`, 'reward'));
   }
+  const transformation = battle?.transformations?.[monster.instanceId];
+  if (transformation?.kind === 'mega' || transformation?.kind === 'tera') {
+    const profile = transformation.kind === 'mega' ? getCombatForm(transformation.formIdentifier!) : undefined;
+    transformation.stats = profile ? formStats(monster, profile) : { ...monster.stats };
+    transformation.moves = monster.moves.map(slot => ({ ...slot }));
+  }
   return { instanceId: monster.instanceId, amount: applied, levelsGained: monster.level - levelBefore, shared };
 }
 
@@ -911,6 +934,7 @@ export function actBattle(state: GameState, action: BattleAction, aiChoice?: num
     }
     const outgoing = active(battle.player);
     if (battle.statStages) delete battle.statStages[outgoing.instanceId];
+    delete battle.choiceLocks?.[outgoing.instanceId];
     if (!battle.transformations?.[outgoing.instanceId]?.kind || battle.transformations[outgoing.instanceId]?.kind === 'transform') delete battle.transformations?.[outgoing.instanceId];
     battle.player.activeIndex = action.index; battle.awaitingSwitch = undefined;
     events.push(event(battle, `${target.nickname}, 부탁해!`));
@@ -1116,7 +1140,9 @@ function reconcileBattleRemoval(state: GameState, removedIds: ReadonlySet<string
   for (const id of removedIds) {
     delete state.battle.statStages?.[id];
     delete state.battle.transformations?.[id];
+    delete state.battle.choiceLocks?.[id];
   }
+  if (state.battle.consumedTools) state.battle.consumedTools = state.battle.consumedTools.filter(id => !removedIds.has(id));
 }
 function findOwned(state: GameState, instanceId: string): Monster {
   const monster = allOwned(state).find((candidate) => candidate.instanceId === instanceId);
@@ -1179,6 +1205,8 @@ export function evolutionPurchaseQuote(state: GameState, monster: Monster, evolu
     requiredItem = supplied && candidates.includes(supplied) ? supplied : supplied === undefined ? candidates[0] : undefined;
   }
   if (!requiredItem || !SHOP_ITEMS.includes(requiredItem)) return { ready: false, requiredItem, missing: 0, cost: 0, affordable: false };
+  const stocked = { ...state, inventory: { ...state.inventory, [requiredItem]: Math.max(1, state.inventory[requiredItem]) } };
+  if (!evolutionRoute(stocked, monster, evolution, supplied ?? requiredItem)) return { ready: false, requiredItem, missing: 0, cost: 0, affordable: false };
   const missing = Math.max(0, 1 - state.inventory[requiredItem]), cost = missing * ITEM_PRICES[requiredItem];
   return { ready: false, requiredItem, missing, cost, affordable: missing > 0 && state.player.money >= cost };
 }
@@ -1231,9 +1259,10 @@ function applyEvolution(state: GameState, monster: Monster, evolution: Evolution
   const oldMax = monster.stats.hp;
   const previousAbility = monsterAbility(monster);
   monster.speciesId = evolution.target; monster.nickname = getSpecies(evolution.target).name;
-  const evolvedForm = wasAlola ? getAlolaCombatForm(evolution.target) : undefined;
+  const regionalTarget = state.evolutionContext?.regionId === 'alola' && [25, 102, 104].includes(before.id);
+  const evolvedForm = wasAlola || regionalTarget ? getAlolaCombatForm(evolution.target) : undefined;
   monster.regionalForm = evolvedForm?.identifier;
-  monster.ability = evolvedForm ? combatFormAbility(evolvedForm) ?? abilityForSpecies(evolution.target, previousAbility.slot, previousAbility.hidden) : abilityForSpecies(evolution.target, previousAbility.slot, previousAbility.hidden);
+  monster.ability = evolvedForm ? combatFormAbility(evolvedForm, previousAbility.slot) ?? combatFormAbility(evolvedForm)! : abilityForSpecies(evolution.target, previousAbility.slot, previousAbility.hidden);
   if (!isValidGender(monster.speciesId, monster.gender)) monster.gender = genderFor(monster.speciesId, monster.instanceId);
   evolutionProgress(monster).gender = monster.gender!;
   monster.stats = evolvedForm ? formStats(monster, evolvedForm) : statsFor(getSpecies(evolution.target), monster.level, individualValues(monster));
@@ -1265,6 +1294,8 @@ export function evolutionItemsFor(speciesId: number, evolution: Evolution): Inve
 export function monsterEvolutionItemsFor(monster: Monster, evolution: Evolution): InventoryItem[] {
   if (monster.regionalForm === 'sandshrew-alola' || monster.regionalForm === 'vulpix-alola') return ['ice-stone'];
   if (monster.regionalForm === 'meowth-alola' || monster.regionalForm === 'rattata-alola') return [];
+  if (monster.speciesId === 27) return [];
+  if (monster.speciesId === 37) return ['fire-stone'];
   return evolutionItemsFor(monster.speciesId, evolution);
 }
 
@@ -1286,6 +1317,11 @@ export function evolutionItemUses(item: InventoryItem): string {
 
 export function evolutionRoute(state: GameState, monster: Monster, evolution: Evolution, supplied?: InventoryItem): { item?: InventoryItem; shed?: boolean } | undefined {
   if (isMonsterInBattle(state, monster.instanceId)) return undefined;
+  if (monster.speciesId === 104 && state.evolutionContext?.regionId === 'alola') {
+    if (monster.level < 28) return undefined;
+    if (supplied === 'evolution-catalyst') return state.inventory[supplied] > 0 ? { item: supplied } : undefined;
+    return supplied === undefined && state.evolutionContext.period === 'night' ? {} : undefined;
+  }
   if (monster.regionalForm === 'sandshrew-alola' || monster.regionalForm === 'vulpix-alola') {
     return (supplied === undefined || supplied === 'ice-stone') && state.inventory['ice-stone'] > 0 ? { item: 'ice-stone' } : undefined;
   }
@@ -1337,6 +1373,8 @@ export function depositMonster(state: GameState, teamIndex: number, policyRegion
   if (state.battle) {
     if (teamIndex < state.battle.player.activeIndex) state.battle.player.activeIndex--;
     delete state.battle.statStages?.[monster.instanceId]; delete state.battle.transformations?.[monster.instanceId];
+    delete state.battle.choiceLocks?.[monster.instanceId];
+    if (state.battle.consumedTools) state.battle.consumedTools = state.battle.consumedTools.filter(id => id !== monster.instanceId);
   }
   state.player.box.push(monster);
 }
@@ -1718,6 +1756,16 @@ export function validateGame(value: unknown): GameState {
     const activePlayer = state.player.team[battle.player.activeIndex];
     if ((activePlayer.hp === 0) !== (battle.awaitingSwitch === 'player') && state.player.team.some((monster) => monster.hp > 0)) throw new Error('강제 교체 대상이 일치하지 않습니다.');
     const battleIds = new Set([...state.player.team, ...battle.enemy.team].map((monster) => monster.instanceId));
+    if (battle.choiceLocks !== undefined) {
+      if (!battle.choiceLocks || typeof battle.choiceLocks !== 'object' || Array.isArray(battle.choiceLocks)) throw new Error('도구의 기술 고정 기록이 손상되었습니다.');
+      for (const [id, moveId] of Object.entries(battle.choiceLocks)) {
+        const monster = [...state.player.team, ...battle.enemy.team].find(monster => monster.instanceId === id);
+        if (!monster?.heldTool?.startsWith('choice-') || !Number.isSafeInteger(moveId)) throw new Error('도구의 기술 고정 기록이 손상되었습니다.');
+        getMove(moveId);
+      }
+    }
+    if (battle.consumedTools !== undefined && (!Array.isArray(battle.consumedTools) || new Set(battle.consumedTools).size !== battle.consumedTools.length
+      || battle.consumedTools.some(id => !battleIds.has(id) || [...state.player.team, ...battle.enemy.team].find(monster => monster.instanceId === id)?.heldTool !== 'focus-sash'))) throw new Error('소모 도구 기록이 손상되었습니다.');
     if (battle.statStages) for (const [instanceId, stages] of Object.entries(battle.statStages)) {
       if (!battleIds.has(instanceId) || !stages || Object.entries(stages).some(([stat, stage]) => !['attack', 'defense', 'specialAttack', 'specialDefense', 'speed', 'accuracy', 'evasion'].includes(stat) || !Number.isInteger(stage) || stage < -6 || stage > 6)) throw new Error('능력 단계가 손상되었습니다.');
     }
@@ -1730,7 +1778,7 @@ export function validateGame(value: unknown): GameState {
       if (form.kind === 'mega' || form.kind === 'tera') {
         if (form.speciesId !== source.speciesId || JSON.stringify(form.moves) !== JSON.stringify(source.moves)) throw new Error('전투 변신 원본 기술이 일치하지 않습니다.');
         if (state.player.team.includes(source) && !(form.kind === 'mega' ? battle.playerMegaUsed : battle.playerTeraUsed)) throw new Error('전투 변신 사용 기록이 손상되었습니다.');
-        if (form.kind === 'tera' && (form.ability !== undefined || JSON.stringify(form.stats) !== JSON.stringify(source.stats))) throw new Error('테라스탈 능력치가 손상되었습니다.');
+        if (form.kind === 'tera' && (form.ability !== undefined || form.formIdentifier !== undefined || JSON.stringify(form.stats) !== JSON.stringify(source.stats))) throw new Error('테라스탈 능력치가 손상되었습니다.');
       }
       if (form.kind === 'mega') {
         const profile = form.formIdentifier && getMegaCombatForm(form.speciesId, form.formIdentifier);

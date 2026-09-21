@@ -69,12 +69,24 @@ struct CancelBody {
 }
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct TransformationRequest {
+    kind: String,
+    #[serde(rename = "formIdentifier")]
+    form_identifier: Option<String>,
+    #[serde(rename = "teraType")]
+    tera_type: Option<String>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct TurnAction {
     turn: i32,
     move_index: Option<usize>,
     switch_index: Option<usize>,
     #[serde(default)]
     surrender: bool,
+    #[serde(default)]
+    transformation: Option<TransformationRequest>,
 }
 
 #[derive(Deserialize)]
@@ -168,6 +180,20 @@ struct Fighter {
     ability: Option<String>,
     #[serde(default)]
     held_tool: Option<String>,
+    #[serde(default)]
+    held_tool_used: bool,
+    #[serde(default)]
+    choice_move: Option<i64>,
+    #[serde(default)]
+    regional_form: Option<String>,
+    #[serde(default)]
+    individual_values: Option<Stats>,
+    #[serde(default)]
+    transformation_kind: Option<String>,
+    #[serde(default)]
+    tera_type: Option<String>,
+    #[serde(default)]
+    original_types: Option<Vec<String>>,
     status: Option<String>,
     status_turns: Option<i8>,
     #[serde(default)]
@@ -180,6 +206,10 @@ struct Side {
     username: String,
     active_index: usize,
     team: Vec<Fighter>,
+    #[serde(default)]
+    mega_used: bool,
+    #[serde(default)]
+    tera_used: bool,
 }
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -320,6 +350,11 @@ fn snapshot(
                 .get("heldTool")
                 .and_then(Value::as_str)
                 .map(str::to_owned),
+            held_tool_used: false,
+            choice_move: None,
+            regional_form: form.map(|form| form.identifier.clone()),
+            individual_values: Some(Stats { hp: iv(monster, "hp"), attack: iv(monster, "attack"), defense: iv(monster, "defense"), special_attack: iv(monster, "specialAttack"), special_defense: iv(monster, "specialDefense"), speed: iv(monster, "speed") }),
+            transformation_kind: None, tera_type: None, original_types: None,
             status: None,
             status_turns: None,
             stages: HashMap::new(),
@@ -329,7 +364,7 @@ fn snapshot(
         user_id,
         username,
         active_index: 0,
-        team,
+        team, mega_used: false, tera_used: false,
     })
 }
 async fn saved_team(
@@ -547,6 +582,17 @@ async fn action(
     if map.contains_key(&key) {
         return Err(conflict("이미 이번 턴의 행동을 제출했습니다."));
     }
+    if let Some(ref transformation) = input.transformation {
+        let SqlJson(mut current): SqlJson<Battle> = row.get("state");
+        apply_transformation(if account.id == p1 { &mut current.player1 } else { &mut current.player2 }, transformation)?;
+        sqlx::query("UPDATE ranked_matches SET state=$2,updated_at=now() WHERE id=$1").bind(id).bind(SqlJson(current)).execute(&mut *tx).await?;
+        tx.commit().await?;
+        return Ok(Json(json!({"match":match_value(&state,id,account.id).await?})));
+    }
+    if let Some(index) = input.move_index {
+        let SqlJson(current): SqlJson<Battle> = row.get("state");
+        selected_move(if account.id == p1 { &current.player1 } else { &current.player2 }, index)?;
+    }
     map.insert(key.clone(), serde_json::to_value(&input).unwrap());
     if input.surrender {
         finalize(
@@ -600,9 +646,9 @@ async fn action(
 
 fn validate_action_shape(a: &TurnAction) -> Result<(), ApiError> {
     let choices =
-        (a.move_index.is_some() as u8) + (a.switch_index.is_some() as u8) + (a.surrender as u8);
+        (a.move_index.is_some() as u8) + (a.switch_index.is_some() as u8) + (a.surrender as u8) + (a.transformation.is_some() as u8);
     if choices != 1 {
-        return Err(invalid("기술, 교체, 항복 중 하나만 선택해 주세요."));
+        return Err(invalid("기술, 교체, 변신, 항복 중 하나만 선택해 주세요."));
     }
     Ok(())
 }
@@ -624,8 +670,54 @@ fn apply_switch(side: &mut Side, index: usize) -> Result<(), ApiError> {
         return Err(invalid("교체할 수 없는 포켓몬입니다."));
     }
     side.team[side.active_index].stages.clear();
+    side.team[side.active_index].choice_move = None;
     side.active_index = index;
     Ok(())
+}
+
+fn apply_transformation(side: &mut Side, request: &TransformationRequest) -> Result<(), ApiError> {
+    let monster = &mut side.team[side.active_index];
+    if monster.hp <= 0 || monster.transformation_kind.is_some() { return Err(invalid("현재 포켓몬은 변신할 수 없습니다.")); }
+    match request.kind.as_str() {
+        "mega" => {
+            if side.mega_used { return Err(invalid("이미 메가진화를 사용했습니다.")); }
+            let profile = request.form_identifier.as_deref().and_then(combat_form)
+                .filter(|form| form.kind == "mega" && form.species_id == monster.species_id)
+                .ok_or(invalid("메가진화 모습이 올바르지 않습니다."))?;
+            let base = profile.base_stats;
+            let base = Stats { hp: base.hp, attack: base.attack, defense: base.defense, special_attack: base.special_attack, special_defense: base.special_defense, speed: base.speed };
+            let saved = monster.individual_values.map(|ivs| json!({"ivs":ivs})).unwrap_or(json!({}));
+            let stats = normalized_stats_from_base(base, &saved);
+            monster.hp = ((monster.hp * stats.hp + monster.max_hp - 1) / monster.max_hp).min(stats.hp);
+            monster.max_hp = stats.hp; monster.stats = stats; monster.types = profile.types.clone();
+            monster.ability = profile.abilities.first().map(|ability| ability.slug.clone());
+            monster.regional_form = Some(profile.identifier.clone());
+            side.mega_used = true;
+        }
+        "tera" => {
+            if side.tera_used { return Err(invalid("이미 테라스탈을 사용했습니다.")); }
+            let tera = request.tera_type.as_deref().filter(|kind| catalog().effectiveness.contains_key(*kind))
+                .ok_or(invalid("테라 타입이 올바르지 않습니다."))?;
+            monster.original_types = Some(monster.types.clone());
+            monster.types = vec![tera.to_owned()]; monster.tera_type = Some(tera.to_owned()); side.tera_used = true;
+        }
+        _ => return Err(invalid("변신 종류가 올바르지 않습니다.")),
+    }
+    monster.transformation_kind = Some(request.kind.clone());
+    Ok(())
+}
+
+fn stab_multiplier(monster: &Fighter, move_type: &str) -> f64 {
+    let original = monster.original_types.as_ref().unwrap_or(&monster.types).iter().any(|kind| kind == move_type);
+    if monster.tera_type.as_deref() == Some(move_type) { if original { 2.0 } else { 1.5 } }
+    else if original { 1.5 } else { 1.0 }
+}
+
+fn selected_move(side: &Side, index: usize) -> Result<Move, ApiError> {
+    let fighter = active(side);
+    let selected = fighter.moves.get(index).ok_or(invalid("선택한 기술이 없습니다."))?;
+    if fighter.choice_move.is_some_and(|id| id != selected.id) { return Err(invalid("구애 도구에 고정된 기술만 사용할 수 있습니다.")); }
+    Ok(selected.clone())
 }
 
 fn resolve_turn(
@@ -650,23 +742,11 @@ fn resolve_turn(
     }
     let p1move = a1
         .move_index
-        .map(|i| {
-            battle.player1.team[battle.player1.active_index]
-                .moves
-                .get(i)
-                .cloned()
-                .ok_or(invalid("선택한 기술이 없습니다."))
-        })
+        .map(|i| selected_move(&battle.player1, i))
         .transpose()?;
     let p2move = a2
         .move_index
-        .map(|i| {
-            battle.player2.team[battle.player2.active_index]
-                .moves
-                .get(i)
-                .cloned()
-                .ok_or(invalid("선택한 기술이 없습니다."))
-        })
+        .map(|i| selected_move(&battle.player2, i))
         .transpose()?;
     let first = match (&p1move, &p2move) {
         (Some(a), Some(b)) => {
@@ -733,7 +813,7 @@ fn effective_stat(monster: &Fighter, stat: &str) -> i64 {
         (Some("choice-band"), "attack")
         | (Some("choice-specs"), "specialAttack")
         | (Some("choice-scarf"), "speed") => 1.5,
-        (Some("life-orb"), "attack" | "specialAttack") => 1.3,
+
         _ => 1.0,
     };
     let mut value =
@@ -925,6 +1005,9 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
     {
         return;
     }
+    if matches!(active(attacker).held_tool.as_deref(), Some("choice-band" | "choice-specs" | "choice-scarf")) {
+        attacker.team[attacker.active_index].choice_move = Some(mv.id);
+    }
     let accuracy = (mv.accuracy as f64
         * stage_multiplier(*active(attacker).stages.get("accuracy").unwrap_or(&0))
         / stage_multiplier(*active(defender).stages.get("evasion").unwrap_or(&0)))
@@ -965,14 +1048,15 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
         ));
     } else if let Some(mut damage) = fixed_damage(mv, active(attacker), active(defender)) {
         let target = &mut defender.team[defender.active_index];
-        if type_mult == 0.0 {
+        if type_mult == 0.0 || (matches!(mv.id, 12 | 32 | 90) && target.ability.as_deref() == Some("sturdy")) {
             damage = 0;
         }
         if (target.ability.as_deref() == Some("sturdy")
-            || target.held_tool.as_deref() == Some("focus-sash"))
+            || (target.held_tool.as_deref() == Some("focus-sash") && !target.held_tool_used))
             && target.hp == target.max_hp
             && damage >= target.hp
         {
+            if target.ability.as_deref() != Some("sturdy") { target.held_tool_used = true; }
             damage = (target.hp - 1).max(0);
         }
         total_damage = damage.min(target.hp);
@@ -1016,22 +1100,19 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
                     "defense"
                 },
             );
-            let stab = if a.types.iter().any(|t| t == &mv.move_type) {
-                1.5
-            } else {
-                1.0
-            };
+            let stab = stab_multiplier(a, &mv.move_type);
             let base = (((22 * mv.power * offense / defense.max(1)) / 50) + 2) as f64;
-            let mut damage = (base * stab * type_mult * low_hp_power(a, &mv.move_type) * 0.925)
+            let mut damage = (base * stab * type_mult * low_hp_power(a, &mv.move_type) * if a.held_tool.as_deref() == Some("life-orb") { 1.3 } else { 1.0 } * 0.925)
                 .floor()
                 .max(if type_mult > 0.0 { 1.0 } else { 0.0 }) as i64;
             let target = &mut defender.team[defender.active_index];
             if (target.ability.as_deref() == Some("sturdy")
-                || target.held_tool.as_deref() == Some("focus-sash"))
+                || (target.held_tool.as_deref() == Some("focus-sash") && !target.held_tool_used))
                 && target.hp == target.max_hp
                 && damage >= target.hp
             {
-                damage = (target.hp - 1).max(0);
+                if target.ability.as_deref() != Some("sturdy") { target.held_tool_used = true; }
+            damage = (target.hp - 1).max(0);
             }
             let dealt = damage.min(target.hp);
             target.hp -= dealt;
@@ -1331,6 +1412,10 @@ mod tests {
             moves: vec![catalog().moves.get(&move_id).unwrap().clone()],
             ability: ability.map(str::to_owned),
             held_tool: None,
+            held_tool_used: false,
+            choice_move: None,
+            regional_form: None,
+            individual_values: None, transformation_kind: None, tera_type: None, original_types: None,
             status: None,
             status_turns: None,
             stages: HashMap::new(),
@@ -1342,13 +1427,13 @@ mod tests {
                 user_id: Uuid::from_u128(1),
                 username: "one".into(),
                 active_index: 0,
-                team: vec![left],
+                team: vec![left], mega_used: false, tera_used: false,
             },
             player2: Side {
                 user_id: Uuid::from_u128(2),
                 username: "two".into(),
                 active_index: 0,
-                team: vec![right],
+                team: vec![right], mega_used: false, tera_used: false,
             },
             events: vec![],
         }
@@ -1406,6 +1491,49 @@ mod tests {
         let mut side = battle(leftovers, fighter(10, 33, None)).player1;
         residual(&mut side, &mut vec![]);
         assert_eq!(active(&side).hp, expected);
+    }
+
+    #[test]
+    fn mega_and_tera_are_canonical_and_persist_per_side_limits() {
+        let mut side = battle(fighter(6, 53, None), fighter(7, 55, None)).player1;
+        side.team.push(fighter(25, 85, None));
+        let attack_before = active(&side).stats.attack;
+        let mega = TransformationRequest { kind: "mega".into(), form_identifier: Some("charizard-mega-x".into()), tera_type: None };
+        apply_transformation(&mut side, &mega).unwrap();
+        assert_eq!(active(&side).types, vec!["fire", "dragon"]);
+        assert_eq!(active(&side).ability.as_deref(), Some("tough-claws"));
+        assert!(active(&side).stats.attack > attack_before);
+        let mut loaded: Side = serde_json::from_value(serde_json::to_value(side).unwrap()).unwrap();
+        assert!(apply_transformation(&mut loaded, &mega).is_err());
+        apply_switch(&mut loaded, 1).unwrap();
+        apply_transformation(&mut loaded, &TransformationRequest { kind: "tera".into(), form_identifier: None, tera_type: Some("electric".into()) }).unwrap();
+        assert_eq!(stab_multiplier(active(&loaded), "electric"), 2.0);
+        assert!(loaded.mega_used && loaded.tera_used);
+        let mut other = battle(fighter(6, 53, None), fighter(7, 55, None)).player1;
+        apply_transformation(&mut other, &TransformationRequest { kind: "tera".into(), form_identifier: None, tera_type: Some("water".into()) }).unwrap();
+        assert_eq!(stab_multiplier(active(&other), "fire"), 1.5);
+        assert_eq!(stab_multiplier(active(&other), "water"), 1.5);
+        assert_eq!(active(&other).types, vec!["water"]);
+    }
+
+    #[test]
+    fn choice_lock_and_sash_consumption_survive_serialization() {
+        let mut game = battle(fighter(150, 94, None), fighter(10, 33, None));
+        game.player1.team[0].held_tool = Some("choice-specs".into());
+        game.player1.team[0].moves.push(catalog().moves[&33].clone());
+        game.player1.team.push(fighter(7, 33, None));
+        game.player2.team[0].held_tool = Some("focus-sash".into());
+        attack(Uuid::nil(), 1, &mut game, true, &catalog().moves[&94]);
+        assert_eq!(active(&game.player2).hp, 1);
+        let mut loaded: Battle = serde_json::from_value(serde_json::to_value(game).unwrap()).unwrap();
+        assert!(active(&loaded.player2).held_tool_used);
+        assert!(selected_move(&loaded.player1, 1).is_err());
+        loaded.player2.team[0].hp = loaded.player2.team[0].max_hp;
+        attack(Uuid::nil(), 2, &mut loaded, true, &catalog().moves[&94]);
+        assert_eq!(active(&loaded.player2).hp, 0);
+        apply_switch(&mut loaded.player1, 1).unwrap();
+        apply_switch(&mut loaded.player1, 0).unwrap();
+        assert!(selected_move(&loaded.player1, 1).is_ok());
     }
 
     #[test]
@@ -1634,7 +1762,7 @@ mod tests {
                 turn: 1,
                 move_index: Some(0),
                 switch_index: None,
-                surrender: false,
+                surrender: false, transformation: None,
             }),
         )
         .await
@@ -1647,7 +1775,7 @@ mod tests {
                 turn: 1,
                 move_index: Some(0),
                 switch_index: None,
-                surrender: false,
+                surrender: false, transformation: None,
             }),
         )
         .await
@@ -1670,7 +1798,7 @@ mod tests {
                 turn: 2,
                 move_index: None,
                 switch_index: None,
-                surrender: true,
+                surrender: true, transformation: None,
             }),
         )
         .await
@@ -1710,7 +1838,7 @@ mod tests {
                 turn: 1,
                 move_index: Some(0),
                 switch_index: None,
-                surrender: false,
+                surrender: false, transformation: None,
             }),
         )
         .await

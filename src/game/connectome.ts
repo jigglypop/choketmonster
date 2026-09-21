@@ -2,8 +2,11 @@ import { Brain, validateGraph, type Graph } from '../core/brain';
 import { clamp } from '../core/random';
 import { getMove, getSpecies } from '../data/pokemon';
 import { typeMultiplier } from './battle';
+import type { PokemonType } from './contracts';
+import { getCombatForm } from '../data/pokemon-combat-forms';
 
-export type NeuralMonster = { instanceId: string; speciesId: number; level: number; hp: number; stats: { hp: number; speed: number }; moves: { pp: number; moveId?: number }[]; status?: string; brain?: ReturnType<Brain['snapshot']> };
+export type NeuralMonster = { instanceId: string; speciesId: number; level: number; hp: number; stats: { hp: number; speed: number }; moves: { pp: number; moveId?: number }[]; types?: readonly PokemonType[]; regionalForm?: string; lockedMoveId?: number; status?: string; brain?: ReturnType<Brain['snapshot']> };
+const monsterTypes = (monster: NeuralMonster) => monster.types ?? (monster.regionalForm ? getCombatForm(monster.regionalForm)?.types : undefined) ?? getSpecies(monster.speciesId).types;
 export type BattleSenseContext = {
   selfStatStages?: Readonly<Record<string, number>>;
   otherStatStages?: Readonly<Record<string, number>>;
@@ -16,18 +19,18 @@ export const BRAIN_ASSUMPTIONS = '실제 신경 연결 일부를 사용합니다
 const SELF_TARGETS = new Set([4, 7, 13, 15]);
 
 export function availableMoveMask(monster: NeuralMonster): [boolean, boolean, boolean, boolean, boolean] {
-  return [0, 1, 2, 3].map(index => !!monster.moves[index]).concat(true) as [boolean, boolean, boolean, boolean, boolean];
+  return [0, 1, 2, 3].map(index => !!monster.moves[index] && (monster.lockedMoveId === undefined || monster.moves[index].moveId === monster.lockedMoveId)).concat(true) as [boolean, boolean, boolean, boolean, boolean];
 }
 
 const FIXED_DAMAGE_MOVES = new Set([12, 32, 49, 69, 82, 90, 101, 149, 162]);
 
 /** Game-only action guard for unattended battles; it does not change observations or learning weights. */
 export function automatedMoveMask(self: NeuralMonster, other: NeuralMonster, _turn: number, context: BattleSenseContext = {}): [boolean, boolean, boolean, boolean, boolean] {
-  const moveMask = availableMoveMask(self), defenderTypes = getSpecies(other.speciesId).types;
+  const moveMask = availableMoveMask(self), defenderTypes = monsterTypes(other);
   // Slot zero is the engine's Struggle fallback when no move slots exist.
   if (!moveMask.slice(0, 4).some(Boolean)) return [true, false, false, false, false];
   const attacks = [0, 1, 2, 3].map(index => {
-    const slot = self.moves[index]; if (!slot || slot.moveId === undefined) return false;
+    const slot = self.moves[index]; if (!moveMask[index] || !slot || slot.moveId === undefined) return false;
     const move = getMove(slot.moveId);
     return move.damageClass !== 'status' && (move.power > 0 || FIXED_DAMAGE_MOVES.has(move.id)) && typeMultiplier(move.type, defenderTypes) > 0;
   });
@@ -45,7 +48,7 @@ export function automatedMoveMask(self: NeuralMonster, other: NeuralMonster, _tu
     }) ?? false;
     const statusTarget = SELF_TARGETS.has(move.targetId ?? 10) ? self : other;
     const ailment = !!move.ailment && move.ailment !== 'none' && !statusTarget.status
-      && !ailmentImmune(move.ailment, getSpecies(statusTarget.speciesId).types);
+      && !ailmentImmune(move.ailment, monsterTypes(statusTarget));
     return healing || stageChange || ailment;
   });
   if (attacks.some(Boolean)) return attacks.concat(false) as [boolean, boolean, boolean, boolean, boolean];
@@ -72,7 +75,7 @@ function ailmentImmune(ailment: string | undefined, types: readonly string[]): b
 
 /** Four fixed-width move signals; preserves schema-1 brains with 12 input columns. */
 export function battleMoveSenses(self: NeuralMonster, other: NeuralMonster, context: BattleSenseContext = {}): [number, number, number, number] {
-  const defenderTypes = getSpecies(other.speciesId).types;
+  const defenderTypes = monsterTypes(other);
   const missingHp = clamp((self.stats.hp - self.hp) / Math.max(1, self.stats.hp), 0, 1);
   return [0, 1, 2, 3].map(index => {
     const slot = self.moves[index];
@@ -98,7 +101,7 @@ export function battleMoveSenses(self: NeuralMonster, other: NeuralMonster, cont
     }
     if (move.ailment && move.ailment !== 'none') {
       const targetSelf = SELF_TARGETS.has(move.targetId ?? 10), target = targetSelf ? self : other;
-      const types = getSpecies(target.speciesId).types;
+      const types = monsterTypes(target);
       signals.push(target.status || ailmentImmune(move.ailment, types) ? -.9 : .55);
     }
     if (!signals.length) signals.push(move.damageClass === 'status' ? -.35 : 0);

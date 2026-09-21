@@ -635,7 +635,7 @@ export class OpenWorldPanel {
         const monster = entity.kind === 'companion' ? ally : entity.id === this.simulation.battleWildId ? enemy : undefined;
         const transformed = monster && battle?.transformations?.[monster.instanceId];
         const speciesId = transformed?.speciesId ?? monster?.speciesId ?? entity.speciesId;
-        const formIdentifier = transformed?.formIdentifier ?? monster?.regionalForm ?? (this.simulation.regionId === 'alola' ? getAlolaCombatForm(speciesId)?.identifier : undefined);
+        const formIdentifier = transformed?.formIdentifier ?? monster?.regionalForm ?? (!monster && this.simulation.regionId === 'alola' ? getAlolaCombatForm(speciesId)?.identifier : undefined);
         const form = formIdentifier ? getCombatForm(formIdentifier) : undefined;
         const stats = transformed?.stats ?? monster?.stats ?? statsFor(getSpecies(entity.speciesId), entity.level);
         const level = monster?.level ?? entity.level;
@@ -924,9 +924,9 @@ export class OpenWorldPanel {
     this.html('#world-moves', Array.from({ length: 4 }, (_, index) => {
       const slot = moveLayout[index]; if (!slot) return `<div class="world-move empty-slot"><span>${index + 1}</span><strong>미습득</strong><small>레벨을 올려 기술을 익히세요</small></div>`;
       const move = getMove(slot.moveId);
-      return `<button data-world-move="${slot.sourceIndex}" data-world-slot="${index}" data-world-move-id="${slot.moveId}" class="world-move type-${move.type}" ${!battle ? 'disabled' : ''} title="${move.damageClass === 'physical' ? '물리' : move.damageClass === 'special' ? '특수' : '변화'} · 우선도 ${move.priority} · 위력 ${move.power || '—'} · 명중 ${move.accuracy || '—'} · 클릭하면 다음 턴에 사용"><span>${index + 1} · ${types[move.type]}</span><strong>${move.name}</strong><small><span class="move-details">위력 ${move.power || '—'} · 명중 ${move.accuracy || '—'}</span></small></button>`;
+      return `<button data-world-move="${slot.sourceIndex}" data-world-slot="${index}" data-world-move-id="${slot.moveId}" class="world-move type-${move.type}" ${!battle || (battle.choiceLocks?.[lead.instanceId] !== undefined && battle.choiceLocks[lead.instanceId] !== slot.moveId) ? 'disabled' : ''} title="${move.damageClass === 'physical' ? '물리' : move.damageClass === 'special' ? '특수' : '변화'} · 우선도 ${move.priority} · 위력 ${move.power || '—'} · 명중 ${move.accuracy || '—'} · 클릭하면 다음 턴에 사용"><span>${index + 1} · ${types[move.type]}</span><strong>${move.name}</strong><small><span class="move-details">위력 ${move.power || '—'} · 명중 ${move.accuracy || '—'}</span></small></button>`;
     }).join(''));
-    this.html('#world-emergency-action', battle && !battle.awaitingSwitch && !moves.length ? '<button id="world-struggle">발버둥</button>' : '');
+    this.html('#world-emergency-action', battle && !battle.awaitingSwitch && (!moves.length || (battle.choiceLocks?.[lead.instanceId] !== undefined && !moves.some(slot => slot.moveId === battle.choiceLocks![lead.instanceId]))) ? '<button id="world-struggle">발버둥</button>' : '');
     const location = this.simulation.locationAt(world.player.x, world.player.z);
     const region = world.regionId as CampaignRegion;
     const badges = getRegionalBadges(game, region);

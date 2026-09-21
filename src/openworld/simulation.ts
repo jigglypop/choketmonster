@@ -12,7 +12,7 @@ import { chooseExpansionEncounter, expansionEncounterSpecies, isExpansionRegion 
 import { gameplayHabitat } from '../game/habitat';
 import { ConnectomeController, type NeuralMonster } from '../game/connectome';
 import { chooseServerBrains, usesServerBrain, type ServerDecision } from '../game/server-brain';
-import { activateBattleTransformation, actBattle, availableEvolutions, battleMonsterTypes, captureDefeatedWild, createMonster, evolve, evolutionRoute, firstUsableRegionalTeamIndex, validateGame, type BallItem, type BattleAction, type BattleTurnResult, type GameState, type Monster } from '../game/engine';
+import { activateBattleTransformation, actBattle, availableEvolutions, battleMonsterView, battleMonsterTypes, captureDefeatedWild, createMonster, evolve, evolutionRoute, firstUsableRegionalTeamIndex, validateGame, type BallItem, type BattleAction, type BattleTurnResult, type GameState, type Monster } from '../game/engine';
 import { monsterRegionalUseReason, needsRegionalStarter } from '../game/regional-policy';
 import { KANTO_START, KANTO_MAP_VERSION } from './kanto';
 import { WORLD_MIN, WORLD_MAX, WORLD_SCALE, migrateSurfaceSnapshotCoordinates, surfaceSceneId } from './world-space';
@@ -287,7 +287,7 @@ export class OpenWorldSimulation {
     if (participants.length) {
       const decisions = await chooseServerBrains(this.battleController, participants.map(monster => {
       const other = monster === player ? enemy : player;
-      const self = { ...monster, ...(battle.transformations?.[monster.instanceId] ?? {}) }, foe = { ...other, ...(battle.transformations?.[other.instanceId] ?? {}) };
+      const self = battleMonsterView(battle, monster), foe = battleMonsterView(battle, other);
       return { self, foe, turn: frame.turn, reward: monster === player ? this.lastPlayerReward : this.lastEnemyReward,
         learning, battleId: this.serverBattleId(battle), context: { automatic: true,
           selfStatStages: battle.statStages?.[monster.instanceId], otherStatStages: battle.statStages?.[other.instanceId] } };
@@ -814,8 +814,7 @@ export class OpenWorldSimulation {
       if (!remote) throw new Error('서버 회로의 해당 턴 결정을 기다리고 있습니다.');
       return { ...remote, rawAction: remote.action };
     }
-    const selfForm = battle.transformations?.[monster.instanceId], otherForm = battle.transformations?.[other.instanceId];
-    const self = { ...monster, ...(selfForm ?? {}), brain: monster.brain }, foe = { ...other, ...(otherForm ?? {}), brain: other.brain };
+    const self = battleMonsterView(battle, monster), foe = battleMonsterView(battle, other);
     const decision = this.battleController.choose(self, foe, battle.turn, reward, learning, {
       automatic: true, selfStatStages: battle.statStages?.[monster.instanceId], otherStatStages: battle.statStages?.[other.instanceId],
     }); monster.brain = self.brain; return decision;

@@ -76,6 +76,7 @@ export function RenderProbe() {
         targetRoutes: scene.getObjectsByProperty('name', 'world-target-route').length,
         loadedPokemon: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('pokemon-model:')).map(object => Number(object.name.slice('pokemon-model:'.length))),
         modelStatuses: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('pokemon-model-status:')).map(object => object.name.slice('pokemon-model-status:'.length)),
+        pokemonForms: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('pokemon-form:') || object.name.startsWith('pokemon-transformation:')).map(object => object.name),
         townBuildings: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('town-building:')).map(object => object.name),
         townPaving: scene.getObjectsByProperty('name', 'town-paving').map(object => {
           const mesh = object as InstancedMesh;

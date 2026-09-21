@@ -31,9 +31,8 @@ async function prepare(context: BrowserContext, index: number) {
   const saved = await context.request.put(`${base}/api/saves/current`, { headers: { origin: base, 'x-choketmon-profile': user.id }, data: { save, revision: 0, requestId: crypto.randomUUID() } });
   expect(saved.ok(), await saved.text()).toBe(true);
   const page = await context.newPage();
-  // The trade test checks real account/DB/UI state; model geometry has a separate scenario.
-  await page.route(/\.(?:glb|gltf)(?:\?.*)?$/, route => route.abort());
   await page.goto(base);
+  await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
   await expect(page.locator('#world-trade-open')).toBeVisible({ timeout: 30_000 });
   await expect(page.locator('#ow-host')).toHaveAttribute('data-paused', 'true');
   return { page, user, game, boxed };

@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { Brain } from '../src/core/brain';
 import { calculateDamage } from '../src/game/battle';
 import { getMove, getSpecies } from '../src/data/pokemon';
+import { FIELD_TRAINERS } from '../src/data/field-trainers';
+import { automatedMoveMask, battleMoveSenses } from '../src/game/connectome';
 import {
-  activateBattleTransformation, assignAlolaForm, assignHeldTool, assignMonsterAbility, captureDefeatedWild, createGame, createMonster, evolve,
+  actBattle, battleMonsterView, challengeFieldTrainer, experienceAtLevel, useItem, activateBattleTransformation, assignAlolaForm, assignHeldTool, assignMonsterAbility, captureDefeatedWild, createGame, createMonster, evolve,
   evolutionPurchaseQuote, ITEM_PRICES, mergeCollectionDuplicates,
   previewCollectionMerge, restoreGame, serializeGame, setAutoMergeDuplicates, statsFor,
 } from '../src/game/engine';
@@ -47,6 +49,28 @@ describe('collection merge options', () => {
 });
 
 describe('transactional evolution purchases', () => {
+  it('does not buy an unusable catalyst or evolve ordinary Vulpix with an Ice Stone', () => {
+    const game = createGame(1, 'invalid-form-purchase'), vulpix = createMonster(game, 37, 30);
+    game.player.box.push(vulpix); game.player.money = 99999;
+    expect(() => evolve(game, vulpix.instanceId, { item: 'ice-stone', autoBuyMissing: true })).toThrow();
+    assignAlolaForm(game, vulpix.instanceId, true);
+    const evolution = getSpecies(37).evolutions.find(e => e.target === 38)!;
+    expect(evolutionPurchaseQuote(game, vulpix, evolution, 'evolution-catalyst').affordable).toBe(false);
+    expect(() => evolve(game, vulpix.instanceId, { item: 'evolution-catalyst', autoBuyMissing: true })).toThrow();
+    expect(game.player.money).toBe(99999); expect(vulpix.speciesId).toBe(37);
+  });
+
+  it('requires night for Alola Marowak and keeps ordinary form families ordinary in Alola', () => {
+    const game = createGame(1, 'regional-evolution'), cubone = createMonster(game, 104, 28), vulpix = createMonster(game, 37, 30);
+    game.player.box.push(cubone, vulpix); game.player.money = 99999;
+    game.evolutionContext = { regionId: 'alola', period: 'day', locationId: '', raining: false, multiplayer: false };
+    expect(() => evolve(game, cubone.instanceId)).toThrow();
+    game.evolutionContext.period = 'night'; evolve(game, cubone.instanceId);
+    expect(cubone.regionalForm).toBe('marowak-alola');
+    evolve(game, vulpix.instanceId, { item: 'fire-stone', autoBuyMissing: true });
+    expect(vulpix.regionalForm).toBeUndefined();
+  });
+
   it('quotes and buys a missing item in the same evolution transaction', () => {
     const game = createGame(1, 'auto-buy'), onix = createMonster(game, 95, 30);
     game.player.team = [onix]; game.player.money = ITEM_PRICES['metal-coat'];
@@ -117,5 +141,69 @@ describe('battle forms', () => {
     expect(raichu.ability?.slug).toBe('surge-surfer');
     expect(restoreGame(serializeGame(game)).player.box[0].regionalForm).toBe('raichu-alola');
     expect(() => assignAlolaForm(game, bulbasaur.instanceId, true)).toThrow();
+  });
+});
+
+
+describe('form and equipment continuity', () => {
+  it('keeps a Choice tool locked through reload and clears the lock on switching', () => {
+    const game = createGame(1, 'choice-persistence'), player = game.player.team[0];
+    player.moves = [33, 45].map(moveId => ({ moveId, pp: getMove(moveId).pp })); player.heldTool = 'choice-band';
+    game.player.team.push(createMonster(game, 7, 5));
+    const enemy = createMonster(game, 143, 100);
+    game.battle = { kind: 'wild', regionId: game.regionId, player: { team: game.player.team, activeIndex: 0 }, enemy: { team: [enemy], activeIndex: 0 }, turn: 1, canRun: true };
+    actBattle(game, { type: 'move', index: 0 }, 4);
+    const loaded = restoreGame(serializeGame(game));
+    const result = actBattle(loaded, { type: 'move', index: 1 }, 4);
+    expect(result.executedMoves[0].moveId).toBe(33);
+    expect(automatedMoveMask(battleMonsterView(loaded.battle!, loaded.player.team[0]), enemy, 2).slice(0, 4)).toEqual([true, false, false, false]);
+    actBattle(loaded, { type: 'switch', index: 1 }, 4);
+    expect(loaded.battle!.choiceLocks?.[player.instanceId]).toBeUndefined();
+  });
+
+  it('consumes Focus Sash once per battle even when HP is restored after reloading', () => {
+    const game = createGame(1, 'sash-persistence'), player = game.player.team[0], enemy = createMonster(game, 150, 100);
+    player.heldTool = 'focus-sash'; enemy.moves = [{ moveId: 94, pp: getMove(94).pp }];
+    game.player.team.push(createMonster(game, 7, 5));
+    game.battle = { kind: 'wild', regionId: game.regionId, player: { team: game.player.team, activeIndex: 0 }, enemy: { team: [enemy], activeIndex: 0 }, turn: 1, canRun: true };
+    actBattle(game, { type: 'wait' }, 0); expect(player.hp).toBe(1);
+    const loaded = restoreGame(serializeGame(game)); loaded.player.team[0].hp = loaded.player.team[0].stats.hp;
+    actBattle(loaded, { type: 'wait' }, 0);
+    expect(loaded.player.team[0].hp).toBe(0); expect(loaded.battle!.awaitingSwitch).toBe('player');
+    expect(loaded.player.team[0].heldTool).toBe('focus-sash');
+  });
+
+  it.each(['mega', 'tera'] as const)('refreshes %s stats and moves after an in-battle level-up before saving', kind => {
+    const game = createGame(4, `form-growth-${kind}`), player = createMonster(game, 6, 10);
+    player.xp = experienceAtLevel(11, getSpecies(6).growthRate) - 1; game.player.team = [player];
+    const trainer = FIELD_TRAINERS.find(trainer => trainer.region === 'kanto' && trainer.team.length > 1)!;
+    expect(trainer).toBeDefined(); challengeFieldTrainer(game, trainer);
+    activateBattleTransformation(game, kind, kind === 'mega' ? { formIdentifier: 'charizard-mega-x' } : { teraType: 'water' });
+    game.battle!.enemy.team[0].hp = 0; actBattle(game, { type: 'wait' }, 4);
+    expect(player.level).toBeGreaterThan(10); expect(game.battle).toBeDefined();
+    expect(restoreGame(serializeGame(game)).battle!.transformations![player.instanceId].moves).toEqual(player.moves);
+  });
+
+  it('separates original and Alola duplicates and preserves Alola growth and ability slots', () => {
+    const game = createGame(1, 'alola-growth'), original = createMonster(game, 37, 10), alola = createMonster(game, 37, 10);
+    game.player.box.push(original, alola); assignAlolaForm(game, alola.instanceId, true); assignMonsterAbility(game, alola.instanceId, 3);
+    expect(previewCollectionMerge(game).totalDonors).toBe(0);
+    game.inventory['rare-candy'] = 1; useItem(game, 'rare-candy', alola.instanceId);
+    const loaded = restoreGame(serializeGame(game)).player.box[1];
+    expect(loaded.level).toBe(11); expect(loaded.ability!.slot).toBe(3);
+    game.player.money = ITEM_PRICES['ice-stone'];
+    expect(() => evolve(game, alola.instanceId, { targetId: 38, item: 'fire-stone', autoBuyMissing: true })).toThrow();
+    evolve(game, alola.instanceId, { targetId: 38, item: 'ice-stone', autoBuyMissing: true });
+    expect(alola.regionalForm).toBe('ninetales-alola'); expect(alola.ability!.slot).toBe(3);
+    expect(game.player.money).toBe(0);
+  });
+
+  it('senses the effective Alola and Tera type instead of the base species type', () => {
+    const game = createGame(1, 'form-senses'), self = createMonster(game, 63, 30), foe = createMonster(game, 19, 30);
+    self.moves = [94, 33].map(moveId => ({ moveId, pp: getMove(moveId).pp }));
+    game.player.box.push(foe); assignAlolaForm(game, foe.instanceId, true);
+    expect(automatedMoveMask(self, foe, 1)[0]).toBe(false);
+    expect(battleMoveSenses(self, foe)[0]).toBeLessThan(battleMoveSenses(self, { ...foe, regionalForm: undefined })[0]);
+    expect(automatedMoveMask(self, { ...foe, types: ['water'] }, 1)[0]).toBe(true);
   });
 });

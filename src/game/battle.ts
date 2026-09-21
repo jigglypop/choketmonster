@@ -54,7 +54,8 @@ export function calculateDamage(attacker: Combatant, defender: Combatant, move: 
   if (multiplier === 0) return { damage: 0, multiplier };
   const abilityPower = lowHpPowerMultiplier(attacker.ability, attacker.hp, attacker.stats.hp, move.type);
   const base = (((2 * attacker.level / 5 + 2) * move.power * attack / defense) / 50) + 2;
-  const damage = Math.max(1, Math.floor(base * stab * multiplier * abilityPower * randomFactor));
+  const toolPower = attacker.heldTool === 'life-orb' ? 1.3 : 1;
+  const damage = Math.max(1, Math.floor(base * stab * multiplier * abilityPower * toolPower * randomFactor));
   if ((hasSturdy(defender.ability) || defender.heldTool === 'focus-sash') && defender.hp === defender.stats.hp && damage >= defender.hp) {
     return { damage: Math.max(0, defender.hp - 1), multiplier, abilityActivation: defender.heldTool === 'focus-sash' && !hasSturdy(defender.ability) ? 'focus-sash' : 'sturdy' };
   }

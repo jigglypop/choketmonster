@@ -1816,6 +1816,28 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
             return Err("전투 팀과 플레이어 팀이 일치하지 않습니다.");
         }
         integer(battle_player.get("activeIndex"), 0, team.len() as i64 - 1)?;
+        if let Some(locks) = battle.get("choiceLocks") {
+            let locks = locks.as_object().ok_or("도구의 기술 고정 기록이 올바르지 않습니다.")?;
+            for (id, move_id) in locks {
+                let monster = team.iter().chain(enemies).find(|monster| monster.get("instanceId").and_then(Value::as_str) == Some(id.as_str()))
+                    .ok_or("도구의 기술 고정 개체가 올바르지 않습니다.")?;
+                if !matches!(monster.get("heldTool").and_then(Value::as_str), Some("choice-band" | "choice-specs" | "choice-scarf"))
+                    || move_id.as_i64().is_none_or(|id| !catalog().moves.contains_key(&id)) {
+                    return Err("도구의 기술 고정 기록이 올바르지 않습니다.");
+                }
+            }
+        }
+        if let Some(consumed) = battle.get("consumedTools") {
+            let consumed = consumed.as_array().ok_or("소모 도구 기록이 올바르지 않습니다.")?;
+            let mut ids = HashSet::new();
+            for id in consumed {
+                let id = id.as_str().ok_or("소모 도구 개체가 올바르지 않습니다.")?;
+                if !ids.insert(id) || !team.iter().chain(enemies).any(|monster| monster.get("instanceId").and_then(Value::as_str) == Some(id)
+                    && monster.get("heldTool").and_then(Value::as_str) == Some("focus-sash")) {
+                    return Err("소모 도구 기록이 올바르지 않습니다.");
+                }
+            }
+        }
         for key in ["playerMegaUsed", "playerTeraUsed"] {
             if battle.get(key).is_some_and(|value| !value.is_boolean()) {
                 return Err("전투 변신 사용 기록이 올바르지 않습니다.");
@@ -1920,6 +1942,9 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
                         let ivs = validate_individual_traits(source, profile.species_id)?;
                         form_stats(&profile.identifier, integer(source.get("level"), 1, 100)?, ivs)?
                     } else {
+                        if form.contains_key("ability") || form.contains_key("formIdentifier") {
+                            return Err("테라스탈 능력치가 올바르지 않습니다.");
+                        }
                         let source_stats = object(source, "stats")?;
                         ["hp", "attack", "defense", "specialAttack", "specialDefense", "speed"].map(|key| source_stats[key].as_i64().unwrap())
                     };
