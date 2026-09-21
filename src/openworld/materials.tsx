@@ -1,7 +1,7 @@
 import { useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import { Color, DataTexture, EquirectangularReflectionMapping, FloatType, LinearFilter, LinearSRGBColorSpace, MeshStandardMaterial, PMREMGenerator, RepeatWrapping, RGBAFormat, SRGBColorSpace, Texture, TextureLoader } from 'three';
-import { MeshStandardNodeMaterial } from 'three/webgpu';
+import { MeshStandardNodeMaterial, type Node } from 'three/webgpu';
 import {
   abs, attribute, color, cos, dot, float, instanceIndex, length, materialColor, materialRoughness, max, min, mix, normalMap, normalView, normalize,
   positionLocal, positionViewDirection, positionWorld, pow, sin, smoothstep, texture, time, vec2, vec3,
@@ -231,8 +231,9 @@ export function createWaterNodeMaterial({
   // and use Three's tangent-space normal mapping on both GPU backends.
   const flowA = positionWorld.xz.mul(.045).add(vec2(clock.mul(.007), clock.mul(.004)));
   const flowB = positionWorld.zx.mul(.061).sub(vec2(clock.mul(.003), clock.mul(.006)));
+  // NormalMapNode's r185 declaration omits its known vec3 result type.
   const waveNormal = waterNormals
-    ? normalMap(texture(waterNormals, flowA).rgb.add(texture(waterNormals, flowB).rgb).mul(.5), vec2(.18, .18))
+    ? normalMap(texture(waterNormals, flowA).rgb.add(texture(waterNormals, flowB).rgb).mul(.5), vec2(.18, .18)) as unknown as Node<'vec3'>
     : normalize(normalView.add(vec3(waveA.mul(.025), 0, waveB.mul(.025))));
   const delta = positionWorld.xz.sub(vec2(center[0], center[1]));
   const shore = lake
@@ -275,11 +276,11 @@ export function SurfaceMaterial(options: SurfaceMaterialOptions) {
 export function createTerrainMaterial(textures: SurfaceTextures, waterNormals: Texture, waterColor: string, detailed = true, shoreline?: Texture) {
   const material = new MeshStandardNodeMaterial({ roughness: .94, metalness: 0, envMapIntensity: .4 });
   applySurfaceNodes(material, textures, 'ground');
-  const groundColor = vec3(material.colorNode!).mul(attribute('color', 'vec3'));
-  const groundRoughness = material.roughnessNode!;
-  const groundNormal = material.normalNode!;
+  const groundColor = (material.colorNode as Node<'vec3'>).mul(attribute<'vec3'>('color', 'vec3'));
+  const groundRoughness = material.roughnessNode as Node<'float'>;
+  const groundNormal = material.normalNode as Node<'vec3'>;
   const coast = shoreline ? texture(shoreline, positionWorld.xz.sub(WORLD_MIN).div(WORLD_MAX - WORLD_MIN)) : undefined;
-  const coverage = coast ? mix(attribute('waterCoverage', 'float'), coast.r, coast.a) : attribute('waterCoverage', 'float');
+  const coverage = coast ? mix(attribute<'float'>('waterCoverage', 'float'), coast.r, coast.a) : attribute<'float'>('waterCoverage', 'float');
   const irregular = sin(positionWorld.x.mul(.35).add(sin(positionWorld.z.mul(.23))))
     .mul(cos(positionWorld.z.mul(.31))).mul(.012);
   const edge = coverage.add(irregular);
@@ -293,7 +294,7 @@ export function createTerrainMaterial(textures: SurfaceTextures, waterNormals: T
   const b = positionWorld.zx.mul(.093).sub(vec2(clock.mul(.002), clock.mul(.003)));
   const waterSample = texture(waterNormals, a).rgb.add(texture(waterNormals, b).rgb).mul(.5);
   const waterNormal = detailed
-    ? normalMap(waterSample, vec2(.22, .22))
+    ? normalMap(waterSample, vec2(.22, .22)) as unknown as Node<'vec3'>
     : normalView;
   if (detailed) {
     const ripple = sin(positionWorld.x.mul(.7).add(positionWorld.z.mul(.5)).sub(clock.mul(.55)));

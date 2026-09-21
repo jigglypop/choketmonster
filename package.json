@@ -34,7 +34,7 @@
     "@types/node": "^24.0.0",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.7",
-    "@types/three": "0.178.1",
+    "@types/three": "0.185.0",
     "csv-parse": "^7.0.2",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
@@ -48,12 +48,12 @@
     "@react-three/fiber": "^9.7.0",
     "@react-three/postprocessing": "^3.1.1",
     "@react-three/rapier": "^2.2.0",
-    "gaesup-world": "1.0.31",
+    "gaesup-world": "1.0.32",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-icons": "^5.7.0",
     "react-router-dom": "^7.18.3",
-    "three": "0.178.0",
+    "three": "0.185.0",
     "three-stdlib": "2.36"
   }
 }

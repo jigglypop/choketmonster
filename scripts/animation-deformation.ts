@@ -22,7 +22,7 @@ function matricesAreFinite(root: Object3D): boolean {
     if (!object.matrixWorld.elements.every(Number.isFinite)) finite = false;
     if (object instanceof SkinnedMesh) {
       object.skeleton.update();
-      if (!Array.from(object.skeleton.boneMatrices).every(Number.isFinite)) finite = false;
+      if (!object.skeleton.boneMatrices?.every(Number.isFinite)) finite = false;
     }
   });
   return finite;

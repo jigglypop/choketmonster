@@ -22,7 +22,7 @@ export async function inspectAppearance(url: string, speciesId: number, normaliz
       if (!(material instanceof MeshStandardMaterial || material instanceof MeshBasicMaterial)) continue;
       const image = material.map?.image;
       let pixels: unknown;
-      if (image && !image.data) {
+      if (image instanceof HTMLImageElement || image instanceof ImageBitmap || image instanceof HTMLCanvasElement || image instanceof OffscreenCanvas) {
         const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
         const context = canvas.getContext('2d', { willReadFrequently: true })!;
         context.drawImage(image, 0, 0);
