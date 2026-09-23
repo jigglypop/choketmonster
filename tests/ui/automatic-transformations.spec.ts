@@ -5,6 +5,7 @@ import { createGame, createMonster } from '../../src/game/engine';
 import { defaultView, packSave } from '../../src/game/storage';
 import { OpenWorldSimulation } from '../../src/openworld/simulation';
 import type { Graph } from '../../src/core/brain';
+import { clickAccountMenu } from './helpers/account-menu';
 
 test('team setup saves Korean Mega choices without a battle click', async ({ page }, info) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
@@ -26,7 +27,7 @@ test('team setup saves Korean Mega choices without a battle click', async ({ pag
   await expect(select.locator('option[value^="tera:"]')).toHaveCount(0);
   for (const value of ['mega:charizard-mega-x', '']) {
     await select.selectOption(value);
-    await page.locator('#save-now').click(); await expect(page.locator('#save-state')).toContainText('저장됨');
+    await clickAccountMenu(page, '#save-now'); await expect(page.locator('#save-state')).toContainText('저장됨');
     await page.reload(); await page.locator('[data-tab="team"]').click();
     await expect(select).toHaveValue(value);
     if (value.startsWith('mega:')) {

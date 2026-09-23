@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { mkdirSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { createGame, createMonster, ITEM_PRICES, type GameState } from '../../src/game/engine';
 import { defaultView, packSave, type SaveEnvelope } from '../../src/game/storage';
 import { OpenWorldSimulation } from '../../src/openworld/simulation';
@@ -37,7 +37,6 @@ test('new adventures offer only the three Johto starters and begin with Gold rec
   await page.locator('[data-starter="155"]').click();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-region', 'johto', { timeout: 30_000 });
   await expect(page.locator('#world-version')).toHaveValue('gold');
-  await expect(page.locator('#world-encounter-layout')).toContainText('골드 고정');
 });
 
 test('the Johto map presents the next campaign challenge and destination', async ({ page }) => {
@@ -106,7 +105,7 @@ for (const fixture of [
   await expect(page.locator('#world-combatants .world-combatant')).toHaveCount(2);
 });
 
-test('battle keeps the shop and safe box operations available while protecting the active monster', async ({ page }) => {
+test('battle keeps the shop available', async ({ page }) => {
   await page.unroute('**/api/connectome');
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: true, graphId: 'test-full' } }));
   let requestStarted!: () => void, releaseRequest!: () => void;
@@ -140,21 +139,7 @@ test('battle keeps the shop and safe box operations available while protecting t
   await page.locator('[data-world-buy="potion"][data-quantity="1"]').click();
   await expect(page.locator('#money')).toHaveText(`₩${(money - ITEM_PRICES.potion).toLocaleString('ko-KR')}`);
 
-  const opening = page.locator('#world-box-open').click();
-  await expect(page.locator('#world-box-dialog')).not.toHaveAttribute('open', '');
-  releaseRequest(); await opening;
-  const dialog = page.getByRole('dialog', { name: '팀 · 박스 관리' });
-  await expect(dialog).toBeVisible();
-  mkdirSync('artifacts/ui-campaign-checks', { recursive: true });
-  await page.setViewportSize({ width: 390, height: 844 });
-  await dialog.screenshot({ path: 'artifacts/ui-campaign-checks/battle-box-mobile.png' });
-  await expect(dialog.locator('[data-world-deposit="0"]')).toBeDisabled();
-  await expect(dialog.locator('[data-world-deposit="1"]')).toBeEnabled();
-  await dialog.locator('[data-world-deposit="1"]').click();
-  await expect(dialog.getByRole('heading', { name: '팀 1/6' })).toBeVisible();
-  await expect(dialog.locator('[data-world-withdraw]')).toHaveCount(2);
-  await dialog.locator('[data-world-withdraw="0"]').click();
-  await expect(dialog.getByRole('heading', { name: '팀 2/6' })).toBeVisible();
+  releaseRequest();
 });
 
 test('top team navigation settles an in-flight neural turn before allowing a safe deposit', async ({ page }) => {

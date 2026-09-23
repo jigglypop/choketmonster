@@ -9,5 +9,4 @@
 .regional-starter-options strong { font-size:19px; font-weight:300; }
 .regional-starter-options span { font-size:12px; color:var(--ui-muted); }
 .regional-starter-dialog .regional-starter-error { color:var(--ui-danger); }
-#world-regional-rule { font-size:12px; color:var(--ui-hud-muted); line-height:1.5; }
 @media(max-width:460px) { .regional-starter-dialog { padding:20px 16px; } .regional-starter-options { gap:6px; } .regional-starter-options img { width:70px; height:70px; } .regional-starter-options strong { font-size:17px; } }

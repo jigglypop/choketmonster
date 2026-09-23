@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { openExplorePanel } from './helpers/explore-panel';
+import { selectVisibleWild } from './helpers/select-wild';
 
 test('nameplates are opt-in and selection stays at bottom left on desktop and mobile', async ({ page }) => {
   test.setTimeout(90000);
@@ -22,8 +23,7 @@ test('nameplates are opt-in and selection stays at bottom left on desktop and mo
   await expect.poll(() => page.evaluate(() => (window as any).__renderProbe.read().nameplates)).toBeGreaterThan(0);
   await labels.click();
   await expect.poll(() => page.evaluate(() => (window as any).__renderProbe.read().nameplates)).toBe(0);
-  await page.locator('.world-objective summary').click();
-  await page.locator('[data-world-wild]').first().click();
+  await selectVisibleWild(page);
   const target = page.locator('#world-target');
   await expect(target).toBeVisible();
   await expect(target).toContainText('HP');

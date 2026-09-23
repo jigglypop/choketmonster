@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { mockAuthenticatedSession, QA_PROFILE } from './helpers/authenticated-session';
+import { clickAccountMenu } from './helpers/account-menu';
 
 test('requires login before loading the game, restores illustrated loading and returns to login after logout', async ({ page }, info) => {
   let authenticated = false;
@@ -44,7 +45,7 @@ test('requires login before loading the game, restores illustrated loading and r
   await page.locator('[data-starter="152"]').click();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30000 });
   await expect(page.locator('.adventure-loading')).toHaveCount(0);
-  await page.locator('.logout-button').click();
+  await clickAccountMenu(page, '.logout-button');
   await expect(form).toBeVisible({ timeout: 30000 });
   await expect(page.locator('#app')).toBeEmpty();
 });
@@ -67,7 +68,7 @@ test('pauses an expired session and resumes only after successful reauthenticati
   await page.routeWebSocket('**', socket => socket.close());
   await page.goto('/'); await page.locator('[data-starter="152"]').click();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30000 });
-  expired = true; await page.locator('#save-now').click();
+  expired = true; await clickAccountMenu(page, '#save-now');
   const dialog = page.locator('.account-dialog');
   await expect(dialog).toBeVisible();
   await expect(page.locator('#screen')).toHaveJSProperty('inert', true);

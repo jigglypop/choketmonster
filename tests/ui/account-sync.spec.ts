@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { createGame } from '../../src/game/engine';
 import { defaultView, packSave } from '../../src/game/storage';
 import type { Graph } from '../../src/core/brain';
+import { clickAccountMenu } from './helpers/account-menu';
 const graph = JSON.parse(readFileSync(new URL('../../public/data/connectome.json', import.meta.url), 'utf8')) as Graph;
 
 const save = (marker: string, savedAt = new Date().toISOString()) => ({ format: 'choketmon', version: 2, model: 'pokemon-recurrent-v1', savedAt, graph: {}, game: { marker }, view: {} });
@@ -308,7 +309,7 @@ test('account panel serializes login and logout lifecycle callbacks', async ({ p
   await expect(page.locator('.account-name')).toContainText('trainer');
   await expect(page.locator('.account-dialog')).toBeHidden();
   await expect.poll(() => page.evaluate(() => (window as typeof window & { accountEvents?: string[] }).accountEvents)).toContain('after-login');
-  await page.locator('.logout-button').click();
+  await clickAccountMenu(page, '.logout-button');
   await expect(page.locator('[data-open-auth]')).toBeVisible();
   await expect.poll(() => page.evaluate(() => (window as typeof window & { accountEvents?: string[] }).accountEvents)).toContain('after-logout');
   expect(requests).toEqual(['login', 'logout']);

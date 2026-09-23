@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { openExplorePanel } from './helpers/explore-panel';
+import { clickAccountMenu } from './helpers/account-menu';
 
 test.skip(!process.env.CHOKETMON_LIVE_AUTH, 'Requires an explicitly selected Rust/PostgreSQL server.');
 
@@ -78,7 +79,7 @@ test('account save continues locally after logout and restores Johto from the se
   expect(remote.body.save.view.openWorld.regionId).toBe('johto');
   const savedSeed = remote.body.save.game.seed;
 
-  await page.locator('.logout-button').click();
+  await clickAccountMenu(page, '.logout-button');
   await expect(page.locator('[data-open-auth]')).toBeVisible({ timeout: 30000 });
   expect((await (await page.request.get('/api/auth/me')).json()).user).toBeNull();
   await page.reload();

@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createGame } from '../../src/game/engine';
 import { defaultView, packSave } from '../../src/game/storage';
 import { OpenWorldSimulation } from '../../src/openworld/simulation';
+import { clickAccountMenu } from './helpers/account-menu';
 
 test.skip(!process.env.CHOKETMON_LIVE_AUTH, 'Requires an explicitly selected Rust/PostgreSQL server.');
 test.setTimeout(120000);
@@ -29,7 +30,7 @@ test('real Rust logout clears the cookie and continues the saved adventure after
   await page.goto('/?renderProbe');
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 45000 });
   await expect(page.locator('.logout-button')).toBeEnabled();
-  await page.locator('.logout-button').click();
+  await clickAccountMenu(page, '.logout-button');
   await expect(page.locator('[data-open-auth]')).toBeEnabled({ timeout: 30000 });
   expect((await (await page.request.get('/api/auth/me')).json()).user).toBeNull();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-paused', 'false');

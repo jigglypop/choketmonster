@@ -107,12 +107,13 @@ class GameAudioEngine {
     let pending = this.cryBuffers.get(speciesId);
     if (!pending) {
       // Cache only a small working set. The immutable source is recorded in docs/audio-sources.md.
-      pending = fetch(pokemonCryUrl(speciesId), { signal: AbortSignal.timeout(8000) })
-        .then(async response => response.ok ? context.decodeAudioData(await response.arrayBuffer()) : null).catch(() => null);
+      pending = loadCry(context, speciesId);
       this.cryBuffers.set(speciesId, pending);
       if (this.cryBuffers.size > 32) this.cryBuffers.delete(this.cryBuffers.keys().next().value!);
     }
     const buffer = await pending;
+    // A failed download must not silence this species for the rest of the session.
+    if (!buffer && this.cryBuffers.get(speciesId) === pending) this.cryBuffers.delete(speciesId);
     if (!buffer || this.context !== context || serial !== this.crySerial || this.settings.muted || document.hidden || context.state !== 'running') return;
     for (const previous of this.cryNodes) { try { previous.stop(); } catch { /* Ended. */ } }
     const source = context.createBufferSource(); source.buffer = buffer; source.connect(destination);
@@ -188,8 +189,24 @@ class GameAudioEngine {
   }
 }
 
-export function pokemonCryUrl(speciesId: number): string {
-  return `https://raw.githubusercontent.com/PokeAPI/cries/ef687b18f0ce17169b4b4c09175819f7ade92f0f/cries/pokemon/latest/${speciesId}.ogg`;
+const CRY_COMMIT = 'ef687b18f0ce17169b4b4c09175819f7ade92f0f';
+/** Same pinned PokeAPI/cries file: the jsDelivr mirror first, GitHub raw as the fallback. */
+export function pokemonCryUrls(speciesId: number): readonly string[] {
+  return [
+    `https://cdn.jsdelivr.net/gh/PokeAPI/cries@${CRY_COMMIT}/cries/pokemon/latest/${speciesId}.ogg`,
+    `https://raw.githubusercontent.com/PokeAPI/cries/${CRY_COMMIT}/cries/pokemon/latest/${speciesId}.ogg`,
+  ];
+}
+export function pokemonCryUrl(speciesId: number): string { return pokemonCryUrls(speciesId)[0]; }
+
+async function loadCry(context: AudioContext, speciesId: number): Promise<AudioBuffer | null> {
+  for (const url of pokemonCryUrls(speciesId)) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(6000) });
+      if (response.ok) return await context.decodeAudioData(await response.arrayBuffer());
+    } catch { /* Try the next mirror. */ }
+  }
+  return null;
 }
 
 let engine: GameAudioEngine | undefined;
@@ -207,16 +224,16 @@ export function attachGameAudio(target: Document | HTMLElement = document): () =
     if (event instanceof KeyboardEvent && ['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) return;
     void instance.unlock();
   };
-  target.addEventListener('pointerdown', unlock, { passive: true });
-  target.addEventListener('keydown', unlock);
+  // Capture phase: a control that stops propagation must still count as the unlocking gesture.
+  const gestures = ['pointerdown', 'keydown', 'click', 'touchend'] as const;
+  for (const type of gestures) target.addEventListener(type, unlock, { capture: true, passive: true });
   owner.addEventListener('visibilitychange', instance.handleVisibility);
   attachments++;
   let attached = true;
   return () => {
     if (!attached) return;
     attached = false;
-    target.removeEventListener('pointerdown', unlock);
-    target.removeEventListener('keydown', unlock);
+    for (const type of gestures) target.removeEventListener(type, unlock, { capture: true });
     owner.removeEventListener('visibilitychange', instance.handleVisibility);
     attachments = Math.max(0, attachments - 1);
     if (!attachments) { instance.destroy(); engine = undefined; }

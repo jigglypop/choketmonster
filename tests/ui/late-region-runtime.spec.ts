@@ -6,6 +6,7 @@ import { createGame, createMonster } from '../../src/game/engine';
 import { defaultView, packSave } from '../../src/game/storage';
 import { isPlayableWorldRegion } from '../../src/openworld/availability';
 import { OpenWorldSimulation } from '../../src/openworld/simulation';
+import { clickAccountMenu } from './helpers/account-menu';
 
 const graph=JSON.parse(readFileSync('public/data/connectome.json','utf8')) as Graph;
 const policy=JSON.parse(readFileSync('public/data/openworld-policy.json','utf8')) as FieldPolicy;
@@ -62,7 +63,7 @@ for(const [region,partner,source] of cases)test(`${region} loads exact ${source}
   expect(target).toBeDefined();const marker=page.locator(`[data-location-id="${target.id}"]`);await marker.focus();await marker.press('Enter');await expect(page.locator('#world-map-dialog')).not.toBeVisible();await expect(page.locator('#world-position')).not.toHaveText(before,{timeout:20_000});
 
   await page.locator('#world-pause').click();await expect(page.locator('#ow-host')).toHaveAttribute('data-paused','true');
-  const moved=await page.locator('#world-position').innerText();await page.locator('#save-now').click();await expect(page.getByRole('status')).toContainText('저장했습니다');await page.reload();
+  const moved=await page.locator('#world-position').innerText();await clickAccountMenu(page, '#save-now');await expect(page.getByRole('status')).toContainText('저장했습니다');await page.reload();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-region',region,{timeout:45_000});await expect(page.locator('#ow-host')).toHaveAttribute('data-ready','true',{timeout:45_000});await expect(page.locator('#world-position')).toHaveText(moved,{timeout:45_000});
   await expectExactModel(page,partner);await expectNoRuntimeErrors(page,errors);await testInfo.attach(`${region}-${partner}-restored`,{body:await page.screenshot(),contentType:'image/png'});
 });

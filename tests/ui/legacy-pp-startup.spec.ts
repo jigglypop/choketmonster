@@ -6,6 +6,7 @@ import { getMove } from '../../src/data/pokemon';
 import { defaultView, packSave } from '../../src/game/storage';
 import { OpenWorldSimulation } from '../../src/openworld/simulation';
 import type { Graph } from '../../src/core/brain';
+import { clickAccountMenu } from './helpers/account-menu';
 
 for (const [inBattle, legacyTera] of [[false, false], [true, false], [true, true]]) test(`starts from an existing save with obsolete PP and keeps progress after reload (battle=${inBattle}, tera=${legacyTera})`, async ({ page }, info) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
@@ -48,7 +49,7 @@ for (const [inBattle, legacyTera] of [[false, false], [true, false], [true, true
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30000 });
   await page.locator('[data-tab="team"]').click();
   await expect(page.locator(`.monster-card[data-monster="${monster.instanceId}"]`)).toContainText('고라파덕');
-  await page.locator('#save-now').click(); await expect(page.locator('#save-state')).toContainText('저장됨');
+  await clickAccountMenu(page, '#save-now'); await expect(page.locator('#save-state')).toContainText('저장됨');
   const saved = await page.evaluate(async slot => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => { const request = indexedDB.open('choketmon-151', 2); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
     const save = await new Promise<any>((resolve, reject) => { const tx = db.transaction('saves', 'readonly'), request = tx.objectStore('saves').get(slot); tx.oncomplete = () => resolve(request.result); tx.onerror = () => reject(tx.error); });

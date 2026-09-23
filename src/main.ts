@@ -43,6 +43,7 @@ import './openworld/social.css';
 import './ui/fonts.css';
 import './ui/collection-layout.css';
 import './ui/hud-layout.css';
+import './ui/glass.css';
 import { mountInterfaceSettings } from './ui/settings';
 import { transformationPreference, transformationSettingsHtml } from './ui/transformation-settings';
 import { confirmAction } from './ui/confirm-action';
@@ -95,7 +96,7 @@ let serverConnectome: { available: boolean; graphId?: string; kind?: string; nod
 app.innerHTML = `
   <header class="topbar"><a class="brand" href="#" aria-label="초켓몬스터 홈" title="초켓몬스터"></a>
     <nav aria-label="주 메뉴"><button data-tab="map" class="active">모험</button><button data-tab="team">팀 · 박스</button><button data-tab="dex">도감</button><button data-tab="shop">상점</button><button data-tab="ranked">랭크전</button></nav>
-    <div class="trainer-summary"><span id="money">₩0</span><span id="badges">도감 0/${PLAYABLE_SPECIES_IDS.length}</span><span id="save-state" class="save-state" data-state="local" aria-live="polite"><i></i> 이 기기에 저장됨</span><button id="save-now" class="quiet">지금 저장</button><span class="device-storage">이 기기에 저장</span><span id="account-controls"></span><button id="open-interface-settings" class="interface-settings-trigger" aria-label="화면 설정" title="화면 설정"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3" fill="var(--ui-surface, white)"/><circle cx="15" cy="17" r="3" fill="var(--ui-surface, white)"/></svg><span>화면 설정</span></button></div></header>
+    <div class="trainer-summary"><span id="money">₩0</span><span id="badges">도감 0/${PLAYABLE_SPECIES_IDS.length}</span><button id="open-interface-settings" class="interface-settings-trigger" aria-label="화면 설정" title="화면 설정"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3" fill="var(--ui-surface, white)"/><circle cx="15" cy="17" r="3" fill="var(--ui-surface, white)"/></svg><span>화면 설정</span></button><details class="account-menu"><summary aria-label="계정·저장" title="계정·저장"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="8.5" r="3.6"/><path d="M4.8 20c.9-3.8 3.7-5.8 7.2-5.8s6.3 2 7.2 5.8"/></svg><i class="account-menu-dot" aria-hidden="true"></i></summary><div class="account-menu-panel"><span id="save-state" class="save-state" data-state="local" aria-live="polite"><i></i> 이 기기에 저장됨</span><button id="save-now" class="quiet">지금 저장</button><span class="device-storage">이 기기에 저장</span><span id="account-controls"></span></div></details></div></header>
   <main id="screen" tabindex="-1"></main>
   <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true" popover="manual" hidden></div><input id="import-file" type="file" accept="application/json" hidden>
   <dialog id="starter-dialog" class="starter-dialog"><div class="starter-copy"><span class="kicker">NEW BARK LAB · 첫 파트너</span><h1>성도에서 함께 떠날<br>포켓몬을 선택하세요</h1><p>선택한 한 마리만 처음 팀에 들어옵니다. 각 개체는 서로 다른 회로 상태와 학습 기록을 이 기기에 보관합니다.</p><div class="starter-account"><span>진행 상황은 이 브라우저의 IndexedDB에 자동 저장됩니다.</span><button type="button" class="quiet" data-load-account>계정 저장 불러오기</button></div></div><div class="starter-grid">
@@ -122,6 +123,11 @@ const headerObserver = new ResizeObserver(([entry]) => {
 });
 headerObserver.observe($('.topbar'), { box: 'border-box' });
 if (import.meta.hot) import.meta.hot.dispose(() => headerObserver.disconnect());
+const accountMenu = $<HTMLDetailsElement>('.account-menu');
+const closeAccountMenu = (event: Event) => { if (accountMenu.open && !(event.target instanceof Node && accountMenu.contains(event.target))) accountMenu.open = false; };
+document.addEventListener('pointerdown', closeAccountMenu, { capture: true });
+accountMenu.addEventListener('keydown', event => { if (event.key === 'Escape') { accountMenu.open = false; accountMenu.querySelector('summary')!.focus(); } });
+if (import.meta.hot) import.meta.hot.dispose(() => document.removeEventListener('pointerdown', closeAccountMenu, { capture: true }));
 const detachAudio = attachGameAudio();
 if (import.meta.hot) import.meta.hot.dispose(detachAudio);
 const soundButton = document.createElement('button'); soundButton.id = 'game-sound-toggle'; soundButton.className = 'quiet';

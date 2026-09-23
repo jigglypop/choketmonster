@@ -5,6 +5,7 @@ import { createGame, createMonster } from '../../src/game/engine';
 import { defaultView, packSave } from '../../src/game/storage';
 import { OpenWorldSimulation } from '../../src/openworld/simulation';
 import { openExplorePanel } from './helpers/explore-panel';
+import { clickAccountMenu } from './helpers/account-menu';
 
 test.setTimeout(90000);
 async function start(page: Page, phase: 'field' | 'battle' | 'capture' = 'field') {
@@ -53,7 +54,7 @@ test('returns to auto after keyboard inactivity, while pause and the map suspend
   await page.locator('#world-map-close').click();
   await expect(page.locator('#world-mode-auto')).toHaveAttribute('aria-pressed', 'true', { timeout: 10000 });
   await page.locator('#world-pause').click();
-  await page.locator('#save-now').click();
+  await clickAccountMenu(page, '#save-now');
   await expect(page.locator('#toast')).toContainText('저장');
   await page.reload();
   await openExplorePanel(page);

@@ -1,5 +1,6 @@
 import { mockAuthenticatedSession } from './helpers/authenticated-session';
 import { test, expect, type Page } from '@playwright/test';
+import { clickAccountMenu } from './helpers/account-menu';
 
 async function authenticated(page: Page) {
   await mockAuthenticatedSession(page);
@@ -83,7 +84,7 @@ test('3D loading stays until the real partner model draws and also covers save r
   release();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
   await expect(loading).toHaveCount(0);
-  await page.locator('#save-now').click();
+  await clickAccountMenu(page, '#save-now');
   await expect(page.locator('#save-state')).toHaveAttribute('data-state', /local|saved|synced/);
   await page.reload();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });

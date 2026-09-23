@@ -5,6 +5,7 @@ import type { FieldPolicy } from '../../src/game/field';
 import { createGame, createMonster } from '../../src/game/engine';
 import { defaultView, packSave } from '../../src/game/storage';
 import { OpenWorldSimulation } from '../../src/openworld/simulation';
+import { clickAccountMenu } from './helpers/account-menu';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
 const policy = JSON.parse(readFileSync('public/data/openworld-policy.json', 'utf8')) as FieldPolicy;
@@ -45,7 +46,7 @@ test('evolves a non-participating box Pokemon while keeping the battle participa
   await expect(page.locator('.detail-title h2')).toHaveText('이상해풀');
   await expect(page.locator(`[data-monster="${boxed.instanceId}"]`)).toContainText('이상해풀');
 
-  await page.locator('#save-now').click();
+  await clickAccountMenu(page, '#save-now');
   await expect(page.locator('#save-state')).toContainText('저장됨');
   const restored = await page.evaluate(async () => {
     const modulePath = '/src/game/storage.ts';

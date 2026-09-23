@@ -5,6 +5,7 @@ import { ConnectomeController } from '../../src/game/connectome';
 import { initialEvolutionProgress } from '../../src/game/evolution-progress';
 import { getMove } from '../../src/data/pokemon';
 import { defaultView, packSave } from '../../src/game/storage';
+import { clickAccountMenu } from './helpers/account-menu';
 
 const output = 'artifacts/evolution-completeness/ui';
 
@@ -92,7 +93,7 @@ test('removes friendship evolution UI and uses the explicit capsule substitute, 
   expect(await page.locator('#team-detail').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
 
   await page.setViewportSize({ width: 1440, height: 1100 });
-  await page.locator('#save-now').click();
+  await clickAccountMenu(page, '#save-now');
   await expect(page.locator('#save-state')).toContainText('저장됨');
   await page.reload();
   await expect(page.locator('#starter-dialog')).toBeHidden();

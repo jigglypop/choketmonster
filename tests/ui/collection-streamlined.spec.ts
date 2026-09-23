@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { createGame, createMonster, ITEM_PRICES, speciesAbilities } from '../../src/game/engine';
 import { defaultView, packSave } from '../../src/game/storage';
 import type { Graph } from '../../src/core/brain';
+import { clickAccountMenu } from './helpers/account-menu';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
 test.use({ channel: 'chrome', headless: false, launchOptions: { args: ['--enable-unsafe-webgpu'] } });
@@ -49,7 +50,7 @@ test('search, bulk merge, automatic merge setting and assignment persist on mobi
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: testInfo.outputPath('collection-mobile.png'), fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.locator('#save-now').click();
+  await clickAccountMenu(page, '#save-now');
   await expect(page.locator('#save-state')).toContainText('저장됨');
   await page.reload();
   await page.locator('[data-tab="team"]').click();
@@ -114,7 +115,7 @@ test('Alola appearance and Mega or Tera battle controls use persistent game stat
   await page.locator('[data-battle-transformation="tera"]').click();
   await expect(page.locator('[data-transformation-active="tera"]')).toHaveText('물 테라스탈');
   await expect(page.locator('.player.combatant .type-water')).toBeVisible();
-  await page.locator('#save-now').click();
+  await clickAccountMenu(page, '#save-now');
   await expect(page.locator('#save-state')).toContainText('저장됨');
   await page.reload();
   await expect(page.locator('[data-transformation-active="tera"]')).toHaveText('물 테라스탈');

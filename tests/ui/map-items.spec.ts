@@ -7,6 +7,7 @@ import { defaultView, packSave } from '../../src/game/storage';
 import { OpenWorldSimulation } from '../../src/openworld/simulation';
 import { mockAuthenticatedSession } from './helpers/authenticated-session';
 import { buildExplorationSites } from '../../src/openworld/exploration-sites';
+import { clickAccountMenu } from './helpers/account-menu';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
 test('roadside items render in 3D, collect once, persist and show acquisition sources on the searchable map', async ({ page }, info) => {
@@ -28,7 +29,7 @@ test('roadside items render in 3D, collect once, persist and show acquisition so
   await expect.poll(() => page.evaluate(id => (window as any).__renderProbe.read().fieldItems.some((item: any) => item.itemId === id && item.drawn > 0), item.itemId), { timeout: 20000 }).toBe(true);
   await page.screenshot({ path: info.outputPath('roadside-pickup.png'), fullPage: true });
   await pickup.click(); await expect(page.locator('#toast')).toContainText(`${item.name} +1`); await expect(pickup).toHaveCount(0);
-  await page.locator('#save-now').click(); await expect(page.locator('#save-state')).toContainText('저장됨');
+  await clickAccountMenu(page, '#save-now'); await expect(page.locator('#save-state')).toContainText('저장됨');
   await page.reload(); await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 45_000 });
   await expect(pickup).toHaveCount(0);
   await page.locator('[data-tab="team"]').click();

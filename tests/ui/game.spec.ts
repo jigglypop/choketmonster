@@ -5,6 +5,7 @@ import { createGame, createMonster, type GameState } from '../../src/game/engine
 import { ConnectomeController } from '../../src/game/connectome';
 import { packSave, defaultView } from '../../src/game/storage';
 import type { Graph } from '../../src/core/brain';
+import { clickAccountMenu } from './helpers/account-menu';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
 const controller = new ConnectomeController(graph);
@@ -40,7 +41,7 @@ test('guest save UI restores locally and shows server connectome status', async 
   await expect(page.locator('.graph-numbers')).toContainText('브라우저 뉴런');
   await expect(page.locator('.server-circuit')).toContainText('139,255'); await expect(page.locator('.server-circuit')).toContainText('52,496,440');
   await page.screenshot({ path: 'artifacts/ui-lab-server.png', fullPage: true });
-  await page.locator('#save-now').click(); await expect(page.locator('#save-state')).toContainText('이 기기에 저장됨');
+  await clickAccountMenu(page, '#save-now'); await expect(page.locator('#save-state')).toContainText('이 기기에 저장됨');
   await page.reload(); await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 20_000 });
   await page.locator('[data-tab="team"]').click(); await expect(page.locator('.detail-title h2')).toHaveText('치코리타');
   expect(apiWrites.filter(path => path.startsWith('/api/auth/') || path.startsWith('/api/saves/'))).toEqual([]);
@@ -109,7 +110,7 @@ test('browser capture, candy, evolution, save/reload and validated import', asyn
   await expect(page.locator('[data-evolve="2"]')).toBeEnabled();
   await page.locator('[data-evolve="2"]').click();
   await expect(page.locator('.detail-title h2')).toHaveText('이상해풀');
-  await page.locator('#save-now').click(); await expect(page.getByRole('status')).toContainText('저장했습니다');
+  await clickAccountMenu(page, '#save-now'); await expect(page.getByRole('status')).toContainText('저장했습니다');
   await page.reload(); await page.locator('[data-tab="team"]').click();
   await expect(page.locator('.detail-title h2')).toHaveText('이상해풀');
   const save = await exported(page);
@@ -142,7 +143,7 @@ test('feeds several rare candies with a level preview and keeps the selected ind
   await expect(page.locator('#toast')).toContainText('이상한사탕 3개');
   await expect(page.locator('.detail-title > p')).toContainText('Lv.18');
   await expect(page.locator('.team-monster.selected')).toHaveAttribute('data-monster', mon.instanceId);
-  await page.locator('#save-now').click(); await page.reload(); await page.locator('[data-tab="team"]').click();
+  await clickAccountMenu(page, '#save-now'); await page.reload(); await page.locator('[data-tab="team"]').click();
   await expect(page.locator('.detail-title > p')).toContainText('Lv.18');
   await expect(page.locator('#use-candy')).toContainText('최대 1개');
   expect(errors).toEqual([]);

@@ -5,6 +5,7 @@ import { createGame, createMonster, ITEM_PRICES, SHOP_ITEMS } from '../../src/ga
 import { defaultView, packSave } from '../../src/game/storage';
 import { OpenWorldSimulation } from '../../src/openworld/simulation';
 import type { Graph } from '../../src/core/brain';
+import { clickAccountMenu } from './helpers/account-menu';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
 test('shop quantities, held-tool stock, healing and treats persist on mobile', async ({ page }, info) => {
@@ -49,7 +50,7 @@ test('shop quantities, held-tool stock, healing and treats persist on mobile', a
   await page.locator('.item-use-fold > summary').click();
   await expect(page.locator('.treat-use').filter({ has: page.locator('[data-use-treat="beauty-treat"]') })).toContainText('60/255');
   await expect(page.locator('.treat-use').filter({ has: page.locator('[data-use-treat="affection-treat"]') })).toContainText('2/255');
-  await page.locator('#save-now').click(); await expect(page.locator('#save-state')).toContainText('저장됨');
+  await clickAccountMenu(page, '#save-now'); await expect(page.locator('#save-state')).toContainText('저장됨');
   await page.reload(); await page.locator('[data-tab="team"]').click();
   await expect(page.locator('#monster-tool')).toHaveValue('life-orb');
   await page.locator('[data-tab="shop"]').click();

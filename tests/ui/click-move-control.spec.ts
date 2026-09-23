@@ -66,7 +66,7 @@ for (const scenario of [
       const scope = window as unknown as { stableLocationMutations: number };
       scope.stableLocationMutations = 0;
       const observer = new MutationObserver(records => { scope.stableLocationMutations += records.length; });
-      for (const selector of ['#world-biome', '#world-location-short', '#world-explore-short', '#world-zone-level', '#world-next-guide']) {
+      for (const selector of ['#world-location-short', '#world-explore-short', '#world-next-guide']) {
         observer.observe(document.querySelector(selector)!, { attributes: true, childList: true, characterData: true, subtree: true });
       }
     });

@@ -4,6 +4,7 @@ import { createGame, createMonster } from '../../src/game/engine';
 import { ConnectomeController } from '../../src/game/connectome';
 import { defaultView, packSave } from '../../src/game/storage';
 import { OpenWorldSimulation } from '../../src/openworld/simulation';
+import { clickAccountMenu } from './helpers/account-menu';
 
 // Explicit release check: never creates accounts during the ordinary UI suite.
 test.skip(process.env.CHOKETMON_LIVE_EVOLUTION !== '1', 'enable only for an authorized production release check');
@@ -52,7 +53,7 @@ test('production account restores legacy friendship data but evolves through cap
   await expect(page.locator('[data-evolve="416"]')).toBeDisabled();
   await page.locator('[data-capsule-evolve="416"]').click();
   await expect(page.locator('.detail-title h2')).toHaveText('비퀸');
-  await page.locator('#save-now').click();
+  await clickAccountMenu(page, '#save-now');
   let persisted: any;
   await expect.poll(async () => {
     const response = await request.get(`${baseURL}/api/saves/current`, { headers });

@@ -88,10 +88,6 @@ try {
       await capture(page, `${key}-trainer-dialog`);
       await page.locator('#world-trainer-close').click();
       await page.locator('.world-shop').evaluate(node => node.setAttribute('open', ''));
-      await page.locator('#world-box-open').click();
-      await expect(page.locator('#world-box-dialog')).toBeVisible();
-      await capture(page, `${key}-box-dialog`);
-      await page.locator('#world-box-close').click();
     }
     await page.locator('#world-trainer-open').click();
     await page.locator('[data-trainer-battle]:not(:disabled)').first().click();

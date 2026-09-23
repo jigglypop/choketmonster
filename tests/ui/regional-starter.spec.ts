@@ -4,6 +4,7 @@ import { createGame, createMonster } from '../../src/game/engine';
 import { defaultView, packSave } from '../../src/game/storage';
 import { OpenWorldSimulation } from '../../src/openworld/simulation';
 import { openExplorePanel } from './helpers/explore-panel';
+import { clickAccountMenu } from './helpers/account-menu';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8'));
 const policy = JSON.parse(readFileSync('public/data/openworld-policy.json', 'utf8'));
@@ -70,13 +71,8 @@ test('a legacy Kanto champion receives one local Hoenn starter without replacing
   expect(font.loadedFaces).toBeGreaterThan(0);
   expect(font.resourceLoaded).toBe(true);
 
-  await expect(page.locator('#world-team-count')).toHaveText('2');
   await dialog.locator('[data-regional-starter="258"]').click();
   await expect(dialog).toHaveCount(0);
-  await expect(page.locator('#world-team-count')).toHaveText('3');
-  await expect(page.locator('#world-regional-rule')).toContainText('호연 배지 0/8');
-  await expect(page.locator('#world-regional-rule')).toContainText('사용 가능 Lv.20까지');
-  await expect(page.locator('#world-regional-rule')).toContainText('현지 출신만 사용');
   await expect(page.locator('.world-battle-hud > summary strong')).toContainText('물짱이 · Lv.5');
 
   await page.locator('#world-region').selectOption('kanto');
@@ -87,7 +83,7 @@ test('a legacy Kanto champion receives one local Hoenn starter without replacing
   await expect(page.locator('#regional-starter-dialog')).toHaveCount(0);
   await page.locator('#world-map-close').click();
   await expect(page.locator('#world-map-dialog')).not.toBeVisible();
-  await page.locator('#save-now').click();
+  await clickAccountMenu(page, '#save-now');
   await expect(page.locator('#save-state')).toContainText('저장됨');
 
   await page.reload();

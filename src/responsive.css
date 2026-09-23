@@ -89,7 +89,8 @@ button:disabled { cursor: default; opacity: .5; }
 .form-gallery img { width: 96px; height: 96px; object-fit: contain; }
 #toast {
   position: fixed;
-  inset: max(8px, env(safe-area-inset-top)) auto auto 50%;
+  /* Bottom centre, above the phone tab bar: the header row stays readable. */
+  inset: auto auto calc(20px + var(--app-nav-height, 0px)) 50%;
   margin: 0;
   transform: translateX(-50%);
   z-index: 2147483647;
@@ -97,10 +98,12 @@ button:disabled { cursor: default; opacity: .5; }
   max-width: min(44rem, calc(100vw - 24px));
   padding: 12px 18px;
   color: #fff;
-  background: #123c33;
-  border: 2px solid #a8e0c4;
-  border-radius: 12px;
-  box-shadow: 0 6px 24px #0008;
+  background: rgba(16, 44, 36, .78);
+  border: 1px solid rgba(255, 255, 255, .2);
+  border-radius: 14px;
+  box-shadow: 0 14px 36px rgba(6, 20, 15, .3);
+  -webkit-backdrop-filter: blur(14px) saturate(1.6);
+  backdrop-filter: blur(14px) saturate(1.6);
   font-size: max(14px, calc(14px * var(--ui-font-scale, 1)));
   font-weight: 700;
   line-height: 1.5;
@@ -108,7 +111,7 @@ button:disabled { cursor: default; opacity: .5; }
   overflow-wrap: anywhere;
   pointer-events: none;
 }
-#toast.error { color: #fff; background: #772b30; border-color: #ffd0cd; }
+#toast.error { color: #fff; background: rgba(128, 46, 50, .86); border-color: rgba(255, 208, 205, .5); }
 #toast::backdrop { background: transparent; pointer-events: none; }
 @media (max-width: 1000px) { .trainer-summary .device-storage { display: none; } }
 @media (max-width: 720px) {

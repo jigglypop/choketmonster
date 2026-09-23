@@ -5,6 +5,7 @@ import { ConnectomeController } from '../../src/game/connectome';
 import { defaultView, packSave, type ViewState } from '../../src/game/storage';
 import { OpenWorldSimulation } from '../../src/openworld/simulation';
 import { openExplorePanel } from './helpers/explore-panel';
+import { clickAccountMenu } from './helpers/account-menu';
 
 async function slots(page: Page) {
   return page.evaluate(() => new Promise<Record<string, any>>((resolve, reject) => {
@@ -61,7 +62,7 @@ test('login repairs a short server wild roster and preserves its saved individua
   await page.goto('/');
   await login(page, true);
   await expect(page.locator('#toast')).not.toContainText('Open world requires');
-  await page.locator('#save-now').click();
+  await clickAccountMenu(page, '#save-now');
   const accountKey = `account:${user.id}:current`;
   await expect.poll(async () => (await slots(page))[accountKey]?.view?.openWorld?.entities?.filter((entity: { kind: string }) => entity.kind === 'wild').length, { timeout: 30000 }).toBe(12);
   const repaired = (await slots(page))[accountKey].view.openWorld;
@@ -94,13 +95,13 @@ for (const existingGuest of [false, true]) {
       await page.locator('[data-starter="152"]').click();
       await openExplorePanel(page);
       await expect(page.locator('#world-pause')).toBeVisible();
-      await page.locator('#save-now').click();
+      await clickAccountMenu(page, '#save-now');
       await expect.poll(async () => (await slots(page)).current?.game.seed, { timeout: 30000 }).toBeTruthy();
       guestSeed = (await slots(page)).current.game.seed;
       await login(page);
     } else await openExplorePanel(page);
     await expect(page.locator('#world-pause')).toContainText('계속 탐험', { timeout: 30000 });
-    await page.locator('.logout-button').click();
+    await clickAccountMenu(page, '.logout-button');
     await expect(page.locator('[data-open-auth]')).toBeEnabled({ timeout: 30000 });
     await expect(page.locator('#starter-dialog')).toBeHidden();
     await expect(page.locator('#world-pause')).toContainText('계속 탐험');
@@ -135,7 +136,7 @@ test('logout preserves a running adventure instead of saving the temporary trans
   await page.goto('/');
   await openExplorePanel(page);
   await expect(page.locator('#world-pause')).toContainText('일시 정지', { timeout: 30000 });
-  await page.locator('.logout-button').click();
+  await clickAccountMenu(page, '.logout-button');
   await expect(page.locator('[data-open-auth]')).toBeEnabled({ timeout: 30000 });
   await expect(page.locator('#world-pause')).toContainText('일시 정지');
   expect(state.puts.at(-1).save.view.openWorldPaused).toBe(false);
@@ -157,7 +158,7 @@ test('a rejected server logout remains logged out locally across reload and pres
   await expect(page.locator('#world-pause')).toBeVisible(); await login(page);
   const prior = (await slots(page)).current;
   state.rejectLogout = true;
-  await page.locator('.logout-button').click();
+  await clickAccountMenu(page, '.logout-button');
   await expect(page.locator('[data-open-auth]')).toBeVisible({ timeout: 15000 });
   await expect(page.locator('.logout-button')).toBeHidden();
   const stored = await slots(page);
@@ -177,7 +178,7 @@ test('an expired save checkpoint cannot block logout or discard its outbox', asy
   state.rejectCheckpoint = true;
   await page.goto('/'); await openExplorePanel(page);
   await expect(page.locator('.account-name')).toContainText('restore');
-  await page.locator('.logout-button').click();
+  await clickAccountMenu(page, '.logout-button');
   await expect(page.locator('[data-open-auth]')).toBeVisible({ timeout: 15000 });
   await expect(page.locator('.logout-button')).toBeHidden();
   const stored = await slots(page);

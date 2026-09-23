@@ -6,6 +6,7 @@ import { getMove } from '../../src/data/pokemon';
 import { defaultView, packSave } from '../../src/game/storage';
 import { OpenWorldSimulation } from '../../src/openworld/simulation';
 import type { Graph } from '../../src/core/brain';
+import { clickAccountMenu } from './helpers/account-menu';
 
 test('Mega Floette and Zygarde use form HP in the world, healing and saved team details', async ({ page }, info) => {
   test.setTimeout(120000);
@@ -38,7 +39,7 @@ test('Mega Floette and Zygarde use form HP in the world, healing and saved team 
     await expect(page.locator('.world-summary-hp')).toHaveText(`HP ${healedHp} / ${form.stats.hp}`);
     await page.locator('[data-tab="team"]').click();
     await expect(page.locator('.stat-list')).toContainText(`${healedHp}/${form.stats.hp}`);
-    await page.locator('#save-now').click(); await expect(page.locator('#save-state')).toContainText('저장됨');
+    await clickAccountMenu(page, '#save-now'); await expect(page.locator('#save-state')).toContainText('저장됨');
     await page.reload(); await page.locator('[data-tab="team"]').click();
     await expect(page.locator('.stat-list')).toContainText(`${healedHp}/${form.stats.hp}`);
     await page.screenshot({ path: info.outputPath(`${identifier}-hp.png`), fullPage: true });

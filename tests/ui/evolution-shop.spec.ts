@@ -5,6 +5,7 @@ import { createGame, createMonster, ITEM_PRICES } from '../../src/game/engine';
 import { ConnectomeController } from '../../src/game/connectome';
 import { EXTRA_EVOLUTION_ITEM_IDS } from '../../src/game/evolution-items';
 import { defaultView, packSave } from '../../src/game/storage';
+import { clickAccountMenu } from './helpers/account-menu';
 
 test('auto-buys a missing Metal Coat from evolution and keeps regular shop purchases', async ({ page }) => {
   test.setTimeout(150_000);
@@ -56,7 +57,7 @@ test('auto-buys a missing Metal Coat from evolution and keeps regular shop purch
   await page.screenshot({ path: 'artifacts/evolution-shop/scizor-mobile.png' });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.setViewportSize({ width: 1440, height: 1100 });
-  await page.locator('#save-now').click(); await expect(page.locator('#save-state')).toContainText('저장됨');
+  await clickAccountMenu(page, '#save-now'); await expect(page.locator('#save-state')).toContainText('저장됨');
   await page.reload();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 45_000 });
   await page.locator('[data-tab="team"]').click();

@@ -5,6 +5,7 @@ import { defaultView, packSave } from '../../src/game/storage';
 import { getWorldAtlas } from '../../src/openworld/atlas';
 import { OpenWorldSimulation } from '../../src/openworld/simulation';
 import { openExplorePanel } from './helpers/explore-panel';
+import { clickAccountMenu } from './helpers/account-menu';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8'));
 const policy = JSON.parse(readFileSync('public/data/openworld-policy.json', 'utf8'));
@@ -118,7 +119,7 @@ test('a visible terrain gate explains the prerequisite and opens after it is ear
   await importSave(page, fixture(4, point));
   await expect(label).toHaveAttribute('data-gate-state', 'open');
   await expect(label).toContainText('관문 개방');
-  await page.locator('#save-now').click();
+  await clickAccountMenu(page, '#save-now');
   await expect(page.locator('#toast')).toContainText('저장했습니다');
   await page.reload();
   await expect(label).toHaveAttribute('data-gate-state', 'open', { timeout: 45_000 });
@@ -139,7 +140,7 @@ test('Temple of Sinnoh exposes every final trial instead of the completed invest
     await expect(page.locator('#world-battle-state')).toContainText('턴 1');
     await expect(page.locator('#world-combatants .world-combatant')).toHaveCount(2);
     if (stage === 0 || stage === 4) {
-      await page.locator('#save-now').click();
+      await clickAccountMenu(page, '#save-now');
       await expect(page.locator('#toast')).toContainText('저장했습니다');
       await page.reload();
       await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 45_000 });
@@ -167,7 +168,7 @@ test('winning the last investigation immediately offers the first final and keep
   await expect(page.locator('#world-trainer-challenge')).toBeEnabled();
   await expect(page.locator('#world-trainer-challenge')).toContainText('조사대 결승 미도');
   await expect(page.locator('#world-gym-challenge')).toHaveCount(0);
-  await page.locator('#save-now').click();
+  await clickAccountMenu(page, '#save-now');
   await expect(page.locator('#toast')).toContainText('저장했습니다');
   await page.reload();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 45_000 });
@@ -192,7 +193,7 @@ test('winning Volo unlocks Paldea travel and the regional starter survives reloa
   await page.locator('[data-regional-starter="906"]').click();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 45_000 });
   await page.locator('#world-map-close').click();
-  await page.locator('#save-now').click();
+  await clickAccountMenu(page, '#save-now');
   await expect(page.locator('#toast')).toContainText('저장했습니다');
   await page.reload();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-region', 'paldea', { timeout: 45_000 });

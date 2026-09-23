@@ -7,6 +7,8 @@ import { OpenWorldSimulation, sampleWorld } from '../../src/openworld/simulation
 import type { Graph } from '../../src/core/brain';
 import type { FieldPolicy } from '../../src/game/field';
 import { openExplorePanel } from './helpers/explore-panel';
+import { clickAccountMenu } from './helpers/account-menu';
+import { selectVisibleWild } from './helpers/select-wild';
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
 const policy = JSON.parse(readFileSync('public/data/openworld-policy.json', 'utf8')) as FieldPolicy;
 const modelFixture = readFileSync('data/local/pokemon-models-expanded/429de1288cea0d43f5b4f56305d2276e94239d65/152.glb');
@@ -108,7 +110,7 @@ test('Kanto controls, fixed early encounters, shop, region map and mobile layout
   // Manual Save is intentionally hidden in the narrow header. Save on desktop,
   // then verify the restored controls again at the mobile viewport.
   await page.setViewportSize({ width: 1440, height: 1100 });
-  await page.locator('#save-now').click(); await expect(page.getByRole('status')).toContainText('이 기기에 저장했습니다.'); await page.reload();
+  await clickAccountMenu(page, '#save-now'); await expect(page.getByRole('status')).toContainText('이 기기에 저장했습니다.'); await page.reload();
   await page.setViewportSize({ width: 390, height: 844 });
   await openExplorePanel(page);
   await expect(page.locator('#world-mode-manual')).toHaveAttribute('aria-pressed', 'true', { timeout: 20000 });
@@ -179,7 +181,7 @@ test('open-world battle switches the active partner without reordering the team'
   await expect(page.locator('[data-world-switch="1"]')).toBeEnabled();
   await page.locator('[data-world-switch="1"]').click();
   await expect(page.locator('.world-summary-name')).toContainText(second.nickname, { timeout: 12000 });
-  await page.locator('#save-now').click();
+  await clickAccountMenu(page, '#save-now');
   await expect(page.getByRole('status')).toContainText('이 기기에 저장했습니다.');
   const stored = await storedDeviceSave(page) as { game: { player: { team: Array<{ instanceId: string }> }; battle: { player: { activeIndex: number } } } };
   expect(stored.game.battle.player.activeIndex).toBe(1);
@@ -194,9 +196,7 @@ test('inspect a visible wild, pin tracking, teleport and persist experience shar
   await start(page, true);
   await expect(page.locator('#world-exp-share')).toBeChecked();
   await page.locator('#world-exp-share').uncheck();
-  await page.locator('.world-objective summary').click();
-  const chosen = page.locator('[data-world-wild]').first();
-  await chosen.click();
+  await selectVisibleWild(page);
   await expect(page.locator('#world-target')).toBeVisible();
   await expect(page.locator('#world-target')).toContainText('이동');
   await expect(page.locator('#world-mode-manual')).toHaveAttribute('aria-pressed', 'true');
@@ -212,7 +212,7 @@ test('inspect a visible wild, pin tracking, teleport and persist experience shar
   await page.locator('[data-world-travel="pallet"]').click();
   await expect(page.locator('#world-map-dialog')).not.toBeVisible();
   await expect(page.locator('#world-target')).toBeHidden();
-  await page.locator('#save-now').click(); await expect(page.getByRole('status')).toContainText('이 기기에 저장했습니다.'); await page.reload();
+  await clickAccountMenu(page, '#save-now'); await expect(page.getByRole('status')).toContainText('이 기기에 저장했습니다.'); await page.reload();
   await expect(page.locator('#world-exp-share')).not.toBeChecked();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-renderer-ready', 'true', { timeout: 25000 });
   const save = await storedDeviceSave(page) as { game: { experienceShare: boolean }; view: { openWorld: { visitedTownIds: string[] } } };
@@ -238,7 +238,7 @@ test('manual battle waits, victory choice survives reload, buying and catching p
   await page.waitForTimeout(1200); await expect(page.locator('#world-battle-state')).toContainText('턴 1');
   await page.locator('[data-world-move="0"]').click();
   await expect(page.locator('#world-capture-offer')).toBeVisible({ timeout: 12000 });
-  await page.locator('#save-now').click(); await expect(page.getByRole('status')).toContainText('이 기기에 저장했습니다.'); await page.reload();
+  await clickAccountMenu(page, '#save-now'); await expect(page.getByRole('status')).toContainText('이 기기에 저장했습니다.'); await page.reload();
   await expect(page.locator('#world-capture-offer')).toBeVisible({ timeout: 25000 });
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 25000 });
   await openExplorePanel(page);

@@ -711,12 +711,31 @@ function CreatureBillboard({ creature, hp, distance, emphasized }: { creature: W
     <Html center zIndexRange={[2, 1]} style={{ pointerEvents: 'none' }}>
       <div className={`ow-creature-label${emphasized ? ' ow-creature-label-selected' : ''}`} data-creature-id={creature.id}>
         <strong>{remote ? remote.name : `${creature.name} · Lv.${creature.level}`}</strong>
-        <span>{remote ? remote.activity === 'battle' ? '배틀 중' : remote.activity === 'moving' ? '이동 중' : '대기'
-          : `${Math.max(0, Math.ceil(creature.hp))} / ${creature.maxHp} HP`}</span>
+        {remote && <span>{remote.activity === 'battle' ? '배틀 중' : remote.activity === 'moving' ? '이동 중' : '대기'}</span>}
         {!remote && <div className="ow-hp-track"><i className="ow-hp-fill" style={{ width: `${Math.max(0, Math.min(1, hp)) * 100}%`, background: hp > .45 ? '#82d179' : hp > .2 ? '#e5ca55' : '#e56f59' }} /></div>}
       </div>
     </Html>
   </group>;
+}
+
+/** Hides a nameplate while it covers one with higher priority on screen (selected, partner, battle, then nearest). */
+function NameplateDeclutter({ order }: { order: readonly string[] }) {
+  const gl = useThree(state => state.gl), nextCheck = useRef(0);
+  useFrame(({ clock }) => {
+    if (clock.elapsedTime < nextCheck.current) return;
+    nextCheck.current = clock.elapsedTime + .12;
+    const root = gl.domElement.parentElement; if (!root) return;
+    const labels = new Map([...root.querySelectorAll<HTMLElement>('.ow-creature-label')].map(label => [label.dataset.creatureId, label]));
+    const kept: DOMRect[] = [];
+    for (const id of order) {
+      const label = labels.get(id); if (!label) continue;
+      const box = label.getBoundingClientRect();
+      const covered = kept.some(other => box.left < other.right - 4 && box.right > other.left + 4 && box.top < other.bottom - 2 && box.bottom > other.top + 2);
+      if (label.classList.contains('ow-label-covered') !== covered) label.classList.toggle('ow-label-covered', covered);
+      if (!covered) kept.push(box);
+    }
+  });
+  return null;
 }
 
 function Creature({ creature, selected, distance, options, showLabels, model }: {
@@ -1064,6 +1083,7 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
     return new Set([...visible].sort((a, b) => priority(a) - priority(b) || a.distance - b.distance)
       .slice(0, windowState.mobile ? 3 : 6).map(item => item.creature.id));
   }, [showLabels, snapshot.selectedWildId, visible, windowState.mobile]);
+  const labelOrder = useMemo(() => [...labelIds], [labelIds]);
   const { scene } = useThree();
   useLayoutEffect(() => {
     // Scene is rendered inside a group. JSX attach="background"/"fog" there
@@ -1120,6 +1140,7 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
       <TargetRoute snapshot={snapshot} destination={destination} sample={sample} />
       <ScenePortals sceneId={sceneId} regionId={atlas.id} player={snapshot.player} sample={sample} onNavigate={onNavigate} onPortal={() => options.onPortal?.('nearest')} />
       {visible.map(({ creature, distance, model }) => <Creature key={creature.id} creature={creature} selected={creature.id === snapshot.selectedWildId} showLabels={labelIds.has(creature.id)} distance={distance} model={model} options={worldOptions} />)}
+      <NameplateDeclutter order={labelOrder} />
       {destination && <group position={[destination.x, terrainSurfaceHeight(sample, destination.x, destination.z) + .08, destination.z]}>
         <mesh rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[.42, .62, 28]} /><meshBasicMaterial color="#ffe27a" transparent opacity={.9} /></mesh>
         <mesh position={[0, .08, 0]} rotation={[-Math.PI / 2, 0, 0]}><circleGeometry args={[.13, 20]} /><meshBasicMaterial color="#fff4b8" /></mesh>

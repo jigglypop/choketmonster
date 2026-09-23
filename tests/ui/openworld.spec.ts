@@ -8,6 +8,7 @@ import type { Graph } from '../../src/core/brain';
 import type { FieldPolicy } from '../../src/game/field';
 import { getSpecies } from '../../src/data/pokemon';
 import { openExplorePanel } from './helpers/explore-panel';
+import { clickAccountMenu } from './helpers/account-menu';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
 const policy = JSON.parse(readFileSync('public/data/openworld-policy.json', 'utf8')) as FieldPolicy;
@@ -66,7 +67,7 @@ test('open world moves, pauses, and restores all brains without duplicating topo
   finally { await page.keyboard.up('ArrowDown'); }
   await expect(page.locator('#world-position')).toHaveText(pausedPosition);
   await expect(page.locator('#ow-host')).toHaveAttribute('data-tick', tick!);
-  await page.locator('#save-now').click(); await expect(page.getByRole('status')).toContainText('저장했습니다');
+  await clickAccountMenu(page, '#save-now'); await expect(page.getByRole('status')).toContainText('저장했습니다');
   const moved = await page.locator('#world-position').innerText();
   await page.reload();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-tick', tick!);
@@ -191,7 +192,7 @@ test('world capture consumes a ball and keeps the new individual after reload', 
   await page.locator('#world-auto-catch').check(); await page.locator('#world-catch').click(); await page.locator('#world-pause').click();
   await expect(page.locator('#world-battle-state')).toHaveText('접근하면 자동 배틀', { timeout: 15000 });
   await page.locator('#world-pause').click();
-  await page.locator('#save-now').click(); await expect(page.getByRole('status')).toContainText('저장했습니다');
+  await clickAccountMenu(page, '#save-now'); await expect(page.getByRole('status')).toContainText('저장했습니다');
   await page.reload();
   const save = await exported(page);
   expect(save.game.player.team).toHaveLength(2);

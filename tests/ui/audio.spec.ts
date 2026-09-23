@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import { clickAccountMenu } from './helpers/account-menu';
 test.setTimeout(100_000);
 // Verify the real playback graph without playing fixtures over the user's speakers.
 test.use({ headless: true, launchOptions: { args: ['--enable-unsafe-webgpu', '--mute-audio'] } });
@@ -142,7 +143,7 @@ test('mobile restores a local WAV and starts unmuted from the first world touch 
   let page = await context.newPage(); await isolateApp(page); await page.goto('/');
   await page.locator('[data-starter="152"]').tap();
   await chooseFixture(page, 'generated-mobile-bgm-fixture.wav', 330);
-  await page.locator('#save-now').click();
+  await clickAccountMenu(page, '#save-now');
   await expect(page.locator('#save-state')).toHaveAttribute('data-state', 'local');
   await page.close();
   page = await context.newPage(); await isolateApp(page);
