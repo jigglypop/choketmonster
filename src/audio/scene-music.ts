@@ -15,7 +15,7 @@ const titles = {
   vermilion: '갈색시티', lavender: '보라타운', celadon: '무지개시티', cinnabar: '홍련섬',
   route1: '1번 도로', route3: '3번 도로', route11: '11번 도로', route24: '24번 도로',
   forest: '상록숲', cave: '동굴', surf: '파도타기', tower: '포켓몬타워',
-  mansion: '포켓몬저택', 'victory-road': '챔피언로드',
+  mansion: '포켓몬저택', 'victory-road': '챔피언로드', gym: '체육관',
   'wild-battle': '야생 포켓몬 배틀', 'trainer-battle': '트레이너 배틀',
   'gym-battle': '체육관 배틀', 'champion-battle': '챔피언 배틀', 'wild-victory': '야생 배틀 승리',
 } as const;
@@ -25,7 +25,8 @@ export type ScheduledMusicCue = { cue: MusicCue; nextUpdateAt?: number };
 
 /**
  * Keeps the surrounding area's music uninterrupted while battles and capture
- * decisions are presented. Location changes still select their normal cue.
+ * decisions are presented, except gym and league hall battles, which play their own themes.
+ * Location changes still select their normal cue.
  */
 export class SceneMusicDirector {
   private scene: MusicScene = { started: false };
@@ -57,6 +58,9 @@ const places: Record<string, MusicCue> = {
 
 export function selectMusicCue(scene: MusicScene): MusicCue {
   if (!scene.started) return 'opening';
+  if (scene.battle?.kind === 'gym') return 'gym-battle';
+  if (scene.sceneId?.startsWith('league:')) return scene.battle ? 'champion-battle' : 'gym';
+  if (scene.sceneId?.startsWith('gym:')) return 'gym';
   if (scene.sceneId?.startsWith('cave:')) return scene.sceneId.endsWith(':victory-road') ? 'victory-road' : 'cave';
   const location = scene.location;
   if (!location) return 'route1';

@@ -50,16 +50,26 @@ const STATIC = new Set<number>([
 const HOME_RIGGED_STATIC = new Set(HOME_RUNTIME_MODEL_IDS);
 
 export type PokemonMotionKind = 'idle' | 'walk' | 'attack' | 'damage';
+export const POKEMON_MOTION_KINDS: readonly PokemonMotionKind[] = ['idle', 'walk', 'attack', 'damage'];
 const MOTION_NAME = {
   idle: /idle|idol|wait|stand|ba10/i,
   walk: /walk|run|fly|turnmove/i,
   attack: /attack|bite|skill|fight|punch|charge|rangeattack|ba2[01]|buturi|tokusyu/i,
   damage: /damage|hit|hurt|faint|down/i,
 } satisfies Record<PokemonMotionKind, RegExp>;
+export const matchesPokemonMotionKind = (name: string, kind: PokemonMotionKind) => MOTION_NAME[kind].test(name);
 
-export function selectPokemonMotionClip<T extends { name: string }>(clips: readonly T[], kind: PokemonMotionKind) {
-  const matched = clips.find(clip => MOTION_NAME[kind].test(clip.name));
-  return { clip: matched ?? clips.find(clip => MOTION_NAME.idle.test(clip.name)) ?? clips[0], matched: !!matched };
+/** Set by the rig preparation on source clips whose keys never leave the bind pose. */
+export const STATIC_MOTION_CLIP = 'choketmonStaticMotion';
+type MotionClip = { name: string; userData?: Record<string, unknown> };
+const isStaticMotionClip = (clip: MotionClip) => clip.userData?.[STATIC_MOTION_CLIP] === true;
+
+export function selectPokemonMotionClip<T extends MotionClip>(clips: readonly T[], kind: PokemonMotionKind) {
+  // A frozen source clip must not shadow an authored clip of the same kind.
+  const playable = clips.filter(clip => !isStaticMotionClip(clip)), pool = playable.length ? playable : clips;
+  const matched = pool.find(clip => MOTION_NAME[kind].test(clip.name));
+  const generic = () => pool.find(clip => POKEMON_MOTION_KINDS.every(other => !MOTION_NAME[other].test(clip.name)));
+  return { clip: matched ?? pool.find(clip => MOTION_NAME.idle.test(clip.name)) ?? generic() ?? pool[0], matched: !!matched };
 }
 
 export function getPokemonMotionSupport(speciesId: number): PokemonMotionSupport {

@@ -3,7 +3,7 @@ import { getMove, getSpecies } from '../data/pokemon';
 import { fieldTrainersAt, getFieldTrainer } from '../data/field-trainers';
 import { pokemonModelUrl, pokemonSpriteUrl } from '../game/assets';
 import { getMoveLayout } from '../game/move-layout';
-import { battleMonsterMaxHp, battleMoveView, experienceAtLevel, FIELD_ITEMS, firstUsableRegionalTeamIndex, heal, HEALING_ITEM_HP, HELD_TOOL_DESCRIPTIONS, ITEM_LABELS, statsFor, type GameState, type HeldTool, type Monster } from '../game/engine';
+import { availableMonsterMoveIds, battleMonsterMaxHp, battleMoveView, canLearnTechnicalMachine, teachTechnicalMachine, experienceAtLevel, FIELD_ITEMS, firstUsableRegionalTeamIndex, heal, HEALING_ITEM_HP, HELD_TOOL_DESCRIPTIONS, ITEM_LABELS, statsFor, type BattleTurnResult, type GameState, type HeldTool, type Monster } from '../game/engine';
 import { monsterRegionalUseReason, REGIONAL_STARTERS } from '../game/regional-policy';
 import { CAMPAIGN_TRAINERS, campaignTravelReason, getCampaignGyms, getNextCampaignTrainer, getRegionalBadges, type CampaignRegion } from '../game/campaign';
 import { getWorldAtlas } from './atlas';
@@ -29,6 +29,9 @@ import { playGameSound } from '../audio';
 import { currentAccount } from '../game/account';
 import { WORLD_MIN, WORLD_MAX } from './world-space';
 import { getCaveScene, cavePortalAtSurface, cavePortalAtInterior } from './caves';
+import { getGymScene, gymSceneId, LEAGUE_LOCATION_IDS, leagueSceneId, onGymCourt, type GymScene } from './gym-scenes';
+import { gymTeam } from '../game/gym-teams';
+import { technicalMachines } from '../game/technical-machines';
 import { nextDestinationGuide, regionalItinerary, type DestinationGuide } from './next-destination';
 import { pokemonPresentation, battleTransformationsHtml, combatFormSprite, fieldMegaForm } from '../ui/pokemon-presentation';
 import { getAlolaCombatForm, getCombatForm } from '../data/pokemon-combat-forms';
@@ -39,6 +42,8 @@ const types: Record<string, string> = { normal: '노말', fire: '불꽃', water:
 const escape = (text: unknown) => String(text).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const pokemonDisplayHeight = (speciesId: number) => pokemonWorldDisplayHeight(getSpecies(speciesId).heightMeters);
 const MANUAL_IDLE_SECONDS = .25;
+/** Pause between league battles in the hall. */
+const HALL_NEXT_BATTLE_MS = 1600;
 type Options = { game: GameState; graph: Graph; policy: FieldPolicy; checkpoint?: OpenWorldSnapshot; learning(): boolean; setLearning(value: boolean): void; musicChanged?(): void; editMoves?(instanceId: string): void; trade?(): void; openAccount?(): void; notify(message: string, error?: boolean): void; changed(immediate?: boolean): void | Promise<void> };
 
 export class OpenWorldPanel {
@@ -85,6 +90,13 @@ export class OpenWorldPanel {
   private mapSelection = '';
   /** Last town marker tap on the map; a second tap on it within 450 ms is a double tap. */
   private lastMapTap?: { id: string; at: number };
+  /** A gym whose building was clicked; the player walks to the door and goes in on arrival. */
+  private pendingGymEntry?: string;
+  /** When the league hall starts its next battle after a victory. */
+  private hallChallengeAt?: number;
+  private bagTab: 'tools' | 'machines' = 'tools';
+  /** Technical machine whose team list is open in the bag. */
+  private bagMachine?: number;
   private previousBattle?: GameState['battle'];
   private guideCache?: { key: string; guide: DestinationGuide };
   private starterDialog?: HTMLDialogElement;
@@ -171,7 +183,10 @@ export class OpenWorldPanel {
     this.loadProgress = 0;
     this.renderer = mountOpenWorld(host.querySelector('#ow-host')!, {
       getSnapshot: () => this.renderSnapshot(), sampleWorld: (x, z) => this.simulation.sampleWorld(x, z), modelUrl: pokemonModelUrl, spriteUrl: pokemonSpriteUrl,
-      onReady: () => { this.ready = true; this.refreshRecovery(); },
+      onReady: () => {
+        this.ready = true; this.refreshRecovery();
+        if (getGymScene(this.simulation.sceneId)) { this.cameraHeading = CARDINAL_CAMERA_HEADINGS.south; this.renderer?.setCameraHeading(this.cameraHeading); }
+      },
       onLoadProgress: (percent, detail) => {
         if (percent < this.loadProgress) return;
         this.loadProgress = percent;
@@ -183,7 +198,7 @@ export class OpenWorldPanel {
         this.loading?.fail(`3D 월드를 준비하지 못했습니다. ${error instanceof Error ? error.message : String(error)}`);
       },
       onRendererLost: () => { this.ready = false; this.paused = true; this.simulation.requireReadyModels(); this.refresh(); },
-      onNavigationStart: () => this.noteManualInput(),
+      onNavigationStart: () => { this.pendingGymEntry = undefined; return this.noteManualInput(); },
       onMovementInput: () => this.noteManualInput(),
       onMovementEnd: () => {
         this.manualMovementActive = false;
@@ -195,6 +210,8 @@ export class OpenWorldPanel {
         // The render store polls positions separately. Rebuilding the full HUD and
         // scene here duplicated that work on the input path and stalled movement.
         const now = performance.now();
+        if (accepted && this.pendingGymEntry) this.enterPendingGym();
+        if (accepted) this.enterGymCourt();
         if (accepted && now - this.lastMovementRefresh >= 100) {
           this.lastMovementRefresh = now;
           this.html('#world-position', `${next.x.toFixed(0)}, ${next.z.toFixed(0)}`);
@@ -210,6 +227,10 @@ export class OpenWorldPanel {
         if (this.simulation.selectedWildId === id) this.refresh();
       },
       onPortal: () => { if (this.simulation.traverseCavePortal()) { this.multiplayer?.join(this.presence()); this.options.changed(); this.refresh(); this.renderer?.update(); } },
+      onGymEnter: locationId => this.enterHallFromWorld(gymSceneId(this.simulation.regionId, locationId)),
+      onLeagueEnter: locationId => this.enterHallFromWorld(leagueSceneId(this.simulation.regionId, locationId)),
+      onGymExit: () => { if (this.simulation.exitGym()) this.afterSceneChange(); },
+      onGymChallenge: () => this.challengeGymHall(),
       onCameraHeading: heading => { this.cameraHeading = heading; this.updateMapOrientation(); this.minimap(); },
     });
     this.multiplayer = new MultiplayerSession(() => { if (this.host === host) this.renderRealtime(); });
@@ -266,6 +287,10 @@ export class OpenWorldPanel {
     bag.addEventListener('toggle', () => this.renderBag());
     this.host.querySelector('#world-bag-content')!.addEventListener('click', event => {
       const target = event.target as Element;
+      const tab = target.closest<HTMLButtonElement>('[data-bag-tab]'), machine = target.closest<HTMLButtonElement>('[data-bag-machine]'), teach = target.closest<HTMLButtonElement>('[data-bag-teach]');
+      if (tab) { this.bagTab = tab.dataset.bagTab === 'machines' ? 'machines' : 'tools'; this.renderBag(); return; }
+      if (machine) { const moveId = Number(machine.dataset.bagMachine); this.bagMachine = this.bagMachine === moveId ? undefined : moveId; this.renderBag(); return; }
+      if (teach && !teach.disabled) { this.teachMachine(Number(teach.dataset.bagTeach), teach.dataset.bagTarget!); return; }
       const pickup = target.closest<HTMLButtonElement>('[data-bag-pickup]'), member = target.closest<HTMLButtonElement>('[data-bag-member]');
       if (pickup && !pickup.disabled) {
         const item = this.simulation.fieldPickups.find(row => row.id === pickup.dataset.bagPickup);
@@ -381,6 +406,58 @@ export class OpenWorldPanel {
       && !this.host?.querySelector<HTMLDialogElement>('#world-map-dialog')?.open;
   }
 
+  /** Clicked a gym building or league stadium: walk to its door, go in and start the battle. */
+  private enterHallFromWorld(sceneId: string): void {
+    const world = this.simulation, game = this.options.game;
+    if (game.battle || game.captureOffer || getCaveScene(world.sceneId) || getGymScene(world.sceneId)) return;
+    const hall = getGymScene(sceneId); if (!hall) return;
+    if (Math.hypot(world.player.x - hall.door.x, world.player.z - hall.door.z) <= 2 && this.enterHall(hall)) return;
+    if (this.renderer?.navigateTo(hall.door)) this.pendingGymEntry = sceneId;
+  }
+
+  private enterPendingGym(): void {
+    const sceneId = this.pendingGymEntry, world = this.simulation; if (!sceneId) return;
+    const hall = getGymScene(sceneId);
+    if (!hall) { this.pendingGymEntry = undefined; return; }
+    if (Math.hypot(world.player.x - hall.door.x, world.player.z - hall.door.z) > 1.6) return;
+    this.pendingGymEntry = undefined;
+    this.enterHall(hall);
+  }
+
+  /** Going in starts the automatic battle with the leader, or the league's next trainer. */
+  private enterHall(hall: GymScene): boolean {
+    if (!(hall.kind === 'league' ? this.simulation.enterLeague() : this.simulation.enterGym(hall.locationId))) return false;
+    this.afterSceneChange(); this.challengeGymHall();
+    return true;
+  }
+
+  /** Stepping onto the marked court starts the leader battle when the badge is next in order. */
+  private enterGymCourt(): void {
+    const hall = getGymScene(this.simulation.sceneId), game = this.options.game;
+    if (!hall || game.battle || game.captureOffer || !onGymCourt(hall, this.simulation.player.x, this.simulation.player.z)) return;
+    this.challengeGymHall();
+  }
+
+  private challengeGymHall(): void {
+    if (!this.simulation.challengeGymHall()) return;
+    this.paused = false; this.manualMovementActive = false; this.options.changed(); this.refresh();
+  }
+
+  /** A hall battle ended: the league moves on to its next trainer after a victory; otherwise leave the hall. */
+  private afterHallBattle(outcome: BattleTurnResult['outcome']): void {
+    const world = this.simulation, hall = getGymScene(world.sceneId); if (!hall) return;
+    if (hall.kind === 'league' && outcome === 'won' && world.hallTrainer) { this.hallChallengeAt = performance.now() + HALL_NEXT_BATTLE_MS; return; }
+    this.hallChallengeAt = undefined;
+    if (world.exitGym()) this.afterSceneChange();
+  }
+
+  private afterSceneChange(): void {
+    this.manualMovementActive = false; this.multiplayer?.join(this.presence()); this.options.changed(); this.refresh(); this.renderer?.update();
+    // Face into the hall on the way in, and away from the building on the way out.
+    this.cameraHeading = CARDINAL_CAMERA_HEADINGS[getGymScene(this.simulation.sceneId) ? 'south' : 'north'];
+    this.renderer?.setCameraHeading(this.cameraHeading); this.updateMapOrientation(); this.minimap();
+  }
+
   private noteManualInput(): boolean {
     if (!this.canAcceptMovement()) return false;
     this.manualMovementActive = true;
@@ -451,6 +528,7 @@ export class OpenWorldPanel {
     if (this.paused || !this.simulation.modelsReady || document.hidden || document.querySelector('dialog[open]')) { this.manualIdleSeconds = 0; return; }
     this.tickPending = true;
     try {
+    if (this.hallChallengeAt !== undefined && performance.now() >= this.hallChallengeAt) { this.hallChallengeAt = undefined; this.challengeGymHall(); }
     // A route or held key owns control until the renderer reports movement end.
     // Fixed simulation ticks must not expire that ownership between render frames.
     if (this.simulation.controlMode === 'manual' && !this.manualMovementActive && !this.options.game.battle && this.canAcceptMovement()
@@ -479,6 +557,7 @@ export class OpenWorldPanel {
         });
         if (event.result.battleEnded && !event.result.gymVictory) this.options.notify(event.result.outcome === 'won' ? '승리! 경험치와 보상을 받았습니다.' : event.result.outcome === 'caught' ? '포획 성공! 팀과 도감에 등록했습니다.' : event.result.outcome === 'lost' ? '파트너가 쓰러졌습니다. 회복한 뒤 다시 탐험하세요.' : '배틀에서 벗어났습니다.');
         await this.options.changed(true);
+        if (event.result.battleEnded) this.afterHallBattle(event.result.outcome);
         if (event.result.gymVictory) {
           this.refresh(); await showGymVictory(event.result.gymVictory);
           this.manualIdleSeconds = 0;
@@ -575,9 +654,16 @@ export class OpenWorldPanel {
     const attacking = (id?: string) => { const attack = id ? this.attacks.get(id) : undefined; return attack && now >= attack.start && now < attack.end ? attack : undefined; };
     const ally = battle ? battle.player.team[battle.player.activeIndex] : game.player.team[firstUsableRegionalTeamIndex(game, this.simulation.regionId)] ?? game.player.team[0];
     const enemy = battle?.enemy.team[battle.enemy.activeIndex];
+    const hall = getGymScene(this.simulation.sceneId), hallGym = hall?.kind === 'gym' ? getCampaignGyms(game, this.simulation.regionId).find(gym => gym.locationId === hall.locationId) : undefined;
+    const hallTrainer = this.simulation.hallTrainer, hallAce = hallTrainer?.team.at(-1);
+    // The leader's ace waits on the dais until the battle begins.
+    const hallLeader = hallGym ? { speciesId: hallGym.speciesId, level: hallGym.level } : hallAce ? { speciesId: hallAce[0], level: hallAce[1] } : undefined;
     return {
       guide: battle ? undefined : this.destinationGuide(),
       gyms: getCampaignGyms(game, this.simulation.regionId),
+      busy: Boolean(battle || game.captureOffer),
+      gymParty: hallGym ? gymTeam(this.simulation.regionId, hallGym.badge) ?? [[hallGym.speciesId, hallGym.level]] : undefined,
+      hallTrainer: hallTrainer ? { name: hallTrainer.name, team: hallTrainer.team } : undefined,
       regionId: this.simulation.regionId,
       sceneId: this.simulation.sceneId,
       player: { ...this.simulation.player, heading: this.simulation.player.heading as WorldHeading }, tick: this.simulation.tick, selectedWildId: this.simulation.selectedWildId, badges: getRegionalBadges(game, this.simulation.regionId),
@@ -608,7 +694,8 @@ export class OpenWorldPanel {
           movementSpeed: movementSpeed(speciesId, level),
           displayHeight: formModel ? pokemonWorldDisplayHeight(formModel.heightMeters) : pokemonDisplayHeight(speciesId),
         } as WorldCreature;
-      }).concat(battle && battle.kind !== 'wild' && enemy ? [{ id: this.simulation.battleWildId!, speciesId: enemy.speciesId, name: enemy.nickname, level: enemy.level, hp: enemy.hp, maxHp: enemy.stats.hp, x: this.simulation.player.x, z: this.simulation.player.z - 3, heading: 2 as WorldHeading, action: attacking(enemy.instanceId) ? 'attack' as const : 'idle' as const, moveType: attacking(enemy.instanceId)?.type, inBattle: true, lookAt: this.simulation.player, displayHeight: pokemonDisplayHeight(enemy.speciesId), movementSpeed: movementSpeed(enemy.speciesId, enemy.level) }] : [])
+      }).concat(battle && battle.kind !== 'wild' && enemy ? [{ id: this.simulation.battleWildId!, speciesId: enemy.speciesId, name: enemy.nickname, level: enemy.level, hp: enemy.hp, maxHp: enemy.stats.hp, x: this.simulation.player.x, z: this.simulation.player.z + (hall ? 6 : -3), heading: 2 as WorldHeading, action: attacking(enemy.instanceId) ? 'attack' as const : 'idle' as const, moveType: attacking(enemy.instanceId)?.type, inBattle: true, lookAt: this.simulation.player, displayHeight: pokemonDisplayHeight(enemy.speciesId), movementSpeed: movementSpeed(enemy.speciesId, enemy.level) }] : [])
+        .concat(hallLeader && !battle ? [{ id: `gym-leader:${hall!.locationId}`, speciesId: hallLeader.speciesId, name: getSpecies(hallLeader.speciesId).name, level: hallLeader.level, hp: 1, maxHp: 1, x: hall!.leader.x, z: hall!.leader.z - 3.2, heading: 0 as WorldHeading, action: 'idle' as const, displayHeight: pokemonDisplayHeight(hallLeader.speciesId), movementSpeed: 0 }] : [])
         .concat(this.multiplayer?.creatures(this.simulation.player, id => movementSpeed(id)) ?? []),
     };
   }
@@ -878,7 +965,8 @@ export class OpenWorldPanel {
       const info = pokemonPresentation(mon, battle);
       return `<div class="world-combatant"><img src="${info.sprite}" alt="${escape(info.name)}"><div class="world-combatant-copy"><small>${label} · Lv.${mon.level}</small><strong>${escape(info.name)}</strong><div class="world-hp-row"><span>HP</span><b>${mon.hp} / ${info.stats.hp}</b>${mon.status ? `<em>${mon.status}</em>` : ''}</div><div class="world-hp" role="meter" aria-label="${escape(mon.nickname)} HP" aria-valuemin="0" aria-valuemax="${info.stats.hp}" aria-valuenow="${mon.hp}"><i style="width:${mon.hp / info.stats.hp * 100}%"></i></div><span class="world-combatant-meta">${info.types.map(type => types[type]).join(' · ')} · 스피드 ${info.stats.speed}</span></div></div>`;
     };
-    this.html('#world-combatants', `${card(lead, '파트너')}${enemy ? card(enemy, battle!.kind === 'wild' ? '야생' : campaignTrainer?.name ?? '체육관') : `<div class="world-growth"><small>다음 레벨까지 ${Math.max(0, xpEnd - lead.xp)} EXP</small><div class="world-xp"><i style="width:${xp}%"></i></div><span>${species.moves.filter(move => move.level > lead.level).slice(0, 1).map(move => `Lv.${move.level} ${getMove(move.moveId).name} 습득`).join('') || '현재 레벨의 기술을 모두 익혔습니다.'}</span></div>`}`);
+    const enemyParty = battle && battle.kind !== 'wild' ? `<ol class="world-enemy-party" aria-label="상대 포켓몬">${battle.enemy.team.map((monster, index) => `<li class="${monster.hp <= 0 ? 'fainted' : ''}${index === battle.enemy.activeIndex ? ' active' : ''}"><img src="${pokemonSpriteUrl(monster.speciesId)}" alt="${escape(monster.nickname)} Lv.${monster.level}" title="${escape(monster.nickname)} Lv.${monster.level}"></li>`).join('')}</ol>` : '';
+    this.html('#world-combatants', `${card(lead, '파트너')}${enemy ? card(enemy, battle!.kind === 'wild' ? '야생' : campaignTrainer?.name ?? getCampaignGyms(game, battle!.campaignRegion ?? world.regionId).find(item => item.badge === battle!.gymBadge)?.name ?? '체육관') + enemyParty : `<div class="world-growth"><small>다음 레벨까지 ${Math.max(0, xpEnd - lead.xp)} EXP</small><div class="world-xp"><i style="width:${xp}%"></i></div><span>${species.moves.filter(move => move.level > lead.level).slice(0, 1).map(move => `Lv.${move.level} ${getMove(move.moveId).name} 습득`).join('') || '현재 레벨의 기술을 모두 익혔습니다.'}</span></div>`}`);
     const moveLayout = getMoveLayout({ ...lead, moves });
     this.button('#world-edit-moves').disabled = !!battle || !!game.captureOffer || !this.options.editMoves;
     this.html('#world-transformations', battleTransformationsHtml(game, this.recovering));
@@ -934,7 +1022,12 @@ export class OpenWorldPanel {
     const localTrainer = badges >= 8 && trainer?.locationId === location.id ? trainer : undefined;
     const cave = getCaveScene(world.sceneId), portal = cave ? cavePortalAtInterior(world.sceneId, world.player.x, world.player.z) : cavePortalAtSurface(region, world.player.x, world.player.z);
     const exits = world.caveExits(), exitHost = this.host.querySelector<HTMLElement>('#world-cave-exits')!;
-    exitHost.hidden = !cave;
+    const hall = getGymScene(world.sceneId);
+    exitHost.hidden = !cave && !hall;
+    if (hall) {
+      this.html('#world-cave-exits', `<button id="world-gym-exit" ${battle || offer ? 'disabled' : ''}>${hall.kind === 'league' ? '나가기' : '체육관 나가기'}</button>`);
+      this.button('#world-gym-exit').onclick = () => { if (world.exitGym()) this.afterSceneChange(); };
+    }
     if (cave) {
       this.html('#world-cave-exits', `<button id="world-cave-exit" ${battle || offer ? 'disabled' : ''}>동굴 밖으로 나가기</button>${exits.length > 1 ? `<select id="world-cave-exit-choice" aria-label="나갈 출구">${exits.map(exit => `<option value="${escape(exit.id)}">${escape(exit.label)}</option>`).join('')}</select>` : ''}`);
       this.button('#world-cave-exit').onclick = () => {
@@ -948,8 +1041,11 @@ export class OpenWorldPanel {
       ? `<button id="world-trainer-challenge" ${battle || offer ? 'disabled' : ''}>${escape(localTrainer.name)} · 도전</button><small>${localTrainer.team.map(([id, level]) => `${getSpecies(id).name} Lv.${level}`).join(' · ')}</small>`
       : gym ? `<button id="world-gym-challenge" ${battle || offer || gym.badge !== badges + 1 ? 'disabled' : ''}>${gym.name} · Lv.${gym.level} ${badges >= gym.badge ? '클리어 ✓' : '도전'}</button><small>${world.atlas.name} 배지 ${badges}/8${gym.badge > badges + 1 ? ' · 앞 체육관부터 도전하세요' : ''}</small>` : '';
     this.html('#world-gym', challenge + (portal ? `<button id="world-cave-enter" ${battle || offer ? 'disabled' : ''}>${cave ? `${escape(cave.name)} · 밖으로 나가기` : '동굴 들어가기'}</button>` : ''));
-    if (gym && !localTrainer) this.button('#world-gym-challenge').onclick = () => { if (world.challengeLocalGym()) { this.options.changed(); this.refresh(); } };
-    if (localTrainer) this.button('#world-trainer-challenge').onclick = () => { if (world.challengeLocalTrainer()) { this.options.changed(); this.refresh(); } };
+    // With a hall to go into, the buttons walk there; entering starts the battle.
+    const gymHall = !hall && gym ? getGymScene(gymSceneId(region, gym.locationId)) : undefined;
+    const leagueHall = !hall && localTrainer && LEAGUE_LOCATION_IDS[region] === localTrainer.locationId ? getGymScene(leagueSceneId(region, localTrainer.locationId)) : undefined;
+    if (gym && !localTrainer) this.button('#world-gym-challenge').onclick = () => { if (hall) this.challengeGymHall(); else if (gymHall) this.enterHallFromWorld(gymHall.sceneId); else if (world.challengeLocalGym()) { this.options.changed(); this.refresh(); } };
+    if (localTrainer) this.button('#world-trainer-challenge').onclick = () => { if (hall) this.challengeGymHall(); else if (leagueHall) this.enterHallFromWorld(leagueHall.sceneId); else if (world.challengeLocalTrainer()) { this.options.changed(); this.refresh(); } };
     if (portal) {
       this.button('#world-cave-enter').onclick = () => { if (world.traverseCavePortal()) { this.multiplayer?.join(this.presence()); this.options.changed(); this.refresh(); } };
     }
@@ -1004,7 +1100,9 @@ export class OpenWorldPanel {
     const game = this.options.game, world = this.simulation, player = world.player;
     const owned = FIELD_ITEMS.filter(item => (game.inventory[item.id] ?? 0) > 0);
     const pickups = world.fieldPickups.map(item => ({ item, distance: Math.hypot(item.x - player.x, item.z - player.z) })).sort((a, b) => a.distance - b.distance);
-    this.html('#world-bag-count', String(owned.reduce((sum, item) => sum + game.inventory[item.id], 0) + game.player.team.filter(monster => monster.heldTool).length));
+    const machines = technicalMachines().filter(machine => (game.technicalMachines?.[String(machine.moveId)] ?? 0) > 0);
+    this.html('#world-bag-count', String(owned.reduce((sum, item) => sum + game.inventory[item.id], 0) + game.player.team.filter(monster => monster.heldTool).length
+      + machines.reduce((sum, machine) => sum + game.technicalMachines![String(machine.moveId)], 0)));
     const near = pickups.some(row => row.distance <= 30);
     if (bag.dataset.nearby !== String(near)) bag.dataset.nearby = String(near);
     if (!bag.open) return;
@@ -1018,7 +1116,30 @@ export class OpenWorldPanel {
       const rows = owned.filter(item => (item.kind === 'mega-stone' ? 'mega-stone' : item.category) === group);
       return rows.length ? `<h4>${label}</h4>${rows.map(item => `<p title="${escape(describe(item.id))}"><span>${escape(item.name)}</span><b>×${game.inventory[item.id]}</b></p>`).join('')}` : '';
     }).join('');
-    this.html('#world-bag-content', `<section><h3>주변</h3>${pickupRows || '<p class="bag-empty">없음</p>'}</section><section><h3>팀</h3>${teamRows}</section><section><h3>가방</h3>${ownedRows || '<p class="bag-empty">없음</p>'}</section>`);
+    const tabs = `<nav class="world-bag-tabs" role="tablist">${([['tools', '도구'], ['machines', '기술머신']] as const).map(([id, label]) => `<button type="button" role="tab" data-bag-tab="${id}" aria-selected="${this.bagTab === id}">${label}</button>`).join('')}</nav>`;
+    if (this.bagTab === 'machines') {
+      const machineRows = machines.map(machine => {
+        const move = getMove(machine.moveId), open = this.bagMachine === machine.moveId;
+        const members = open ? `<div class="bag-machine-team">${game.player.team.map(monster => {
+          const known = availableMonsterMoveIds(monster).includes(machine.moveId), able = !known && canLearnTechnicalMachine(monster, machine.moveId);
+          return `<button type="button" data-bag-teach="${machine.moveId}" data-bag-target="${escape(monster.instanceId)}" ${able && editing ? '' : 'disabled'}><img src="${pokemonSpriteUrl(monster.speciesId)}" alt=""><span>${escape(monster.nickname)}</span><small>${known ? '✓' : ''}</small></button>`;
+        }).join('')}</div>` : '';
+        return `<button type="button" class="bag-machine type-${move.type}" data-bag-machine="${machine.moveId}" aria-expanded="${open}"><span>${escape(machine.name)}</span><small>${types[move.type]}${move.power ? ` · ${move.power}` : ''}</small><b>×${game.technicalMachines![String(machine.moveId)]}</b></button>${members}`;
+      }).join('');
+      this.html('#world-bag-content', `${tabs}<section>${machineRows || '<p class="bag-empty">없음</p>'}</section>`);
+      return;
+    }
+    this.html('#world-bag-content', `${tabs}<section><h3>주변</h3>${pickupRows || '<p class="bag-empty">없음</p>'}</section><section><h3>팀</h3>${teamRows}</section><section><h3>가방</h3>${ownedRows || '<p class="bag-empty">없음</p>'}</section>`);
+  }
+
+  private teachMachine(moveId: number, instanceId: string): void {
+    const game = this.options.game;
+    try {
+      const { equipped } = teachTechnicalMachine(game, instanceId, moveId);
+      this.options.notify(game.logs.at(-1) ?? '');
+      this.simulation.reconcileTeamChange(); this.options.changed(); this.renderBag();
+      if (!equipped) this.options.editMoves?.(instanceId);
+    } catch (error) { this.options.notify(error instanceof Error ? error.message : String(error), true); }
   }
 
   private drawRegionMap(): void {

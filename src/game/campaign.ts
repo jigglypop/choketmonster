@@ -25,16 +25,16 @@ export type CampaignTrainer = {
   kind: 'elite' | 'champion' | 'red'; team: ReadonlyArray<readonly [number, number]>;
 };
 
-/** Authored campaign balance; teams and levels are not a reproduction of a cartridge. */
+/** Johto gym leaders; parties (GYM_TEAMS in gym-teams.ts) and aces follow Pokémon Crystal. */
 export const JOHTO_CAMPAIGN_GYMS: readonly KantoGym[] = [
-  { locationId: 'violet', badge: 1, badgeName: '윙배지', name: '비상', speciesId: 17, level: 10 },
+  { locationId: 'violet', badge: 1, badgeName: '윙배지', name: '비상', speciesId: 17, level: 9 },
   { locationId: 'azalea', badge: 2, badgeName: '인섹트배지', name: '호일', speciesId: 123, level: 16 },
-  { locationId: 'goldenrod', badge: 3, badgeName: '레귤러배지', name: '꼭두', speciesId: 241, level: 21 },
-  { locationId: 'ecruteak', badge: 4, badgeName: '팬텀배지', name: '유빈', speciesId: 94, level: 26 },
+  { locationId: 'goldenrod', badge: 3, badgeName: '레귤러배지', name: '꼭두', speciesId: 241, level: 20 },
+  { locationId: 'ecruteak', badge: 4, badgeName: '팬텀배지', name: '유빈', speciesId: 94, level: 25 },
   { locationId: 'cianwood', badge: 5, badgeName: '쇼크배지', name: '사도', speciesId: 62, level: 30 },
-  { locationId: 'olivine', badge: 6, badgeName: '스틸배지', name: '규리', speciesId: 208, level: 34 },
-  { locationId: 'mahogany', badge: 7, badgeName: '아이스배지', name: '류옹', speciesId: 221, level: 38 },
-  { locationId: 'blackthorn', badge: 8, badgeName: '라이징배지', name: '이향', speciesId: 230, level: 42 },
+  { locationId: 'olivine', badge: 6, badgeName: '스틸배지', name: '규리', speciesId: 208, level: 35 },
+  { locationId: 'mahogany', badge: 7, badgeName: '아이스배지', name: '류옹', speciesId: 221, level: 31 },
+  { locationId: 'blackthorn', badge: 8, badgeName: '라이징배지', name: '이향', speciesId: 230, level: 40 },
 ];
 
 export const CAMPAIGN_TRAINERS: readonly CampaignTrainer[] = [

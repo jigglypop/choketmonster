@@ -43,7 +43,7 @@ export type WorldFieldItemPickup = WorldPoint & {
   id: string;
   itemId: string;
   name: string;
-  kind: 'held-tool' | 'mega-stone';
+  kind: 'held-tool' | 'mega-stone' | 'technical-machine';
   regionId: string;
   locationId: string;
 };
@@ -61,6 +61,12 @@ export type OpenWorldRenderSnapshot = {
   worldHour?: number;
   daylightIntensity?: number;
   badges?: number;
+  /** A battle or capture decision is open; scene buttons wait. */
+  busy?: boolean;
+  /** The leader's party in the gym hall the player is standing in. */
+  gymParty?: ReadonlyArray<readonly [number, number]>;
+  /** The league trainer waiting in the league hall the player is standing in. */
+  hallTrainer?: { name: string; team: ReadonlyArray<readonly [number, number]> };
   player: WorldPlayer;
   entities: readonly WorldCreature[];
   foods?: readonly WorldFood[];
@@ -107,6 +113,12 @@ export type OpenWorldViewOptions = {
   onCollectItem?: (pickupId: string) => void;
   onTrainer?: (trainerId: string) => void;
   onPortal?: (portalId: string) => void;
+  /** Clicked a gym building; the panel walks to its door or enters. */
+  onGymEnter?: (locationId: string) => void;
+  /** Clicked the league stadium; the panel walks to its entrance or enters. */
+  onLeagueEnter?: (locationId: string) => void;
+  onGymExit?: () => void;
+  onGymChallenge?: () => void;
   /** Lets the simulation quarantine a visible creature until its real model is usable. */
   onModelStatus?: (creatureId: string, status: WorldModelStatus, speciesId: number) => void;
   modelUrl?: (speciesId: number) => string;

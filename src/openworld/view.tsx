@@ -7,6 +7,9 @@ import { Component, type ReactNode, memo, useCallback, useEffect, useLayoutEffec
 import { createRoot, type Root } from 'react-dom/client';
 import {
   AnimationMixer,
+  BackSide,
+  Box3,
+  MeshBasicMaterial,
   type AnimationAction,
   LoopOnce,
   LoopRepeat,
@@ -65,6 +68,9 @@ import { onRenderSuspension, renderingSuspended } from '../three/render-budget';
 
 import { WORLD_MIN, WORLD_MAX, WORLD_SCALE, surfaceSceneId } from './world-space';
 import { getCaveScene } from './caves';
+import { getGymScene } from './gym-scenes';
+import { GymInterior } from './gym-interior';
+import { LeagueInterior } from './league-interior';
 import { CaveInterior, GymEntranceStatus, ProgressGate, RegionalLeagueLandmark, ScenePortals, isRegionalLeagueLocation } from './scene-landmarks';
 import { DestinationPointer } from './destination-pointer';
 import { TargetRoute } from './target-route';
@@ -362,7 +368,21 @@ function TownPaving({ townId }: { townId: string }) {
   </instancedMesh>;
 }
 
-function TownBuilding({ townId, townColor, index, gym, badges, showGymLabel }: { townId: string; townColor: string; index: number; gym?: WorldAtlas['gyms'][number]; badges: number; showGymLabel: boolean }) {
+const outlineMaterial = new MeshBasicMaterial({ color: '#ffe27a', side: BackSide, depthWrite: false });
+
+/** An inverted hull around a building: its meshes drawn back-faced, slightly enlarged about their centre. Geometry stays shared. */
+function buildingOutline(model: Object3D): Object3D {
+  const object = model.clone(true);
+  object.updateMatrixWorld(true);
+  const center = new Box3().setFromObject(object).getCenter(new Vector3());
+  object.traverse(child => { if (child instanceof Mesh) { child.material = outlineMaterial; child.castShadow = false; child.receiveShadow = false; child.raycast = () => undefined; } });
+  const pivot = new Group(); pivot.name = 'gym-hover-outline';
+  pivot.position.copy(center); pivot.scale.setScalar(1.06); object.position.sub(center);
+  pivot.add(object);
+  return pivot;
+}
+
+function TownBuilding({ townId, townColor, index, gym, badges, showGymLabel, onGymEnter }: { townId: string; townColor: string; index: number; gym?: WorldAtlas['gyms'][number]; badges: number; showGymLabel: boolean; onGymEnter?: (locationId: string) => void }) {
   const pallet = townId === 'pallet';
   const role = pallet ? (index === 0 ? 'RED' : index === 1 ? 'BLUE' : 'LAB') : (index === 0 ? 'P' : index === 1 ? 'M' : 'G');
   const accent = pallet ? (index === 0 ? '#c94b3d' : index === 1 ? '#3f79ad' : '#437c62') : (index === 0 ? '#cf493e' : index === 1 ? '#397bb0' : townColor);
@@ -396,10 +416,22 @@ function TownBuilding({ townId, townColor, index, gym, badges, showGymLabel }: {
     model?.traverse(object => { if (object instanceof Mesh) (Array.isArray(object.material) ? object.material : [object.material]).forEach(material => owned.add(material)); });
     owned.forEach(material => material.dispose());
   }, [model]);
+  const enterable = index === 2 && gym && onGymEnter ? gym : undefined;
+  const [hovered, setHovered] = useState(false);
+  useEffect(() => () => { if (hovered) document.body.style.cursor = ''; }, [hovered]);
+  const outline = useMemo(() => enterable && model && hovered ? buildingOutline(model) : null, [enterable, hovered, model]);
+  const pointer = enterable ? {
+    onPointerOver: (event: { stopPropagation(): void }) => { event.stopPropagation(); setHovered(true); document.body.style.cursor = 'pointer'; },
+    onPointerOut: () => { setHovered(false); document.body.style.cursor = ''; },
+    onClick: (event: { stopPropagation(): void; delta: number }) => { event.stopPropagation(); if (event.delta <= 5) onGymEnter!(enterable.locationId); },
+  } : {};
   return <group name={`town-building:${townId}:${index}:${model ? 'loaded' : 'fallback'}`} scale={[1, townStyle(townId).height, 1]}>
-    {model
-      ? <primitive object={model} dispose={null} />
-      : <mesh position={[0, 1.05, 0]} castShadow><boxGeometry args={[3.1, 2.1, 2.5]} /><meshStandardMaterial color="#e8dfc7" roughness={.9} /></mesh>}
+    <group {...pointer}>
+      {model
+        ? <primitive object={model} dispose={null} />
+        : <mesh position={[0, 1.05, 0]} castShadow><boxGeometry args={[3.1, 2.1, 2.5]} /><meshStandardMaterial color="#e8dfc7" roughness={.9} /></mesh>}
+    </group>
+    {outline && <primitive object={outline} dispose={null} />}
     <BuildingSign text={role} color={accent} />
     {index === 2 && gym && <GymEntranceStatus gym={gym} badges={badges} showLabel={showGymLabel} />}
   </group>;
@@ -418,7 +450,7 @@ function RegionalLandmark({ region, x, y, z }: { region: string; x: number; y: n
   </group>;
 }
 
-function TrailAndWater({ sampleWorld, player, badges, atlas, visible, gyms = atlas.gyms }: { sampleWorld: (x: number, z: number) => WorldSample; player: { x: number; z: number }; badges: number; atlas: WorldAtlas; visible: VisibilityTest; gyms?: WorldAtlas['gyms'] }) {
+function TrailAndWater({ sampleWorld, player, badges, atlas, visible, gyms = atlas.gyms, onGymEnter, onLeagueEnter }: { sampleWorld: (x: number, z: number) => WorldSample; player: { x: number; z: number }; badges: number; atlas: WorldAtlas; visible: VisibilityTest; gyms?: WorldAtlas['gyms']; onGymEnter?: (locationId: string) => void; onLeagueEnter?: (locationId: string) => void }) {
   const locations = useMemo(() => new Map(atlas.locations.map(item => [item.id, item])), [atlas]);
   const details = useWorldDetails(sampleWorld, atlas, leagueFilter(atlas.id));
   const trail = useMemo(() => {
@@ -465,12 +497,12 @@ function TrailAndWater({ sampleWorld, player, badges, atlas, visible, gyms = atl
       <mesh geometry={trail} receiveShadow><SurfaceMaterial surface="path" color={regionTrailColor(atlas)} vertexColors /></mesh>
       {atlas.id !== 'kanto' && atlas.locations.filter(item => item.kind === 'special' && !isRegionalLeagueLocation(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) < 70 && visible(item.x, 5, item.z, 10)).map(item => <RegionalLandmark key={item.id} region={atlas.id} x={item.x} y={terrainSurfaceHeight(sampleWorld, item.x, item.z)} z={item.z} />)}
       {atlas.locations.filter(item => isRegionalLeagueLocation(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) < 100)
-        .map(item => <RegionalLeagueLandmark key={item.id} region={atlas.id} x={item.x} y={terrainSurfaceHeight(sampleWorld, item.x, item.z)} z={item.z} />)}
+        .map(item => <RegionalLeagueLandmark key={item.id} region={atlas.id} x={item.x} y={terrainSurfaceHeight(sampleWorld, item.x, item.z)} z={item.z} onEnter={onLeagueEnter && badges >= 8 ? () => onLeagueEnter(item.id) : undefined} />)}
       {atlas.locations.filter(item => item.kind === 'town' && !isRegionalLeagueLocation(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) <= 85 && visible(item.x, 3, item.z, 14 * WORLD_SCALE)).map(town => <group key={town.id} name={`town:${town.id}`} position={[town.x, terrainSurfaceHeight(sampleWorld, town.x, town.z) + .05, town.z]}>
         <TownPaving townId={town.id} />
         {details?.towns.get(town.id) && <TownProps layout={details.towns.get(town.id)!} color={townStyle(town.id).color} />}
         {atlas.buildingOffsets(town).map(([x, z], index) => <group key={index} position={[x, 0, z]} scale={WORLD_SCALE}>
-          <TownBuilding townId={town.id} townColor={townStyle(town.id).color} index={index} gym={gyms.find(item => item.locationId === town.id)} badges={badges} showGymLabel={Math.hypot(town.x - player.x, town.z - player.z) <= 14 * WORLD_SCALE} />
+          <TownBuilding townId={town.id} townColor={townStyle(town.id).color} index={index} gym={gyms.find(item => item.locationId === town.id)} badges={badges} showGymLabel={Math.hypot(town.x - player.x, town.z - player.z) <= 14 * WORLD_SCALE} onGymEnter={onGymEnter} />
         </group>)}
         <group position={[0, 0, -6 * WORLD_SCALE]}>
           <mesh position={[0, .9, 0]} castShadow><boxGeometry args={[2.4, 1.15, .24]} /><meshStandardMaterial color="#eadb9d" /></mesh>
@@ -1064,18 +1096,20 @@ function useViewWindow() {
 
 function Scene({ snapshot, options, showLabels, destination, onNavigate, onDestination, commands }: { commands: ViewCommands; snapshot: OpenWorldRenderSnapshot; options: OpenWorldViewOptions; showLabels: boolean; destination: WorldPoint | null; onNavigate: (point: WorldPoint) => void; onDestination: (point: WorldPoint | null) => void }) {
   const atlas = getWorldAtlas(snapshot.regionId ?? 'kanto');
-  const sceneId = snapshot.sceneId ?? surfaceSceneId(atlas.id), cave = getCaveScene(sceneId);
-  const sample = cave?.sample ?? atlas.sample;
-  const waterMaterials = useTerrainMaterials(atlas.palette.water, cave ? undefined : atlas.sample);
+  const sceneId = snapshot.sceneId ?? surfaceSceneId(atlas.id), cave = getCaveScene(sceneId), gymHall = cave ? undefined : getGymScene(sceneId);
+  const indoor = Boolean(cave || gymHall);
+  const sample = cave?.sample ?? gymHall?.sample ?? atlas.sample;
+  const waterMaterials = useTerrainMaterials(atlas.palette.water, indoor ? undefined : atlas.sample);
   const groundMaterial = waterMaterials.ground;
   // Fixed daytime presentation: never rebuild lighting or sky for a world clock tick.
   const daylight = 1;
-  const skyColor = useMemo(() => new Color(cave ? '#182326' : '#afcfc1'), [cave]);
+  const skyColor = useMemo(() => new Color(cave ? '#182326' : gymHall?.kind === 'league' ? '#2c2618' : gymHall ? '#2a2f33' : '#afcfc1'), [cave, gymHall]);
   const worldOptions = useMemo(() => ({ ...options, sampleWorld: sample }), [options, sample]);
   const windowState = useViewWindow();
   const chunks = useMemo(() => terrainChunks(snapshot.player, windowState.visible), [snapshot.player.x, snapshot.player.z, windowState.visible]);
-  const visible = useMemo(() => creatureLods(snapshot.entities, snapshot.player, windowState.visible, windowState.mobile, snapshot.selectedWildId),
-    [snapshot.entities, snapshot.player.x, snapshot.player.z, snapshot.selectedWildId, windowState.mobile, windowState.visible]);
+  const visible = useMemo(() => creatureLods(gymHall ? snapshot.entities.filter(creature => !creature.id.startsWith('wild-') && gymHall.contains(creature.x, creature.z)) : snapshot.entities,
+    snapshot.player, windowState.visible, windowState.mobile, snapshot.selectedWildId),
+    [gymHall, snapshot.entities, snapshot.player.x, snapshot.player.z, snapshot.selectedWildId, windowState.mobile, windowState.visible]);
   const labelIds = useMemo(() => {
     if (!showLabels) return new Set<string>();
     const priority = (item: typeof visible[number]) => item.creature.id === snapshot.selectedWildId ? 0
@@ -1096,10 +1130,10 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
     let highDetailChunks = 0, detailedCreatures = 0;
     for (const chunk of chunks) if (chunk.segments === 12) highDetailChunks++;
     for (const item of visible) if (item.model && hasPokemonModel(item.creature.speciesId)) detailedCreatures++;
-    return { region: atlas.id, sceneId, daylight, player: { x: snapshot.player.x, z: snapshot.player.z }, terrainChunks: cave ? 0 : chunks.length,
+    return { region: atlas.id, sceneId, daylight, player: { x: snapshot.player.x, z: snapshot.player.z }, terrainChunks: indoor ? 0 : chunks.length,
       terrainTotal: ((WORLD_MAX - WORLD_MIN) / TERRAIN_CHUNK_SIZE) ** 2, highDetailChunks, visibleCreatures: visible.length,
       detailedCreatures, modelLimit: windowState.mobile ? 4 : 8 };
-  }, [atlas.id, cave, chunks, sceneId, snapshot.player.x, snapshot.player.z, visible, windowState.mobile]);
+  }, [atlas.id, indoor, chunks, sceneId, snapshot.player.x, snapshot.player.z, visible, windowState.mobile]);
   const streamingElapsed = useRef(1);
   useFrame((_, delta) => {
     // Probe metadata does not affect rendering. Refreshing it four times a second
@@ -1111,16 +1145,18 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
   });
   return (
     <>
-      <hemisphereLight color={cave ? '#b9cbd1' : '#d9eeed'} groundColor="#434f3f" intensity={cave ? .85 : 1.1} />
+      <hemisphereLight color={cave ? '#b9cbd1' : '#d9eeed'} groundColor="#434f3f" intensity={cave ? .85 : gymHall ? 1.25 : 1.1} />
       <SkyLighting />
-      {!cave && <Sunlight player={snapshot.player} mobile={windowState.mobile} />}
+      {!indoor && <Sunlight player={snapshot.player} mobile={windowState.mobile} />}
       {cave && <pointLight position={[snapshot.player.x, 5, snapshot.player.z]} color="#ffdda6" intensity={35} distance={28} decay={1.4} />}
       <Physics gravity={[0, -18, 0]} timeStep="vary">
-        {cave ? <CaveInterior cave={cave} player={snapshot.player} mobile={windowState.mobile} onNavigate={onNavigate} /> : <>
+        {cave ? <CaveInterior cave={cave} player={snapshot.player} mobile={windowState.mobile} onNavigate={onNavigate} />
+          : gymHall?.kind === 'league' ? <LeagueInterior hall={gymHall} trainer={snapshot.hallTrainer} busy={Boolean(snapshot.busy)} player={snapshot.player} spriteUrl={options.spriteUrl} modelUrl={options.modelUrl} onNavigate={onNavigate} onExit={() => options.onGymExit?.()} onChallenge={() => options.onGymChallenge?.()} />
+          : gymHall ? <GymInterior hall={gymHall} gym={snapshot.gyms?.find(gym => gym.locationId === gymHall.locationId)} party={snapshot.gymParty ?? []} spriteUrl={options.spriteUrl} badges={snapshot.badges ?? 0} busy={Boolean(snapshot.busy)} player={snapshot.player} onNavigate={onNavigate} onExit={() => options.onGymExit?.()} onChallenge={() => options.onGymChallenge?.()} /> : <>
           <group key={`terrain:${sceneId}`}>{chunks.map(chunk => <Terrain key={`${chunk.key}:${chunk.segments}`} sampleWorld={sample} atlas={atlas} chunk={chunk} material={groundMaterial} waterMaterial={waterMaterials[chunk.distance <= (windowState.mobile ? 24 : 40) ? 'detailed' : 'simple']} onNavigate={onNavigate} />)}</group>
           <Nature key={`nature:${sceneId}`} sampleWorld={sample} player={snapshot.player} atlas={atlas} isVisible={windowState.visible} mobile={windowState.mobile} />
           <ExplorationLandmarks atlas={atlas} sampleWorld={sample} player={snapshot.player} visibility={windowState.visible} onNavigate={onNavigate} badges={snapshot.badges ?? 0} />
-          <TrailAndWater key={`water:${sceneId}`} sampleWorld={sample} player={snapshot.player} atlas={atlas} gyms={snapshot.gyms} visible={windowState.visible} badges={snapshot.badges ?? 0} />
+          <TrailAndWater key={`water:${sceneId}`} sampleWorld={sample} player={snapshot.player} atlas={atlas} gyms={snapshot.gyms} visible={windowState.visible} badges={snapshot.badges ?? 0} onGymEnter={options.onGymEnter} onLeagueEnter={options.onLeagueEnter} />
         </>}
         {options.terrainUrl && <StaticModel item={{
           id: 'openworld-terrain',
@@ -1134,11 +1170,11 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
         }} />}
         {options.props?.filter(item => Math.hypot(item.x - snapshot.player.x, item.z - snapshot.player.z) < 85 && windowState.visible(item.x, item.y ?? 0, item.z, 8)).map(item => <StaticModel key={item.id} item={item} />)}
         <FieldItemPickups items={snapshot.fieldItems ?? []} player={snapshot.player} sample={sample} onNavigate={onNavigate} onCollect={id => options.onCollectItem?.(id)} />
-        <FoodInstances foods={snapshot.foods} sampleWorld={sample} />
+        {!gymHall && <FoodInstances foods={snapshot.foods} sampleWorld={sample} />}
       </Physics>
-      {snapshot.guide && <DestinationPointer guide={snapshot.guide} sample={sample} />}
+      {snapshot.guide && !gymHall && <DestinationPointer guide={snapshot.guide} sample={sample} />}
       <TargetRoute snapshot={snapshot} destination={destination} sample={sample} />
-      <ScenePortals sceneId={sceneId} regionId={atlas.id} player={snapshot.player} sample={sample} onNavigate={onNavigate} onPortal={() => options.onPortal?.('nearest')} />
+      {!gymHall && <ScenePortals sceneId={sceneId} regionId={atlas.id} player={snapshot.player} sample={sample} onNavigate={onNavigate} onPortal={() => options.onPortal?.('nearest')} />}
       {visible.map(({ creature, distance, model }) => <Creature key={creature.id} creature={creature} selected={creature.id === snapshot.selectedWildId} showLabels={labelIds.has(creature.id)} distance={distance} model={model} options={worldOptions} />)}
       <NameplateDeclutter order={labelOrder} />
       {destination && <group position={[destination.x, terrainSurfaceHeight(sample, destination.x, destination.z) + .08, destination.z]}>

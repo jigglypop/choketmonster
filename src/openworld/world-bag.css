@@ -41,6 +41,7 @@
 .world-bag-panel .bag-pickup { grid-template-columns: 10px minmax(0, 1fr) auto; }
 .world-bag-panel .bag-pickup::before { content: ''; width: 9px; height: 9px; transform: rotate(45deg); background: #f0bd4d; }
 .world-bag-panel .bag-pickup.kind-mega-stone::before { background: #af73ef; }
+.world-bag-panel .bag-pickup.kind-technical-machine::before { background: #7fb6e8; border-radius: 50%; transform: none; }
 .world-bag-panel p { display: flex; justify-content: space-between; gap: 8px; margin: 0; padding: 4px 2px; border-bottom: 1px solid #ffffff10; font-size: calc(12px * var(--ui-font-scale)); }
 .world-bag-panel p b { font-weight: 600; color: var(--ui-hud-muted); }
 .world-bag-panel .bag-empty { color: var(--ui-hud-muted); border: 0; }
@@ -52,3 +53,13 @@
 @media (min-width: 901px) {
   [data-battle-position=left] .world-bag-panel { right: auto; left: calc(100% + 18px); }
 }
+
+.world-bag-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.world-bag-panel .world-bag-tabs button { grid-template-columns: 1fr; justify-items: center; min-height: 30px; padding: 4px 6px; }
+.world-bag-panel .world-bag-tabs button[aria-selected=true] { background: var(--ui-accent); border-color: var(--ui-focus); }
+.world-bag-panel .bag-machine { grid-template-columns: minmax(0, 1fr) auto auto; }
+.world-bag-panel .bag-machine b { font-weight: 600; color: var(--ui-hud-muted); }
+.world-bag-panel .bag-machine[aria-expanded=true] { border-color: var(--ui-focus); }
+.bag-machine-team { display: grid; gap: 4px; padding: 2px 0 6px 12px; }
+.world-bag-panel .bag-machine-team button { min-height: 32px; }
+.world-bag-panel .bag-machine-team button:disabled { opacity: .45; }

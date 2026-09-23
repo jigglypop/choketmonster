@@ -21,7 +21,7 @@
     "replay": "tsx scripts/replay.ts",
     "import:connectome": "tsx scripts/import-connectome.ts",
     "test:ui": "playwright test",
-    "data:pokemon": "tsx scripts/fetch-pokemon.ts",
+    "data:pokemon": "tsx scripts/fetch-pokemon.ts && tsx scripts/generate-technical-machines.ts",
     "data:connectome": "uv run --with pyarrow scripts/prepare-connectome.py",
     "check:neural": "tsx scripts/evaluate-pokemon-brain.ts --out artifacts/pokemon-brain-evidence.json",
     "check:campaign": "tsx scripts/verify-campaign.ts",

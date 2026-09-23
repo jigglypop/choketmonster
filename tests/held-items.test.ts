@@ -64,19 +64,20 @@ describe('held tool catalog and acquisition balance', () => {
   });
 
   it('weights roadside held tools by tier while keeping the saved slot format', () => {
-    const tally = { common: 0, uncommon: 0, rare: 0, mega: 0 };
+    const tally = { common: 0, uncommon: 0, rare: 0, mega: 0, machine: 0 };
     for (const region of PLAYABLE_WORLDS) for (let cycle = 0; cycle < 240; cycle++) {
       const states = { [`field-item:${region.id}:0`]: { remainingSeconds: 0, collectedCount: cycle } };
       const pickup = activeFieldItemPickups(region.id, 517, validateFieldItemPickupStates(states), 8).find(item => item.id === `field-item:${region.id}:0`);
       if (!pickup) continue;
-      if (pickup.kind === 'mega-stone') tally.mega++; else tally[HELD_TOOL_TIERS[pickup.itemId as HeldTool]]++;
+      if (pickup.kind === 'mega-stone') tally.mega++; else if (pickup.kind === 'technical-machine') tally.machine++; else tally[HELD_TOOL_TIERS[pickup.itemId as HeldTool]]++;
     }
     const perItem = { common: tally.common / 21, uncommon: tally.uncommon / 15, rare: tally.rare / 11 };
     expect(perItem.common).toBeGreaterThan(perItem.uncommon * 1.4);
     expect(perItem.uncommon).toBeGreaterThan(perItem.rare * 1.4);
     expect(tally.rare).toBeGreaterThan(0);
-    const total = tally.common + tally.uncommon + tally.rare + tally.mega;
-    expect(tally.mega / total).toBeGreaterThan(.12); expect(tally.mega / total).toBeLessThan(.35);
+    const total = tally.common + tally.uncommon + tally.rare + tally.mega + tally.machine;
+    expect(tally.mega / total).toBeGreaterThan(.25); expect(tally.mega / total).toBeLessThan(.5);
+    expect(tally.machine / total).toBeGreaterThan(.12);
     expect(activeFieldItemPickups('kanto', 517, {}, 8)).toEqual(activeFieldItemPickups('kanto', 517, {}, 8));
   });
 

@@ -24,10 +24,10 @@ export const PALDEA_CONNECTIONS:ReadonlyArray<readonly[string,string]>=[
 ];
 export const PALDEA_GATES:readonly KantoGate[]=[];
 export const PALDEA_GYMS:readonly KantoGym[]=[
-  {locationId:'cortondo',badge:1,badgeName:'버그배지',name:'단풍',speciesId:214,level:15},{locationId:'artazon',badge:2,badgeName:'그래스배지',name:'콜사',speciesId:185,level:18},
-  {locationId:'levincia',badge:3,badgeName:'일렉트릭배지',name:'모야모',speciesId:429,level:24},{locationId:'cascarrafa',badge:4,badgeName:'워터배지',name:'곤포',speciesId:340,level:30},
+  {locationId:'cortondo',badge:1,badgeName:'버그배지',name:'단풍',speciesId:216,level:15},{locationId:'artazon',badge:2,badgeName:'그래스배지',name:'콜사',speciesId:185,level:17},
+  {locationId:'levincia',badge:3,badgeName:'일렉트릭배지',name:'모야모',speciesId:429,level:24},{locationId:'cascarrafa',badge:4,badgeName:'워터배지',name:'곤포',speciesId:740,level:30},
   {locationId:'medali',badge:5,badgeName:'노말배지',name:'청목',speciesId:398,level:36},{locationId:'montenevera',badge:6,badgeName:'고스트배지',name:'라임',speciesId:849,level:42},
-  {locationId:'alfornada',badge:7,badgeName:'사이킥배지',name:'리파',speciesId:576,level:48},{locationId:'glaseado-mountain',badge:8,badgeName:'아이스배지',name:'그루샤',speciesId:975,level:52},
+  {locationId:'alfornada',badge:7,badgeName:'사이킥배지',name:'리파',speciesId:671,level:45},{locationId:'glaseado-mountain',badge:8,badgeName:'아이스배지',name:'그루샤',speciesId:334,level:48},
 ];
 const runtime=createAuthoredRegionSampler({id:'paldea',locations:PALDEA_LOCATIONS,connections:PALDEA_CONNECTIONS});
 export const paldeaLocationAt=runtime.locationAt,distanceToPaldeaPath=runtime.distanceToPath,samplePaldeaWorld=runtime.sample,evaluatePaldeaTraversal=runtime.evaluate,safePaldeaArrival=runtime.safeArrival,nearestPaldeaWalkable=runtime.nearestWalkable,paldeaBuildingOffsets=runtime.buildingOffsets;

@@ -17,7 +17,7 @@ export const KALOS_LOCATIONS:readonly KantoLocation[]=[
 export const KALOS_CONNECTIONS:ReadonlyArray<readonly[string,string]>=KALOS_LOCATIONS.slice(1).map((item,index)=>[KALOS_LOCATIONS[index].id,item.id] as const);
 export const KALOS_GATES:readonly KantoGate[]=[];
 export const KALOS_GYMS:readonly KantoGym[]=[
-  {locationId:'santalune-city',badge:1,badgeName:'버그배지',name:'비올라',speciesId:666,level:12},{locationId:'cyllage-city',badge:2,badgeName:'월배지',name:'자크로',speciesId:699,level:25},
+  {locationId:'santalune-city',badge:1,badgeName:'버그배지',name:'비올라',speciesId:666,level:12},{locationId:'cyllage-city',badge:2,badgeName:'월배지',name:'자크로',speciesId:696,level:25},
   {locationId:'shalour-city',badge:3,badgeName:'파이트배지',name:'코르니',speciesId:701,level:32},{locationId:'coumarine-city',badge:4,badgeName:'플랜트배지',name:'후쿠지',speciesId:673,level:34},
   {locationId:'lumiose-city',badge:5,badgeName:'볼티지배지',name:'시트론',speciesId:695,level:37},{locationId:'laverre-city',badge:6,badgeName:'페어리배지',name:'마슈',speciesId:700,level:42},
   {locationId:'anistar-city',badge:7,badgeName:'사이킥배지',name:'고지카',speciesId:678,level:48},{locationId:'snowbelle-city',badge:8,badgeName:'아이스버그배지',name:'우르프',speciesId:713,level:59},

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getPokemonMotionSupport, selectPokemonMotionClip, type PokemonMotionKind } from '../src/data/model-motion';
+import { STATIC_MOTION_CLIP, getPokemonMotionSupport, selectPokemonMotionClip, type PokemonMotionKind } from '../src/data/model-motion';
 
 const clips = (...names: string[]) => names.map(name => ({ name }));
 
@@ -31,6 +31,18 @@ describe('Pokemon model motion metadata', () => {
 
   it('marks a generic fallback as unmatched so it is not clamped as an attack', () => {
     expect(selectPokemonMotionClip(clips('ArmatureAction'), 'attack')).toEqual({ clip: { name: 'ArmatureAction' }, matched: false });
+  });
+
+  it('never lets a frozen source clip shadow an authored clip of the same kind', () => {
+    const frozen = { name: 'Walking', userData: { [STATIC_MOTION_CLIP]: true } };
+    const list = [{ name: 'Idol', userData: {} }, frozen, { name: 'CM_walk', userData: {} }];
+    expect(selectPokemonMotionClip(list, 'walk')).toEqual({ clip: list[2], matched: true });
+    // Only frozen clips: still return one so a static pose is shown.
+    expect(selectPokemonMotionClip([frozen], 'walk').clip).toBe(frozen);
+  });
+
+  it('falls back to a generic clip before a clip of another kind', () => {
+    expect(selectPokemonMotionClip(clips('bd_attack', 'Take 001', 'CM_walk'), 'idle')).toEqual({ clip: { name: 'Take 001' }, matched: false });
   });
 
   it('returns no clip for a clipless rigged model', () => {

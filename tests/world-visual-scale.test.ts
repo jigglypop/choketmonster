@@ -15,7 +15,7 @@ describe('open-world character scale', () => {
     expect(pokemonWorldDisplayHeight(Number.NaN)).toBeCloseTo(pokemonWorldDisplayHeight(1));
   });
 
-  it('enlarges the previous visual scale by 1.5 without changing species ratios', () => {
-    expect(POKEMON_WORLD_SCALE_BOOST / 1.18).toBeCloseTo(1.5);
+  it('shrinks the enlarged visual scale to 0.8 without changing species ratios', () => {
+    expect(POKEMON_WORLD_SCALE_BOOST / 1.18).toBeCloseTo(1.2);
   });
 });

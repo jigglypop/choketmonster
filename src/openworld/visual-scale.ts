@@ -1,5 +1,5 @@
 /** Render height only; simulation positions, speed and collision stay unchanged. */
-export const POKEMON_WORLD_SCALE_BOOST = 1.18 * 1.5;
+export const POKEMON_WORLD_SCALE_BOOST = 1.18 * 1.5 * .8;
 
 export function pokemonWorldDisplayHeight(heightMeters: number | undefined): number {
   const height = Number.isFinite(heightMeters) ? Math.max(0, heightMeters!) : 1;

@@ -9,6 +9,8 @@ import { calculateDamage, catchProbability, turnOrder, typeMultiplier } from './
 import { getMoveLayout, reconcileMoveOrder } from './move-layout';
 import { getRegion, REGIONS } from './regions';
 import { CAMPAIGN_REGIONS, CAMPAIGN_TRAINERS, campaignProgress, campaignTravelReason, canChallengeRed, getRegionalBadges, getNextCampaignTrainer, getCampaignGyms, recordCampaignGymVictory, recordCampaignLeagueVictory, validateExpansionCampaign, type CampaignRegion, type CampaignProgress } from './campaign';
+import { gymTeam } from './gym-teams';
+import { getTechnicalMachine, machineCompatible, TECHNICAL_MACHINE_STOCK_LIMIT, validateTechnicalMachineStock } from './technical-machines';
 import { duplicateMergeValue } from './growth';
 import { EXTRA_EVOLUTION_ITEM_IDS, EXTRA_EVOLUTION_PRICES, EXTRA_EVOLUTION_LABELS, emptyExtraEvolutionInventory, ITEM_EVOLUTION_RULES, type ExtraEvolutionItem } from './evolution-items';
 import { initialEvolutionProgress, evolutionProgress, validateEvolutionProgress, validateEvolutionContext, type EvolutionProgress, type EvolutionContext } from './evolution-progress';
@@ -81,6 +83,8 @@ export type Monster = {
   /** Optional canonical regional combat form; currently supports Alola forms. */
   regionalForm?: string;
   moves: MonsterMove[];
+  /** Moves taught from technical machines; they stay learnable while the species line is compatible. */
+  taughtMoves?: number[];
   /** Presentation order by move ID. Engine and neural slots remain in `moves`. */
   moveOrder?: number[];
   /** Legacy save data; move uses are unlimited, including unequipped moves. */
@@ -187,6 +191,8 @@ export type GameState = {
   /** Legacy finite refill progress retained for schema-v2 save/server compatibility; runtime resets it to zero. */
   ballRefillSeconds?: number;
   evolutionContext?: EvolutionContext;
+  /** Technical machine counts by move ID. Absent in saves made before machines existed. */
+  technicalMachines?: Record<string, number>;
   battle?: BattleState;
   /** Open-world victory reward, held until the player catches or releases it. */
   captureOffer?: Monster;
@@ -259,7 +265,7 @@ export const ITEM_LABELS: Readonly<Record<InventoryItem, string>> = {
   ...Object.fromEntries(MEGA_STONES.map(item => [item.id, item.name])) as Record<MegaStoneId, string>,
 };
 const INVENTORY_ITEMS = Object.keys(ITEM_PRICES) as InventoryItem[];
-export const SHOP_ITEMS: readonly InventoryItem[] = INVENTORY_ITEMS.filter(item => !['poke-ball', 'great-ball', 'ultra-ball', 'friendship-treat', 'galarica-cuff', 'galarica-wreath'].includes(item) && !EQUIPPABLE_ITEMS.includes(item as EquippableItem));
+export const SHOP_ITEMS: readonly InventoryItem[] = INVENTORY_ITEMS.filter(item => !['poke-ball', 'great-ball', 'ultra-ball', 'rare-candy', 'friendship-treat', 'galarica-cuff', 'galarica-wreath'].includes(item) && !EQUIPPABLE_ITEMS.includes(item as EquippableItem));
 
 /** Legacy ball counts stay finite for save/server compatibility; one finite token represents unlimited basic balls. */
 export function normalizeBalls(state: GameState): void {
@@ -360,7 +366,7 @@ export function recoverableAttackMoveIds(monster: Monster): number[] {
 }
 
 /** Every distinct level-up move available to this species or an earlier form. */
-export function availableMonsterMoveIds(monster: Pick<Monster, 'speciesId' | 'level' | 'regionalForm'>): number[] {
+export function availableMonsterMoveIds(monster: Pick<Monster, 'speciesId' | 'level' | 'regionalForm' | 'taughtMoves'>): number[] {
   const forms = [monster.speciesId], visited = new Set<number>(), entries: Array<{ moveId: number; level: number; order: number }> = [];
   let order = 0;
   const profile = monster.regionalForm ? getCombatForm(monster.regionalForm) : undefined;
@@ -374,7 +380,45 @@ export function availableMonsterMoveIds(monster: Pick<Monster, 'speciesId' | 'le
     forms.push(...(PRE_EVOLUTIONS.get(form) ?? []));
   }
   entries.sort((a, b) => a.level - b.level || a.order - b.order);
-  return [...new Set([...entries.map((entry) => entry.moveId), ...getSpecies(monster.speciesId).machineMoves])];
+  const taught = (monster.taughtMoves ?? []).filter(moveId => [...visited].some(form => machineCompatible(moveId, form)));
+  return [...new Set([...entries.map((entry) => entry.moveId), ...getSpecies(monster.speciesId).machineMoves, ...taught])];
+}
+
+/** Species in this line, including earlier forms, that can learn the machine's move. */
+export function canLearnTechnicalMachine(monster: Pick<Monster, 'speciesId'>, moveId: number): boolean {
+  const forms = [monster.speciesId], visited = new Set<number>();
+  while (forms.length) {
+    const form = forms.shift()!;
+    if (visited.has(form)) continue;
+    visited.add(form);
+    if (machineCompatible(moveId, form)) return true;
+    forms.push(...(PRE_EVOLUTIONS.get(form) ?? []));
+  }
+  return false;
+}
+
+export function grantTechnicalMachine(state: GameState, moveId: number, quantity = 1): boolean {
+  if (!getTechnicalMachine(moveId) || !Number.isSafeInteger(quantity) || quantity < 1) return false;
+  const stock = state.technicalMachines?.[String(moveId)] ?? 0;
+  if (stock + quantity > TECHNICAL_MACHINE_STOCK_LIMIT) return false;
+  state.technicalMachines = { ...state.technicalMachines, [String(moveId)]: stock + quantity };
+  return true;
+}
+
+/** Uses one machine. The move joins the learnable list and fills an empty slot when one is free. */
+export function teachTechnicalMachine(state: GameState, instanceId: string, moveId: number): { equipped: boolean } {
+  if (state.battle || state.captureOffer) throw new Error('전투와 포획 선택을 마친 뒤 기술머신을 쓸 수 있습니다.');
+  const machine = getTechnicalMachine(moveId), stock = state.technicalMachines?.[String(moveId)] ?? 0;
+  if (!machine || stock < 1) throw new Error('보유한 기술머신이 없습니다.');
+  const monster = findOwned(state, instanceId);
+  if (!canLearnTechnicalMachine(monster, moveId)) throw new Error(`${monster.nickname}은(는) ${getMove(moveId).name}을(를) 배울 수 없습니다.`);
+  if (availableMonsterMoveIds(monster).includes(moveId)) throw new Error(`${monster.nickname}은(는) 이미 ${getMove(moveId).name}을(를) 알고 있습니다.`);
+  monster.taughtMoves = [...(monster.taughtMoves ?? []), moveId];
+  if (stock > 1) state.technicalMachines![String(moveId)] = stock - 1; else delete state.technicalMachines![String(moveId)];
+  const equipped = monster.moves.length < 4;
+  if (equipped) { learnMove(monster, moveId); if (monster.brain) monster.brain.previous = null; }
+  addLog(state, `${monster.nickname}은(는) ${getMove(moveId).name}을(를) 배웠다.`);
+  return { equipped };
 }
 
 /** Discard obsolete PP cache entries without changing the saved monster. */
@@ -541,7 +585,7 @@ export function explore(state: GameState, regionId: string): ExploreResult {
     return { kind: 'encounter', speciesId, amount: 1, text };
   }
   if (roll < .88) {
-    const available: InventoryItem[] = ['potion', 'rare-candy'];
+    const available: InventoryItem[] = ['potion'];
     if (state.player.badges >= 3) available.push('super-potion');
     const item = available[Math.floor(random(state) * available.length)];
     state.inventory[item]++;
@@ -583,10 +627,11 @@ export function challengeCampaignGym(state: GameState, region: CampaignRegion, l
   if (!gym || gym.badge !== getRegionalBadges(state, region) + 1) throw new Error('체육관은 지역별 순서대로 도전해야 합니다.');
   const healthy = firstRegionalHealthy(state, region);
   state.regionId = region === 'kanto' ? REGIONS[gym.badge - 1].id : REGIONS[0].id;
-  const enemy = createMonster(state, gym.speciesId, gym.level, region);
-  state.dex.seen = uniqueSorted([...state.dex.seen, enemy.speciesId]);
+  const party = gymTeam(region, gym.badge) ?? [[gym.speciesId, gym.level] as const];
+  const enemy = party.map(([id, level]) => createMonster(state, id, level, region));
+  state.dex.seen = uniqueSorted([...state.dex.seen, ...enemy.map(monster => monster.speciesId)]);
   state.battle = { kind: 'gym', campaignRegion: region, policyRegion: region, regionId: state.regionId, gymBadge: gym.badge,
-    player: { team: state.player.team, activeIndex: healthy }, enemy: { team: [enemy], activeIndex: 0 }, turn: 1, canRun: false };
+    player: { team: state.player.team, activeIndex: healthy }, enemy: { team: enemy, activeIndex: 0 }, turn: 1, canRun: false };
   addLog(state, `${region === 'johto' ? '성도' : '관동'} ${gym.name}에게 도전했다.`);
   applyPreferredBattleTransformation(state);
   return state.battle;
@@ -1990,6 +2035,7 @@ export function validateGame(value: unknown): GameState {
     const allowed = getVersionSpeciesIds(version);
     if (!allowed.length || !Array.isArray(ids) || ids.length !== new Set(ids).size || ids.some(id => !allowed.includes(id) || !state.dex?.caught?.includes(id))) throw new Error('버전별 수집 기록이 올바르지 않습니다.');
   }
+  if (state.technicalMachines !== undefined) state.technicalMachines = validateTechnicalMachineStock(state.technicalMachines);
   state.ballRefillSeconds ??= 0;
   if (!Number.isFinite(state.ballRefillSeconds) || state.ballRefillSeconds < 0 || state.ballRefillSeconds >= BALL_REFILL_INTERVAL) throw new Error('볼 보충 기록이 올바르지 않습니다.');
   if (typeof state.seed !== 'string' || !state.seed || state.seed.length > 200) throw new Error('시드가 손상되었습니다.');
@@ -2080,6 +2126,7 @@ export function validateGame(value: unknown): GameState {
     if (monster.moveOrder !== undefined) {
       if (!Array.isArray(monster.moveOrder) || monster.moveOrder.length > 4 || monster.moveOrder.length !== new Set(monster.moveOrder).size || monster.moveOrder.some((moveId) => !Number.isSafeInteger(moveId) || !knownMoveIds.has(moveId))) throw new Error('기술 배치가 잘못되었습니다.');
     }
+    if (monster.taughtMoves !== undefined && (!Array.isArray(monster.taughtMoves) || monster.taughtMoves.length > 64 || new Set(monster.taughtMoves).size !== monster.taughtMoves.length || monster.taughtMoves.some(moveId => !Number.isSafeInteger(moveId) || !getTechnicalMachine(moveId)))) throw new Error('기술머신으로 배운 기술이 올바르지 않습니다.');
     normalizeMovePpReserve(monster);
     if (monster.status !== undefined && (typeof monster.status !== 'string' || !monster.status || monster.status.length > 40)) throw new Error('상태이상이 잘못되었습니다.');
     if (monster.statusTurns !== undefined && (!Number.isInteger(monster.statusTurns) || monster.statusTurns < 1 || monster.statusTurns > 10)) throw new Error('상태이상 지속 시간이 잘못되었습니다.');

@@ -180,6 +180,47 @@ struct Catalog {
 }
 
 static CATALOG: OnceLock<Catalog> = OnceLock::new();
+static TECHNICAL_MACHINES: OnceLock<HashMap<i64, Vec<u8>>> = OnceLock::new();
+
+#[derive(Deserialize)]
+struct TechnicalMachineFile {
+    machines: Vec<TechnicalMachineRecord>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TechnicalMachineRecord {
+    move_id: i64,
+    species: String,
+}
+
+/// Machine move ID to its species compatibility bitset (species n is bit n - 1, most significant bit first).
+fn technical_machines() -> &'static HashMap<i64, Vec<u8>> {
+    TECHNICAL_MACHINES.get_or_init(|| {
+        let parsed: TechnicalMachineFile =
+            serde_json::from_str(include_str!("../../src/data/technical-machines.json"))
+                .expect("technical machine catalog");
+        parsed
+            .machines
+            .into_iter()
+            .map(|machine| {
+                let bits = hex::decode(&machine.species).expect("technical machine bitset");
+                (machine.move_id, bits)
+            })
+            .collect()
+    })
+}
+
+fn technical_machine_compatible(move_id: i64, species_id: i64) -> bool {
+    if species_id < 1 {
+        return false;
+    }
+    let index = (species_id - 1) as usize;
+    technical_machines()
+        .get(&move_id)
+        .and_then(|bits| bits.get(index / 8))
+        .is_some_and(|byte| byte & (0x80 >> (index % 8)) != 0)
+}
 static GRAPH: OnceLock<Value> = OnceLock::new();
 static ABILITIES: OnceLock<HashMap<i64, Vec<AbilitySource>>> = OnceLock::new();
 
@@ -885,6 +926,24 @@ fn validate_monster(
     if let Some(entry) = catalog().species.get(&species_id) {
         legal.extend(entry.machine_moves.iter().copied());
     }
+    if let Some(taught) = monster.get("taughtMoves") {
+        let taught = taught
+            .as_array()
+            .ok_or("기술머신으로 배운 기술이 올바르지 않습니다.")?;
+        if taught.len() > 64 {
+            return Err("기술머신으로 배운 기술이 올바르지 않습니다.");
+        }
+        let mut seen = HashSet::new();
+        for value in taught {
+            let move_id = integer(Some(value), 1, MAX_SAFE_INTEGER)?;
+            if !technical_machines().contains_key(&move_id) || !seen.insert(move_id) {
+                return Err("기술머신으로 배운 기술이 올바르지 않습니다.");
+            }
+            if visited.iter().any(|form| technical_machine_compatible(move_id, *form)) {
+                legal.insert(move_id);
+            }
+        }
+    }
     if let Some(form) = monster.get("regionalForm").and_then(Value::as_str).and_then(combat_form) { legal.extend(form.level_up_moves.iter().filter(|entry| entry.level <= level).map(|entry| entry.move_id)); }
     let mut move_ids = HashSet::new();
     for slot in moves {
@@ -1017,6 +1076,14 @@ const JOHTO_CAVES: [&str; 9] = [
 fn valid_world_scene(region: &str, scene: &str) -> bool {
     if scene == format!("surface:{region}") {
         return true;
+    }
+    // Gym and league halls are keyed by the region and the location they stand in.
+    for hall in ["gym", "league"] {
+        if let Some(location) = scene.strip_prefix(&format!("{hall}:{region}:")) {
+            return !location.is_empty()
+                && location.len() <= 64
+                && location.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-');
+        }
     }
     let Some(id) = scene.strip_prefix(&format!("cave:{region}:")) else {
         return false;
@@ -1160,12 +1227,12 @@ fn validate_open_world(view: Option<&Value>) -> Result<(), &'static str> {
     }
     if let Some(states) = world.get("fieldItemPickupStates") {
         let slots = states.as_object().ok_or("길가 물품 상태가 올바르지 않습니다.")?;
-        if slots.len() > 120 { return Err("길가 물품 상태가 너무 많습니다."); }
+        if slots.len() > 240 { return Err("길가 물품 상태가 너무 많습니다."); }
         for (id, state) in slots {
             let parts: Vec<_> = id.split(':').collect();
             if parts.len() != 3 || parts[0] != "field-item"
                 || !matches!(parts[1], "kanto" | "johto" | "hoenn" | "sinnoh" | "unova" | "kalos" | "alola" | "galar" | "hisui" | "paldea")
-                || !parts[2].parse::<u8>().is_ok_and(|slot| slot < 12 && parts[2] == slot.to_string())
+                || !parts[2].parse::<u8>().is_ok_and(|slot| slot < 24 && parts[2] == slot.to_string())
                 || !state.get("remainingSeconds").and_then(Value::as_f64).is_some_and(|seconds| seconds.is_finite() && (0.0..=1800.0).contains(&seconds))
                 || !state.get("collectedCount").and_then(Value::as_u64).is_some_and(|count| count <= 1_000_000_000)
             { return Err("길가 물품 대기 시간이 올바르지 않습니다."); }
@@ -1825,6 +1892,21 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
     }
     for amount in inventory.values() {
         integer(Some(amount), 0, 1_000_000_000)?;
+    }
+    if let Some(machines) = game.get("technicalMachines") {
+        let machines = machines
+            .as_object()
+            .ok_or("기술머신 보관함이 올바르지 않습니다.")?;
+        for (move_id, amount) in machines {
+            let known = move_id
+                .parse::<i64>()
+                .ok()
+                .filter(|id| id.to_string() == *move_id && technical_machines().contains_key(id));
+            if known.is_none() {
+                return Err("기술머신 보관함이 올바르지 않습니다.");
+            }
+            integer(Some(amount), 0, 1_000_000_000)?;
+        }
     }
     validate_evolution_context(game)?;
     let defeated = array(game, "defeatedGyms")?;
@@ -3392,13 +3474,58 @@ mod tests {
             let mut bad = save.clone(); bad["view"]["openWorld"]["fieldItemPickupStates"]["field-item:kanto:0"]["remainingSeconds"] = Value::from(timer);
             assert!(validate_save(&bad).is_err());
         }
-        save["view"]["openWorld"]["fieldItemPickupStates"] = serde_json::json!({"field-item:kanto:11":{"remainingSeconds":0,"collectedCount":0}});
+        save["view"]["openWorld"]["fieldItemPickupStates"] = serde_json::json!({"field-item:kanto:23":{"remainingSeconds":0,"collectedCount":0}});
         validate_save(&save).unwrap();
-        for slot in ["12", "03", "-1"] {
+        for slot in ["24", "03", "-1"] {
             save["view"]["openWorld"]["fieldItemPickupStates"] = serde_json::json!({ format!("field-item:kanto:{slot}"): {"remainingSeconds":0,"collectedCount":0} });
             assert!(validate_save(&save).is_err());
         }
         validate_save(&valid_save()).unwrap();
+    }
+
+    #[test]
+    fn accepts_gym_and_league_halls_of_the_same_region() {
+        for scene in ["gym:kanto:pewter", "league:kanto:indigo-plateau"] {
+            let mut save = valid_save();
+            save["view"]["openWorld"] = serde_json::json!({"regionId":"kanto", "sceneId":scene, "surfaceReturn":{"sceneId":"surface:kanto","x":1,"z":2}});
+            validate_save(&save).unwrap();
+        }
+        for scene in ["gym:johto:violet", "league:kanto:", "gym:kanto:Pewter", "hall:kanto:pewter"] {
+            let mut save = valid_save();
+            save["view"]["openWorld"] = serde_json::json!({"regionId":"kanto", "sceneId":scene});
+            assert!(validate_save(&save).is_err(), "{scene}");
+        }
+    }
+
+    #[test]
+    fn validates_technical_machine_stock_and_taught_moves() {
+        let mut save = valid_save();
+        save["game"]["technicalMachines"] = serde_json::json!({"89": 2, "85": 0});
+        validate_save(&save).unwrap();
+        for stock in [serde_json::json!({"1": 1}), serde_json::json!({"089": 1}), serde_json::json!({"89": -1}), serde_json::json!([89])] {
+            let mut bad = valid_save();
+            bad["game"]["technicalMachines"] = stock;
+            assert!(validate_save(&bad).is_err());
+        }
+        assert!(technical_machine_compatible(89, 6) && !technical_machine_compatible(89, 12));
+        let energy_ball = catalog().moves.get(&412).unwrap().pp;
+        let mut taught = valid_save();
+        taught["game"]["player"]["team"][0]["taughtMoves"] = serde_json::json!([412]);
+        taught["game"]["player"]["team"][0]["moves"].as_array_mut().unwrap().push(serde_json::json!({"moveId":412,"pp":energy_ball}));
+        validate_save(&taught).unwrap();
+        let mut untaught = taught.clone();
+        untaught["game"]["player"]["team"][0].as_object_mut().unwrap().remove("taughtMoves");
+        assert!(validate_save(&untaught).is_err());
+        let mut incompatible = valid_save();
+        incompatible["game"]["player"]["team"][0]["taughtMoves"] = serde_json::json!([89]);
+        validate_save(&incompatible).unwrap();
+        incompatible["game"]["player"]["team"][0]["moves"].as_array_mut().unwrap().push(serde_json::json!({"moveId":89,"pp":10}));
+        assert!(validate_save(&incompatible).is_err());
+        for invalid in [serde_json::json!([412, 412]), serde_json::json!([1]), serde_json::json!(412)] {
+            let mut bad = valid_save();
+            bad["game"]["player"]["team"][0]["taughtMoves"] = invalid;
+            assert!(validate_save(&bad).is_err());
+        }
     }
 
     #[test]

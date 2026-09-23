@@ -49,8 +49,8 @@ export const HOENN_SURFACE_CONNECTIONS = HOENN_CONNECTIONS;
 export const HOENN_GATES: readonly KantoGate[] = [];
 export const HOENN_GYMS: readonly KantoGym[] = [
   {locationId:'rustboro-city',badge:1,badgeName:'스톤배지',name:'원규',speciesId:299,level:15},
-  {locationId:'dewford-town',badge:2,badgeName:'너클배지',name:'철구',speciesId:297,level:18},
-  {locationId:'mauville-city',badge:3,badgeName:'다이나모배지',name:'암페어',speciesId:82,level:23},
+  {locationId:'dewford-town',badge:2,badgeName:'너클배지',name:'철구',speciesId:296,level:19},
+  {locationId:'mauville-city',badge:3,badgeName:'다이나모배지',name:'암페어',speciesId:310,level:24},
   {locationId:'lavaridge-town',badge:4,badgeName:'히트배지',name:'민지',speciesId:324,level:29},
   {locationId:'petalburg-city',badge:5,badgeName:'밸런스배지',name:'종길',speciesId:289,level:31},
   {locationId:'fortree-city',badge:6,badgeName:'페더배지',name:'은송',speciesId:334,level:33},

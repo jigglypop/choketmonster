@@ -9,7 +9,7 @@ export type FieldItemDrop = FieldItem & { quantity: 1 };
 export const HELD_TOOL_CAPTURE_RATES: Readonly<Record<FieldItemTier, number>> = { common: .15, uncommon: .08, rare: .04 };
 /** Roadside pickup weight of one held tool, by its catalog tier. */
 export const HELD_TOOL_PICKUP_WEIGHTS: Readonly<Record<FieldItemTier, number>> = { common: 4, uncommon: 2, rare: 1 };
-export const MEGA_STONE_CAPTURE_RATE = .04;
+export const MEGA_STONE_CAPTURE_RATE = .12;
 export const FIELD_ITEM_STOCK_LIMIT = 1_000_000_000;
 
 const catalog = fieldItemsJson as FieldItem[];

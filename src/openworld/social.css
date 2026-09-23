@@ -85,6 +85,19 @@
 .world-portal-label { min-width:120px; max-width:210px; padding:7px 12px; color:#f3fff8; background:#183c36ed; border:1px solid #a6e2cb; border-radius:8px; box-shadow:0 3px 12px #0b241b66; cursor:pointer; text-align:center; white-space:nowrap; }
 .world-portal-label strong { display:block; font-size:13px; line-height:1.4; }
 .world-portal-label span { display:block; color:#baf1dc; font-size:11px; line-height:1.5; }
+.gym-leader-label { max-width:none; padding:10px 14px 12px; text-align:center; }
+.gym-leader-label:disabled { cursor:default; opacity:1; }
+.gym-leader-label[data-gym-state=available] { border-color:#ffe27a; }
+.gym-leader-party { display:flex; gap:6px; justify-content:center; margin:8px 0 0; padding:0; list-style:none; }
+.gym-leader-party li { display:grid; justify-items:center; min-width:52px; padding:4px 4px 5px; border-radius:8px; background:#ffffff14; }
+.gym-leader-party img { width:40px; height:40px; object-fit:contain; image-rendering:pixelated; }
+.gym-leader-party small { font-size:10px; line-height:1.3; white-space:nowrap; }
+.gym-leader-party b { font-size:11px; font-weight:600; color:#ffe9a3; }
+.world-enemy-party { display:flex; gap:4px; margin:6px 0 0; padding:0; list-style:none; }
+.world-enemy-party li { width:30px; height:30px; border-radius:50%; background:#ffffff14; border:1px solid #ffffff22; }
+.world-enemy-party li.active { border-color:#ffe27a; }
+.world-enemy-party li.fainted img { filter:grayscale(1); opacity:.35; }
+.world-enemy-party img { width:100%; height:100%; object-fit:contain; image-rendering:pixelated; }
 .world-gate-label { min-width:180px; max-width:260px; white-space:normal; }
 .world-gate-label.locked { color:#fff5d8; background:#531f17f5; border:2px solid #ffce68; box-shadow:0 3px 14px #160b08aa; }
 .world-gate-label.locked span { color:#ffe2a1; }

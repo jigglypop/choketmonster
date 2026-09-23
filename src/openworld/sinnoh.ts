@@ -38,7 +38,7 @@ export const SINNOH_GATES: readonly KantoGate[] = []; export const SINNOH_GYMS: 
   {locationId:'pastoria-city',badge:5,badgeName:'펜배지',name:'맥실러',speciesId:419,level:37},
   {locationId:'canalave-city',badge:6,badgeName:'마인배지',name:'동관',speciesId:411,level:41},
   {locationId:'snowpoint-city',badge:7,badgeName:'글레이셔배지',name:'무청',speciesId:478,level:44},
-  {locationId:'sunyshore-city',badge:8,badgeName:'비컨배지',name:'전진',speciesId:405,level:50},
+  {locationId:'sunyshore-city',badge:8,badgeName:'비컨배지',name:'전진',speciesId:466,level:50},
 ];
 const runtime = createAuthoredRegionSampler({ id:'sinnoh', locations:SINNOH_LOCATIONS, connections:SINNOH_CONNECTIONS, terrainFeatures: [
   { locationId: 'mt-coronet', surface: 'mountain', radius: 14, elevation: .9 },

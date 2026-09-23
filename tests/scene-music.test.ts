@@ -14,7 +14,11 @@ describe('scene soundtrack', () => {
     expect(selectMusicCue(cave)).toBe('cave');
     expect(selectMusicCue({ ...cave, battle: { kind: 'wild' } })).toBe('cave');
     expect(selectMusicCue({ ...cave, captureOffer: true })).toBe('cave');
-    expect(selectMusicCue({ ...cave, battle: { kind: 'gym' } })).toBe('cave');
+    expect(selectMusicCue({ ...cave, battle: { kind: 'gym' } })).toBe('gym-battle');
+    expect(selectMusicCue({ started: true, sceneId: 'gym:kanto:pewter', location: { id: 'pewter', kind: 'town' } })).toBe('gym');
+    expect(selectMusicCue({ started: true, sceneId: 'gym:kanto:pewter', location: { id: 'pewter', kind: 'town' }, battle: { kind: 'gym' } })).toBe('gym-battle');
+    expect(selectMusicCue({ started: true, sceneId: 'league:kanto:indigo-plateau', location: { id: 'indigo-plateau', kind: 'special' } })).toBe('gym');
+    expect(selectMusicCue({ started: true, sceneId: 'league:kanto:indigo-plateau', location: { id: 'indigo-plateau', kind: 'special' }, battle: { kind: 'trainer' } })).toBe('champion-battle');
     expect(selectMusicCue({ ...cave, battle: { kind: 'trainer' }, champion: true })).toBe('cave');
     expect(selectMusicCue({ started: true, location: { id: 'new-bark', kind: 'town' } })).toBe('pallet');
     expect(selectMusicCue({ started: true, location: { id: 'route-29', kind: 'route' } })).toBe('route1');
@@ -39,7 +43,7 @@ describe('scene soundtrack', () => {
     expect(director.update({ ...route, battle: { kind: 'wild' } })).toEqual({ cue: 'route24' });
     expect(director.resolve()).toEqual({ cue: 'route24' });
     expect(director.update({ ...route, captureOffer: true })).toEqual({ cue: 'route24' });
-    expect(director.update({ ...route, battle: { kind: 'gym' } })).toEqual({ cue: 'route24' });
+    expect(director.update({ ...route, battle: { kind: 'gym' } })).toEqual({ cue: 'gym-battle' });
     expect(director.update({ ...route, battle: { kind: 'trainer' }, champion: true })).toEqual({ cue: 'route24' });
     expect(director.update(route)).toEqual({ cue: 'route24' });
   });

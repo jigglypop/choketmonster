@@ -9,14 +9,14 @@ describe('species capture item rewards', () => {
     expect(rollCapturedSpeciesItem(() => 0, 129)).toBeUndefined();
     expect(rollCapturedSpeciesItem(() => 0, 94)?.id).toBe('mega-stone:gengar-mega');
   });
-  it('balances rare tools at 4 percent and splits the four percent Mega chance across forms', () => {
+  it('balances rare tools at 4 percent and splits the twelve percent Mega chance across forms', () => {
     expect(rollCapturedSpeciesItem(() => .03999, 143)?.id).toBe('leftovers');
     expect(rollCapturedSpeciesItem(() => .04, 143)).toBeUndefined();
     const choices = captureItemChances(6);
-    expect(choices.reduce((sum, item) => sum + item.chance, 0)).toBeCloseTo(.04);
-    expect(rollCapturedSpeciesItem(() => .04, 6)).toBeUndefined();
-    expect(rollCapturedSpeciesItem(() => .01, 6)?.id).toBe('mega-stone:charizard-mega-x');
-    expect(rollCapturedSpeciesItem(() => .03, 6)?.id).toBe('mega-stone:charizard-mega-y');
+    expect(choices.reduce((sum, item) => sum + item.chance, 0)).toBeCloseTo(.12);
+    expect(rollCapturedSpeciesItem(() => .12, 6)).toBeUndefined();
+    expect(rollCapturedSpeciesItem(() => .05, 6)?.id).toBe('mega-stone:charizard-mega-x');
+    expect(rollCapturedSpeciesItem(() => .07, 6)?.id).toBe('mega-stone:charizard-mega-y');
   });
   it('caps inventory and replays deterministically from the saved RNG', () => {
     const drop = rollCapturedSpeciesItem(() => 0, 143)!;

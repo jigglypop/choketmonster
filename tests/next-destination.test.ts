@@ -7,7 +7,7 @@ describe('campaign wayfinder', () => {
   it('points a fresh Johto partner along the next road without changing its game state', () => {
     const game = createGame(152, 'wayfinder'), before = structuredClone(game), atlas = getWorldAtlas('johto');
     const guide = nextDestinationGuide(game, atlas, atlas.surfaceSceneId, atlas.start);
-    expect(guide).toMatchObject({ destinationId: 'violet', recommendedLevel: 10, nextName: '29번 도로', status: 'route' });
+    expect(guide).toMatchObject({ destinationId: 'violet', recommendedLevel: 9, nextName: '29번 도로', status: 'route' });
     expect(guide.points.length).toBeGreaterThan(3);
     for (const point of guide.points) expect(atlas.sample(point.x, point.z).blocked).toBe(false);
     expect(game).toEqual(before);

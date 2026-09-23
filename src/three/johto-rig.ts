@@ -1,17 +1,20 @@
 import {
   AnimationClip, Bone, Box3, BufferAttribute, BufferGeometry, DataTexture, Mesh, MeshStandardMaterial,
-  NearestFilter, Object3D, Quaternion, QuaternionKeyframeTrack, RGBAFormat, Skeleton, SkinnedMesh,
-  SRGBColorSpace, Vector3, VectorKeyframeTrack,
+  NearestFilter, Object3D, PropertyBinding, Quaternion, QuaternionKeyframeTrack, RGBAFormat, Skeleton, SkinnedMesh,
+  SRGBColorSpace, Vector3, VectorKeyframeTrack, type KeyframeTrack,
 } from 'three';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { HOME_AUTHORED_PALETTES } from '../data/pokemon-home-authored-palettes';
+import { POKEMON_MOTION_KINDS, STATIC_MOTION_CLIP, selectPokemonMotionClip, type PokemonMotionKind } from '../data/model-motion';
+import { isMovingClipMotion, missingMotionKinds, summarizeClipMotion, type KeyframeSample } from './clip-motion';
 
-/** Authored articulation, separate from the immutable source models and their clips. */
-export const REGIONAL_RIG_VERSION = 'regional-authored-v4';
+/** Authored articulation, separate from the immutable source models and their clips.
+ * v5: source clips are measured; frozen ones are flagged and every missing motion kind is authored. */
+export const REGIONAL_RIG_VERSION = 'regional-authored-v5';
 export const JOHTO_RIG_VERSION = REGIONAL_RIG_VERSION;
 // Deoxys' source GLB contains one ArmatureAction whose 402 tracks repeat their bind-pose values.
 // Preserve that source clip for provenance, and append authored motion so the runtime can animate it.
-const STATIC_NATIVE_CLIP_SPECIES = new Set([68,122,386,794,796,798,802,805,914]);
+export const STATIC_NATIVE_CLIP_SPECIES: ReadonlySet<number> = new Set([68,122,386,794,796,798,802,805,914]);
 type Shape = 'biped' | 'quadruped' | 'bird' | 'winged' | 'fish' | 'plant' | 'floatingPlant' | 'glyph' | 'serpent' | 'soft';
 type Joint = { bone: Bone; start: Vector3; end: Vector3; role: string; side: number; phase: number };
 const groups: Record<Exclude<Shape, 'biped'>, number[]> = {
@@ -287,19 +290,50 @@ function skinStaticModel(model: Object3D, id: number): Joint[] {
   return joints;
 }
 
+/** Side from source naming (LThigh, left_leg_01, Leg.L, HindLegL, trright_arm); 0 for Leg, Root, Luxio. */
+export function boneSide(name: string): number {
+  const base = name.replace(/_\d+$/, '').replace(/_end$/i, '');
+  const sided = (full: RegExp, letter: 'L' | 'R') => full.test(base) || new RegExp(`^${letter}(?=[A-Z0-9_.])`).test(base)
+    || new RegExp(`(?:^|[_.\\s|-])${letter}(?:$|[_.\\s|0-9-])`, 'i').test(base) || new RegExp(`[a-z0-9]${letter}$`).test(base);
+  return sided(/left/i, 'L') ? -1 : sided(/right/i, 'R') ? 1 : 0;
+}
+
+const LEG_SEGMENT = /thigh|upleg|crotch|leg|knee|calf|shin|foot|ankle/;
+// Gen 8/9 rigs pair each joint with a constant "tr" translation parent (trleft_leg_01 -> left_leg_01).
+const TRANSLATION_HELPER = /^tr(?:left|right|center|spine|neck|head|hips|arm|leg|foot|shoulder|crotch)/;
+
+/**
+ * Motion role from a bone name and its bone ancestors (nearest first). Leg chains are ranked by
+ * position, so a named hip/thigh swings, the next segment bends, and deeper segments follow.
+ */
+export function boneMotionRole(name: string, ancestors: readonly string[]): string {
+  const lower = name.toLowerCase();
+  if (/wing/.test(lower)) return 'wing';
+  if (/tail/.test(lower)) return 'tail';
+  if (LEG_SEGMENT.test(lower) && !/feeler|pole|target|ik/.test(lower)) {
+    if (TRANSLATION_HELPER.test(lower)) return 'legHelper';
+    let chain = 0;
+    for (const ancestor of ancestors.map(value => value.toLowerCase())) {
+      if (TRANSLATION_HELPER.test(ancestor)) continue;
+      if (!LEG_SEGMENT.test(ancestor) || /feeler|pole|target|ik/.test(ancestor)) break;
+      chain++;
+    }
+    return chain === 0 ? 'leg' : chain === 1 ? 'foot' : 'legTip';
+  }
+  const role = /hand|forearm|arm_02|lowerarm/.test(lower) ? 'armTip' : /arm|shoulder/.test(lower) ? 'arm'
+    : /head/.test(lower) ? 'head' : /neck/.test(lower) ? 'neck' : /spine|chest|body|^waist/.test(lower) ? 'spine' : /hips|pelvis/.test(lower) ? 'hips' : 'other';
+  if (role !== 'other') return role;
+  const depth = ancestors.length;
+  return depth === 0 ? 'hips' : depth === 1 ? 'spine' : depth === 2 ? 'neck' : depth === 3 ? 'head' : 'other';
+}
+
 function existingJoints(model: Object3D): Joint[] {
   const bones = new Set<Bone>(); model.traverse(object => { if (object instanceof SkinnedMesh) for (const bone of object.skeleton.bones) bones.add(bone); });
   model.updateMatrixWorld(true);
   return [...bones].map(bone => {
-    const name = bone.name.toLowerCase(), side = /^(l|left)|[_.]l($|[_.])/.test(name) ? -1 : /^(r(?!oot)|right)|[_.]r($|[_.])/.test(name) ? 1 : 0;
-    let role = /wing/.test(name) ? 'wing' : /tail/.test(name) ? 'tail' : /thigh|upleg/.test(name) ? 'leg'
-      : /foot|lowerleg|shin/.test(name) ? 'foot' : /hand|forearm|arm_02|lowerarm/.test(name) ? 'armTip' : /arm|shoulder/.test(name) ? 'arm'
-        : /head/.test(name) ? 'head' : /neck/.test(name) ? 'neck' : /spine|chest|body|^waist/.test(name) ? 'spine' : /hips|pelvis/.test(name) ? 'hips' : 'other';
-    if (role === 'other') {
-      let depth = 0, parent = bone.parent;
-      while (parent instanceof Bone) { depth++; parent = parent.parent; }
-      role = depth === 0 ? 'hips' : depth === 1 ? 'spine' : depth === 2 ? 'neck' : depth === 3 ? 'head' : 'other';
-    }
+    const name = bone.name.toLowerCase(), side = boneSide(bone.name), ancestors: string[] = [];
+    for (let parent = bone.parent; parent instanceof Bone; parent = parent.parent) ancestors.push(parent.name);
+    const role = boneMotionRole(bone.name, ancestors);
     let endpoint = bone.children.find(child => child instanceof Bone) as Bone | undefined;
     if (role === 'arm') {
       bone.traverse(child => { if (child !== bone && child instanceof Bone && /forearm|arm_02|lowerarm/i.test(child.name) && !endpoint?.name.match(/forearm|arm_02|lowerarm/i)) endpoint = child; });
@@ -308,12 +342,75 @@ function existingJoints(model: Object3D): Joint[] {
   });
 }
 
-function authoredClips(model: Object3D, joints: Joint[], id: number): AnimationClip[] {
+type PoseValue = { track: string; node: string; property: 'quaternion' | 'position' | 'scale'; value: number[] };
+
+/** Values per keyframe, excluding glTF cubic-spline tangents. */
+function keyframeValues(track: KeyframeTrack): { stride: number; offset: number; step: number } {
+  const perKey = track.times.length ? track.values.length / track.times.length : track.values.length;
+  // GLTFLoader flags cubic-spline tracks on their interpolant factory; values then hold in/value/out tangents.
+  const cubic = (track as unknown as { createInterpolant?: { isInterpolantFactoryMethodGLTFCubicSpline?: boolean } }).createInterpolant?.isInterpolantFactoryMethodGLTFCubicSpline === true;
+  return cubic ? { stride: perKey / 3, offset: perKey / 3, step: perKey } : { stride: perKey, offset: 0, step: perKey };
+}
+
+function motionSamples(clip: AnimationClip): KeyframeSample[] {
+  return clip.tracks.map(track => {
+    const { stride, offset, step } = keyframeValues(track);
+    if (!offset) return { name: track.name, times: track.times, values: track.values };
+    const values = new Float32Array(track.times.length * stride);
+    for (let key = 0; key < track.times.length; key++) values.set(track.values.subarray(key * step + offset, key * step + offset + stride), key * stride);
+    return { name: track.name, times: track.times, values };
+  });
+}
+
+/** Whether each source clip visibly moves: rotation, scale, morph weights, or translation relative to model height. */
+function measureSourceClips(root: Object3D, clips: readonly AnimationClip[]): Array<{ clip: AnimationClip; name: string; moving: boolean }> {
+  let height: number | undefined;
+  const scales = new Map<string, number>();
+  const translationScale = (trackName: string) => {
+    const nodeName = PropertyBinding.parseTrackName(trackName).nodeName;
+    let scale = scales.get(nodeName);
+    if (scale === undefined) {
+      if (height === undefined) { root.updateMatrixWorld(true); height = Math.max(new Box3().setFromObject(root, true).getSize(new Vector3()).y, 1e-6); }
+      const parent = (PropertyBinding.findNode(root, nodeName) as Object3D | undefined)?.parent;
+      const world = parent ? parent.getWorldScale(new Vector3()) : new Vector3(1, 1, 1);
+      scale = Math.max(Math.abs(world.x), Math.abs(world.y), Math.abs(world.z)) / height;
+      scales.set(nodeName, scale);
+    }
+    return scale;
+  };
+  return clips.map(clip => ({ clip, name: clip.name, moving: isMovingClipMotion(summarizeClipMotion(motionSamples(clip), translationScale)) }));
+}
+
+/** The first keyframe of a source clip: the pose its authored companions start from. */
+function clipStartPose(clip: AnimationClip): PoseValue[] {
+  return clip.tracks.flatMap(track => {
+    const { nodeName, propertyName, propertyIndex } = PropertyBinding.parseTrackName(track.name);
+    if (propertyIndex !== undefined || !(propertyName === 'quaternion' || propertyName === 'position' || propertyName === 'scale')) return [];
+    const { stride, offset } = keyframeValues(track);
+    if (stride !== (propertyName === 'quaternion' ? 4 : 3)) return [];
+    return [{ track: track.name, node: nodeName, property: propertyName, value: Array.from(track.values.subarray(offset, offset + stride)) }];
+  });
+}
+
+function applyPose(root: Object3D, pose: readonly PoseValue[]): () => void {
+  const restore: Array<() => void> = [];
+  for (const { node, property, value } of pose) {
+    const target = (PropertyBinding.findNode(root, node) as Object3D | undefined)?.[property];
+    if (!target) continue;
+    const previous = target.toArray();
+    restore.push(() => { target.fromArray(previous); });
+    target.fromArray(value);
+  }
+  root.updateMatrixWorld(true);
+  return () => { restore.reverse().forEach(reset => reset()); root.updateMatrixWorld(true); };
+}
+
+function authoredClips(model: Object3D, joints: Joint[], id: number, kinds: readonly PokemonMotionKind[] = POKEMON_MOTION_KINDS, basePose: readonly PoseValue[] = []): AnimationClip[] {
   const shape = johtoRigShape(id), size = new Box3().setFromObject(model, true).getSize(new Vector3());
   const roles = new Set(['hips', 'spine', 'neck', 'head', 'tail', 'leg', 'foot', 'arm', 'armTip', 'wing', 'wingTip', 'shell', 'shellTip', 'antenna', 'fin', 'finTip', 'leaf', 'leafTip']);
   const animated = joints.filter(joint => roles.has(joint.role));
   if (animated.length < 2) throw new Error(`Source skeleton ${id} needs an explicit motion mapping`);
-  return (['idle', 'walk', 'attack', 'damage'] as const).map(kind => {
+  return kinds.map(kind => {
     const duration = kind === 'idle' ? 2.4 : kind === 'walk' ? .9 : .65;
     const times = Array.from({ length: 25 }, (_, i) => i * duration / 24), tracks: Array<QuaternionKeyframeTrack | VectorKeyframeTrack> = [];
     for (const { bone, start, end, role, side, phase } of animated) {
@@ -363,13 +460,22 @@ function authoredClips(model: Object3D, joints: Joint[], id: number): AnimationC
       const scale = bone.scale.clone().multiplyScalar(.001).toArray();
       tracks.push(new VectorKeyframeTrack(`${bone.name}.scale`, [0, duration], [...scale, ...scale]));
     }
-    return new AnimationClip(`CM_${kind}`, duration, tracks);
+    // Hold every other bone at the source idle pose. Otherwise the mixer restores fingers, ears
+    // and jaws to the bind pose whenever this clip replaces the source idle.
+    const covered = new Set(tracks.map(track => track.name));
+    for (const { track, property, value } of basePose) {
+      if (covered.has(track)) continue;
+      tracks.push(property === 'quaternion' ? new QuaternionKeyframeTrack(track, [0, duration], [...value, ...value]) : new VectorKeyframeTrack(track, [0, duration], [...value, ...value]));
+    }
+    const clip = new AnimationClip(`CM_${kind}`, duration, tracks);
+    clip.userData.choketmonAuthored = REGIONAL_RIG_VERSION;
+    return clip;
   });
 }
 
 /** Called once on a loaded template, before per-creature skeleton cloning. No simulation RNG. */
 export function prepareRegionalRig(gltf: Pick<GLTF, 'scene' | 'animations'>, id: number): void {
-  if (id < 1 || id > 1025 || gltf.scene.userData.authoredRig) return;
+  if (id < 1 || id > 1025 || gltf.scene.userData.authoredRig || gltf.scene.userData.nativeMotion) return;
   applyHomeAuthoredAppearance(gltf.scene, id);
   // Quaquaval's source includes three visible LOD copies of a long battle-only water/gel
   // effect. It expands the character bounds to 16 units and makes the actual model render
@@ -378,21 +484,60 @@ export function prepareRegionalRig(gltf: Pick<GLTF, 'scene' | 'animations'>, id:
   if(id===911||id===914){const effects:Object3D[]=[];gltf.scene.traverse(object=>{const geometryName=object instanceof Mesh?object.geometry.name:'';if(id===914?/_gel_mesh(?:_shape)?(?:_lod\d+)?$/i.test(geometryName||object.name):/^(Object_210|Object_212)$/.test(object.name))effects.push(object);});for(const effect of effects)effect.removeFromParent();gltf.scene.userData.authoredModelCleanup={version:REGIONAL_RIG_VERSION,removedEffectNodes:effects.map(effect=>({node:effect.name,geometry:effect instanceof Mesh?effect.geometry.name:''})),reason:id===914?'battle-only-gel-effect-distorts-character-bounds':'duplicate-expanded-bird-effects-distort-character-silhouette'};}
   let skinned = false; gltf.scene.traverse(object => { if (object instanceof SkinnedMesh) skinned = true; });
   const sourceClips = [...gltf.animations];
-  if (sourceClips.length && skinned && !STATIC_NATIVE_CLIP_SPECIES.has(id)) return;
+  // Source clips stay in place for provenance. Frozen ones (bind-pose repeats) are flagged so
+  // clip selection never lets them shadow an authored clip of the same kind.
+  const measured = measureSourceClips(gltf.scene, sourceClips);
+  const freeze = (all: boolean) => { for (const { clip, moving } of measured) if (all || !moving) clip.userData[STATIC_MOTION_CLIP] = true; };
+  const frozenCount = () => sourceClips.filter(clip => clip.userData[STATIC_MOTION_CLIP] === true).length;
+  const nativeMotion = measured.some(clip => clip.moving);
+  let kinds: PokemonMotionKind[] = nativeMotion ? missingMotionKinds(measured) : [...POKEMON_MOTION_KINDS];
+  // Deoxys, Machamp, Mr. Mime and the other listed sources use an authored skeleton instead of theirs.
   // Corsola's source has only a rigid waist influence; add actual leg/body joints.
-  let sourceSkeleton = skinned && id !== 222 && !STATIC_NATIVE_CLIP_SPECIES.has(id);
-  let joints = sourceSkeleton ? existingJoints(gltf.scene) : skinStaticModel(gltf.scene, id);
-  const motionRoles = /^(hips|spine|neck|head|tail|leg|foot|arm|armTip|wing|wingTip|shell|shellTip|antenna|fin|finTip|leaf|leafTip)$/;
-  if (sourceSkeleton && joints.filter(joint => motionRoles.test(joint.role)).length < 2) {
-    joints = skinStaticModel(gltf.scene, id); sourceSkeleton = false;
+  const reskin = !skinned || id === 222 || STATIC_NATIVE_CLIP_SPECIES.has(id);
+  // Rigid node animation (Xurkitree, Kartana, Stakataka, Runerigus) drives mesh nodes directly.
+  // Re-skinning would detach the meshes from the animated nodes, so it plays as-is when it walks.
+  if (!skinned && nativeMotion && !kinds.includes('walk')) {
+    freeze(false);
+    gltf.scene.userData.nativeMotion = { version: REGIONAL_RIG_VERSION, speciesId: id, sourceClips: sourceClips.length, frozenSourceClips: frozenCount(), reason: 'native-transform-motion' };
+    return;
   }
-  gltf.animations = [...sourceClips, ...authoredClips(gltf.scene, joints, id)];
+  if (!reskin && nativeMotion) {
+    freeze(false);
+    if (!kinds.length) {
+      gltf.scene.userData.nativeMotion = { version: REGIONAL_RIG_VERSION, speciesId: id, sourceClips: sourceClips.length, frozenSourceClips: frozenCount(), reason: 'native-skinned-motion' };
+      return;
+    }
+  }
+  let sourceSkeleton = !reskin;
+  // Authored companions of a moving source idle start from its first pose, so crossfades do not
+  // snap the body back to the bind (often T) pose.
+  const idle = sourceSkeleton && nativeMotion && !kinds.includes('idle') ? selectPokemonMotionClip(sourceClips, 'idle').clip : undefined;
+  const basePose = idle ? clipStartPose(idle) : [];
+  let restorePose = basePose.length ? applyPose(gltf.scene, basePose) : () => {};
+  let joints: Joint[];
+  let authored: AnimationClip[];
+  try {
+    joints = sourceSkeleton ? existingJoints(gltf.scene) : skinStaticModel(gltf.scene, id);
+    const motionRoles = /^(hips|spine|neck|head|tail|leg|foot|arm|armTip|wing|wingTip|shell|shellTip|antenna|fin|finTip|leaf|leafTip)$/;
+    if (sourceSkeleton && joints.filter(joint => motionRoles.test(joint.role)).length < 2) {
+      restorePose(); restorePose = () => {};
+      joints = skinStaticModel(gltf.scene, id); sourceSkeleton = false;
+    }
+    // A replacement skeleton detaches the source clips from the rendered skin.
+    if (!sourceSkeleton) { freeze(true); kinds = [...POKEMON_MOTION_KINDS]; }
+    authored = authoredClips(gltf.scene, joints, id, kinds, sourceSkeleton ? basePose : []);
+  } finally {
+    restorePose();
+  }
+  gltf.animations = [...sourceClips, ...authored];
   gltf.scene.userData.authoredRig = {
     version: JOHTO_RIG_VERSION,
     speciesId: id,
     sourceSkeleton,
     sourceClipsPreserved: sourceClips.length,
-    reason: sourceClips.length ? 'static-native-clips' : 'missing-native-clips',
+    frozenSourceClips: frozenCount(),
+    authoredKinds: kinds,
+    reason: !sourceClips.length ? 'missing-native-clips' : !sourceSkeleton ? 'replaced-source-skeleton' : nativeMotion ? 'missing-native-motion-kinds' : 'static-native-clips',
     joints: joints.length,
     shape: johtoRigShape(id),
   };

@@ -5,11 +5,14 @@ import type { Group } from 'three';
 import { terrainSurfaceHeight } from './grounding';
 import { FIELD_PICKUP_COLLECT_DISTANCE } from './item-sources';
 import type { WorldFieldItemPickup, WorldPoint, WorldSample } from './types';
+import { technicalMachineFromItemId } from '../game/technical-machines';
+import { getMove } from '../data/pokemon';
+import { TYPE_COLORS } from './type-colors';
 
 function Pickup({ item, player, sample, onNavigate, onCollect }: { item: WorldFieldItemPickup; player: WorldPoint; sample(x: number, z: number): WorldSample; onNavigate(point: WorldPoint): void; onCollect(id: string): void }) {
-  const visual = useRef<Group>(null), stone = item.kind === 'mega-stone';
+  const visual = useRef<Group>(null), stone = item.kind === 'mega-stone', machine = item.kind === 'technical-machine' ? technicalMachineFromItemId(item.itemId) : undefined;
   const distance = Math.hypot(item.x - player.x, item.z - player.z), close = distance <= FIELD_PICKUP_COLLECT_DISTANCE;
-  const color = stone ? '#ae83ff' : '#edbb55';
+  const color = stone ? '#ae83ff' : machine ? TYPE_COLORS[getMove(machine.moveId).type] ?? '#7fb6e8' : '#edbb55';
   const markDrawn = () => { if (visual.current) visual.current.userData.drawn = (visual.current.userData.drawn ?? 0) + 1; };
   useFrame(({ clock }) => { if (visual.current) { visual.current.rotation.y = clock.elapsedTime * .45; visual.current.position.y = .52 + Math.sin(clock.elapsedTime * 2.2) * .045; } });
   const interact = () => close ? onCollect(item.id) : onNavigate(item);
@@ -19,13 +22,16 @@ function Pickup({ item, player, sample, onNavigate, onCollect }: { item: WorldFi
       {stone ? <>
         <mesh onBeforeRender={markDrawn}><octahedronGeometry args={[.33]} /><meshStandardMaterial color={color} emissive="#6f3dab" emissiveIntensity={.25} metalness={.25} roughness={.23} /></mesh>
         <mesh rotation={[0, 0, .55]}><torusGeometry args={[.21, .035, 6, 18]} /><meshStandardMaterial color="#ffdb72" metalness={.4} roughness={.35} /></mesh>
+      </> : machine ? <>
+        <mesh onBeforeRender={markDrawn} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[.3, .3, .05, 28]} /><meshStandardMaterial color={color} metalness={.2} roughness={.45} /></mesh>
+        <mesh rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[.09, .09, .06, 16]} /><meshStandardMaterial color="#eef2f5" roughness={.5} /></mesh>
       </> : <>
         <mesh onBeforeRender={markDrawn}><boxGeometry args={[.5, .38, .35]} /><meshStandardMaterial color="#b38644" roughness={.9} /></mesh>
         <mesh position={[0, .21, 0]}><boxGeometry args={[.55, .1, .4]} /><meshStandardMaterial color={color} roughness={.85} /></mesh>
         <mesh position={[0, .05, -.181]}><boxGeometry args={[.12, .2, .04]} /><meshStandardMaterial color="#f3d47c" metalness={.25} /></mesh>
       </>}
     </group>
-    {distance < 30 && <Html center position={[0, 1.35, 0]} zIndexRange={[8, 7]}><button className={`world-pickup-label ${stone ? 'mega' : ''}`} data-field-pickup={item.id} data-item-id={item.itemId} onClick={interact}>{item.name}<small>{close ? '줍기' : `${Math.round(distance)}m`}</small></button></Html>}
+    {distance < 30 && <Html center position={[0, 1.35, 0]} zIndexRange={[8, 7]}><button className={`world-pickup-label ${stone ? 'mega' : machine ? 'machine' : ''}`} data-field-pickup={item.id} data-item-id={item.itemId} onClick={interact}>{item.name}<small>{close ? '줍기' : `${Math.round(distance)}m`}</small></button></Html>}
   </group>;
 }
 

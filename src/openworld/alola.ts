@@ -16,10 +16,10 @@ export const ALOLA_LOCATIONS:readonly KantoLocation[]=[
 export const ALOLA_CONNECTIONS:ReadonlyArray<readonly[string,string]>=ALOLA_LOCATIONS.slice(1).map((item,index)=>[ALOLA_LOCATIONS[index].id,item.id] as const);
 export const ALOLA_GATES:readonly KantoGate[]=[];
 export const ALOLA_GYMS:readonly KantoGym[]=[
- {locationId:'verdant-cavern',badge:1,badgeName:'일리마의인증',name:'일리마',speciesId:735,level:12},{locationId:'brooklet-hill',badge:2,badgeName:'수련의인증',name:'수련',speciesId:746,level:22},
- {locationId:'wela-volcano-park',badge:3,badgeName:'키아웨의인증',name:'키아웨',speciesId:758,level:27},{locationId:'lush-jungle',badge:4,badgeName:'마오의인증',name:'마오',speciesId:754,level:29},
- {locationId:'mount-hokulani',badge:5,badgeName:'마마네의인증',name:'마마네',speciesId:777,level:36},{locationId:'tapu-village',badge:6,badgeName:'아세로라의인증',name:'아세로라',speciesId:778,level:40},
- {locationId:'poni-wilds',badge:7,badgeName:'포니의인증',name:'하푸우',speciesId:750,level:47},{locationId:'vast-poni-canyon',badge:8,badgeName:'섬순례완주',name:'대협곡시련',speciesId:784,level:55},
+ {locationId:'verdant-cavern',badge:1,badgeName:'일리마의인증',name:'일리마',speciesId:20,level:12},{locationId:'brooklet-hill',badge:2,badgeName:'수련의인증',name:'수련',speciesId:752,level:20},
+ {locationId:'wela-volcano-park',badge:3,badgeName:'키아웨의인증',name:'키아웨',speciesId:105,level:22},{locationId:'lush-jungle',badge:4,badgeName:'마오의인증',name:'마오',speciesId:754,level:24},
+ {locationId:'mount-hokulani',badge:5,badgeName:'마마네의인증',name:'마마네',speciesId:777,level:33},{locationId:'tapu-village',badge:6,badgeName:'아세로라의인증',name:'아세로라',speciesId:778,level:35},
+ {locationId:'poni-wilds',badge:7,badgeName:'포니의인증',name:'하푸우',speciesId:750,level:54},{locationId:'vast-poni-canyon',badge:8,badgeName:'섬순례완주',name:'대협곡시련',speciesId:784,level:49},
 ];
 const runtime=createAuthoredRegionSampler({id:'alola',locations:ALOLA_LOCATIONS,connections:ALOLA_CONNECTIONS,terrainFeatures:[
  {locationId:'vast-poni-canyon',surface:'mountain',radius:12,elevation:2.1},

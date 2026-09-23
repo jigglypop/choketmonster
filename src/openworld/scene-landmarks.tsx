@@ -1,6 +1,6 @@
 import { Html } from '@react-three/drei';
 import { RigidBody } from '@react-three/rapier';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { BufferGeometry, Float32BufferAttribute, MeshStandardMaterial, Vector3, type Camera, type Object3D } from 'three';
 import { CAVE_SCENES, caveContains, getCaveScene, type CaveScene } from './caves';
 import { useSurfaceTextures } from './materials';
@@ -77,20 +77,21 @@ export function ProgressGate({ gate, from, to, y, halfWidth, badges, showLabel }
   </group>;
 }
 
-export const LEAGUE_LOCATION_IDS: Readonly<Partial<Record<string, string>>> = Object.freeze({
-  johto: 'tohjo-falls', kanto: 'indigo-plateau', hoenn: 'ever-grande-city',
-  sinnoh: 'sinnoh-pokemon-league', unova: 'unova-pokemon-league',
-  kalos: 'kalos-pokemon-league', alola: 'alola-pokemon-league',
-  galar: 'galar-pokemon-league', hisui: 'temple-of-sinnoh', paldea: 'paldea-pokemon-league',
-});
+export { LEAGUE_LOCATION_IDS, isRegionalLeagueLocation } from './gym-scenes';
 
-export function isRegionalLeagueLocation(region: string, locationId: string): boolean {
-  return LEAGUE_LOCATION_IDS[region] === locationId;
-}
-
-export function RegionalLeagueLandmark({ region, x, y, z }: WorldPoint & { region: string; y: number }) {
+/** The league stadium. With onEnter it is clickable: the player walks to its entrance and goes in. */
+export function RegionalLeagueLandmark({ region, x, y, z, onEnter }: WorldPoint & { region: string; y: number; onEnter?: () => void }) {
+  const [hovered, setHovered] = useState(false);
+  useEffect(() => { if (!onEnter) setHovered(false); }, [onEnter]);
+  useEffect(() => () => { if (hovered) document.body.style.cursor = ''; }, [hovered]);
+  const pointer = onEnter ? {
+    onPointerOver: (event: { stopPropagation(): void }) => { event.stopPropagation(); setHovered(true); document.body.style.cursor = 'pointer'; },
+    onPointerOut: () => { setHovered(false); document.body.style.cursor = ''; },
+    onClick: (event: { stopPropagation(): void; delta: number }) => { event.stopPropagation(); if (event.delta <= 5) onEnter(); },
+  } : {};
   return <group name={`landmark:league:${region}`} position={[x, y, z]}>
-    <LeagueStadium region={region} />
+    <group {...pointer}><LeagueStadium region={region} /></group>
+    {hovered && <mesh name="league-hover-ring" position={[0, .24, 0]} rotation={[-Math.PI / 2, 0, 0]} scale={[1.34, 1, 1]}><ringGeometry args={[8.4, 8.9, 64]} /><meshBasicMaterial color="#ffe27a" transparent opacity={.85} depthWrite={false} /></mesh>}
   </group>;
 }
 
