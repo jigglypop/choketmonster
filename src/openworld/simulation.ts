@@ -4,7 +4,7 @@ import { advanceEggProgress } from '../game/breeding';
 import { Random, clamp } from '../core/random';
 import { POKEMON, getMove, getSpecies } from '../data/pokemon';
 import { getVersionSpeciesIds } from '../data/pokemon-versions';
-import { battleMonsterMaxHp, applyPreferredBattleTransformation, replenishBalls, challengeCampaignGym, challengeCampaignTrainer, challengeFieldTrainer, claimRegionalStarter as claimStarter } from '../game/engine';
+import { battleMonsterMaxHp, applyPreferredBattleTransformation, leaveWildBattle, replenishBalls, challengeCampaignGym, challengeCampaignTrainer, challengeFieldTrainer, claimRegionalStarter as claimStarter } from '../game/engine';
 import { CAMPAIGN_REGIONS, getRegionalBadges, getCampaignGyms, getNextCampaignTrainer, campaignTravelReason, regionalWildLevels, type CampaignRegion } from '../game/campaign';
 import { availableFieldTrainer, fieldTrainersAt, type FieldTrainer } from '../data/field-trainers';
 import { chooseRegionalEncounter, encounterPeriodAt, regionalRuntimePools, supplementalEncounterRules, type EncounterPeriod } from '../data/regional-encounters';
@@ -458,10 +458,16 @@ export class OpenWorldSimulation {
     }
   }
 
-  teleportToTown(townId: string): boolean {
-    if (this.game.battle || this.game.captureOffer || !this.visitedTownIds.includes(townId)) return false;
+  /** With `leaveWild`, a wild battle in progress ends as an escape before the jump. */
+  teleportToTown(townId: string, leaveWild = false): boolean {
+    const battle = this.game.battle;
+    if ((battle && !(leaveWild && battle.kind === 'wild')) || this.game.captureOffer || !this.visitedTownIds.includes(townId)) return false;
     const arrival = this.atlas.travelPoint(townId, this.regionalBadges);
     if (!arrival) return false;
+    if (battle) {
+      leaveWildBattle(this.game);
+      this.battleWildId = undefined; this.selectionPinned = false; this.trackingSelected = false; this.resetTrainerTurn();
+    }
     this.relocatePartner(arrival); this.game.logs.push(`${this.locationAt(arrival.x, arrival.z).name}으로 순간이동했습니다.`); this.game.logs = this.game.logs.slice(-200); return true;
   }
 

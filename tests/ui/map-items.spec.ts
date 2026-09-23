@@ -46,7 +46,7 @@ test('roadside items render in 3D, collect once, persist and show acquisition so
   await expect(page.locator(`[data-item-source="${item.itemId}"]`)).toContainText(`${Number((chance * 100).toFixed(2))}%`);
   await expect(page.locator(`[data-item-source="${item.itemId}"]`)).toContainText('길가에서 줍기');
   await page.locator('[data-tab="map"]').click(); await page.locator('#world-map-open').click();
-  await expect(page.locator('#world-map-content svg image')).toHaveAttribute('href', /^data:image\/png;base64,/);
+  await expect(page.locator('#world-map-content svg image')).toHaveAttribute('href', /^blob:/);
   await page.locator('#world-map-search').fill(item.name);
   const results = page.locator('[data-map-list-location]'); expect(await results.count()).toBeGreaterThan(0);
   await results.first().click(); await expect(page.locator('.map-location-detail')).toContainText(item.name);

@@ -1160,12 +1160,12 @@ fn validate_open_world(view: Option<&Value>) -> Result<(), &'static str> {
     }
     if let Some(states) = world.get("fieldItemPickupStates") {
         let slots = states.as_object().ok_or("길가 물품 상태가 올바르지 않습니다.")?;
-        if slots.len() > 30 { return Err("길가 물품 상태가 너무 많습니다."); }
+        if slots.len() > 120 { return Err("길가 물품 상태가 너무 많습니다."); }
         for (id, state) in slots {
             let parts: Vec<_> = id.split(':').collect();
             if parts.len() != 3 || parts[0] != "field-item"
                 || !matches!(parts[1], "kanto" | "johto" | "hoenn" | "sinnoh" | "unova" | "kalos" | "alola" | "galar" | "hisui" | "paldea")
-                || !matches!(parts[2], "0" | "1" | "2")
+                || !parts[2].parse::<u8>().is_ok_and(|slot| slot < 12 && parts[2] == slot.to_string())
                 || !state.get("remainingSeconds").and_then(Value::as_f64).is_some_and(|seconds| seconds.is_finite() && (0.0..=1800.0).contains(&seconds))
                 || !state.get("collectedCount").and_then(Value::as_u64).is_some_and(|count| count <= 1_000_000_000)
             { return Err("길가 물품 대기 시간이 올바르지 않습니다."); }
@@ -3392,8 +3392,12 @@ mod tests {
             let mut bad = save.clone(); bad["view"]["openWorld"]["fieldItemPickupStates"]["field-item:kanto:0"]["remainingSeconds"] = Value::from(timer);
             assert!(validate_save(&bad).is_err());
         }
-        save["view"]["openWorld"]["fieldItemPickupStates"] = serde_json::json!({"field-item:kanto:3":{"remainingSeconds":0,"collectedCount":0}});
-        assert!(validate_save(&save).is_err());
+        save["view"]["openWorld"]["fieldItemPickupStates"] = serde_json::json!({"field-item:kanto:11":{"remainingSeconds":0,"collectedCount":0}});
+        validate_save(&save).unwrap();
+        for slot in ["12", "03", "-1"] {
+            save["view"]["openWorld"]["fieldItemPickupStates"] = serde_json::json!({ format!("field-item:kanto:{slot}"): {"remainingSeconds":0,"collectedCount":0} });
+            assert!(validate_save(&save).is_err());
+        }
         validate_save(&valid_save()).unwrap();
     }
 

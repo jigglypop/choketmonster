@@ -4,7 +4,7 @@ import type { Graph } from '../src/core/brain';
 import { createGame, type InventoryItem } from '../src/game/engine';
 import { getWorldAtlas } from '../src/openworld/atlas';
 import { PLAYABLE_WORLDS } from '../src/openworld/availability';
-import { activeFieldItemPickups, allFieldItemSources, FIELD_PICKUP_RESPAWN_SECONDS, validateFieldItemPickupStates } from '../src/openworld/item-sources';
+import { activeFieldItemPickups, allFieldItemSources, FIELD_PICKUP_ACTIVE_LIMIT, FIELD_PICKUP_RESPAWN_SECONDS, validateFieldItemPickupStates } from '../src/openworld/item-sources';
 import { OpenWorldSimulation, regionalEncounters, restoreOpenWorld, serializeOpenWorld } from '../src/openworld/simulation';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
@@ -26,7 +26,7 @@ describe('roadside equipment and documented acquisition', () => {
   it('keeps sparse, deterministic pickup positions on the walkable road edge in every region', () => {
     for (const region of PLAYABLE_WORLDS) {
       const atlas = getWorldAtlas(region.id), pickups = activeFieldItemPickups(region.id, 517, {}, 8);
-      expect(pickups.length).toBeGreaterThan(0); expect(pickups.length).toBeLessThanOrEqual(3);
+      expect(pickups.length).toBeGreaterThan(0); expect(pickups.length).toBeLessThanOrEqual(FIELD_PICKUP_ACTIVE_LIMIT);
       expect(pickups).toEqual(activeFieldItemPickups(region.id, 517, {}, 8));
       for (const item of pickups) {
         expect(atlas.sample(item.x, item.z).blocked).toBe(false);

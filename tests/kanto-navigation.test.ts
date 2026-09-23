@@ -81,6 +81,20 @@ describe('Kanto navigation state', () => {
     expect(deciding.world.player).toEqual(offerPosition);
   });
 
+  it('leaves a wild battle as an escape when the map asks to fast travel', () => {
+    const { game, world } = setup(41_006);
+    const target = world.entities.find(entity => entity.kind === 'wild')!;
+    world.player = { x: target.x, z: target.z, heading: 0 };
+    Object.assign(world.entities.find(entity => entity.kind === 'companion')!, world.player);
+    expect(world.startEncounter(target.id)).toBe(true);
+    expect(world.teleportToTown('pallet', true)).toBe(true);
+    expect(game.battle).toBeUndefined();
+    expect(world.player).toEqual({ ...KANTO_START, heading: 0 });
+    expect(world.entities.some(entity => entity.id === target.id)).toBe(false);
+    const restored = new OpenWorldSimulation(graph, game, world.seed, world.snapshot(), policy);
+    expect(restored.snapshot().battleWildId).toBeUndefined();
+  });
+
   it('keeps an inspected wild pinned until tracking follows that exact individual', () => {
     const { world } = setup(41_005);
     const wilds = world.entities.filter(entity => entity.kind === 'wild');

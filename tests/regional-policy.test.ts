@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Graph } from '../src/core/brain';
 import { actBattle, challengeCampaignGym, claimRegionalStarter, createGame, createMonster, depositMonster, evolve, releaseMonster, restoreGame, serializeGame, swapTeam, useItem, validateGame } from '../src/game/engine';
 import { getCampaignGyms } from '../src/game/campaign';
-import { monsterRegionalUseReason, needsRegionalStarter, regionalLevelCap } from '../src/game/regional-policy';
+import { monsterRegionalUseReason, monsterRegionalUseTag, needsRegionalStarter, regionalLevelCap } from '../src/game/regional-policy';
 import { OpenWorldSimulation } from '../src/openworld/simulation';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
@@ -28,6 +28,8 @@ describe('regional starter and usage policy', () => {
     expect(regionalLevelCap(game, 'kanto')).toBe(20);
     expect(monsterRegionalUseReason(game, 'kanto', local)).toBeUndefined();
     expect(monsterRegionalUseReason(game, 'kanto', foreign)).toMatch(/배지 1개/);
+    expect(monsterRegionalUseTag(game, 'kanto', local)).toBeUndefined();
+    expect(monsterRegionalUseTag(game, 'kanto', foreign)).toBe('타지방 출신');
     local.hp = 0;
     expect(() => challengeCampaignGym(game, 'kanto', getCampaignGyms(game, 'kanto')[0].locationId)).toThrow(/사용할 수 있는/);
     expect(foreign).toMatchObject({ level: 20, originRegion: 'johto' });
@@ -37,6 +39,7 @@ describe('regional starter and usage policy', () => {
     expect(monsterRegionalUseReason(game, 'kanto', foreign)).toBeUndefined();
     foreign.level = 31;
     expect(monsterRegionalUseReason(game, 'kanto', foreign)).toMatch(/Lv\.30/);
+    expect(monsterRegionalUseTag(game, 'kanto', foreign)).toBe('Lv.30 초과');
   });
 
   it('migrates legacy individuals deterministically to the campaign start region', () => {

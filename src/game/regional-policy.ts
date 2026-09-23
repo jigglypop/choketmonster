@@ -36,6 +36,14 @@ export function monsterRegionalUseReason(game: GameState, region: CampaignRegion
   if (monster.level > cap) return `현지 배지 기준 사용 가능 레벨은 Lv.${cap}까지입니다.`;
 }
 
+/** Short card tag for a monster that sits out in this region, such as its level cap. */
+export function monsterRegionalUseTag(game: GameState, region: CampaignRegion, monster: Monster): string | undefined {
+  if (!monsterRegionalUseReason(game, region, monster)) return undefined;
+  if (campaignTravelReason(game, region) || needsRegionalStarter(game, region)) return '사용 불가';
+  if (monster.originRegion !== region && getRegionalBadges(game, region) < 1) return '타지방 출신';
+  return `Lv.${regionalLevelCap(game, region)} 초과`;
+}
+
 export function usableRegionalTeam(game: GameState, region: CampaignRegion): Monster[] {
   return game.player.team.filter(monster => monster.hp > 0 && !monsterRegionalUseReason(game, region, monster));
 }

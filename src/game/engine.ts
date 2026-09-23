@@ -660,6 +660,14 @@ function endBattle(state: GameState, result: BattleTurnResult): void {
   }
   state.battle = undefined;
 }
+/** Ends a wild battle at once, as a certain escape. Map fast travel uses it. */
+export function leaveWildBattle(state: GameState): boolean {
+  const battle = state.battle;
+  if (battle?.kind !== 'wild') return false;
+  endBattle(state, { battleEnded: true, outcome: 'escaped', playerAction: { type: 'run' }, events: [], executedMoves: [], experienceGains: [], decisionSource: 'seeded-random' });
+  addLog(state, '무사히 도망쳤다.');
+  return true;
+}
 function effectiveMoves(battle: BattleState, monster: Monster): MonsterMove[] { return battle.transformations?.[monster.instanceId]?.moves ?? monster.moves; }
 function effectiveTypes(battle: BattleState, monster: Monster): readonly PokemonType[] { return battle.transformations?.[monster.instanceId]?.types ?? regionalProfile(monster)?.types ?? getSpecies(effectiveSpeciesId(battle, monster)).types; }
 function effectiveAbility(battle: BattleState, monster: Monster): MonsterAbility | undefined { return battle.transformations?.[monster.instanceId]?.ability ?? monster.ability; }

@@ -4,7 +4,7 @@ import { fieldTrainersAt, getFieldTrainer } from '../data/field-trainers';
 import { pokemonModelUrl, pokemonSpriteUrl } from '../game/assets';
 import { getMoveLayout } from '../game/move-layout';
 import { battleMonsterMaxHp, battleMoveView, depositMonster, experienceAtLevel, FIELD_ITEMS, firstUsableRegionalTeamIndex, heal, HEALING_ITEM_HP, HELD_TOOL_DESCRIPTIONS, ITEM_LABELS, statsFor, withdrawMonster, type GameState, type HeldTool, type Monster } from '../game/engine';
-import { monsterRegionalUseReason, REGIONAL_STARTERS, regionalLevelCap } from '../game/regional-policy';
+import { monsterRegionalUseReason, monsterRegionalUseTag, REGIONAL_STARTERS, regionalLevelCap } from '../game/regional-policy';
 import { CAMPAIGN_TRAINERS, campaignTravelReason, getCampaignGyms, getNextCampaignTrainer, getRegionalBadges, regionalWildLevels, type CampaignRegion } from '../game/campaign';
 import { getWorldAtlas } from './atlas';
 import { progressionRequirement } from './progression-gates';
@@ -87,6 +87,8 @@ export class OpenWorldPanel {
   private mapQuery = '';
   private mapFilter: MapFilter = 'all';
   private mapSelection = '';
+  /** Last town marker tap on the map; a second tap on it within 450 ms is a double tap. */
+  private lastMapTap?: { id: string; at: number };
   private previousBattle?: GameState['battle'];
   private guideCache?: { key: string; guide: DestinationGuide };
   private locationCopyCache?: { key: string; name: string; short: string; level: string };
@@ -478,15 +480,18 @@ export class OpenWorldPanel {
     if (!root) return;
     const game = this.options.game, battle = game.battle;
     const healthy = game.player.team.filter(monster => monster.hp > 0).length;
+    const region = this.simulation.regionId as CampaignRegion;
+    const locked = (monster: Monster) => { const reason = monsterRegionalUseReason(game, region, monster); return reason ? ` class="regional-locked" title="${escape(reason)}"` : ''; };
+    const lockTag = (monster: Monster) => { const tag = monsterRegionalUseTag(game, region, monster); return tag ? `<em class="regional-lock-tag">${escape(tag)}</em>` : ''; };
     const team = game.player.team.map((monster, index) => {
       const active = battle?.player.activeIndex === index;
       const lastHealthy = Boolean(battle && monster.hp > 0 && healthy <= 1);
       const disabled = game.player.team.length <= 1 || active || lastHealthy;
       const reason = active ? '현재 출전 중' : lastHealthy ? '마지막 생존 개체' : game.player.team.length <= 1 ? '마지막 팀 개체' : '';
-      return `<article><img src="${pokemonSpriteUrl(monster.speciesId)}" alt=""><div><strong>${escape(monster.nickname)}</strong><small>Lv.${monster.level} · HP ${monster.hp}/${battleMonsterMaxHp(game.battle, monster)}${reason ? ` · ${reason}` : ''}</small></div><button data-world-deposit="${index}" ${disabled ? 'disabled' : ''}>맡기기</button></article>`;
+      return `<article${locked(monster)}><img src="${pokemonSpriteUrl(monster.speciesId)}" alt=""><div><strong>${escape(monster.nickname)}</strong><small>Lv.${monster.level} · HP ${monster.hp}/${battleMonsterMaxHp(game.battle, monster)}${reason ? ` · ${reason}` : ''}</small>${lockTag(monster)}</div><button data-world-deposit="${index}" ${disabled ? 'disabled' : ''}>맡기기</button></article>`;
     }).join('');
     const matches = searchPokemon(game.player.box, this.boxQuery);
-    const box = matches.slice(0, this.boxLimit).map(monster => `<article><img loading="lazy" src="${pokemonPresentation(monster).sprite}" alt=""><div><strong>${escape(pokemonPresentation(monster).name)}</strong><small>Lv.${monster.level} · HP ${monster.hp}/${battleMonsterMaxHp(game.battle, monster)}</small></div><button data-world-withdraw="${escape(monster.instanceId)}" ${game.player.team.length >= 6 ? 'disabled' : ''}>데려오기</button></article>`).join('');
+    const box = matches.slice(0, this.boxLimit).map(monster => `<article${locked(monster)}><img loading="lazy" src="${pokemonPresentation(monster).sprite}" alt=""><div><strong>${escape(pokemonPresentation(monster).name)}</strong><small>Lv.${monster.level} · HP ${monster.hp}/${battleMonsterMaxHp(game.battle, monster)}</small>${lockTag(monster)}</div><button data-world-withdraw="${escape(monster.instanceId)}" ${game.player.team.length >= 6 ? 'disabled' : ''}>데려오기</button></article>`).join('');
     root.innerHTML = `<section><h3>팀 ${game.player.team.length}/6</h3><div>${team}</div></section><section><h3>박스 ${matches.length}</h3><div>${box || '<p class="world-box-empty">검색 결과가 없습니다.</p>'}</div>${matches.length > this.boxLimit ? '<button id="world-box-more">더 보기</button>' : ''}</section>`;
     root.querySelectorAll<HTMLButtonElement>('[data-world-deposit]').forEach(button => button.onclick = () => void this.changeBox(() => depositMonster(game, Number(button.dataset.worldDeposit), this.simulation.regionId), '박스에 맡겼습니다.'));
     root.querySelectorAll<HTMLButtonElement>('[data-world-withdraw]').forEach(button => button.onclick = () => void this.changeBox(() => withdrawMonster(game, game.player.box.findIndex(monster => monster.instanceId === button.dataset.worldWithdraw)), '팀으로 데려왔습니다.'));
@@ -842,6 +847,17 @@ export class OpenWorldPanel {
     return { x: (unrotated.x - 120) / scale + centerX, z: (unrotated.y - 120) / scale + centerZ };
   }
 
+  /** Visited towns are fast-travel targets, also from the middle of a wild battle. */
+  private teleportFromMap(townId: string): boolean {
+    const world = this.simulation, inBattle = !!this.options.game.battle;
+    if (world.atlas.locations.find(item => item.id === townId)?.kind !== 'town' || !world.teleportToTown(townId, true)) return false;
+    this.host!.querySelector<HTMLDialogElement>('#world-map-dialog')!.close();
+    this.options.notify('안전한 마을 입구로 이동했습니다.');
+    // An immediate save reports its own failure; a battle that just ended must not replay on reload.
+    void Promise.resolve(this.options.changed(inBattle)).catch(() => undefined); this.refresh(); this.renderer?.update();
+    return true;
+  }
+
   private bindMapNavigation(): void {
     const svg = this.host?.querySelector<SVGSVGElement>('#world-map-content svg'); if (!svg) return;
     if (this.mapView.sceneId !== `${this.simulation.regionId}:${this.simulation.sceneId}`) this.resetMapView();
@@ -849,6 +865,11 @@ export class OpenWorldPanel {
     const navigate = (target: Element, event?: MouseEvent) => {
       if (this.suppressMapClick) return;
       const marker = target.closest<SVGGElement>('.world-map-point');
+      if (marker?.dataset.locationId && event && marker.dataset.navigate !== 'true') {
+        const id = marker.dataset.locationId, now = performance.now(), last = this.lastMapTap;
+        this.lastMapTap = { id, at: now };
+        if (last?.id === id && now - last.at < 450 && this.teleportFromMap(id)) return;
+      }
       if (marker?.dataset.locationId && marker.dataset.navigate !== 'true') { this.mapSelection = marker.dataset.locationId; this.drawRegionMap(); return; }
       if (marker?.dataset.lockReason) { this.options.notify(marker.dataset.lockReason); return; }
       const road = target.closest<SVGLineElement>('.world-map-road-hit');
@@ -1141,8 +1162,8 @@ export class OpenWorldPanel {
     const nextLabel = trainer ? `${trainer.kind === 'red' ? '최종 도전' : trainer.kind === 'champion' ? '챔피언전' : '사천왕전'} · ${trainer.name}` : nextGym ? `${nextGym.badgeName} · ${nextGym.name}` : '이 지역의 주요 도전을 완료했습니다.';
     this.html('#world-map-region-name', `${atlas.name} 지방`);
     this.html('#world-campaign-guide', `<div><span>${atlas.name} 진행</span><strong>배지 ${badges}/8</strong></div><p><b>다음 도전</b> ${escape(nextLabel)}</p><p><b>목적지</b> ${escape(destination?.name ?? '—')}</p>`);
-    this.html('#world-travel', atlas.locations.filter(item => item.kind === 'town').map(item => `<button data-world-travel="${item.id}" ${!world.visitedTownIds.includes(item.id) || game.battle || game.captureOffer ? 'disabled' : ''}>${item.name}<small>${world.visitedTownIds.includes(item.id) ? '순간이동' : '미방문'}</small></button>`).join(''));
-    this.host!.querySelectorAll<HTMLButtonElement>('[data-world-travel]').forEach(button => button.onclick = () => { if (world.teleportToTown(button.dataset.worldTravel!)) { this.host!.querySelector<HTMLDialogElement>('#world-map-dialog')!.close(); this.options.notify('안전한 마을 입구로 이동했습니다.'); this.options.changed(); this.refresh(); } });
+    this.html('#world-travel', atlas.locations.filter(item => item.kind === 'town').map(item => `<button data-world-travel="${item.id}" ${!world.visitedTownIds.includes(item.id) || !this.walkableBattle || game.captureOffer ? 'disabled' : ''}>${item.name}<small>${world.visitedTownIds.includes(item.id) ? '순간이동' : '미방문'}</small></button>`).join(''));
+    this.host!.querySelectorAll<HTMLButtonElement>('[data-world-travel]').forEach(button => button.onclick = () => this.teleportFromMap(button.dataset.worldTravel!));
     const { centerX, centerZ, scale: fitScale } = atlasMapProjection(atlas);
     const fullPoint = (x: number, z: number) => rotateMapPoint(120 + (x - centerX) * fitScale, 120 + (z - centerZ) * fitScale, 240, rotation);
     this.mapProjection = fullPoint;
@@ -1162,7 +1183,8 @@ export class OpenWorldPanel {
     const markers = atlas.locations.map(item => ({ item, ...fullPoint(item.x, item.z) }));
     const labeled = placeMapLabels(markers.map(({ item, x, y }) => ({ id: item.id, name: item.name, x, y,
       priority: item.id === selection.id ? 0 : item.id === currentLocationId ? 1 : item.id === destinationId ? 2 : searching && matchingIds.has(item.id) ? 3 : kindOrder[item.kind] })), 5.4);
-    const locations = markers.map(({ item, x, y }) => {
+    // Document order is paint order: towns and special places sit above the road markers they touch.
+    const locations = [...markers].sort((a, b) => kindOrder[b.item.kind] - kindOrder[a.item.kind]).map(({ item, x, y }) => {
       const reason = lockReasons.get(item.id)!;
       return `<g class="world-map-point ${matchingIds.has(item.id) ? 'matched' : 'filtered'} ${item.id === selection.id ? 'selected' : ''} ${reason ? 'blocked' : 'traversable'} kind-${item.kind}" data-map-x="${item.x}" data-map-z="${item.z}" data-location-id="${item.id}" data-lock-reason="${escape(reason)}" tabindex="0" role="button" aria-label="${escape(item.name)} · ${escape(reason || '클릭해 길찾기')}"><circle cx="${x}" cy="${y}" r="${item.kind === 'town' ? 4 : item.kind === 'special' ? 4.5 : 2.7}"/><text class="world-map-symbol" x="${x}" y="${y + 1.6}">${reason ? '🔒' : mapKindSymbol(item.kind)}</text><text class="world-map-label${labeled.has(item.id) ? '' : ' secondary'}" x="${x + 5}" y="${y - 4}">${escape(item.name)}</text><title>${escape(item.name)} · ${escape(reason || '클릭해 길찾기')}</title></g>`;
     }).join('');

@@ -15,8 +15,11 @@ export type FieldItemSource = {
 export type FieldItemPickup = FieldItem & { itemId: string; x: number; z: number; regionId: WorldRegionId; sceneId: string; locationId: string };
 export type FieldItemPickupState = { remainingSeconds: number; collectedCount: number };
 
-export const FIELD_PICKUP_ACTIVE_LIMIT = 3;
-export const FIELD_PICKUP_RESPAWN_SECONDS = 30 * 60;
+/** Roadside slots per region. Three slots left 14–32 routes mostly empty. */
+export const FIELD_PICKUP_ACTIVE_LIMIT = 12;
+export const FIELD_PICKUP_RESPAWN_SECONDS = 10 * 60;
+/** Older saves stored 30-minute timers; they load and are shortened to the current wait. */
+const LEGACY_RESPAWN_SECONDS = 30 * 60;
 /** Walking this close to a roadside item picks it up; roadside slots sit 2.6–3.8 from the road centre. */
 export const FIELD_PICKUP_COLLECT_DISTANCE = 4;
 
@@ -119,9 +122,9 @@ function weightedPickup(pool: readonly Candidate[], roll: number): Candidate {
   return rows[hash(`${roll}:place`) % rows.length];
 }
 
-/** Three persistent slots per region: a collected slot stays empty for 30 minutes of play. */
+/** Persistent slots per region: a collected slot stays empty for 10 minutes of play. */
 export function activeFieldItemPickups(regionId: WorldRegionId, seed: number, states: Readonly<Record<string, FieldItemPickupState>>, badges = 8): FieldItemPickup[] {
-  const key = `${regionId}:${seed}:${badges}:${[0, 1, 2].map(slot => {
+  const key = `${regionId}:${seed}:${badges}:${Array.from({ length: FIELD_PICKUP_ACTIVE_LIMIT }, (_, slot) => {
     const state = states[`field-item:${regionId}:${slot}`]; return `${state?.collectedCount ?? 0}:${(state?.remainingSeconds ?? 0) > 0}`;
   }).join(',')}`;
   const cached = activePickupCache.get(key); if (cached) return cached;
@@ -149,10 +152,11 @@ export function validateFieldItemPickupStates(value: unknown): Record<string, Fi
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).length > regionOrder.length * FIELD_PICKUP_ACTIVE_LIMIT) throw new Error('Invalid field item pickup state');
   const result: Record<string, FieldItemPickupState> = {};
   for (const [id, raw] of Object.entries(value)) {
-    if (!/^field-item:(kanto|johto|hoenn|sinnoh|unova|kalos|alola|galar|hisui|paldea):[0-2]$/.test(id) || !raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Invalid field item pickup slot');
+    const slot = /^field-item:(kanto|johto|hoenn|sinnoh|unova|kalos|alola|galar|hisui|paldea):(1[01]|\d)$/.exec(id);
+    if (!slot || Number(slot[2]) >= FIELD_PICKUP_ACTIVE_LIMIT || !raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Invalid field item pickup slot');
     const { remainingSeconds, collectedCount } = raw as FieldItemPickupState;
-    if (!Number.isFinite(remainingSeconds) || remainingSeconds < 0 || remainingSeconds > FIELD_PICKUP_RESPAWN_SECONDS || !Number.isSafeInteger(collectedCount) || collectedCount < 0 || collectedCount > 1e9) throw new Error('Invalid field item pickup timer');
-    result[id] = { remainingSeconds, collectedCount };
+    if (!Number.isFinite(remainingSeconds) || remainingSeconds < 0 || remainingSeconds > LEGACY_RESPAWN_SECONDS || !Number.isSafeInteger(collectedCount) || collectedCount < 0 || collectedCount > 1e9) throw new Error('Invalid field item pickup timer');
+    result[id] = { remainingSeconds: Math.min(remainingSeconds, FIELD_PICKUP_RESPAWN_SECONDS), collectedCount };
   }
   return result;
 }
