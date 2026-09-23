@@ -5,7 +5,7 @@ test.setTimeout(90_000);
 test('default nameplates, left-drag orbit and wheel work without a camera-reset control', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('choketmon-audio-v1', JSON.stringify({ muted: true })));
   await page.goto('/?renderProbe');
-  await page.locator('[data-starter="152"]').click();
+  await page.locator('[data-starter="1"]').click();
   await page.keyboard.press('Space');
   await expect(page.locator('#ow-host')).toHaveAttribute('data-paused', 'true');
   await openExplorePanel(page);

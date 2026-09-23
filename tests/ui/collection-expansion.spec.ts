@@ -21,8 +21,8 @@ test('bounded duplicate levels and release use cancellable app modals, with read
   game.dex.seen.push(25); game.dex.caught.push(25);
   const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
   await page.goto('/');
-  await expect(page.locator('[data-starter="152"]')).toBeVisible({ timeout: 30_000 });
-  await page.locator('[data-starter="152"]').click();
+  await expect(page.locator('[data-starter="1"]')).toBeVisible({ timeout: 30_000 });
+  await page.locator('[data-starter="1"]').click();
   await page.locator('#import-file').setInputFiles({ name: 'collection.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(packSave(game, graph, { ...defaultView(), openWorldPaused: true }))) });
   await expect(page.locator('#toast')).toContainText('불러왔습니다');
   await page.locator('[data-tab="team"]').click();
@@ -102,7 +102,7 @@ test('touch navigation and collection fit narrow screens and share metadata is i
   expect(html).toContain('/chocketmon.png?v='); expect(html).not.toContain('__PUBLIC_SITE_URL__');
   expect((await request.get('/chocketmon.png')).headers()['content-type']).toContain('image/png');
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/'); await page.locator('[data-starter="152"]').click();
+  await page.goto('/'); await page.locator('[data-starter="1"]').click();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30000 });
   await page.locator('#world-pause').evaluate((button: HTMLButtonElement) => button.click());
   await page.screenshot({ path: 'artifacts/ui-expanded-mobile-map.png', fullPage: true });
@@ -135,7 +135,7 @@ test('a committed login with an IndexedDB error cannot overwrite the account wit
     await route.fulfill({ json: { user: { id: 'new-account-id', username: 'newtrainer' } } });
   });
   await page.route('**/api/saves/current', route => route.fulfill({ status: 404, json: {} }));
-  await page.goto('/'); await page.locator('[data-starter="152"]').click();
+  await page.goto('/'); await page.locator('[data-starter="1"]').click();
   await page.locator('[data-open-auth]').click();
   await page.locator('.account-dialog input[name="username"]').fill('newtrainer');
   await page.locator('.account-dialog input[name="password"]').fill('test-password-123');

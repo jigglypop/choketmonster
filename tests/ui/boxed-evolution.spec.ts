@@ -31,8 +31,8 @@ test('evolves a non-participating box Pokemon while keeping the battle participa
   const save = packSave(game, graph, { ...defaultView(), openWorld: world.snapshot(), openWorldPaused: true, learning: false });
 
   await page.goto('/');
-  await expect(page.locator('[data-starter="152"]')).toBeVisible({ timeout: 30_000 });
-  await page.locator('[data-starter="152"]').click();
+  await expect(page.locator('[data-starter="1"]')).toBeVisible({ timeout: 30_000 });
+  await page.locator('[data-starter="1"]').click();
   await page.locator('#import-file').setInputFiles({ name: 'boxed-evolution.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(save)) });
   await expect(page.getByRole('status')).toContainText('불러왔습니다');
   await page.locator('[data-tab="team"]').click();

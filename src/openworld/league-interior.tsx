@@ -191,9 +191,6 @@ export function LeagueInterior({ hall, trainer, busy, player, spriteUrl, modelUr
       <mesh position={[0, .03, 0]} rotation={[-Math.PI / 2, 0, 0]} material={materials.carpet} onClick={event => { event.stopPropagation(); if (exitDistance <= 2.4) onExit(); else onNavigate(hall.exit); }}>
         <planeGeometry args={[DOOR_WIDTH - .6, 1.6]} />
       </mesh>
-      {exitDistance <= 9 && !busy && <Html center position={[0, 2.4, 0]} zIndexRange={[12, 11]} style={{ pointerEvents: 'auto' }}>
-        <button className="world-portal-label" data-gym-exit={hall.locationId} onClick={() => exitDistance <= 2.4 ? onExit() : onNavigate(hall.exit)}><strong>나가기</strong></button>
-      </Html>}
     </group>
   </group>;
 }

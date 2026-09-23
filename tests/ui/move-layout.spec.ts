@@ -41,8 +41,8 @@ async function bootstrap(page: Page) {
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   await page.route(/\.(?:glb|gltf)(?:\?.*)?$/, route => route.abort());
   await page.goto('/');
-  await expect(page.locator('#starter-dialog [data-starter="152"]')).toBeVisible({ timeout: 30_000 });
-  await page.locator('#starter-dialog [data-starter="152"]').click();
+  await expect(page.locator('#starter-dialog [data-starter="1"]')).toBeVisible({ timeout: 30_000 });
+  await page.locator('#starter-dialog [data-starter="1"]').click();
   await openExplorePanel(page);
 }
 

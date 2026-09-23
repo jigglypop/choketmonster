@@ -29,7 +29,7 @@ for (const scenario of [
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   await page.route(/\.(?:glb|gltf)(?:\?.*)?$/, route => route.abort());
   await page.goto('/');
-  await page.locator('[data-starter="152"]').click();
+  await page.locator('[data-starter="1"]').click();
   await page.locator('#import-file').setInputFiles({ name: `click-move-${scenario.label}.json`, mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(save)) });
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
   await openExplorePanel(page);

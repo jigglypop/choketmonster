@@ -98,9 +98,6 @@ export function GymInterior({ hall, gym, party, badges, busy, player, spriteUrl,
       <mesh position={[0, .03, 0]} rotation={[-Math.PI / 2, 0, 0]} onClick={event => { event.stopPropagation(); if (exitDistance <= 2.4) onExit(); else onNavigate(hall.exit); }}>
         <planeGeometry args={[DOOR_WIDTH - .6, 1.6]} /><meshStandardMaterial color="#6d8f7c" roughness={.9} />
       </mesh>
-      {exitDistance <= 9 && <Html center position={[0, 2.4, 0]} zIndexRange={[12, 11]} style={{ pointerEvents: 'auto' }}>
-        <button className="world-portal-label" data-gym-exit={hall.locationId} onClick={() => exitDistance <= 2.4 ? onExit() : onNavigate(hall.exit)}><strong>체육관 나가기</strong></button>
-      </Html>}
     </group>
   </group>;
 }

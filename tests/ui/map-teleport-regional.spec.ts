@@ -29,7 +29,7 @@ test('dims regionally unusable Pokémon and double-tapping a visited town leaves
 
   await mockAuthenticatedSession(page); await page.routeWebSocket('**', socket => socket.close());
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
-  await page.goto('/'); await page.locator('[data-starter="152"]').click();
+  await page.goto('/'); await page.locator('[data-starter="1"]').click();
   await page.locator('#import-file').setInputFiles({ name: 'map-teleport.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(save)) });
   await page.locator('[data-tab="team"]').click();
   const foreignCard = page.locator(`.monster-card[data-monster="${foreign.instanceId}"]`);

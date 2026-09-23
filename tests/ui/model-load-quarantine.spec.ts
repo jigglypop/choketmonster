@@ -29,7 +29,7 @@ test('a failed visible Pokemon model is stopped instead of moving as an empty pl
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   await page.route('**/models/opt/regular/152.glb', route => unavailable ? route.abort('failed') : route.continue());
   await page.goto('/?renderProbe=1');
-  await page.locator('[data-starter="152"]').click();
+  await page.locator('[data-starter="1"]').click();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-renderer-ready', 'true', { timeout: 30_000 });
   await expect.poll(() => page.evaluate(() => (window as any).__renderProbe?.read().modelStatuses ?? []), { timeout: 30_000 }).toContain('3D 불러오기 실패');
   const readCompanion = () => page.evaluate(() => (window as any).__renderProbe.read().creatures.find((item: any) => item.id.startsWith('companion:'))?.position);
@@ -58,7 +58,7 @@ test('slow model loading does not mark the world ready or move an invisible part
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   await page.route('**/models/opt/regular/152.glb', async route => { await gate; await route.continue(); });
   await page.goto('/?renderProbe=1');
-  await page.locator('[data-starter="152"]').click();
+  await page.locator('[data-starter="1"]').click();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-renderer-ready', 'true', { timeout: 30_000 });
   const before = await page.locator('#world-position').innerText();
   await page.keyboard.down('ArrowUp'); await page.waitForTimeout(1_000); await page.keyboard.up('ArrowUp');
@@ -82,7 +82,7 @@ test('a decoded GLB with an invisible body is rejected and can recover with the 
     await route.fulfill({ response, body: broken ? invisibleBodyCopy(await response.body()) : await response.body() });
   });
   await page.goto('/?renderProbe=1');
-  await page.locator('[data-starter="152"]').click();
+  await page.locator('[data-starter="1"]').click();
   await expect(page.locator('#world-model-retry')).toBeVisible({ timeout: 60_000 });
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'false');
   await expect(page.locator('.ow-creature-label[data-creature-id^="companion:"]')).toHaveCount(0);
@@ -102,7 +102,7 @@ test('cached models are actually drawn after tab reentry and mobile resizing', a
   await page.route('**/api/auth/me', route => route.fulfill({ json: { user: null } }));
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   await page.goto('/?renderProbe=1');
-  await page.locator('[data-starter="152"]').click();
+  await page.locator('[data-starter="1"]').click();
   for (let pass = 0; pass < 3; pass++) {
     await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 60_000 });
     const read = () => page.evaluate(() => (window as any).__renderProbe.read());
@@ -127,7 +127,7 @@ test('GPU context loss stops the world and restarts its renderer without losing 
   await page.route('**/api/auth/me', route => route.fulfill({ json: { user: null } }));
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   await page.goto('/?renderProbe=1&renderer=webgl');
-  await page.locator('[data-starter="152"]').click();
+  await page.locator('[data-starter="1"]').click();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 60_000 });
   await page.locator('#ow-host canvas').evaluate(canvas => {
     const gl = (canvas as HTMLCanvasElement).getContext('webgl2');

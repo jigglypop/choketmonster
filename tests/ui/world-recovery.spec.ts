@@ -26,7 +26,7 @@ test('a failed server turn remains intact and resumes from the visible recovery 
         decision: { action: step.available.findIndex(Boolean), updates: 0, activity: .2, elapsedMs: 10, graphId: 'recovery-fixture', nodes: 166700, edges: 25582938 },
       })) } });
   });
-  await page.goto('/'); await page.locator('[data-starter="152"]').click();
+  await page.goto('/'); await page.locator('[data-starter="1"]').click();
   await page.locator('#import-file').setInputFiles({ name: 'recovery.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(save)) });
   await expect(page.locator('#world-recovery-message')).toContainText('회로 서버 일시 중단', { timeout: 60_000 });
   await expect(page.locator('#ow-host')).toHaveAttribute('data-paused', 'true');

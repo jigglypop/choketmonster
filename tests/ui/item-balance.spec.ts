@@ -19,7 +19,7 @@ test('shop quantities, held-tool stock, healing and treats persist on mobile', a
   game.inventory.leftovers = 2; game.inventory['life-orb'] = 1;
   const world = new OpenWorldSimulation(graph, game, 221);
   world.setControlMode('manual'); world.setAutoHunt(false);
-  await page.goto('/'); await page.locator('[data-starter="152"]').click();
+  await page.goto('/'); await page.locator('[data-starter="1"]').click();
   await page.locator('#import-file').setInputFiles({ name: 'items.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(packSave(game, graph, { ...defaultView(), openWorld: world.snapshot(), openWorldPaused: true }))) });
   await expect(page.locator('#toast')).toContainText('불러왔습니다');
   await page.locator('[data-tab="team"]').click();
@@ -71,7 +71,7 @@ test('open-world battle allows Super Potion when regular Potion stock is empty',
   const world = new OpenWorldSimulation(graph, game, 222); world.setControlMode('manual'); world.setAutoHunt(false);
   const wild = world.entities.find(entity => entity.kind === 'wild')!; world.battleWildId = wild.id;
   game.battle = { kind: 'wild', regionId: game.regionId, player: { team: game.player.team, activeIndex: 0 }, enemy: { team: [createMonster(game, wild.speciesId, 2)], activeIndex: 0 }, turn: 1, canRun: true };
-  await page.goto('/'); await page.locator('[data-starter="152"]').click();
+  await page.goto('/'); await page.locator('[data-starter="1"]').click();
   await page.locator('#import-file').setInputFiles({ name: 'heal-battle.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(packSave(game, graph, { ...defaultView(), openWorld: world.snapshot(), openWorldPaused: true }))) });
   await expect(page.locator('#toast')).toContainText('불러왔습니다');
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30000 });

@@ -7,7 +7,7 @@ async function beginAdventure(page: Page) {
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   await page.route(/\.(?:glb|gltf)(?:\?.*)?$/, route => route.abort());
   await page.goto('/');
-  await page.locator('[data-starter="152"]').click();
+  await page.locator('[data-starter="1"]').click();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-renderer-ready', 'true', { timeout: 25_000 });
 }
 

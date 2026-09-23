@@ -46,8 +46,8 @@ test('seven Alola trials can reach Vast Poni Canyon and start the final trial', 
   const save = packSave(game, graph, { ...defaultView(), openWorld: world.snapshot(), openWorldPaused: true, learning: false });
 
   await page.goto('/?renderProbe=1');
-  await expect(page.locator('[data-starter="152"]')).toBeVisible({ timeout: 30_000 });
-  await page.locator('[data-starter="152"]').click();
+  await expect(page.locator('[data-starter="1"]')).toBeVisible({ timeout: 30_000 });
+  await page.locator('[data-starter="1"]').click();
   await page.locator('#import-file').setInputFiles({ name: 'alola-final-trial.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(save)) });
   await expect(page.getByRole('status')).toContainText('불러왔습니다');
   await expect(page.locator('#ow-host')).toHaveAttribute('data-region', 'alola');

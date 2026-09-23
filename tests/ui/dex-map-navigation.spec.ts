@@ -19,9 +19,9 @@ test.beforeEach(async ({ page }) => {
 
 async function start(page: Page) {
   await page.goto('/');
-  await expect(page.locator('[data-starter="152"]')).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('[data-starter="1"]')).toBeVisible({ timeout: 30_000 });
   for (let attempt = 0; attempt < 3; attempt++) {
-    if (await page.locator('#starter-dialog[open]').count()) await page.locator('[data-starter="152"]').click();
+    if (await page.locator('#starter-dialog[open]').count()) await page.locator('[data-starter="1"]').click();
     await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
     await page.waitForTimeout(500);
     if (!await page.locator('#starter-dialog[open]').count()) break;

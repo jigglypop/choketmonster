@@ -92,7 +92,7 @@ for (const existingGuest of [false, true]) {
     await page.goto('/');
     let guestSeed: unknown;
     if (existingGuest) {
-      await page.locator('[data-starter="152"]').click();
+      await page.locator('[data-starter="1"]').click();
       await openExplorePanel(page);
       await expect(page.locator('#world-pause')).toBeVisible();
       await clickAccountMenu(page, '#save-now');
@@ -153,7 +153,7 @@ test('logout preserves a running adventure instead of saving the temporary trans
 test('a rejected server logout remains logged out locally across reload and preserves both save slots', async ({ page }) => {
   test.setTimeout(90000);
   const { state, user } = await fixture(page, false);
-  await page.goto('/'); await page.locator('[data-starter="152"]').click();
+  await page.goto('/'); await page.locator('[data-starter="1"]').click();
   await openExplorePanel(page);
   await expect(page.locator('#world-pause')).toBeVisible(); await login(page);
   const prior = (await slots(page)).current;
@@ -199,7 +199,7 @@ test('pagehide during login cannot write the previous adventure into the new acc
     if (route.request().method() !== 'GET') return route.fallback();
     arrived = true; await gate; return route.fulfill({ json: { save, revision: 1 } });
   });
-  await page.goto('/'); await page.locator('[data-starter="152"]').click();
+  await page.goto('/'); await page.locator('[data-starter="1"]').click();
   await openExplorePanel(page);
   await expect(page.locator('#world-pause')).toBeVisible();
   await page.locator('[data-open-auth]').click();

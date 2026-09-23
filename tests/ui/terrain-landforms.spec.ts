@@ -19,7 +19,7 @@ test('desert, mountain and snow relief render through the textured terrain pipel
   await page.route('**/api/auth/me', route => route.fulfill({ json: { user: null } }));
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   await page.goto('/?renderProbe=1');
-  await page.locator('[data-starter="152"]').click();
+  await page.locator('[data-starter="1"]').click();
   await expect.poll(() => page.locator('#import-file').evaluate(input => typeof (input as HTMLInputElement).onchange === 'function'), { timeout: 30_000 }).toBe(true);
   mkdirSync('artifacts/terrain-landforms', { recursive: true });
 

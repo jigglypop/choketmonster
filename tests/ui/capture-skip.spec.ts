@@ -24,7 +24,7 @@ test('an imported legacy zero-ball victory uses the unlimited basic ball and kee
   world.setControlMode('auto'); world.setAutoCapture(true);
   const save = packSave(game, graph, { ...defaultView(), learning: false, openWorld: world.snapshot(), openWorldPaused: false });
 
-  await page.goto('/'); await page.locator('[data-starter="152"]').click();
+  await page.goto('/'); await page.locator('[data-starter="1"]').click();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 60000 });
   await page.locator('#import-file').setInputFiles({ name: 'zero-ball-victory.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(save)) });
   await openExplorePanel(page);

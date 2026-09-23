@@ -9,7 +9,7 @@ for (const mobile of [false, true]) test(`notification appears above an open map
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   await page.addInitScript(() => localStorage.setItem('choketmon-audio-v1', JSON.stringify({ muted: true })));
   await page.goto('/');
-  await page.locator('[data-starter="152"]').click();
+  await page.locator('[data-starter="1"]').click();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 45_000 });
   await page.locator('#world-map-open').click();
   await expect(page.locator('#world-map-dialog')).toBeVisible();

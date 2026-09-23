@@ -28,7 +28,7 @@ async function load(page: Page, water = false) {
     Object.assign(world.entities.find(entity => entity.kind === 'companion')!, point);
   }
   await page.goto('/?renderProbe=1');
-  await page.locator('[data-starter="152"]').click();
+  await page.locator('[data-starter="1"]').click();
   await page.locator('#import-file').setInputFiles({ name: 'quality.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(packSave(game, graph, { ...defaultView(), openWorld: world.snapshot(), openWorldPaused: true, learning: false }))) });
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 45_000 });
   await expect(page.locator('.ow-creature-label').filter({ hasText: '치코리타' })).toBeVisible({ timeout: 45_000 });

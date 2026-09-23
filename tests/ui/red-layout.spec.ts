@@ -33,8 +33,8 @@ test('Red layout stays fixed through record selectors, legacy import and reload,
   delete snapshot.encounterLayout;
   Object.assign(obsolete, { speciesId: 150, level: 70, x: -68, z: 66 });
   const save = packSave(game, graph, { ...defaultView(), openWorld: snapshot, openWorldPaused: true, learning: false });
-  await page.goto('/'); await expect(page.locator('[data-starter="152"]')).toBeVisible({ timeout: 30000 });
-  await page.locator('[data-starter="152"]').click();
+  await page.goto('/'); await expect(page.locator('[data-starter="1"]')).toBeVisible({ timeout: 30000 });
+  await page.locator('[data-starter="1"]').click();
   await page.locator('#import-file').setInputFiles({ name: 'legacy-national.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(save)) });
   await expect(page.locator('#world-version')).toHaveValue('national');
   await expect.poll(async () => (await stored(page)).current?.view.openWorld?.encounterLayout).toBe('red-v1');

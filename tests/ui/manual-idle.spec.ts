@@ -14,7 +14,7 @@ async function start(page: Page, phase: 'field' | 'battle' | 'capture' = 'field'
   // These scenarios exercise controls and persistence, independently of asset downloads.
   await page.route(/\.glb(?:\?|$)/, route => route.abort());
   await page.goto('/');
-  await page.locator('[data-starter="152"]').click();
+  await page.locator('[data-starter="1"]').click();
   const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
   const game = createGame(1, 'idle-controls');
   const world = new OpenWorldSimulation(graph, game, 63017);

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { Graph } from '../src/core/brain';
-import { availableMonsterMoveIds, canLearnTechnicalMachine, createGame, createMonster, grantTechnicalMachine, restoreGame, serializeGame, SHOP_ITEMS, teachTechnicalMachine } from '../src/game/engine';
+import { availableMonsterMoveIds, canLearnTechnicalMachine, createGame, createMonster, grantTechnicalMachine, replaceMonsterMove, restoreGame, serializeGame, SHOP_ITEMS, teachTechnicalMachine } from '../src/game/engine';
 import { getTechnicalMachine, machineCompatible, technicalMachines } from '../src/game/technical-machines';
 import { activeFieldItemPickups, megaStoneAffinity } from '../src/openworld/item-sources';
 import { OpenWorldSimulation } from '../src/openworld/simulation';
@@ -18,21 +18,23 @@ describe('technical machines', () => {
     expect(canLearnTechnicalMachine({ speciesId: 6 }, 89)).toBe(true);
   });
 
-  it('teaches a move once, equips it into a free slot and survives a save round trip', () => {
+  it('teaches a move without using up the machine, equips it into a free slot and survives a save round trip', () => {
     const game = createGame(1, 'tm-teach'), bulbasaur = game.player.team[0];
     expect(() => teachTechnicalMachine(game, bulbasaur.instanceId, 412)).toThrow(/보유한 기술머신/);
     expect(grantTechnicalMachine(game, 412, 2)).toBe(true);
     expect(grantTechnicalMachine(game, 1)).toBe(false);
     expect(availableMonsterMoveIds(bulbasaur)).not.toContain(412);
+    // Owned machines are offered in the move editor to every Pokémon that can learn them.
+    expect(availableMonsterMoveIds(bulbasaur, game.technicalMachines)).toContain(412);
     const slots = bulbasaur.moves.length;
     expect(teachTechnicalMachine(game, bulbasaur.instanceId, 412).equipped).toBe(slots < 4);
     expect(availableMonsterMoveIds(bulbasaur)).toContain(412);
-    expect(game.technicalMachines).toEqual({ 412: 1 });
+    expect(game.technicalMachines).toEqual({ 412: 2 });
     expect(() => teachTechnicalMachine(game, bulbasaur.instanceId, 412)).toThrow(/이미/);
     grantTechnicalMachine(game, 89);
     expect(() => teachTechnicalMachine(game, bulbasaur.instanceId, 89)).toThrow(/배울 수 없습니다/);
     const restored = restoreGame(serializeGame(game));
-    expect(restored.technicalMachines).toEqual({ 412: 1, 89: 1 });
+    expect(restored.technicalMachines).toEqual({ 412: 2, 89: 1 });
     expect(restored.player.team[0].taughtMoves).toEqual([412]);
   });
 
@@ -69,5 +71,15 @@ describe('technical machines', () => {
     const count = (affinity: Record<number, number>) => Array.from({ length: 40 }, (_, cycle) => activeFieldItemPickups('kanto', 517, { 'field-item:kanto:0': { remainingSeconds: 0, collectedCount: cycle } }, 8, affinity))
       .flat().filter(item => item.kind === 'mega-stone' && item.speciesId === 6).length;
     expect(count({ 6: 4 })).toBeGreaterThan(count({}));
+  });
+
+  it('places a bag machine move from the move editor and remembers it', () => {
+    const game = createGame(1, 'tm-editor'), bulbasaur = game.player.team[0];
+    expect(() => replaceMonsterMove(game, bulbasaur.instanceId, 0, 412)).toThrow();
+    grantTechnicalMachine(game, 412);
+    replaceMonsterMove(game, bulbasaur.instanceId, 0, 412);
+    expect(bulbasaur.moves.some(slot => slot.moveId === 412)).toBe(true);
+    expect(bulbasaur.taughtMoves).toEqual([412]);
+    expect(game.technicalMachines).toEqual({ 412: 1 });
   });
 });

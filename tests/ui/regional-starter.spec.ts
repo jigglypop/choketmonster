@@ -35,8 +35,8 @@ test('a legacy Kanto champion receives one local Hoenn starter without replacing
   const save = packSave(game, graph, { ...defaultView(), openWorld: world.snapshot(), openWorldPaused: true, learning: false });
 
   await page.goto('/');
-  await expect(page.locator('[data-starter="152"]')).toBeVisible({ timeout: 30_000 });
-  await page.locator('[data-starter="152"]').click();
+  await expect(page.locator('[data-starter="1"]')).toBeVisible({ timeout: 30_000 });
+  await page.locator('[data-starter="1"]').click();
   await page.locator('#import-file').setInputFiles({ name: 'legacy-kanto-champion.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(save)) });
   await expect(page.locator('#toast')).toContainText('불러왔습니다');
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 45_000 });

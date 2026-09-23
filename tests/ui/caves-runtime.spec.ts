@@ -37,8 +37,8 @@ async function load(page: Page, save: SaveEnvelope, expectedScene: string, expec
   await page.route('**/api/auth/me', route => route.fulfill({ json: { user: null } }));
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   await page.goto('/?renderProbe=1');
-  await expect(page.locator('[data-starter="152"]')).toBeVisible({ timeout: 30_000 });
-  await page.locator('[data-starter="152"]').click();
+  await expect(page.locator('[data-starter="1"]')).toBeVisible({ timeout: 30_000 });
+  await page.locator('[data-starter="1"]').click();
   await expect(page.locator('#starter-dialog')).not.toBeVisible({ timeout: 15_000 });
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 45_000 });
   const importFile = page.locator('#import-file');

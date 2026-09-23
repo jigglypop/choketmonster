@@ -18,7 +18,7 @@ test('search, bulk merge, automatic merge setting and assignment persist on mobi
   game.inventory.leftovers = 1;
   game.player.box = Array.from({ length: 105 }, (_, index) => createMonster(game, index % 2 ? 25 : 1, 5 + index % 15));
   await page.goto('/');
-  await page.locator('[data-starter="152"]').click();
+  await page.locator('[data-starter="1"]').click();
   await page.locator('#import-file').setInputFiles({ name: 'box.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(packSave(game, graph, { ...defaultView(), openWorldPaused: true }))) });
   await expect(page.locator('#toast')).toContainText('불러왔습니다');
   await page.locator('[data-tab="team"]').click();
@@ -69,7 +69,7 @@ test('evolution buys only the missing item and removes the shop from the explora
   await page.route(/\.(?:glb|gltf)(?:\?.*)?$/, route => route.abort());
   const game = createGame(1, 'evolution-purchase-ui'), onix = createMonster(game, 95, 30);
   game.player.box = [onix]; game.player.money = ITEM_PRICES['metal-coat'];
-  await page.goto('/'); await page.locator('[data-starter="152"]').click();
+  await page.goto('/'); await page.locator('[data-starter="1"]').click();
   await page.locator('#import-file').setInputFiles({ name: 'evolution.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(packSave(game, graph, { ...defaultView(), openWorldPaused: true }))) });
   await expect(page.locator('#toast')).toContainText('불러왔습니다');
   await expect(page.locator('.world-shop')).toHaveCount(0);
@@ -95,7 +95,7 @@ test('Alola appearance and Mega or Tera battle controls use persistent game stat
     await page.locator('#import-file').setInputFiles({ name: 'forms.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(packSave(game, graph, { ...defaultView(), openWorldPaused: true }))) });
     await expect(page.locator('#toast')).toContainText('불러왔습니다');
   };
-  await page.goto('/'); await page.locator('[data-starter="152"]').click(); await load();
+  await page.goto('/'); await page.locator('[data-starter="1"]').click(); await load();
   await page.locator('[data-tab="team"]').click();
   await page.locator(`[data-monster="${raichu.instanceId}"]`).click();
   await page.locator('#monster-form').selectOption('alola');

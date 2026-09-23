@@ -15,8 +15,8 @@ const policy = JSON.parse(readFileSync('public/data/openworld-policy.json', 'utf
 test.setTimeout(90000);
 async function start(page: Page, url = '/') {
   await page.goto(url);
-  await expect(page.locator('[data-starter="152"]')).toBeVisible();
-  await page.locator('[data-starter="152"]').click();
+  await expect(page.locator('[data-starter="1"]')).toBeVisible();
+  await page.locator('[data-starter="1"]').click();
   // A visible canvas alone does not mean panel initialization and input binding succeeded.
   await expect(page.locator('#world-position')).toHaveText(/^-?\d+, -?\d+$/);
   await openExplorePanel(page);

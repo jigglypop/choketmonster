@@ -19,7 +19,7 @@ test('auto-buys a missing Metal Coat from evolution and keeps regular shop purch
   const controller = new ConnectomeController(graph); controller.ensure(onix); controller.ensure(scyther);
   const save = JSON.parse(JSON.stringify(packSave(game, graph, { ...defaultView(), openWorldPaused: true, learning: false })));
   for (const item of EXTRA_EVOLUTION_ITEM_IDS) delete save.game.inventory[item];
-  await page.goto('/'); await page.locator('[data-starter="152"]').click();
+  await page.goto('/'); await page.locator('[data-starter="1"]').click();
   await page.locator('#import-file').setInputFiles({ name: 'legacy-tools.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(save)) });
   await expect(page.locator('#toast')).toContainText('불러왔습니다');
   await expect(page.locator('.world-shop')).toHaveCount(0);

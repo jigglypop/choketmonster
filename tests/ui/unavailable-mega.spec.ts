@@ -12,7 +12,7 @@ test('Mega forms without 3D models are absent from battle choices and old saves'
   await page.routeWebSocket('**', socket => socket.close());
   await mockAuthenticatedSession(page);
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
-  await page.goto('/?renderProbe'); await page.locator('[data-starter="152"]').click();
+  await page.goto('/?renderProbe'); await page.locator('[data-starter="1"]').click();
   const game = createGame(152, 'unavailable-mega'), monster = createMonster(game, 36, 50);
   game.player.team = [monster];
   const world = new OpenWorldSimulation(graph, game, 431);

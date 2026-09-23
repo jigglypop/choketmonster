@@ -42,8 +42,6 @@ const types: Record<string, string> = { normal: '노말', fire: '불꽃', water:
 const escape = (text: unknown) => String(text).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const pokemonDisplayHeight = (speciesId: number) => pokemonWorldDisplayHeight(getSpecies(speciesId).heightMeters);
 const MANUAL_IDLE_SECONDS = .25;
-/** Pause between league battles in the hall. */
-const HALL_NEXT_BATTLE_MS = 1600;
 type Options = { game: GameState; graph: Graph; policy: FieldPolicy; checkpoint?: OpenWorldSnapshot; learning(): boolean; setLearning(value: boolean): void; musicChanged?(): void; editMoves?(instanceId: string): void; trade?(): void; openAccount?(): void; notify(message: string, error?: boolean): void; changed(immediate?: boolean): void | Promise<void> };
 
 export class OpenWorldPanel {
@@ -92,8 +90,6 @@ export class OpenWorldPanel {
   private lastMapTap?: { id: string; at: number };
   /** A gym whose building was clicked; the player walks to the door and goes in on arrival. */
   private pendingGymEntry?: string;
-  /** When the league hall starts its next battle after a victory. */
-  private hallChallengeAt?: number;
   private bagTab: 'tools' | 'machines' = 'tools';
   /** Technical machine whose team list is open in the bag. */
   private bagMachine?: number;
@@ -424,10 +420,11 @@ export class OpenWorldPanel {
     this.enterHall(hall);
   }
 
-  /** Going in starts the automatic battle with the leader, or the league's next trainer. */
+  /** Going into a gym starts the automatic leader battle; league trainers are challenged by hand, one at a time. */
   private enterHall(hall: GymScene): boolean {
     if (!(hall.kind === 'league' ? this.simulation.enterLeague() : this.simulation.enterGym(hall.locationId))) return false;
-    this.afterSceneChange(); this.challengeGymHall();
+    this.afterSceneChange();
+    if (hall.kind === 'gym') this.challengeGymHall();
     return true;
   }
 
@@ -439,15 +436,18 @@ export class OpenWorldPanel {
   }
 
   private challengeGymHall(): void {
-    if (!this.simulation.challengeGymHall()) return;
+    try { if (!this.simulation.challengeGymHall()) return; }
+    catch (error) { this.options.notify(error instanceof Error ? error.message : String(error), true); return; }
     this.paused = false; this.manualMovementActive = false; this.options.changed(); this.refresh();
   }
 
-  /** A hall battle ended: the league moves on to its next trainer after a victory; otherwise leave the hall. */
+  /** A hall battle ended: a league win heals the team for the next trainer; the last win, a loss or a gym ends the visit. */
   private afterHallBattle(outcome: BattleTurnResult['outcome']): void {
     const world = this.simulation, hall = getGymScene(world.sceneId); if (!hall) return;
-    if (hall.kind === 'league' && outcome === 'won' && world.hallTrainer) { this.hallChallengeAt = performance.now() + HALL_NEXT_BATTLE_MS; return; }
-    this.hallChallengeAt = undefined;
+    if (hall.kind === 'league' && outcome === 'won') {
+      heal(this.options.game); world.reconcileTeamChange();
+      if (world.hallTrainer) return;
+    }
     if (world.exitGym()) this.afterSceneChange();
   }
 
@@ -528,11 +528,10 @@ export class OpenWorldPanel {
     if (this.paused || !this.simulation.modelsReady || document.hidden || document.querySelector('dialog[open]')) { this.manualIdleSeconds = 0; return; }
     this.tickPending = true;
     try {
-    if (this.hallChallengeAt !== undefined && performance.now() >= this.hallChallengeAt) { this.hallChallengeAt = undefined; this.challengeGymHall(); }
     // A route or held key owns control until the renderer reports movement end.
     // Fixed simulation ticks must not expire that ownership between render frames.
     if (this.simulation.controlMode === 'manual' && !this.manualMovementActive && !this.options.game.battle && this.canAcceptMovement()
-      && !this.simulation.isSafeTown(this.simulation.player.x, this.simulation.player.z)) {
+      && !this.simulation.isSafeTown(this.simulation.player.x, this.simulation.player.z) && !getGymScene(this.simulation.sceneId)) {
       this.manualIdleSeconds += .25;
       if (this.manualIdleSeconds >= MANUAL_IDLE_SECONDS) this.changeMode('auto');
     } else this.manualIdleSeconds = 0;
@@ -657,9 +656,11 @@ export class OpenWorldPanel {
     const hall = getGymScene(this.simulation.sceneId), hallGym = hall?.kind === 'gym' ? getCampaignGyms(game, this.simulation.regionId).find(gym => gym.locationId === hall.locationId) : undefined;
     const hallTrainer = this.simulation.hallTrainer, hallAce = hallTrainer?.team.at(-1);
     // The leader's ace waits on the dais until the battle begins.
+    // Trainer and hall opponents are drawn beside the partner rather than simulated; both face each other.
+    const opponentPoint = battle && battle.kind !== 'wild' ? { x: this.simulation.player.x, z: this.simulation.player.z + (hall ? 6 : -3) } : undefined;
     const hallLeader = hallGym ? { speciesId: hallGym.speciesId, level: hallGym.level } : hallAce ? { speciesId: hallAce[0], level: hallAce[1] } : undefined;
     return {
-      guide: battle ? undefined : this.destinationGuide(),
+      guide: battle || hall ? undefined : this.destinationGuide(),
       gyms: getCampaignGyms(game, this.simulation.regionId),
       busy: Boolean(battle || game.captureOffer),
       gymParty: hallGym ? gymTeam(this.simulation.regionId, hallGym.badge) ?? [[hallGym.speciesId, hallGym.level]] : undefined,
@@ -687,14 +688,14 @@ export class OpenWorldPanel {
           heading: entity.heading as WorldHeading, inBattle,
           action: monster?.hp === 0 ? 'fainted' : inBattle && attacking(monster?.instanceId) ? 'attack' : entity.action < 4 ? 'walk' : 'idle',
           moveType: attacking(monster?.instanceId)?.type,
-          lookAt: inBattle && entity.action >= 4 ? (() => {
+          lookAt: inBattle && entity.action >= 4 ? entity.kind === 'companion' && opponentPoint ? opponentPoint : (() => {
             const target = this.simulation.entities.find(other => entity.kind === 'companion' ? other.id === this.simulation.battleWildId : other.kind === 'companion');
             return target ? { x: target.x, z: target.z } : undefined;
           })() : undefined,
           movementSpeed: movementSpeed(speciesId, level),
           displayHeight: formModel ? pokemonWorldDisplayHeight(formModel.heightMeters) : pokemonDisplayHeight(speciesId),
         } as WorldCreature;
-      }).concat(battle && battle.kind !== 'wild' && enemy ? [{ id: this.simulation.battleWildId!, speciesId: enemy.speciesId, name: enemy.nickname, level: enemy.level, hp: enemy.hp, maxHp: enemy.stats.hp, x: this.simulation.player.x, z: this.simulation.player.z + (hall ? 6 : -3), heading: 2 as WorldHeading, action: attacking(enemy.instanceId) ? 'attack' as const : 'idle' as const, moveType: attacking(enemy.instanceId)?.type, inBattle: true, lookAt: this.simulation.player, displayHeight: pokemonDisplayHeight(enemy.speciesId), movementSpeed: movementSpeed(enemy.speciesId, enemy.level) }] : [])
+      }).concat(battle && battle.kind !== 'wild' && enemy ? [{ id: this.simulation.battleWildId!, speciesId: enemy.speciesId, name: enemy.nickname, level: enemy.level, hp: enemy.hp, maxHp: enemy.stats.hp, ...opponentPoint!, heading: (hall ? 0 : 2) as WorldHeading, action: attacking(enemy.instanceId) ? 'attack' as const : 'idle' as const, moveType: attacking(enemy.instanceId)?.type, inBattle: true, lookAt: this.simulation.player, displayHeight: pokemonDisplayHeight(enemy.speciesId), movementSpeed: movementSpeed(enemy.speciesId, enemy.level) }] : [])
         .concat(hallLeader && !battle ? [{ id: `gym-leader:${hall!.locationId}`, speciesId: hallLeader.speciesId, name: getSpecies(hallLeader.speciesId).name, level: hallLeader.level, hp: 1, maxHp: 1, x: hall!.leader.x, z: hall!.leader.z - 3.2, heading: 0 as WorldHeading, action: 'idle' as const, displayHeight: pokemonDisplayHeight(hallLeader.speciesId), movementSpeed: 0 }] : [])
         .concat(this.multiplayer?.creatures(this.simulation.player, id => movementSpeed(id)) ?? []),
     };

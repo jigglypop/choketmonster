@@ -13,7 +13,7 @@ test('all 18 Alola regional forms draw their exact 3D geometry in the actual wor
   await page.routeWebSocket('**', socket => socket.close());
   await page.route('**/api/auth/me', route => route.fulfill({ json: { user: null } }));
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
-  await page.goto('/?renderProbe'); await page.locator('[data-starter="152"]').click();
+  await page.goto('/?renderProbe'); await page.locator('[data-starter="1"]').click();
   for (const source of ALOLA_MODEL_SOURCES) {
     const game = createGame(152, `all-alola-${source.speciesId}`), monster = createMonster(game, source.speciesId, 50);
     game.player.team = [monster]; assignAlolaForm(game, monster.instanceId, true);

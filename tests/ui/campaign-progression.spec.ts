@@ -19,24 +19,24 @@ test.beforeEach(async ({ page }) => {
 
 async function load(page: Page, save: SaveEnvelope) {
   await page.goto('/');
-  await expect(page.locator('[data-starter="152"]')).toBeVisible({ timeout: 30_000 });
-  await page.locator('[data-starter="152"]').click();
+  await expect(page.locator('[data-starter="1"]')).toBeVisible({ timeout: 30_000 });
+  await page.locator('[data-starter="1"]').click();
   await page.locator('#import-file').setInputFiles({ name: 'campaign.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(save)) });
   await expect(page.locator('#toast')).toContainText('불러왔습니다');
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
   await openExplorePanel(page);
 }
 
-test('new adventures offer only the three Johto starters and begin with Gold records', async ({ page }) => {
+test('new adventures offer only the three Kanto starters and begin with Red records', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('[data-starter]')).toHaveCount(3, { timeout: 30_000 });
-  await expect(page.locator('[data-starter="152"]')).toContainText('치코리타');
-  await expect(page.locator('[data-starter="155"]')).toContainText('브케인');
-  await expect(page.locator('[data-starter="158"]')).toContainText('리아코');
+  await expect(page.locator('[data-starter="1"]')).toContainText('이상해씨');
+  await expect(page.locator('[data-starter="4"]')).toContainText('파이리');
+  await expect(page.locator('[data-starter="7"]')).toContainText('꼬부기');
   await expect(page.locator('[data-starter="1"], [data-starter="4"], [data-starter="7"]')).toHaveCount(0);
-  await page.locator('[data-starter="155"]').click();
-  await expect(page.locator('#ow-host')).toHaveAttribute('data-region', 'johto', { timeout: 30_000 });
-  await expect(page.locator('#world-version')).toHaveValue('gold');
+  await page.locator('[data-starter="4"]').click();
+  await expect(page.locator('#ow-host')).toHaveAttribute('data-region', 'kanto', { timeout: 30_000 });
+  await expect(page.locator('#world-version')).toHaveValue('red');
 });
 
 test('the Johto map presents the next campaign challenge and destination', async ({ page }) => {

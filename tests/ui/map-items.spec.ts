@@ -20,7 +20,7 @@ test('roadside items render in 3D, collect once, persist and show acquisition so
   world.player = { ...arrival, heading: 0 }; Object.assign(world.entities.find(entity => entity.kind === 'companion')!, world.player);
   await mockAuthenticatedSession(page); await page.routeWebSocket('**', socket => socket.close());
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
-  await page.goto('/?renderProbe'); await page.locator('[data-starter="152"]').click();
+  await page.goto('/?renderProbe'); await page.locator('[data-starter="1"]').click();
   await page.locator('#import-file').setInputFiles({ name: 'roadside.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(packSave(game, graph, { ...defaultView(), openWorld: world.snapshot(), openWorldPaused: true }))) });
   await expect(page.locator('#toast')).toContainText('불러왔습니다');
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 45_000 });
@@ -91,7 +91,7 @@ for (const [region, starter] of [['johto', 152], ['alola', 722], ['sinnoh', 387]
   world.player = { ...arrival, heading: 0 }; Object.assign(world.entities.find(entity => entity.kind === 'companion')!, world.player);
   await mockAuthenticatedSession(page); await page.routeWebSocket('**', socket => socket.close());
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
-  await page.goto('/?renderProbe'); await page.locator('[data-starter="152"]').click();
+  await page.goto('/?renderProbe'); await page.locator('[data-starter="1"]').click();
   await page.locator('#import-file').setInputFiles({ name: 'exploration.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(packSave(game, graph, { ...defaultView(), openWorld: world.snapshot(), openWorldPaused: true }))) });
   await expect(page.locator('#ow-host')).toHaveAttribute('data-region', region);
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 45_000 });

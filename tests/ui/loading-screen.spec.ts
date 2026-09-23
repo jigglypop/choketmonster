@@ -68,7 +68,7 @@ test('3D loading stays until the real partner model draws and also covers save r
     await held; await route.continue();
   });
   await page.goto('/');
-  await page.locator('[data-starter="152"]').click();
+  await page.locator('[data-starter="1"]').click();
   const loading = page.locator('.adventure-loading--world');
   await expect(loading).toBeVisible();
   await expect(loading.locator('[data-loading-percent="connectome"]')).toHaveText('100%');

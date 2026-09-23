@@ -45,7 +45,7 @@ async function verifyAutoChoosesNearest(page: Page, seed: number, activate: (pag
   await page.route('**/api/auth/me', route => route.fulfill({ json: { user: null } }));
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   await page.goto('/');
-  await page.locator('[data-starter="152"]').click();
+  await page.locator('[data-starter="1"]').click();
   await page.locator('#import-file').setInputFiles({
     name: 'auto-nearest.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(save)),
   });

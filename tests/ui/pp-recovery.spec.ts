@@ -17,7 +17,7 @@ test('PP가 0인 기존 저장도 기술을 실행하고 PP UI나 자동 회복 
   await page.route('**/api/auth/me', route => route.fulfill({ json: { user: null } }));
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   await page.goto('/');
-  await page.locator('[data-starter="152"]').click();
+  await page.locator('[data-starter="1"]').click();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
 
   const game = createGame(1, 'browser-pp-recovery'), world = new OpenWorldSimulation(graph, game, 7717, undefined, policy);

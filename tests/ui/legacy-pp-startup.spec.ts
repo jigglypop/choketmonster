@@ -36,7 +36,7 @@ for (const [inBattle, legacyTera] of [[false, false], [true, false], [true, true
   }
   const legacyInventory = (envelope.game as typeof game).inventory;
   for (const key of Object.keys(legacyInventory)) if (key.startsWith('mega-stone:')) delete legacyInventory[key as keyof typeof legacyInventory];
-  await page.goto('/'); await page.locator('[data-starter="152"]').click();
+  await page.goto('/'); await page.locator('[data-starter="1"]').click();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30000 });
   await page.locator('[data-tab="team"]').click();
   await page.evaluate(async ({save, slot}) => {

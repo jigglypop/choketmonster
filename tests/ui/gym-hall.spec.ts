@@ -28,7 +28,7 @@ test('the gym hall lists the leader party and stepping onto the court starts the
 
   await mockAuthenticatedSession(page); await page.routeWebSocket('**', socket => socket.close());
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
-  await page.goto('/'); await page.locator('[data-starter="152"]').click();
+  await page.goto('/'); await page.locator('[data-starter="1"]').click();
   await page.locator('#import-file').setInputFiles({ name: 'gym-hall.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(save)) });
   await page.locator('[data-tab="map"]').click();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 60_000 });

@@ -658,7 +658,7 @@ export class OpenWorldSimulation {
     if (!gym || gym.regionId !== this.regionId || distance(this.player, gym.door) > GYM_DOOR_REACH) return false;
     this.surfaceReturn = { sceneId: surfaceSceneId(this.regionId), ...gym.door };
     this.sceneId = gym.sceneId;
-    this.placeInsideScene(gym.entrance);
+    this.placeInsideScene(gym.entrance, 2);
     // The hall covers ground outside the town square; send any wild there back to open ground.
     for (const entity of this.wildEntities()) {
       if (entity.id === this.battleWildId || !gym.contains(entity.x, entity.z, 3)) continue;
@@ -669,13 +669,13 @@ export class OpenWorldSimulation {
     return true;
   }
 
-  /** Inside a hall: step onto the challenger's mark and battle the leader, or the league's next trainer, automatically. */
+  /** Inside a hall: step onto the challenger's mark and battle. Gym leaders fight automatically; league trainers by hand. */
   challengeGymHall(): boolean {
     const gym = getGymScene(this.sceneId);
     if (!gym || this.game.battle || this.game.captureOffer) return false;
     const previous = this.player;
-    this.placeInsideScene(gym.challenger);
-    if (gym.kind === 'league' ? this.challengeLocalTrainer() : this.challengeLocalGym()) { this.controlMode = 'auto'; return true; }
+    this.placeInsideScene(gym.challenger, 2);
+    if (gym.kind === 'league' ? this.challengeLocalTrainer() : this.challengeLocalGym()) { if (gym.kind === 'gym') this.controlMode = 'auto'; return true; }
     this.placeInsideScene(previous);
     return false;
   }
@@ -696,9 +696,10 @@ export class OpenWorldSimulation {
     return true;
   }
 
-  private placeInsideScene(point: { x: number; z: number }): void {
+  /** Heading 2 faces into a hall, toward its leader. */
+  private placeInsideScene(point: { x: number; z: number }, heading = 0): void {
     const companion = this.entities.find(entity => entity.kind === 'companion')!;
-    this.player = { ...point, heading: 0 }; Object.assign(companion, this.player);
+    this.player = { ...point, heading }; Object.assign(companion, this.player);
     companion.target = undefined; this.selectWild(null); this.setControlMode('manual'); this.manualControlRemaining = 0;
     this.spawnAnchor = { ...this.player };
   }

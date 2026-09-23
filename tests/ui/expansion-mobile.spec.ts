@@ -10,7 +10,7 @@ test('mobile shows the guide, expansion habitats and bulk candy controls', async
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await page.route('**/api/auth/me', route => route.fulfill({ json: { user: null } }));
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
-  await page.goto('/'); await page.locator('[data-starter="152"]').click();
+  await page.goto('/'); await page.locator('[data-starter="1"]').click();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 45_000 });
   await expect(page.locator('#world-next-guide')).toBeVisible();
   await expect(page.locator('#world-next-guide')).toContainText('도라지시티');

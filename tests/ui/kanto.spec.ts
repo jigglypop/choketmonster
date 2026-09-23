@@ -25,7 +25,7 @@ test.beforeEach(async ({ page }) => {
 });
 async function start(page: Page, requireModels = false) {
   await page.goto(targetUrl);
-  const starter = page.locator('[data-starter="152"]');
+  const starter = page.locator('[data-starter="1"]');
   await expect(starter).toBeVisible({ timeout: 25000 });
   await starter.click();
   // This suite validates the preserved Kanto map. Start through the current

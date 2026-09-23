@@ -17,7 +17,7 @@ test('migrates a legacy Johto save to reconstructed Johto and renders the preser
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   await page.route('https://raw.githubusercontent.com/Pokemon-3D-api/assets/**/152.glb', route => route.fulfill({ body: model152, contentType: 'model/gltf-binary' }));
   await page.goto('/?renderProbe=1');
-  await page.locator('[data-starter="152"]').click();
+  await page.locator('[data-starter="1"]').click();
 
   const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
   const game = createGame(1, 'johto-migration-ui'), partner = createMonster(game, 152, 5);

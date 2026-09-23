@@ -50,8 +50,8 @@ async function register(page: Page, username: string, password: string, fromChat
 }
 
 async function chooseJohtoAndOpenWorld(page: Page): Promise<void> {
-  await expect(page.locator('[data-starter="152"]')).toBeVisible({ timeout: 30_000 });
-  await page.locator('[data-starter="152"]').click();
+  await expect(page.locator('[data-starter="1"]')).toBeVisible({ timeout: 30_000 });
+  await page.locator('[data-starter="1"]').click();
   await expect(page.locator('#starter-dialog')).toBeHidden();
   await openExplorePanel(page);
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });

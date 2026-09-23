@@ -42,7 +42,7 @@ test('requires login before loading the game, restores illustrated loading and r
     await expect(page.locator('#startup-loading [data-loading-stages]')).toBeVisible();
     await page.screenshot({ path: info.outputPath('loading-mobile.png'), fullPage: true });
   } finally { release(); }
-  await page.locator('[data-starter="152"]').click();
+  await page.locator('[data-starter="1"]').click();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30000 });
   await expect(page.locator('.adventure-loading')).toHaveCount(0);
   await clickAccountMenu(page, '.logout-button');
@@ -66,7 +66,7 @@ test('pauses an expired session and resumes only after successful reauthenticati
   await page.route('**/api/auth/login', route => { expired = false; return route.fulfill({ json: { user: QA_PROFILE } }); });
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   await page.routeWebSocket('**', socket => socket.close());
-  await page.goto('/'); await page.locator('[data-starter="152"]').click();
+  await page.goto('/'); await page.locator('[data-starter="1"]').click();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30000 });
   expired = true; await clickAccountMenu(page, '#save-now');
   const dialog = page.locator('.account-dialog');

@@ -61,7 +61,7 @@ describe('gym hall', () => {
     expect(world.exitGym()).toBe(false);
   });
 
-  it('opens the league hall to eight badges and fights its trainers in order', () => {
+  it('opens the league hall to eight badges and fights its next trainer by hand', () => {
     const game = createGame(1, 'league-hall');
     game.player.badges = 8; game.defeatedGyms = [1, 2, 3, 4, 5, 6, 7, 8];
     const world = new OpenWorldSimulation(graph, game, 52_004, undefined, policy);
@@ -79,7 +79,9 @@ describe('gym hall', () => {
     const restored = new OpenWorldSimulation(graph, game, world.seed, world.snapshot(), policy);
     expect(restored.sceneId).toBe(hall.sceneId);
     expect(world.challengeGymHall()).toBe(true);
-    expect(world.controlMode).toBe('auto');
+    // League trainers are fought by hand, one at a time.
+    expect(world.controlMode).toBe('manual');
+    expect(world.player.heading).toBe(2);
     expect(game.battle).toMatchObject({ kind: 'elite', trainerId: 'kanto-lorelei' });
   });
 

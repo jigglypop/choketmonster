@@ -365,8 +365,11 @@ export function recoverableAttackMoveIds(monster: Monster): number[] {
   });
 }
 
-/** Every distinct level-up move available to this species or an earlier form. */
-export function availableMonsterMoveIds(monster: Pick<Monster, 'speciesId' | 'level' | 'regionalForm' | 'taughtMoves'>): number[] {
+/**
+ * Every distinct level-up move available to this species or an earlier form, moves taught by machines,
+ * and, when the bag's machines are given, every owned machine move this line can learn.
+ */
+export function availableMonsterMoveIds(monster: Pick<Monster, 'speciesId' | 'level' | 'regionalForm' | 'taughtMoves'>, machines?: Readonly<Record<string, number>>): number[] {
   const forms = [monster.speciesId], visited = new Set<number>(), entries: Array<{ moveId: number; level: number; order: number }> = [];
   let order = 0;
   const profile = monster.regionalForm ? getCombatForm(monster.regionalForm) : undefined;
@@ -380,7 +383,8 @@ export function availableMonsterMoveIds(monster: Pick<Monster, 'speciesId' | 'le
     forms.push(...(PRE_EVOLUTIONS.get(form) ?? []));
   }
   entries.sort((a, b) => a.level - b.level || a.order - b.order);
-  const taught = (monster.taughtMoves ?? []).filter(moveId => [...visited].some(form => machineCompatible(moveId, form)));
+  const owned = Object.entries(machines ?? {}).filter(([, count]) => count > 0).map(([moveId]) => Number(moveId));
+  const taught = [...(monster.taughtMoves ?? []), ...owned].filter(moveId => [...visited].some(form => machineCompatible(moveId, form)));
   return [...new Set([...entries.map((entry) => entry.moveId), ...getSpecies(monster.speciesId).machineMoves, ...taught])];
 }
 
@@ -405,7 +409,7 @@ export function grantTechnicalMachine(state: GameState, moveId: number, quantity
   return true;
 }
 
-/** Uses one machine. The move joins the learnable list and fills an empty slot when one is free. */
+/** Machines are kept after use. The move joins the learnable list and fills an empty slot when one is free. */
 export function teachTechnicalMachine(state: GameState, instanceId: string, moveId: number): { equipped: boolean } {
   if (state.battle || state.captureOffer) throw new Error('전투와 포획 선택을 마친 뒤 기술머신을 쓸 수 있습니다.');
   const machine = getTechnicalMachine(moveId), stock = state.technicalMachines?.[String(moveId)] ?? 0;
@@ -414,7 +418,6 @@ export function teachTechnicalMachine(state: GameState, instanceId: string, move
   if (!canLearnTechnicalMachine(monster, moveId)) throw new Error(`${monster.nickname}은(는) ${getMove(moveId).name}을(를) 배울 수 없습니다.`);
   if (availableMonsterMoveIds(monster).includes(moveId)) throw new Error(`${monster.nickname}은(는) 이미 ${getMove(moveId).name}을(를) 알고 있습니다.`);
   monster.taughtMoves = [...(monster.taughtMoves ?? []), moveId];
-  if (stock > 1) state.technicalMachines![String(moveId)] = stock - 1; else delete state.technicalMachines![String(moveId)];
   const equipped = monster.moves.length < 4;
   if (equipped) { learnMove(monster, moveId); if (monster.brain) monster.brain.previous = null; }
   addLog(state, `${monster.nickname}은(는) ${getMove(moveId).name}을(를) 배웠다.`);
@@ -1783,7 +1786,9 @@ export function replaceMonsterMove(state: GameState, instanceId: string, display
   if (state.battle || state.captureOffer) throw new Error('전투와 포획 선택을 마친 뒤 기술을 교체할 수 있습니다.');
   const layout = getMoveLayout(monster);
   if (!Number.isInteger(displayIndex) || displayIndex < 0 || displayIndex > layout.length || displayIndex >= 4) throw new Error('기술 교체 위치가 올바르지 않습니다.');
-  if (!Number.isSafeInteger(moveId) || !availableMonsterMoveIds(monster).includes(moveId)) throw new Error('현재 레벨에서 배울 수 없는 기술입니다.');
+  if (!Number.isSafeInteger(moveId) || !availableMonsterMoveIds(monster, state.technicalMachines).includes(moveId)) throw new Error('현재 레벨에서 배울 수 없는 기술입니다.');
+  // A move placed from a bag machine is remembered, so it stays learnable for this individual.
+  if (getTechnicalMachine(moveId) && !availableMonsterMoveIds(monster).includes(moveId)) monster.taughtMoves = [...(monster.taughtMoves ?? []), moveId];
   const existing = monster.moves.findIndex((slot) => slot.moveId === moveId);
   const target = layout[displayIndex];
   if (existing >= 0) {

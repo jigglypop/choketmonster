@@ -15,7 +15,7 @@ test('Mega Floette and Zygarde use form HP in the world, healing and saved team 
   await mockAuthenticatedSession(page);
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
-  await page.goto('/?renderProbe'); await page.locator('[data-starter="152"]').click();
+  await page.goto('/?renderProbe'); await page.locator('[data-starter="1"]').click();
   for (const [speciesId, identifier] of [[670, 'floette-mega'], [718, 'zygarde-mega']] as const) {
     const game = createGame(152, `mega-hp-ui-${speciesId}`), monster = createMonster(game, speciesId, 50);
     game.player.team = [monster]; game.inventory['super-potion'] = 1;

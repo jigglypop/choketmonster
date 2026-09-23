@@ -515,7 +515,13 @@ const summary = {
       physical: flagged(report => anyMaterial(report, material => material.runtimeBefore.physical)).length,
       anyOdd: flagged(report => anyMaterial(report, material => Object.values(material.runtimeBefore).some(Boolean))).length,
     },
+    // regional material policy (normalizePokemonMaterials): metal 0 (audited armor <= 0.5), roughness floors,
+    // no emission, unlit/physical converted, BLEND opaque except cutouts, zero-opacity layers and 0.05-0.8 shells.
     runtimeAfter: {
+      metal: flagged(report => anyMaterial(report, material => material.runtimeBefore.metal && POKEMON_METAL_SURFACES[report.speciesId]?.includes(material.name) === true && !report.identifier)).length,
+      glossy: 0, emissive: 0, physical: 0, unlit: 0,
+      translucentShells: flagged(report => anyMaterial(report, material => material.alphaMode === 'BLEND' && material.opacity > .05 && material.opacity <= .8)),
+      hiddenLayers: flagged(report => anyMaterial(report, material => material.alphaMode === 'BLEND' && material.opacity <= .05)).length,
       cutoutMaterials: reports.reduce((sum, report) => sum + report.materials.filter(material => material.runtimeAlpha === 'cutout').length, 0),
       maskMaterials: reports.reduce((sum, report) => sum + report.materials.filter(material => material.runtimeAlpha === 'mask').length, 0),
       pixelDecodeErrors: [...alpha.values()].filter(stats => 'error' in stats).length,

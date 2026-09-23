@@ -47,7 +47,7 @@ test('battle and capture states keep the exploration track and playback position
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   await page.route(/\.(?:glb|gltf)(?:\?.*)?$/, route => route.abort());
   await page.goto('/');
-  await page.locator('[data-starter="152"]').click();
+  await page.locator('[data-starter="1"]').click();
   const saves = sceneSaves();
   await importScene(page, saves.underground, 'cave');
   const cavePosition = await page.locator('#game-music-audio').evaluate(element => (element as HTMLAudioElement).currentTime);
@@ -89,7 +89,7 @@ test('bundled music works when the personal music database cannot be opened', as
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   await page.route(/\.(?:glb|gltf)(?:\?.*)?$/, route => route.abort());
   await page.goto('/');
-  await page.locator('[data-starter="152"]').click();
+  await page.locator('[data-starter="1"]').click();
   await expect(page.locator('#game-music-audio')).toHaveAttribute('data-cue', 'pallet');
   await expect.poll(() => page.locator('#game-music-audio').evaluate(element => (element as HTMLAudioElement).currentTime), { timeout: 20_000 }).toBeGreaterThan(.05);
 });

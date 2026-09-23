@@ -14,7 +14,7 @@ test('WebGPU exploration renders Alola geometry and Mega aura', async ({ page },
   await mockAuthenticatedSession(page);
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   await page.goto('/?renderProbe');
-  await page.locator('[data-starter="152"]').click();
+  await page.locator('[data-starter="1"]').click();
   for (const kind of ['alola', 'mega'] as const) {
     const game = createGame(152, `world-form-${kind}`), monster = createMonster(game, kind === 'alola' ? 26 : 6, 50);
     game.player.team = [monster];

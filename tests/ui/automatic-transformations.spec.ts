@@ -17,7 +17,7 @@ test('team setup saves Korean Mega choices without a battle click', async ({ pag
   game.inventory['mega-stone:charizard-mega-x'] = 1;
   game.inventory.leftovers = 1;
   const world = new OpenWorldSimulation(graph, game, 223); world.setControlMode('manual'); world.setAutoHunt(false);
-  await page.goto('/?renderProbe'); await page.locator('[data-starter="152"]').click();
+  await page.goto('/?renderProbe'); await page.locator('[data-starter="1"]').click();
   await page.locator('#import-file').setInputFiles({ name: 'automatic-setup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(packSave(game, graph, { ...defaultView(), openWorld: world.snapshot(), openWorldPaused: true }))) });
   await expect(page.locator('#toast')).toContainText('불러왔습니다');
   await page.locator('[data-tab="team"]').click();

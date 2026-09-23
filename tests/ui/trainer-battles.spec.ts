@@ -13,7 +13,7 @@ test('the local trainer menu starts an ordinary battle and saves it', async ({ p
   await page.route('**/api/connectome', route => route.fulfill({ json: { available: false } }));
   await page.route(/\.(?:glb|gltf)(?:\?.*)?$/, route => route.abort());
   await page.goto('/');
-  await page.locator('[data-starter="152"]').click();
+  await page.locator('[data-starter="1"]').click();
   const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8'));
   const policy = JSON.parse(readFileSync('public/data/openworld-policy.json', 'utf8'));
   const game = createGame(152, 'trainer-menu-ui');

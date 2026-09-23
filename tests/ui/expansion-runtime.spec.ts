@@ -23,7 +23,7 @@ for (const [region, starter, label] of [['hoenn',252,'호연'],['sinnoh',387,'�
   const world=new OpenWorldSimulation(graph,game,9451,undefined,policy); world.changeRegion(region); world.setControlMode('manual');
   const gym=getCampaignGyms(game,region)[0], location=world.atlas.safeArrival(gym.locationId)!;
   world.player={...location,heading:0};Object.assign(world.entities.find(entity=>entity.kind==='companion')!,world.player);
-  await page.goto('/?renderProbe=1'); await page.locator('[data-starter="152"]').click();
+  await page.goto('/?renderProbe=1'); await page.locator('[data-starter="1"]').click();
   await page.locator('#import-file').setInputFiles({name:'expansion.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(packSave(game,graph,{...defaultView(),openWorld:world.snapshot(),openWorldPaused:true,learning:false})))});
   await expect(page.locator('#toast')).toContainText('불러왔습니다');
   await expect(page.locator('#ow-host')).toHaveAttribute('data-region',region);

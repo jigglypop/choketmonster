@@ -11,7 +11,7 @@ test('account save continues locally after logout and restores Johto from the se
   const username = `live_${Date.now().toString(36)}`, password = `Test-${crypto.randomUUID()}-pass`;
   await page.goto('/');
   await expect(page.locator('#starter-dialog')).toBeVisible();
-  await page.locator('#starter-dialog [data-starter="152"]').click();
+  await page.locator('#starter-dialog [data-starter="1"]').click();
   await expect(page.locator('#starter-dialog')).toBeHidden();
 
   await page.locator('[data-open-auth]').click();
@@ -26,7 +26,7 @@ test('account save continues locally after logout and restores Johto from the se
   // Keep the world clock stopped while staging the save. Otherwise an automatic
   // encounter can legitimately lock region travel before Playwright reaches it.
   await page.evaluate(() => Object.defineProperty(document, 'hidden', { configurable: true, value: true }));
-  await page.locator('#starter-dialog [data-starter="155"]').click();
+  await page.locator('#starter-dialog [data-starter="4"]').click();
   await expect(page.locator('#starter-dialog')).toBeHidden();
   await openExplorePanel(page);
   await page.locator('#world-pause').click();

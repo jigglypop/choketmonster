@@ -27,7 +27,7 @@ async function preparePage(page:Page,errors:string[]){
 }
 
 async function importRegion(page:Page,region:'galar'|'hisui'|'paldea',partner:number){
-  await page.goto('/?renderProbe=1');await expect(page.locator(`[data-starter="152"]`)).toBeVisible({timeout:30_000});await page.locator('[data-starter="152"]').click();
+  await page.goto('/?renderProbe=1');await expect(page.locator(`[data-starter="1"]`)).toBeVisible({timeout:30_000});await page.locator('[data-starter="1"]').click();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready','true',{timeout:45_000});
   const game=createGame(152,`runtime-${region}`);game.defeatedGyms=[...badges];game.player.badges=8;game.championDefeated=true;
   game.campaign={startRegion:'johto',johtoBadges:[...badges],johtoLeague:5,kantoLeague:5,redDefeated:false,expansion:{

@@ -30,7 +30,7 @@ test('scene music starts after game input and a video/mp4 selection survives rel
   await isolateApp(page); await page.goto('/');
   await expect(page.locator('#game-sound-toggle')).toHaveAttribute('data-music', /ready|playing/);
   await expect(page.locator('#game-music-audio')).toHaveAttribute('data-cue', 'opening');
-  await page.locator('[data-starter="152"]').click(); await expectPlaying(page);
+  await page.locator('[data-starter="1"]').click(); await expectPlaying(page);
   await expect(page.locator('#game-music-audio')).toHaveAttribute('data-cue', 'pallet');
   const media = await page.locator('#game-music-audio').evaluate(element => {
     const audio = element as HTMLAudioElement;
@@ -89,7 +89,7 @@ test('original cry decodes and reaches the real audio graph; volume and mute per
   });
   await page.goto('/');
   const fetched = page.waitForResponse(response => response.url().endsWith('/cries/pokemon/latest/152.ogg') && response.ok());
-  await page.locator('[data-starter="152"]').click(); await page.keyboard.press('Space'); await page.locator('[data-tab="team"]').click(); await fetched;
+  await page.locator('[data-starter="1"]').click(); await page.keyboard.press('Space'); await page.locator('[data-tab="team"]').click(); await fetched;
   await expect.poll(() => page.evaluate(() => (window as unknown as { cryProbe: { peak: number } }).cryProbe.peak), { timeout: 15_000 }).toBeGreaterThan(.001);
   const decoded = await page.evaluate(() => (window as unknown as { cryProbe: { started: number; duration: number; sampleRate: number; connected: boolean; running: boolean } }).cryProbe);
   expect(decoded.started).toBeGreaterThan(0); expect(decoded.duration).toBeGreaterThan(.05); expect(decoded.sampleRate).toBeGreaterThan(8000); expect(decoded.connected).toBe(true); expect(decoded.running).toBe(true);
@@ -104,7 +104,7 @@ test('selected WAV fixture plays, toggles explicitly, replaces, and restores fro
   await isolateApp(page);
   await page.goto('/');
   await expect(page.locator('iframe, #game-music-panel')).toHaveCount(0);
-  await page.locator('[data-starter="152"]').click();
+  await page.locator('[data-starter="1"]').click();
   await chooseFixture(page, 'generated-bgm-fixture.wav');
   await expectPlaying(page);
   const media = await page.locator('#game-music-audio').evaluate(element => { const audio = element as HTMLAudioElement; return { paused: audio.paused, muted: audio.muted, volume: audio.volume, loop: audio.loop, src: audio.src }; });
@@ -141,7 +141,7 @@ test('selected WAV fixture plays, toggles explicitly, replaces, and restores fro
 test('mobile restores a local WAV and starts unmuted from the first world touch without an overlay', async ({ browser }, testInfo) => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, baseURL: testInfo.project.use.baseURL as string });
   let page = await context.newPage(); await isolateApp(page); await page.goto('/');
-  await page.locator('[data-starter="152"]').tap();
+  await page.locator('[data-starter="1"]').tap();
   await chooseFixture(page, 'generated-mobile-bgm-fixture.wav', 330);
   await clickAccountMenu(page, '#save-now');
   await expect(page.locator('#save-state')).toHaveAttribute('data-state', 'local');

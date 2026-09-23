@@ -34,7 +34,7 @@ test('shows two ranked ladders, tier borders, matchmaking, and a server-authorit
   });
 
   await page.goto('/');
-  await page.locator('[data-starter="152"]').click();
+  await page.locator('[data-starter="1"]').click();
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
   await page.locator('[data-tab="ranked"]').click();
   await expect(page.locator('.ranked-page h1')).toHaveText('트레이너 랭크전');
