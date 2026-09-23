@@ -21,6 +21,11 @@ export function terrainSurfaceHeight(sample: (x: number, z: number) => WorldSamp
   return b * (1 - tx) + Math.fround(sample(x1, z1).height) * (tx + tz - 1) + d * (1 - tz);
 }
 
+// The support set keeps each pose's lowest 6% band. A walk sway of ±.045 rad
+// (models up to 1.8× wider than tall) can lift that band's floor by at most ~2%
+// of the height, so only larger tilts such as fainting need a full vertex scan.
+const SUPPORT_TILT = .06;
+
 /** Fits the actual animated vertices to the floor. The offset group has an unscaled, upright parent. */
 export function createGrounding(model: Object3D, offset: Object3D, support?: ReadonlyMap<BufferGeometry, readonly number[]>): (groundY: number) => number {
   const skinned: SkinnedMesh[] = [];
@@ -36,7 +41,7 @@ export function createGrounding(model: Object3D, offset: Object3D, support?: Rea
     offset.updateMatrixWorld(true);
     for (const mesh of skinned) mesh.skeleton.update();
     let floor = Infinity;
-    if (support && Math.abs(offset.rotation.x) < .001 && Math.abs(offset.rotation.z) < .001) {
+    if (support && Math.abs(offset.rotation.x) < SUPPORT_TILT && Math.abs(offset.rotation.z) < SUPPORT_TILT) {
       for (const mesh of meshes) {
         const indices = support.get(mesh.geometry);
         if (!indices) { bounds.setFromObject(mesh, true); floor = Math.min(floor, bounds.min.y); continue; }

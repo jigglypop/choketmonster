@@ -2,7 +2,7 @@ import { expansionSpeciesHabitats } from '../data/expansion-spawns';
 import { getSpecies } from '../data/pokemon';
 import { regionalSpeciesHabitats } from '../data/regional-encounters';
 import { getWorldAtlas, type WorldRegionId } from './atlas';
-import { captureItemChances, fieldItemCatalog, HELD_TOOL_SOURCE_FAMILIES, type FieldItem } from './field-item-drops';
+import { captureItemChances, fieldItemCatalog, HELD_TOOL_SOURCE_FAMILIES, heldToolPickupWeight, type FieldItem } from './field-item-drops';
 import { isPlayableWorldRegion } from './availability';
 import { surfaceSceneId } from './world-space';
 
@@ -17,7 +17,8 @@ export type FieldItemPickupState = { remainingSeconds: number; collectedCount: n
 
 export const FIELD_PICKUP_ACTIVE_LIMIT = 3;
 export const FIELD_PICKUP_RESPAWN_SECONDS = 30 * 60;
-export const FIELD_PICKUP_COLLECT_DISTANCE = 2.4;
+/** Walking this close to a roadside item picks it up; roadside slots sit 2.6–3.8 from the road centre. */
+export const FIELD_PICKUP_COLLECT_DISTANCE = 4;
 
 const regionOrder: readonly WorldRegionId[] = ['kanto','johto','hoenn','sinnoh','unova','kalos','alola','galar','hisui','paldea'];
 const hash = (text: string): number => { let value = 2166136261; for (const char of text) value = Math.imul(value ^ char.charCodeAt(0), 16777619) >>> 0; return value; };
@@ -105,6 +106,19 @@ function candidatesFor(regionId: WorldRegionId, seed: number): Candidate[] {
   return pickupCandidates.get(key)!;
 }
 
+/** Choose an item by its tier weight first, then one of its eligible roadside spots. */
+function weightedPickup(pool: readonly Candidate[], roll: number): Candidate {
+  const byItem = new Map<string, Candidate[]>();
+  for (const row of pool) {
+    const rows = byItem.get(row.source.item.id);
+    if (rows) rows.push(row); else byItem.set(row.source.item.id, [row]);
+  }
+  const groups = [...byItem.values()], total = groups.reduce((sum, rows) => sum + heldToolPickupWeight(rows[0].source.item), 0);
+  let target = hash(`${roll}:choice`) % total;
+  const rows = groups.find(candidates => (target -= heldToolPickupWeight(candidates[0].source.item)) < 0) ?? groups[groups.length - 1];
+  return rows[hash(`${roll}:place`) % rows.length];
+}
+
 /** Three persistent slots per region: a collected slot stays empty for 30 minutes of play. */
 export function activeFieldItemPickups(regionId: WorldRegionId, seed: number, states: Readonly<Record<string, FieldItemPickupState>>, badges = 8): FieldItemPickup[] {
   const key = `${regionId}:${seed}:${badges}:${[0, 1, 2].map(slot => {
@@ -119,10 +133,11 @@ export function activeFieldItemPickups(regionId: WorldRegionId, seed: number, st
     if ((state?.remainingSeconds ?? 0) > 0 || !eligible.length) continue;
     const cycle = state?.collectedCount ?? 0, roll = hash(`${seed}:${id}:${cycle}`);
     const kind = roll % 4 === 0 ? 'mega-stone' : 'held-tool';
-    const available = eligible.filter(row => row.source.item.kind === kind && !active.some(item => Math.hypot(item.x - row.point.x, item.z - row.point.z) < 5));
-    const pool = available.length ? available : eligible.filter(row => !active.some(item => Math.hypot(item.x - row.point.x, item.z - row.point.z) < 5));
+    const spaced = (row: Candidate) => !active.some(item => Math.hypot(item.x - row.point.x, item.z - row.point.z) < 5);
+    const available = eligible.filter(row => row.source.item.kind === kind && spaced(row));
+    const pool = available.length ? available : eligible.filter(spaced);
     if (!pool.length) continue;
-    const chosen = pool[hash(`${roll}:choice`) % pool.length];
+    const chosen = weightedPickup(pool, roll);
     active.push({ ...chosen.source.item, itemId: chosen.source.item.id, id, ...chosen.point, regionId, sceneId: surfaceSceneId(regionId), locationId: chosen.location.locationId });
   }
   if (activePickupCache.size > 128) activePickupCache.clear();

@@ -2,32 +2,331 @@
   {
     "id": "leftovers",
     "name": "먹다남은음식",
-    "kind": "held-tool"
+    "kind": "held-tool",
+    "tier": "rare",
+    "category": "battle"
   },
   {
     "id": "choice-band",
     "name": "구애머리띠",
-    "kind": "held-tool"
+    "kind": "held-tool",
+    "tier": "rare",
+    "category": "battle"
   },
   {
     "id": "choice-specs",
     "name": "구애안경",
-    "kind": "held-tool"
+    "kind": "held-tool",
+    "tier": "rare",
+    "category": "battle"
   },
   {
     "id": "choice-scarf",
     "name": "구애스카프",
-    "kind": "held-tool"
+    "kind": "held-tool",
+    "tier": "rare",
+    "category": "battle"
   },
   {
     "id": "life-orb",
     "name": "생명의구슬",
-    "kind": "held-tool"
+    "kind": "held-tool",
+    "tier": "rare",
+    "category": "battle"
   },
   {
     "id": "focus-sash",
     "name": "기합의띠",
-    "kind": "held-tool"
+    "kind": "held-tool",
+    "tier": "rare",
+    "category": "battle"
+  },
+  {
+    "id": "charcoal",
+    "name": "목탄",
+    "kind": "held-tool",
+    "tier": "common",
+    "category": "battle"
+  },
+  {
+    "id": "mystic-water",
+    "name": "신비의물방울",
+    "kind": "held-tool",
+    "tier": "common",
+    "category": "battle"
+  },
+  {
+    "id": "miracle-seed",
+    "name": "기적의씨",
+    "kind": "held-tool",
+    "tier": "common",
+    "category": "battle"
+  },
+  {
+    "id": "magnet",
+    "name": "자석",
+    "kind": "held-tool",
+    "tier": "common",
+    "category": "battle"
+  },
+  {
+    "id": "never-melt-ice",
+    "name": "녹지않는얼음",
+    "kind": "held-tool",
+    "tier": "common",
+    "category": "battle"
+  },
+  {
+    "id": "black-belt",
+    "name": "검은띠",
+    "kind": "held-tool",
+    "tier": "common",
+    "category": "battle"
+  },
+  {
+    "id": "poison-barb",
+    "name": "독바늘",
+    "kind": "held-tool",
+    "tier": "common",
+    "category": "battle"
+  },
+  {
+    "id": "soft-sand",
+    "name": "부드러운모래",
+    "kind": "held-tool",
+    "tier": "common",
+    "category": "battle"
+  },
+  {
+    "id": "sharp-beak",
+    "name": "예리한부리",
+    "kind": "held-tool",
+    "tier": "common",
+    "category": "battle"
+  },
+  {
+    "id": "twisted-spoon",
+    "name": "휘어진스푼",
+    "kind": "held-tool",
+    "tier": "common",
+    "category": "battle"
+  },
+  {
+    "id": "silver-powder",
+    "name": "은빛가루",
+    "kind": "held-tool",
+    "tier": "common",
+    "category": "battle"
+  },
+  {
+    "id": "hard-stone",
+    "name": "딱딱한돌",
+    "kind": "held-tool",
+    "tier": "common",
+    "category": "battle"
+  },
+  {
+    "id": "spell-tag",
+    "name": "저주의부적",
+    "kind": "held-tool",
+    "tier": "common",
+    "category": "battle"
+  },
+  {
+    "id": "dragon-fang",
+    "name": "용의이빨",
+    "kind": "held-tool",
+    "tier": "common",
+    "category": "battle"
+  },
+  {
+    "id": "black-glasses",
+    "name": "검은안경",
+    "kind": "held-tool",
+    "tier": "common",
+    "category": "battle"
+  },
+  {
+    "id": "iron-plate",
+    "name": "강철플레이트",
+    "kind": "held-tool",
+    "tier": "common",
+    "category": "battle"
+  },
+  {
+    "id": "silk-scarf",
+    "name": "실크스카프",
+    "kind": "held-tool",
+    "tier": "common",
+    "category": "battle"
+  },
+  {
+    "id": "fairy-feather",
+    "name": "요정의깃털",
+    "kind": "held-tool",
+    "tier": "common",
+    "category": "battle"
+  },
+  {
+    "id": "expert-belt",
+    "name": "달인의띠",
+    "kind": "held-tool",
+    "tier": "uncommon",
+    "category": "battle"
+  },
+  {
+    "id": "muscle-band",
+    "name": "힘의머리띠",
+    "kind": "held-tool",
+    "tier": "uncommon",
+    "category": "battle"
+  },
+  {
+    "id": "wise-glasses",
+    "name": "박식안경",
+    "kind": "held-tool",
+    "tier": "uncommon",
+    "category": "battle"
+  },
+  {
+    "id": "shell-bell",
+    "name": "조개껍질방울",
+    "kind": "held-tool",
+    "tier": "uncommon",
+    "category": "battle"
+  },
+  {
+    "id": "black-sludge",
+    "name": "검은오물",
+    "kind": "held-tool",
+    "tier": "uncommon",
+    "category": "battle"
+  },
+  {
+    "id": "rocky-helmet",
+    "name": "울퉁불퉁멧",
+    "kind": "held-tool",
+    "tier": "uncommon",
+    "category": "battle"
+  },
+  {
+    "id": "assault-vest",
+    "name": "돌격조끼",
+    "kind": "held-tool",
+    "tier": "rare",
+    "category": "battle"
+  },
+  {
+    "id": "eviolite",
+    "name": "진화의휘석",
+    "kind": "held-tool",
+    "tier": "rare",
+    "category": "battle"
+  },
+  {
+    "id": "big-root",
+    "name": "큰뿌리",
+    "kind": "held-tool",
+    "tier": "uncommon",
+    "category": "battle"
+  },
+  {
+    "id": "white-herb",
+    "name": "하양허브",
+    "kind": "held-tool",
+    "tier": "uncommon",
+    "category": "battle"
+  },
+  {
+    "id": "bright-powder",
+    "name": "반짝가루",
+    "kind": "held-tool",
+    "tier": "uncommon",
+    "category": "battle"
+  },
+  {
+    "id": "wide-lens",
+    "name": "광각렌즈",
+    "kind": "held-tool",
+    "tier": "uncommon",
+    "category": "battle"
+  },
+  {
+    "id": "quick-claw",
+    "name": "선제공격손톱",
+    "kind": "held-tool",
+    "tier": "uncommon",
+    "category": "battle"
+  },
+  {
+    "id": "focus-band",
+    "name": "기합의머리띠",
+    "kind": "held-tool",
+    "tier": "uncommon",
+    "category": "battle"
+  },
+  {
+    "id": "air-balloon",
+    "name": "풍선",
+    "kind": "held-tool",
+    "tier": "uncommon",
+    "category": "battle"
+  },
+  {
+    "id": "weakness-policy",
+    "name": "약점보험",
+    "kind": "held-tool",
+    "tier": "rare",
+    "category": "battle"
+  },
+  {
+    "id": "oran-berry",
+    "name": "오랭열매",
+    "kind": "held-tool",
+    "tier": "common",
+    "category": "berry"
+  },
+  {
+    "id": "sitrus-berry",
+    "name": "자뭉열매",
+    "kind": "held-tool",
+    "tier": "common",
+    "category": "berry"
+  },
+  {
+    "id": "lum-berry",
+    "name": "리샘열매",
+    "kind": "held-tool",
+    "tier": "common",
+    "category": "berry"
+  },
+  {
+    "id": "amulet-coin",
+    "name": "부적금화",
+    "kind": "held-tool",
+    "tier": "rare",
+    "category": "support"
+  },
+  {
+    "id": "lucky-egg",
+    "name": "행복의알",
+    "kind": "held-tool",
+    "tier": "rare",
+    "category": "support"
+  },
+  {
+    "id": "everstone",
+    "name": "변함없는돌",
+    "kind": "held-tool",
+    "tier": "uncommon",
+    "category": "support"
+  },
+  {
+    "id": "smoke-ball",
+    "name": "연막탄",
+    "kind": "held-tool",
+    "tier": "uncommon",
+    "category": "support"
   },
   {
     "id": "mega-stone:venusaur-mega",

@@ -1,4 +1,5 @@
 import type { PokemonMove, PokemonType } from './contracts';
+import type { EquippableItem } from './engine';
 import { abilityImmunity, hasSturdy, lowHpPowerMultiplier, type MonsterAbility } from './individual-traits';
 
 export type Combatant = {
@@ -8,8 +9,26 @@ export type Combatant = {
   types: readonly PokemonType[];
   status?: string;
   ability?: MonsterAbility;
-  heldTool?: 'leftovers' | 'choice-band' | 'choice-specs' | 'choice-scarf' | 'life-orb' | 'focus-sash' | `mega-stone:${string}`;
+  heldTool?: EquippableItem;
 };
+
+/** Type-boosting held tools: +20% power for moves of the matching type. */
+export const TYPE_BOOST_TOOLS: Readonly<Record<PokemonType, EquippableItem>> = {
+  normal: 'silk-scarf', fire: 'charcoal', water: 'mystic-water', electric: 'magnet', grass: 'miracle-seed', ice: 'never-melt-ice',
+  fighting: 'black-belt', poison: 'poison-barb', ground: 'soft-sand', flying: 'sharp-beak', psychic: 'twisted-spoon', bug: 'silver-powder',
+  rock: 'hard-stone', ghost: 'spell-tag', dragon: 'dragon-fang', dark: 'black-glasses', steel: 'iron-plate', fairy: 'fairy-feather',
+};
+
+/** Offensive held-tool multiplier after the type matchup is known. */
+export function heldToolPowerMultiplier(tool: EquippableItem | undefined, move: Pick<PokemonMove, 'type' | 'damageClass'>, matchup: number): number {
+  if (!tool) return 1;
+  if (tool === 'life-orb') return 1.3;
+  if (TYPE_BOOST_TOOLS[move.type] === tool) return 1.2;
+  if (tool === 'expert-belt') return matchup > 1 ? 1.2 : 1;
+  if (tool === 'muscle-band') return move.damageClass === 'physical' ? 1.1 : 1;
+  if (tool === 'wise-glasses') return move.damageClass === 'special' ? 1.1 : 1;
+  return 1;
+}
 
 const effectiveness: Partial<Record<PokemonType, Partial<Record<PokemonType, number>>>> = {
   normal: { rock: .5, ghost: 0, steel: .5 },
@@ -37,11 +56,12 @@ export function typeMultiplier(attack: PokemonType, defenders: readonly PokemonT
 }
 
 export function calculateDamage(attacker: Combatant, defender: Combatant, move: PokemonMove, randomFactor = 1): {
-  damage: number; multiplier: number; abilityActivation?: 'immunity' | 'absorb' | 'sturdy' | 'focus-sash';
+  damage: number; multiplier: number; abilityActivation?: 'immunity' | 'absorb' | 'sturdy' | 'focus-sash' | 'air-balloon';
 } {
   if (move.damageClass === 'status' || move.power <= 0) return { damage: 0, multiplier: 1 };
   const immunity = abilityImmunity(defender.ability, move.type);
   if (immunity) return { damage: 0, multiplier: 0, abilityActivation: immunity.heal ? 'absorb' : 'immunity' };
+  if (move.type === 'ground' && defender.heldTool === 'air-balloon') return { damage: 0, multiplier: 0, abilityActivation: 'air-balloon' };
   const rawAttack = move.damageClass === 'physical' ? attacker.stats.attack : attacker.stats.specialAttack;
   const attack = move.damageClass === 'physical' && attacker.status === 'burn' ? Math.max(1, Math.floor(rawAttack / 2)) : rawAttack;
   const defense = Math.max(1, move.damageClass === 'physical' ? defender.stats.defense : defender.stats.specialDefense);
@@ -50,7 +70,7 @@ export function calculateDamage(attacker: Combatant, defender: Combatant, move: 
   if (multiplier === 0) return { damage: 0, multiplier };
   const abilityPower = lowHpPowerMultiplier(attacker.ability, attacker.hp, attacker.stats.hp, move.type);
   const base = (((2 * attacker.level / 5 + 2) * move.power * attack / defense) / 50) + 2;
-  const toolPower = attacker.heldTool === 'life-orb' ? 1.3 : 1;
+  const toolPower = heldToolPowerMultiplier(attacker.heldTool, move, multiplier);
   const damage = Math.max(1, Math.floor(base * stab * multiplier * abilityPower * toolPower * randomFactor));
   if ((hasSturdy(defender.ability) || defender.heldTool === 'focus-sash') && defender.hp === defender.stats.hp && damage >= defender.hp) {
     return { damage: Math.max(0, defender.hp - 1), multiplier, abilityActivation: defender.heldTool === 'focus-sash' && !hasSturdy(defender.ability) ? 'focus-sash' : 'sturdy' };
@@ -64,8 +84,10 @@ export function turnOrder(
   enemy: Combatant,
   enemyMove: PokemonMove,
   tieBreaker: number,
+  quickClaw: { player?: boolean; enemy?: boolean } = {},
 ): 'player' | 'enemy' {
   if (playerMove.priority !== enemyMove.priority) return playerMove.priority > enemyMove.priority ? 'player' : 'enemy';
+  if (!!quickClaw.player !== !!quickClaw.enemy) return quickClaw.player ? 'player' : 'enemy';
   const playerSpeed = player.status === 'paralysis' ? Math.floor(player.stats.speed / 2) : player.stats.speed;
   const enemySpeed = enemy.status === 'paralysis' ? Math.floor(enemy.stats.speed / 2) : enemy.stats.speed;
   if (playerSpeed !== enemySpeed) return playerSpeed > enemySpeed ? 'player' : 'enemy';

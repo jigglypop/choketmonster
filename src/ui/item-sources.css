@@ -4,3 +4,4 @@
 .item-source-guide details summary{padding-inline:2px;font-size:12px}.item-source-method{padding:0 3px 8px;color:#4a6258}
 .item-source-method>b{font-size:11px;color:#294c3e}.item-source-method p{margin:4px 0;line-height:1.65;overflow-wrap:anywhere}
 .item-source-method p strong{font-weight:600;color:#2d5848}.item-source-method p>strong:last-child{white-space:nowrap}
+.equipment-description{margin:-4px 0 0 74px;font-size:12px;line-height:1.5;color:var(--ui-muted)}

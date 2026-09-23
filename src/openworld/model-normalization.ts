@@ -13,6 +13,8 @@ export type NormalizedPokemonModel = {
 
 type ModelProfile = { size: Vector3; origin: Vector3; grounding: ReadonlyMap<BufferGeometry, readonly number[]> };
 const profiles = new WeakMap<Object3D, ModelProfile>();
+// Lowest vertices kept from each of the 25 sampled poses for per-frame grounding.
+const SUPPORT_PER_POSE = 64;
 const preparing = new WeakMap<Object3D, Promise<void>>();
 
 function assertVisibleGeometry(model: Object3D): void {
@@ -101,18 +103,23 @@ function* measureModel(model: Object3D, animations: readonly AnimationClip[]): G
     bounds.makeEmpty();
     meshes.forEach((mesh, index) => {
       const ys = heights[index];
-      let minY = Infinity, maxY = -Infinity;
       for (let i = 0; i < ys.length; i++) {
         mesh.getVertexPosition(i, vertex).applyMatrix4(mesh.matrixWorld);
         bounds.expandByPoint(vertex); ys[i] = vertex.y;
-        minY = Math.min(minY, vertex.y); maxY = Math.max(maxY, vertex.y);
       }
-      let candidates = support.get(mesh.geometry);
-      if (!candidates) { candidates = new Set(); support.set(mesh.geometry, candidates); }
-      // Keep the entire lower band of every sampled pose, including feet, fins and tails.
-      const ceiling = minY + Math.max((maxY - minY) * .06, 1e-5);
-      for (let i = 0; i < ys.length; i++) if (ys[i] <= ceiling) candidates.add(i);
     });
+    // Keep the lowest vertices of the whole pose, including feet, fins and tails.
+    // A band per mesh also kept the undersides of eyes and heads that never touch
+    // the floor, and grounding re-skins every kept vertex several times per second.
+    const ceiling = bounds.min.y + Math.max((bounds.max.y - bounds.min.y) * .06, 1e-5);
+    const lowest: Array<[number, number, number]> = [];
+    meshes.forEach((mesh, index) => {
+      if (!support.has(mesh.geometry)) support.set(mesh.geometry, new Set());
+      const ys = heights[index];
+      for (let i = 0; i < ys.length; i++) if (ys[i] <= ceiling) lowest.push([ys[i], index, i]);
+    });
+    lowest.sort((a, b) => a[0] - b[0]);
+    for (const [, index, vertexIndex] of lowest.slice(0, SUPPORT_PER_POSE)) support.get(meshes[index].geometry)!.add(vertexIndex);
     size.max(bounds.getSize(poseSize));
   };
   const poseMixer = new AnimationMixer(model);

@@ -17,7 +17,7 @@ export type ExplorationLandmarksProps = {
   badges: number;
 };
 
-const THEME_COLORS: Record<ExplorationTheme, { wood: string; accent: string; stone: string }> = {
+export const THEME_COLORS: Record<ExplorationTheme, { wood: string; accent: string; stone: string }> = {
   classic: { wood: '#765534', accent: '#d94f45', stone: '#8f968d' }, heritage: { wood: '#5f4431', accent: '#a94b42', stone: '#817a70' },
   volcanic: { wood: '#57463c', accent: '#e36b3e', stone: '#6e625d' }, alpine: { wood: '#6c5541', accent: '#8cb9cf', stone: '#8c989c' },
   metro: { wood: '#4d5960', accent: '#e8b64b', stone: '#77858b' }, garden: { wood: '#74604b', accent: '#8e73ad', stone: '#aca28f' },

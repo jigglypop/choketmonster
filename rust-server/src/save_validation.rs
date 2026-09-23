@@ -220,6 +220,25 @@ fn abilities() -> &'static HashMap<i64, Vec<AbilitySource>> {
     })
 }
 
+/// Held tools spent once per battle. Their holders are the only valid `consumedTools` entries.
+pub(crate) const CONSUMABLE_HELD_TOOLS: [&str; 7] = [
+    "focus-sash",
+    "oran-berry",
+    "sitrus-berry",
+    "lum-berry",
+    "white-herb",
+    "weakness-policy",
+    "air-balloon",
+];
+
+/// Eviolite applies only to species that still have an evolution in the pinned catalog.
+pub(crate) fn species_can_evolve(species_id: i64) -> bool {
+    catalog()
+        .species
+        .get(&species_id)
+        .is_some_and(|species| !species.evolutions.is_empty())
+}
+
 pub(crate) fn species_available_in_version(version: &str, species_id: i64) -> bool {
     catalog()
         .versions
@@ -1942,7 +1961,7 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
             for id in consumed {
                 let id = id.as_str().ok_or("소모 도구 개체가 올바르지 않습니다.")?;
                 if !ids.insert(id) || !team.iter().chain(enemies).any(|monster| monster.get("instanceId").and_then(Value::as_str) == Some(id)
-                    && monster.get("heldTool").and_then(Value::as_str) == Some("focus-sash")) {
+                    && monster.get("heldTool").and_then(Value::as_str).is_some_and(|tool| CONSUMABLE_HELD_TOOLS.contains(&tool))) {
                     return Err("소모 도구 기록이 올바르지 않습니다.");
                 }
             }
@@ -2455,16 +2474,23 @@ mod tests {
             "../../src/data/field-items.json"
         ))
         .unwrap();
-        let mega_stones: Vec<&str> = field_items
-            .iter()
-            .filter(|item| item.get("kind").and_then(Value::as_str) == Some("mega-stone"))
-            .filter_map(|item| item.get("id").and_then(Value::as_str))
-            .collect();
+        let ids_of = |kind: &str| -> Vec<String> {
+            field_items
+                .iter()
+                .filter(|item| item.get("kind").and_then(Value::as_str) == Some(kind))
+                .filter_map(|item| item.get("id").and_then(Value::as_str).map(str::to_owned))
+                .collect()
+        };
+        let mega_stones = ids_of("mega-stone");
+        let held_tools = ids_of("held-tool");
         assert_eq!(mega_stones.len(), 64);
-        for item in mega_stones {
-            complete["game"]["inventory"][item] = Value::from(0);
+        assert_eq!(held_tools.len(), 47);
+        for item in mega_stones.iter().chain(&held_tools) {
+            complete["game"]["inventory"][item.as_str()] = Value::from(0);
         }
-        assert_eq!(complete["game"]["inventory"].as_object().unwrap().len(), 124);
+        // 12 required, 48 legacy optional (the six original held tools included),
+        // 41 catalog-only held tools and 64 Mega stones.
+        assert_eq!(complete["game"]["inventory"].as_object().unwrap().len(), 165);
         validate_save(&complete).unwrap();
     }
 
@@ -2977,6 +3003,31 @@ mod tests {
     }
 
     #[test]
+    fn accepts_consumed_records_only_for_battle_consumable_tools() {
+        let with_tool = |tool: &str| {
+            let mut save = valid_save();
+            save["game"]["player"]["team"][0]["heldTool"] = Value::from(tool);
+            set_battle(&mut save, "wild", "safari-meadow", None, None, None);
+            let id = save["game"]["player"]["team"][0]["instanceId"].clone();
+            save["game"]["battle"]["consumedTools"] = serde_json::json!([id]);
+            save
+        };
+        for tool in CONSUMABLE_HELD_TOOLS {
+            validate_save(&with_tool(tool)).unwrap();
+        }
+        for tool in ["leftovers", "lucky-egg", "charcoal", "eviolite"] {
+            assert!(validate_save(&with_tool(tool)).is_err(), "{tool}");
+        }
+        let mut duplicated = with_tool("sitrus-berry");
+        let id = duplicated["game"]["player"]["team"][0]["instanceId"].clone();
+        duplicated["game"]["battle"]["consumedTools"] = serde_json::json!([id.clone(), id]);
+        assert!(validate_save(&duplicated).is_err());
+        assert!(species_can_evolve(1));
+        assert!(species_can_evolve(133));
+        assert!(!species_can_evolve(3));
+    }
+
+    #[test]
     fn validates_auto_merge_and_held_tool_extensions() {
         let mut save = valid_save();
         save["game"]["autoMergeDuplicates"] = Value::Bool(true);
@@ -2986,6 +3037,12 @@ mod tests {
         let mut bad_option = save.clone();
         bad_option["game"]["autoMergeDuplicates"] = Value::from(1);
         assert!(validate_save(&bad_option).is_err());
+        for tool in ["charcoal", "weakness-policy", "lum-berry", "amulet-coin", "everstone"] {
+            let mut expanded = save.clone();
+            expanded["game"]["player"]["team"][0]["heldTool"] = Value::from(tool);
+            expanded["game"]["inventory"][tool] = Value::from(3);
+            validate_save(&expanded).unwrap();
+        }
         let mut bad_tool = save;
         bad_tool["game"]["player"]["team"][0]["heldTool"] = Value::from("unknown-tool");
         assert!(validate_save(&bad_tool).is_err());

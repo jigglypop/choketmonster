@@ -10,6 +10,7 @@
 
 use crate::api::{ApiError, AppState, decompress, profile_user, rate_limit};
 use crate::combat_forms::{combat_form, mega_stone_matches};
+use crate::save_validation::{CONSUMABLE_HELD_TOOLS, species_can_evolve};
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -799,13 +800,22 @@ fn resolve_turn(
         .transpose()?;
     let first = match (&p1move, &p2move) {
         (Some(a), Some(b)) => {
-            a.priority > b.priority
-                || (a.priority == b.priority
-                    && (effective_stat(active(&battle.player1), "speed")
-                        > effective_stat(active(&battle.player2), "speed")
-                        || (effective_stat(active(&battle.player1), "speed")
-                            == effective_stat(active(&battle.player2), "speed")
-                            && deterministic(id, turn, 0) % 2 == 0)))
+            let same = a.priority == b.priority;
+            let p1_quick = same && tool(active(&battle.player1)) == Some("quick-claw") && roll(id, turn, 81) < 20;
+            let p2_quick = same && tool(active(&battle.player2)) == Some("quick-claw") && roll(id, turn, 82) < 20;
+            if p1_quick != p2_quick {
+                let holder = active(if p1_quick { &battle.player1 } else { &battle.player2 }).nickname.clone();
+                battle.events.push(format!("{holder}은(는) 선제공격손톱으로 먼저 움직였습니다."));
+                p1_quick
+            } else {
+                a.priority > b.priority
+                    || (same
+                        && (effective_stat(active(&battle.player1), "speed")
+                            > effective_stat(active(&battle.player2), "speed")
+                            || (effective_stat(active(&battle.player1), "speed")
+                                == effective_stat(active(&battle.player2), "speed")
+                                && deterministic(id, turn, 0) % 2 == 0)))
+            }
         }
         (Some(_), None) => true,
         _ => false,
@@ -818,6 +828,10 @@ fn resolve_turn(
         };
         if let Some(mv) = selected {
             attack(id, turn, battle, p1_turn, &mv);
+            for side in [&mut battle.player1, &mut battle.player2] {
+                let index = side.active_index;
+                react_held_items(&mut side.team[index], &mut battle.events);
+            }
         }
     }
     residual(&mut battle.player1, &mut battle.events);
@@ -861,8 +875,9 @@ fn effective_stat(monster: &Fighter, stat: &str) -> i64 {
     let tool_multiplier = match (monster.held_tool.as_deref(), stat) {
         (Some("choice-band"), "attack")
         | (Some("choice-specs"), "specialAttack")
-        | (Some("choice-scarf"), "speed") => 1.5,
-
+        | (Some("choice-scarf"), "speed")
+        | (Some("assault-vest"), "specialDefense") => 1.5,
+        (Some("eviolite"), "defense" | "specialDefense") if species_can_evolve(monster.species_id) => 1.5,
         _ => 1.0,
     };
     let mut value =
@@ -891,6 +906,80 @@ fn change_stage(monster: &mut Fighter, stat: &str, change: i8) -> i8 {
     let after = (before + change).clamp(-6, 6);
     monster.stages.insert(key.into(), after);
     after - before
+}
+/// The held tool that still works; a consumable stops after its one use in the match.
+fn tool(monster: &Fighter) -> Option<&str> {
+    let held = monster.held_tool.as_deref()?;
+    (!(monster.held_tool_used && CONSUMABLE_HELD_TOOLS.contains(&held))).then_some(held)
+}
+fn type_boost_tool(move_type: &str) -> Option<&'static str> {
+    Some(match move_type {
+        "normal" => "silk-scarf",
+        "fire" => "charcoal",
+        "water" => "mystic-water",
+        "electric" => "magnet",
+        "grass" => "miracle-seed",
+        "ice" => "never-melt-ice",
+        "fighting" => "black-belt",
+        "poison" => "poison-barb",
+        "ground" => "soft-sand",
+        "flying" => "sharp-beak",
+        "psychic" => "twisted-spoon",
+        "bug" => "silver-powder",
+        "rock" => "hard-stone",
+        "ghost" => "spell-tag",
+        "dragon" => "dragon-fang",
+        "dark" => "black-glasses",
+        "steel" => "iron-plate",
+        "fairy" => "fairy-feather",
+        _ => return None,
+    })
+}
+/// Offensive held-tool multiplier, mirroring the client battle rules.
+fn tool_power(attacker: &Fighter, move_type: &str, damage_class: &str, type_mult: f64) -> f64 {
+    match tool(attacker) {
+        Some("life-orb") => 1.3,
+        Some(held) if type_boost_tool(move_type) == Some(held) => 1.2,
+        Some("expert-belt") if type_mult > 1.0 => 1.2,
+        Some("muscle-band") if damage_class == "physical" => 1.1,
+        Some("wise-glasses") if damage_class == "special" => 1.1,
+        _ => 1.0,
+    }
+}
+/// Berries and White Herb react immediately and only once per match.
+fn react_held_items(monster: &mut Fighter, events: &mut Vec<String>) {
+    if monster.hp <= 0 {
+        return;
+    }
+    let held = tool(monster).map(str::to_owned);
+    match held.as_deref() {
+        Some(berry @ ("oran-berry" | "sitrus-berry")) if monster.hp * 2 <= monster.max_hp => {
+            let (name, amount) = if berry == "oran-berry" { ("오랭열매", 10) } else { ("자뭉열매", (monster.max_hp / 4).max(1)) };
+            let before = monster.hp;
+            monster.hp = (monster.hp + amount).min(monster.max_hp);
+            monster.held_tool_used = true;
+            events.push(format!("{}은(는) {name}로 {} 회복했습니다.", monster.nickname, monster.hp - before));
+        }
+        Some("lum-berry")
+            if matches!(
+                monster.status.as_deref(),
+                Some("sleep" | "freeze" | "paralysis" | "poison" | "burn" | "confusion")
+            ) =>
+        {
+            monster.status = None;
+            monster.status_turns = None;
+            monster.held_tool_used = true;
+            events.push(format!("{}은(는) 리샘열매로 상태이상이 나았습니다.", monster.nickname));
+        }
+        Some("white-herb") if monster.stages.values().any(|stage| *stage < 0) => {
+            for stage in monster.stages.values_mut() {
+                *stage = (*stage).max(0);
+            }
+            monster.held_tool_used = true;
+            events.push(format!("{}은(는) 하양허브로 떨어진 능력을 되돌렸습니다.", monster.nickname));
+        }
+        _ => {}
+    }
 }
 fn ability_immunity(ability: Option<&str>, move_type: &str) -> Option<bool> {
     let expected = match ability? {
@@ -1054,13 +1143,24 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
     {
         return;
     }
+    if mv.damage_class == "status" && tool(active(attacker)) == Some("assault-vest") {
+        battle.events.push(format!(
+            "{}은(는) 돌격조끼 때문에 {}을(를) 쓸 수 없습니다.",
+            active(attacker).nickname,
+            mv.name
+        ));
+        return;
+    }
     if matches!(active(attacker).held_tool.as_deref(), Some("choice-band" | "choice-specs" | "choice-scarf")) {
         attacker.team[attacker.active_index].choice_move = Some(mv.id);
     }
     let (move_type, damage_class, move_power) = effective_move(active(attacker), mv);
+    let accuracy_tool = if tool(active(attacker)) == Some("wide-lens") { 1.1 } else { 1.0 }
+        * if tool(active(defender)) == Some("bright-powder") { 0.9 } else { 1.0 };
     let accuracy = (mv.accuracy as f64
         * stage_multiplier(*active(attacker).stages.get("accuracy").unwrap_or(&0))
-        / stage_multiplier(*active(defender).stages.get("evasion").unwrap_or(&0)))
+        / stage_multiplier(*active(defender).stages.get("evasion").unwrap_or(&0))
+        * accuracy_tool)
     .round() as i64;
     if mv.accuracy > 0 && roll(id, turn, if p1 { 1 } else { 2 }) >= accuracy {
         battle.events.push(format!(
@@ -1078,6 +1178,11 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
     } else {
         ability_immunity(active(defender).ability.as_deref(), &move_type)
     };
+    let balloon = immunity.is_none()
+        && damage_class != "status"
+        && move_type == "ground"
+        && tool(active(defender)) == Some("air-balloon");
+    let mut banded = false;
     let mut total_damage = 0;
     let mut type_mult = effectiveness(&move_type, &active(defender).types);
     // Ordinary status moves are not damaging type matchups. Thunder Wave still
@@ -1096,6 +1201,13 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
             active(defender).nickname,
             mv.name
         ));
+    } else if balloon {
+        type_mult = 0.0;
+        battle.events.push(format!(
+            "{}의 풍선이 {}을(를) 막았습니다.",
+            active(defender).nickname,
+            mv.name
+        ));
     } else if let Some(mut damage) = fixed_damage(mv, active(attacker), active(defender)) {
         let target = &mut defender.team[defender.active_index];
         if type_mult == 0.0 || (matches!(mv.id, 12 | 32 | 90) && target.ability.as_deref() == Some("sturdy")) {
@@ -1108,6 +1220,10 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
         {
             if target.ability.as_deref() != Some("sturdy") { target.held_tool_used = true; }
             damage = (target.hp - 1).max(0);
+        }
+        if damage >= target.hp && target.hp > 0 && tool(target) == Some("focus-band") && roll(id, turn, if p1 { 83 } else { 84 }) < 10 {
+            damage = target.hp - 1;
+            banded = true;
         }
         total_damage = damage.min(target.hp);
         target.hp -= total_damage;
@@ -1125,7 +1241,7 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
             }
             _ => 1,
         };
-        for _ in 0..hits {
+        for hit in 0..hits {
             if active(defender).hp <= 0 {
                 break;
             }
@@ -1152,7 +1268,7 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
             );
             let stab = stab_multiplier(a, &move_type);
             let base = (((22 * move_power * offense / defense.max(1)) / 50) + 2) as f64;
-            let mut damage = (base * stab * type_mult * low_hp_power(a, &move_type) * if a.held_tool.as_deref() == Some("life-orb") { 1.3 } else { 1.0 } * 0.925)
+            let mut damage = (base * stab * type_mult * low_hp_power(a, &move_type) * tool_power(a, &move_type, &damage_class, type_mult) * 0.925)
                 .floor()
                 .max(if type_mult > 0.0 { 1.0 } else { 0.0 }) as i64;
             let target = &mut defender.team[defender.active_index];
@@ -1163,6 +1279,14 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
             {
                 if target.ability.as_deref() != Some("sturdy") { target.held_tool_used = true; }
             damage = (target.hp - 1).max(0);
+            }
+            if damage >= target.hp
+                && target.hp > 0
+                && tool(target) == Some("focus-band")
+                && roll(id, turn, (if p1 { 83 } else { 84 }) + 2 * hit as u8) < 10
+            {
+                damage = target.hp - 1;
+                banded = true;
             }
             let dealt = damage.min(target.hp);
             target.hp -= dealt;
@@ -1175,10 +1299,32 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
             total_damage
         ));
     }
+    if banded {
+        battle.events.push(format!("{}은(는) 기합의머리띠로 버텼습니다.", active(defender).nickname));
+    }
+    if total_damage > 0 && tool(active(defender)) == Some("air-balloon") {
+        let target = &mut defender.team[defender.active_index];
+        target.held_tool_used = true;
+        battle.events.push(format!("{}의 풍선이 터졌습니다.", target.nickname));
+    }
+    if total_damage > 0
+        && type_mult > 1.0
+        && active(defender).hp > 0
+        && tool(active(defender)) == Some("weakness-policy")
+    {
+        let target = &mut defender.team[defender.active_index];
+        change_stage(target, "attack", 2);
+        change_stage(target, "specialAttack", 2);
+        target.held_tool_used = true;
+        battle.events.push(format!("{}의 약점보험: 공격과 특수공격이 크게 올랐습니다.", target.nickname));
+    }
     if let Some(drain) = mv.drain.filter(|v| *v != 0 && total_damage > 0) {
-        let amount = ((total_damage * drain.abs()) / 100).max(1);
+        let mut amount = ((total_damage * drain.abs()) / 100).max(1);
         let actor = &mut attacker.team[attacker.active_index];
         if drain > 0 {
+            if tool(actor) == Some("big-root") {
+                amount = amount * 13 / 10;
+            }
             actor.hp = (actor.hp + amount).min(actor.max_hp);
         } else {
             actor.hp = (actor.hp - amount).max(0);
@@ -1192,12 +1338,26 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
             .events
             .push(format!("{}의 HP가 회복되었습니다.", actor.nickname));
     }
+    if total_damage > 0 && tool(active(attacker)) == Some("shell-bell") && active(attacker).hp > 0 {
+        let actor = &mut attacker.team[attacker.active_index];
+        actor.hp = (actor.hp + (total_damage / 8).max(1)).min(actor.max_hp);
+    }
     if total_damage > 0
         && active(attacker).held_tool.as_deref() == Some("life-orb")
         && active(attacker).hp > 0
     {
         let actor = &mut attacker.team[attacker.active_index];
         actor.hp = (actor.hp - (actor.max_hp / 10).max(1)).max(0);
+    }
+    if total_damage > 0
+        && damage_class == "physical"
+        && tool(active(defender)) == Some("rocky-helmet")
+        && active(attacker).hp > 0
+    {
+        let actor = &mut attacker.team[attacker.active_index];
+        let recoil = (actor.max_hp / 6).max(1).min(actor.hp);
+        actor.hp -= recoil;
+        battle.events.push(format!("{}은(는) 울퉁불퉁멧으로 {} 피해를 입었습니다.", actor.nickname, recoil));
     }
     if mv.id == 499 && total_damage > 0 {
         let target = &mut defender.team[defender.active_index];
@@ -1293,6 +1453,15 @@ fn residual(side: &mut Side, events: &mut Vec<String>) {
     if target.hp > 0 && target.held_tool.as_deref() == Some("leftovers") {
         target.hp = (target.hp + (target.max_hp / 16).max(1)).min(target.max_hp);
     }
+    if target.hp > 0 && target.held_tool.as_deref() == Some("black-sludge") {
+        if target.types.iter().any(|kind| kind == "poison") {
+            target.hp = (target.hp + (target.max_hp / 16).max(1)).min(target.max_hp);
+        } else {
+            target.hp = (target.hp - (target.max_hp / 8).max(1)).max(0);
+            events.push(format!("{}은(는) 검은오물로 피해를 입었습니다.", target.nickname));
+        }
+    }
+    react_held_items(target, events);
 }
 
 async fn finalize(
@@ -1581,6 +1750,153 @@ mod tests {
         let mut side = battle(leftovers, fighter(10, 33, None)).player1;
         residual(&mut side, &mut vec![]);
         assert_eq!(active(&side).hp, expected);
+    }
+
+    fn move_action(index: usize) -> TurnAction {
+        TurnAction { turn: 1, move_index: Some(index), switch_index: None, surrender: false, transformation: None }
+    }
+
+    #[test]
+    fn ranked_expanded_tools_change_damage_and_defenses() {
+        let dealt = |tool: Option<&str>, move_id: i64, defender: i64| {
+            let mut game = battle(fighter(4, move_id, None), fighter(defender, 33, None));
+            game.player1.team[0].held_tool = tool.map(str::to_owned);
+            let before = active(&game.player2).hp;
+            attack(Uuid::nil(), 1, &mut game, true, &catalog().moves[&move_id]);
+            before - active(&game.player2).hp
+        };
+        let ember = dealt(None, 52, 143);
+        assert!(dealt(Some("charcoal"), 52, 143) > ember);
+        assert_eq!(dealt(Some("mystic-water"), 52, 143), ember);
+        assert!(dealt(Some("wise-glasses"), 52, 143) > ember);
+        assert_eq!(dealt(Some("muscle-band"), 52, 143), ember);
+        assert!(dealt(Some("muscle-band"), 33, 143) > dealt(None, 33, 143));
+        assert!(dealt(Some("expert-belt"), 52, 1) > dealt(None, 52, 1));
+        assert_eq!(dealt(Some("expert-belt"), 52, 143), ember);
+
+        let mut eevee = fighter(133, 33, None);
+        let (defense, special) = (effective_stat(&eevee, "defense"), effective_stat(&eevee, "specialDefense"));
+        eevee.held_tool = Some("eviolite".into());
+        assert_eq!(effective_stat(&eevee, "defense"), (defense as f64 * 1.5).floor() as i64);
+        assert_eq!(effective_stat(&eevee, "specialDefense"), (special as f64 * 1.5).floor() as i64);
+        let mut snorlax = fighter(143, 33, None);
+        let base = effective_stat(&snorlax, "specialDefense");
+        snorlax.held_tool = Some("eviolite".into());
+        assert_eq!(effective_stat(&snorlax, "specialDefense"), base);
+        snorlax.held_tool = Some("assault-vest".into());
+        assert_eq!(effective_stat(&snorlax, "specialDefense"), (base as f64 * 1.5).floor() as i64);
+
+        let mut vest = battle(fighter(143, 45, None), fighter(25, 33, None));
+        vest.player1.team[0].held_tool = Some("assault-vest".into());
+        attack(Uuid::nil(), 1, &mut vest, true, &catalog().moves[&45]);
+        assert!(active(&vest.player2).stages.get("attack").is_none_or(|stage| *stage == 0));
+        assert!(vest.events.iter().any(|event| event.contains("돌격조끼")));
+    }
+
+    #[test]
+    fn ranked_consumable_tools_trigger_once_and_survive_serialization() {
+        let mut balloon = battle(fighter(143, 89, None), fighter(143, 33, None));
+        balloon.player2.team[0].held_tool = Some("air-balloon".into());
+        let full = active(&balloon.player2).hp;
+        attack(Uuid::nil(), 1, &mut balloon, true, &catalog().moves[&89]);
+        assert_eq!(active(&balloon.player2).hp, full);
+        attack(Uuid::nil(), 2, &mut balloon, true, &catalog().moves[&33]);
+        assert!(active(&balloon.player2).held_tool_used);
+        let mut loaded: Battle = serde_json::from_value(serde_json::to_value(&balloon).unwrap()).unwrap();
+        let popped = active(&loaded.player2).hp;
+        attack(Uuid::nil(), 3, &mut loaded, true, &catalog().moves[&89]);
+        assert!(active(&loaded.player2).hp < popped);
+
+        let mut policy = battle(fighter(7, 55, None), fighter(248, 33, None));
+        policy.player2.team[0].held_tool = Some("weakness-policy".into());
+        attack(Uuid::nil(), 1, &mut policy, true, &catalog().moves[&55]);
+        assert_eq!(active(&policy.player2).stages.get("attack"), Some(&2));
+        assert_eq!(active(&policy.player2).stages.get("specialAttack"), Some(&2));
+        attack(Uuid::nil(), 2, &mut policy, true, &catalog().moves[&55]);
+        assert_eq!(active(&policy.player2).stages.get("attack"), Some(&2));
+
+        let mut sitrus = fighter(143, 33, None);
+        sitrus.held_tool = Some("sitrus-berry".into());
+        sitrus.hp = sitrus.max_hp / 2 - 1;
+        let expected = sitrus.hp + sitrus.max_hp / 4;
+        let mut side = battle(sitrus, fighter(10, 33, None)).player1;
+        residual(&mut side, &mut vec![]);
+        assert_eq!(active(&side).hp, expected);
+        side.team[0].hp = 5;
+        residual(&mut side, &mut vec![]);
+        assert_eq!(active(&side).hp, 5);
+
+        let mut lum = fighter(143, 33, None);
+        lum.held_tool = Some("lum-berry".into());
+        lum.status = Some("paralysis".into());
+        react_held_items(&mut lum, &mut vec![]);
+        assert!(lum.status.is_none() && lum.held_tool_used);
+        lum.status = Some("burn".into());
+        react_held_items(&mut lum, &mut vec![]);
+        assert_eq!(lum.status.as_deref(), Some("burn"));
+
+        let mut herb = fighter(143, 33, None);
+        herb.held_tool = Some("white-herb".into());
+        herb.stages.insert("attack".into(), -2);
+        herb.stages.insert("speed".into(), 1);
+        react_held_items(&mut herb, &mut vec![]);
+        assert_eq!(herb.stages.get("attack"), Some(&0));
+        assert_eq!(herb.stages.get("speed"), Some(&1));
+        assert!(herb.held_tool_used);
+    }
+
+    #[test]
+    fn ranked_recovery_recoil_and_chance_tools_match_client_rules() {
+        let mut grimer = fighter(88, 33, None);
+        grimer.held_tool = Some("black-sludge".into());
+        grimer.hp -= 30;
+        let expected = grimer.hp + (grimer.max_hp / 16).max(1);
+        let mut side = battle(grimer, fighter(10, 33, None)).player1;
+        residual(&mut side, &mut vec![]);
+        assert_eq!(active(&side).hp, expected);
+        let mut other = fighter(143, 33, None);
+        other.held_tool = Some("black-sludge".into());
+        let expected = other.hp - (other.max_hp / 8).max(1);
+        let mut side = battle(other, fighter(10, 33, None)).player1;
+        residual(&mut side, &mut vec![]);
+        assert_eq!(active(&side).hp, expected);
+
+        let mut helmet = battle(fighter(143, 33, None), fighter(143, 33, None));
+        helmet.player2.team[0].held_tool = Some("rocky-helmet".into());
+        let max = active(&helmet.player1).max_hp;
+        attack(Uuid::nil(), 1, &mut helmet, true, &catalog().moves[&33]);
+        assert_eq!(active(&helmet.player1).hp, max - max / 6);
+        let mut special = battle(fighter(4, 52, None), fighter(143, 33, None));
+        special.player2.team[0].held_tool = Some("rocky-helmet".into());
+        attack(Uuid::nil(), 1, &mut special, true, &catalog().moves[&52]);
+        assert_eq!(active(&special.player1).hp, active(&special.player1).max_hp);
+
+        let mut bell = battle(fighter(4, 52, None), fighter(143, 33, None));
+        bell.player1.team[0].held_tool = Some("shell-bell".into());
+        bell.player1.team[0].hp = 10;
+        let before = active(&bell.player2).hp;
+        attack(Uuid::nil(), 1, &mut bell, true, &catalog().moves[&52]);
+        assert_eq!(active(&bell.player1).hp, 10 + ((before - active(&bell.player2).hp) / 8).max(1));
+
+        let mut quick_first = 0;
+        let mut band_saves = 0;
+        for turn in 1..=200 {
+            let mut game = battle(fighter(79, 33, None), fighter(101, 33, None));
+            game.player1.team[0].held_tool = Some("quick-claw".into());
+            resolve_turn(Uuid::nil(), turn, &mut game, move_action(0), move_action(0)).unwrap();
+            let first_hit = game.events.iter().find(|event| event.contains("피해")).unwrap();
+            if first_hit.starts_with(&active(&game.player1).nickname) {
+                quick_first += 1;
+            }
+            let mut band = battle(fighter(150, 94, None), fighter(1, 33, None));
+            band.player2.team[0].held_tool = Some("focus-band".into());
+            attack(Uuid::nil(), turn, &mut band, true, &catalog().moves[&94]);
+            if active(&band.player2).hp == 1 {
+                band_saves += 1;
+            }
+        }
+        assert!((20..70).contains(&quick_first), "{quick_first}");
+        assert!((5..40).contains(&band_saves), "{band_saves}");
     }
 
     #[test]

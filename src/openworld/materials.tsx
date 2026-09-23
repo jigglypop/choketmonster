@@ -35,11 +35,17 @@ export function worldSurfaceColor(atlas: WorldAtlas, sample: WorldSample, x: num
   const nearest = atlas.locationAt(x, z);
   const landmarkDistance = Math.hypot(x - nearest.x, z - nearest.z);
   if (nearest.kind === 'town' && landmarkDistance <= 8.5 * WORLD_SCALE) return new Color(townStyle(nearest.id).color).lerp(new Color('#e8dfc5'), .38);
-  if (atlas.distanceToPath(x, z) <= 3.2 * WORLD_SCALE) return new Color(regionTrailColor(atlas)).lerp(new Color(atlas.palette.ground), .28);
   // Bake broad variation once per terrain vertex instead of evaluating three
   // trigonometric functions for every grass fragment on every frame.
   const variation = Math.sin(x * .19 + Math.sin(z * .11)) * Math.cos(z * .17);
-  return new Color(atlas.palette.ground).multiplyScalar(1 + variation * .065);
+  const grass = new Color(atlas.palette.ground).multiplyScalar(1 + variation * .065);
+  const pathDistance = atlas.distanceToPath(x, z);
+  if (pathDistance <= 3.2 * WORLD_SCALE) {
+    // Worn soil under the road fades into a grassy verge toward the corridor edge.
+    const verge = Math.max(0, Math.min(1, (pathDistance - 2 * WORLD_SCALE) / (1.2 * WORLD_SCALE)));
+    return new Color(regionTrailColor(atlas)).lerp(new Color(atlas.palette.ground), .28).lerp(grass, verge * verge * (3 - 2 * verge) * .7);
+  }
+  return grass;
 }
 
 export function regionTrailColor(atlas: WorldAtlas): string {

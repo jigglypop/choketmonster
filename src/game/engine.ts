@@ -24,12 +24,29 @@ export { abilityForSpecies, createIndividualTraits, speciesAbilities, type Indiv
 
 export const SAVE_SCHEMA_VERSION = 2 as const;
 export type BallItem = 'poke-ball' | 'great-ball' | 'ultra-ball';
-export const HELD_TOOLS = ['leftovers', 'choice-band', 'choice-specs', 'choice-scarf', 'life-orb', 'focus-sash'] as const;
+export const HELD_TOOLS = [
+  'leftovers', 'choice-band', 'choice-specs', 'choice-scarf', 'life-orb', 'focus-sash',
+  'charcoal', 'mystic-water', 'miracle-seed', 'magnet', 'never-melt-ice', 'black-belt', 'poison-barb', 'soft-sand', 'sharp-beak',
+  'twisted-spoon', 'silver-powder', 'hard-stone', 'spell-tag', 'dragon-fang', 'black-glasses', 'iron-plate', 'silk-scarf', 'fairy-feather',
+  'expert-belt', 'muscle-band', 'wise-glasses', 'shell-bell', 'black-sludge', 'rocky-helmet', 'assault-vest', 'eviolite', 'big-root',
+  'white-herb', 'bright-powder', 'wide-lens', 'quick-claw', 'focus-band', 'air-balloon', 'weakness-policy',
+  'oran-berry', 'sitrus-berry', 'lum-berry',
+  'amulet-coin', 'lucky-egg', 'everstone', 'smoke-ball',
+] as const;
 export type HeldTool = typeof HELD_TOOLS[number];
 export type MegaStoneId = `mega-stone:${string}`;
 export type EquippableItem = HeldTool | MegaStoneId;
-export type FieldItem = { id: EquippableItem; name: string; kind: 'held-tool' | 'mega-stone'; formIdentifier?: string; speciesId?: number };
+export type HeldToolTier = 'common' | 'uncommon' | 'rare';
+export type HeldToolCategory = 'battle' | 'berry' | 'support';
+export type FieldItem = { id: EquippableItem; name: string; kind: 'held-tool' | 'mega-stone'; tier?: HeldToolTier; category?: HeldToolCategory; formIdentifier?: string; speciesId?: number };
 export const FIELD_ITEMS = fieldItems as readonly FieldItem[];
+const HELD_TOOL_ROWS = new Map(FIELD_ITEMS.filter(item => item.kind === 'held-tool').map(item => [item.id, item]));
+if (HELD_TOOL_ROWS.size !== HELD_TOOLS.length || HELD_TOOLS.some(id => {
+  const row = HELD_TOOL_ROWS.get(id);
+  return !row || !['common', 'uncommon', 'rare'].includes(row.tier ?? '') || !['battle', 'berry', 'support'].includes(row.category ?? '');
+})) throw new Error('Held tool catalog does not match field-items.json');
+/** Tools spent once per battle. The equipped item itself is never destroyed. */
+export const CONSUMABLE_HELD_TOOLS: readonly HeldTool[] = ['focus-sash', 'oran-berry', 'sitrus-berry', 'lum-berry', 'white-herb', 'weakness-policy', 'air-balloon'];
 export const MEGA_STONES = FIELD_ITEMS.filter((item): item is FieldItem & { id: MegaStoneId; kind: 'mega-stone'; formIdentifier: string; speciesId: number } => item.kind === 'mega-stone');
 export const EQUIPPABLE_ITEMS = FIELD_ITEMS.map(item => item.id) as readonly EquippableItem[];
 export function megaStoneId(formIdentifier: string): MegaStoneId { return `mega-stone:${formIdentifier}`; }
@@ -176,10 +193,10 @@ export type GameState = {
   logs: string[];
 };
 
-export const HELD_TOOL_LABELS: Readonly<Record<HeldTool, string>> = {
-  leftovers: '먹다남은음식', 'choice-band': '구애머리띠', 'choice-specs': '구애안경',
-  'choice-scarf': '구애스카프', 'life-orb': '생명의구슬', 'focus-sash': '기합의띠',
-};
+export const HELD_TOOL_LABELS = Object.fromEntries(HELD_TOOLS.map(id => [id, HELD_TOOL_ROWS.get(id)!.name])) as Readonly<Record<HeldTool, string>>;
+export const HELD_TOOL_TIERS = Object.fromEntries(HELD_TOOLS.map(id => [id, HELD_TOOL_ROWS.get(id)!.tier!])) as Readonly<Record<HeldTool, HeldToolTier>>;
+export const HELD_TOOL_CATEGORIES = Object.fromEntries(HELD_TOOLS.map(id => [id, HELD_TOOL_ROWS.get(id)!.category!])) as Readonly<Record<HeldTool, HeldToolCategory>>;
+const typeBoost = (type: string) => `${type} 타입 기술의 위력이 1.2배가 됩니다.`;
 export const HELD_TOOL_DESCRIPTIONS: Readonly<Record<HeldTool, string>> = {
   leftovers: '턴이 끝날 때 최대 HP의 1/16을 회복합니다.',
   'choice-band': '공격이 1.5배가 되고 처음 사용한 기술로 고정됩니다.',
@@ -187,11 +204,38 @@ export const HELD_TOOL_DESCRIPTIONS: Readonly<Record<HeldTool, string>> = {
   'choice-scarf': '스피드가 1.5배가 되고 처음 사용한 기술로 고정됩니다.',
   'life-orb': '공격 피해가 1.3배가 되고 적중 후 최대 HP의 1/10을 잃습니다.',
   'focus-sash': 'HP가 가득 찼을 때 한 번만 HP 1로 버팁니다.',
+  charcoal: typeBoost('불꽃'), 'mystic-water': typeBoost('물'), 'miracle-seed': typeBoost('풀'), magnet: typeBoost('전기'),
+  'never-melt-ice': typeBoost('얼음'), 'black-belt': typeBoost('격투'), 'poison-barb': typeBoost('독'), 'soft-sand': typeBoost('땅'),
+  'sharp-beak': typeBoost('비행'), 'twisted-spoon': typeBoost('에스퍼'), 'silver-powder': typeBoost('벌레'), 'hard-stone': typeBoost('바위'),
+  'spell-tag': typeBoost('고스트'), 'dragon-fang': typeBoost('드래곤'), 'black-glasses': typeBoost('악'), 'iron-plate': typeBoost('강철'),
+  'silk-scarf': typeBoost('노말'), 'fairy-feather': typeBoost('페어리'),
+  'expert-belt': '효과가 굉장한 기술의 피해가 1.2배가 됩니다.',
+  'muscle-band': '물리 기술의 피해가 1.1배가 됩니다.',
+  'wise-glasses': '특수 기술의 피해가 1.1배가 됩니다.',
+  'shell-bell': '준 피해의 1/8만큼 HP를 회복합니다.',
+  'black-sludge': '독 타입은 턴이 끝날 때 최대 HP의 1/16을 회복하고, 다른 타입은 1/8을 잃습니다.',
+  'rocky-helmet': '물리 기술로 공격한 상대가 최대 HP의 1/6을 잃습니다.',
+  'assault-vest': '특수방어가 1.5배가 되지만 변화 기술을 쓸 수 없습니다.',
+  eviolite: '아직 진화할 수 있으면 방어와 특수방어가 1.5배가 됩니다.',
+  'big-root': 'HP를 흡수하는 기술의 회복량이 1.3배가 됩니다.',
+  'white-herb': '전투마다 한 번, 떨어진 능력 단계를 원래대로 되돌립니다.',
+  'bright-powder': '상대 기술의 명중률이 0.9배가 됩니다.',
+  'wide-lens': '기술의 명중률이 1.1배가 됩니다.',
+  'quick-claw': '같은 우선도에서 20% 확률로 먼저 행동합니다.',
+  'focus-band': '쓰러질 공격을 받아도 10% 확률로 HP 1로 버팁니다.',
+  'air-balloon': '공격을 받아 터질 때까지 땅 타입 기술을 받지 않습니다.',
+  'weakness-policy': '전투마다 한 번, 효과가 굉장한 공격을 버티면 공격과 특수공격이 2단계 오릅니다.',
+  'oran-berry': '전투마다 한 번, HP가 절반 이하가 되면 HP를 10 회복합니다.',
+  'sitrus-berry': '전투마다 한 번, HP가 절반 이하가 되면 최대 HP의 1/4을 회복합니다.',
+  'lum-berry': '전투마다 한 번, 상태이상과 혼란을 회복합니다.',
+  'amulet-coin': '지닌 포켓몬이 팀에 있으면 전투 상금이 2배가 됩니다.',
+  'lucky-egg': '지닌 포켓몬이 받는 경험치가 1.5배가 됩니다.',
+  everstone: '지니고 있는 동안 진화하지 않습니다.',
+  'smoke-ball': '야생 전투에서 반드시 도망칠 수 있습니다.',
 };
-export const HELD_TOOL_PRICES: Readonly<Record<HeldTool, number>> = {
-  leftovers: 4000, 'choice-band': 6000, 'choice-specs': 6000,
-  'choice-scarf': 6000, 'life-orb': 8000, 'focus-sash': 4000,
-};
+/** Nominal trade value by drop tier; Life Orb keeps its previous premium. */
+export const HELD_TOOL_TIER_PRICES: Readonly<Record<HeldToolTier, number>> = { common: 2000, uncommon: 4000, rare: 6000 };
+export const HELD_TOOL_PRICES = Object.fromEntries(HELD_TOOLS.map(id => [id, id === 'life-orb' ? 8000 : HELD_TOOL_TIER_PRICES[HELD_TOOL_TIERS[id]]])) as Readonly<Record<HeldTool, number>>;
 export const HEALING_ITEM_HP: Readonly<Record<'potion' | 'super-potion', number>> = { potion: 20, 'super-potion': 60 };
 
 export type ExploreResult = { kind: 'encounter' | 'item' | 'money'; speciesId?: number; item?: InventoryItem; amount: number; text: string };
@@ -628,18 +672,28 @@ export function battleMonsterView(battle: BattleState, monster: Monster) {
 function activeHeldTool(battle: BattleState, monster: Monster): EquippableItem | undefined {
   return battle.consumedTools?.includes(monster.instanceId) ? undefined : monster.heldTool;
 }
+function consumeHeldTool(battle: BattleState, monster: Monster): void {
+  battle.consumedTools ??= [];
+  if (!battle.consumedTools.includes(monster.instanceId)) battle.consumedTools.push(monster.instanceId);
+}
+/** Eviolite applies while the current battle species still has an evolution. */
+function canStillEvolve(battle: BattleState, monster: Monster): boolean {
+  return getSpecies(effectiveSpeciesId(battle, monster)).evolutions.length > 0;
+}
 function stageMultiplier(stage = 0): number { return stage >= 0 ? (2 + stage) / 2 : 2 / (2 - stage); }
 function combatant(monster: Monster, battle: BattleState) {
   const base = effectiveStats(battle, monster); const stages = battle.statStages?.[monster.instanceId] ?? {};
   const physical = monster.heldTool === 'choice-band' ? 1.5 : 1;
   const special = monster.heldTool === 'choice-specs' ? 1.5 : 1;
   const speed = monster.heldTool === 'choice-scarf' ? 1.5 : 1;
+  const eviolite = monster.heldTool === 'eviolite' && canStillEvolve(battle, monster) ? 1.5 : 1;
+  const specialGuard = eviolite * (monster.heldTool === 'assault-vest' ? 1.5 : 1);
   return { level: monster.level, hp: monster.hp, stats: {
     hp: base.hp,
     attack: Math.max(1, Math.floor(base.attack * stageMultiplier(stages.attack) * physical)),
-    defense: Math.max(1, Math.floor(base.defense * stageMultiplier(stages.defense))),
+    defense: Math.max(1, Math.floor(base.defense * stageMultiplier(stages.defense) * eviolite)),
     specialAttack: Math.max(1, Math.floor(base.specialAttack * stageMultiplier(stages.specialAttack) * special)),
-    specialDefense: Math.max(1, Math.floor(base.specialDefense * stageMultiplier(stages.specialDefense))),
+    specialDefense: Math.max(1, Math.floor(base.specialDefense * stageMultiplier(stages.specialDefense) * specialGuard)),
     speed: Math.max(1, Math.floor(base.speed * stageMultiplier(stages.speed) * speed)),
   }, types: effectiveTypes(battle, monster), status: monster.status, ability: effectiveAbility(battle, monster), heldTool: activeHeldTool(battle, monster) };
 }
@@ -699,7 +753,43 @@ function fixedMoveDamage(moveId: number, attacker: Monster, defender: Monster): 
   return undefined;
 }
 
+const MAJOR_STATUSES = new Set(['sleep', 'freeze', 'paralysis', 'poison', 'burn', 'confusion']);
+/** Immediate held-item reactions: berries and White Herb trigger once per battle. */
+function reactHeldItems(battle: BattleState, monster: Monster, events: BattleLogEntry[]): void {
+  const tool = activeHeldTool(battle, monster);
+  if (!tool || monster.hp <= 0) return;
+  const maxHp = battleMonsterMaxHp(battle, monster);
+  if ((tool === 'oran-berry' || tool === 'sitrus-berry') && monster.hp * 2 <= maxHp) {
+    const before = monster.hp;
+    monster.hp = Math.min(maxHp, monster.hp + (tool === 'oran-berry' ? 10 : Math.max(1, Math.floor(maxHp / 4))));
+    consumeHeldTool(battle, monster);
+    events.push(event(battle, `${monster.nickname}은(는) ${HELD_TOOL_LABELS[tool]}로 ${monster.hp - before} 회복했다.`, 'status'));
+  } else if (tool === 'lum-berry' && MAJOR_STATUSES.has(monster.status ?? '')) {
+    monster.status = undefined; monster.statusTurns = undefined;
+    consumeHeldTool(battle, monster);
+    events.push(event(battle, `${monster.nickname}은(는) 리샘열매로 상태이상이 나았다.`, 'status'));
+  } else if (tool === 'white-herb') {
+    const stages = battle.statStages?.[monster.instanceId];
+    const lowered = stages ? (Object.keys(stages) as BattleStat[]).filter(stat => (stages[stat] ?? 0) < 0) : [];
+    if (!lowered.length) return;
+    for (const stat of lowered) stages![stat] = 0;
+    consumeHeldTool(battle, monster);
+    events.push(event(battle, `${monster.nickname}은(는) 하양허브로 떨어진 능력을 되돌렸다.`, 'status'));
+  }
+}
+
 function performMove(state: GameState, battle: BattleState, attacker: Monster, defender: Monster, index: number, events: BattleLogEntry[], executedMoves: ExecutedMove[]): void {
+  performMoveAction(state, battle, attacker, defender, index, events, executedMoves);
+  reactHeldItems(battle, defender, events);
+  reactHeldItems(battle, attacker, events);
+}
+
+/** Focus Band survival is rolled only for a holder that would otherwise faint. */
+function focusBandSaves(state: GameState, battle: BattleState, defender: Monster, damage: number): boolean {
+  return damage >= defender.hp && defender.hp > 0 && activeHeldTool(battle, defender) === 'focus-band' && random(state) < .1;
+}
+
+function performMoveAction(state: GameState, battle: BattleState, attacker: Monster, defender: Monster, index: number, events: BattleLogEntry[], executedMoves: ExecutedMove[]): void {
   if (attacker.hp <= 0) return;
   if (attacker.status === 'sleep') {
     attacker.statusTurns = Math.max(0, (attacker.statusTurns ?? 1) - 1);
@@ -728,13 +818,21 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
     return;
   }
   const move = getMove(slot.moveId);
+  if (move.damageClass === 'status' && activeHeldTool(battle, attacker) === 'assault-vest') {
+    events.push(event(battle, `${attacker.nickname}은(는) 돌격조끼 때문에 ${move.name}을(를) 쓸 수 없다.`, 'status'));
+    executedMoves.push({ actorInstanceId: attacker.instanceId, targetInstanceId: defender.instanceId,
+      moveId: move.id, moveType: move.type, damageClass: move.damageClass, damagingMove: false,
+      executed: true, hit: false, typeMultiplier: 1, damage: 0, category: 'status', hpRecovered: 0, statStageDelta: 0, ailmentApplied: false, strategicEffect: false, result: 'failed' });
+    return;
+  }
   if (attacker.heldTool?.startsWith('choice-')) (battle.choiceLocks ??= {})[attacker.instanceId] = move.id;
   const growth = evolutionProgress(attacker);
   growth.moveUses[String(move.id)] = Math.min(1e9, (growth.moveUses[String(move.id)] ?? 0) + 1);
   let hpRecovered = 0, statStageDelta = 0, ailmentApplied = false;
   const damagingMove = move.damageClass !== 'status' && (move.power > 0 || fixedMoveDamage(move.id, attacker, defender) !== undefined || [12, 32, 90].includes(move.id));
   const attackerStages = battle.statStages?.[attacker.instanceId] ?? {}; const defenderStages = battle.statStages?.[defender.instanceId] ?? {};
-  const accuracy = move.accuracy * stageMultiplier(attackerStages.accuracy) / stageMultiplier(defenderStages.evasion);
+  const accuracyTool = (activeHeldTool(battle, attacker) === 'wide-lens' ? 1.1 : 1) * (activeHeldTool(battle, defender) === 'bright-powder' ? .9 : 1);
+  const accuracy = move.accuracy * stageMultiplier(attackerStages.accuracy) / stageMultiplier(defenderStages.evasion) * accuracyTool;
   if (move.accuracy > 0 && random(state) * 100 >= accuracy) {
     events.push(event(battle, `${attacker.nickname}의 ${move.name}은(는) 빗나갔다.`));
     executedMoves.push({ actorInstanceId: attacker.instanceId, targetInstanceId: defender.instanceId,
@@ -787,7 +885,8 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
     return;
   }
 
-  let totalDamage = 0; let multiplier = 1; let activatedAbility: 'immunity' | 'absorb' | 'sturdy' | 'focus-sash' | undefined;
+  let totalDamage = 0; let multiplier = 1; let activatedAbility: 'immunity' | 'absorb' | 'sturdy' | 'focus-sash' | 'air-balloon' | undefined;
+  let bandSaved = false;
   const isOhko = [12, 32, 90].includes(move.id);
   let fixed = fixedMoveDamage(move.id, attacker, defender);
   if (move.id === 149) fixed = Math.max(1, Math.floor(attacker.level * (.5 + random(state))));
@@ -795,42 +894,62 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
   const immunity = abilityImmunity(effectiveAbility(battle, defender), move.type);
   if ((isOhko || fixed !== undefined) && immunity) { multiplier = 0; activatedAbility = immunity.heal ? 'absorb' : 'immunity'; }
   else if ((isOhko || fixed !== undefined) && matchup === 0) { multiplier = 0; events.push(event(battle, '타입 면역으로 효과가 없었다.')); }
+  else if ((isOhko || fixed !== undefined) && move.type === 'ground' && activeHeldTool(battle, defender) === 'air-balloon') { multiplier = 0; activatedAbility = 'air-balloon'; }
   else if (isOhko && attacker.level < defender.level) events.push(event(battle, '상대의 레벨이 높아 일격필살이 통하지 않았다.'));
   else if (isOhko && hasSturdy(effectiveAbility(battle, defender))) { activatedAbility = 'sturdy'; }
   else if (isOhko && activeHeldTool(battle, defender) === 'focus-sash' && defender.hp === effectiveStats(battle, defender).hp) { activatedAbility = 'focus-sash'; totalDamage = Math.max(0, defender.hp - 1); defender.hp -= totalDamage; }
-  else if (isOhko) { totalDamage = defender.hp; defender.hp = 0; multiplier = 1; }
+  else if (isOhko) {
+    bandSaved = focusBandSaves(state, battle, defender, defender.hp);
+    totalDamage = bandSaved ? defender.hp - 1 : defender.hp; defender.hp -= totalDamage; multiplier = 1;
+  }
   else if (fixed !== undefined) {
     const sturdy = hasSturdy(effectiveAbility(battle, defender)), sash = activeHeldTool(battle, defender) === 'focus-sash';
     const capped = (sturdy || sash) && defender.hp === effectiveStats(battle, defender).hp && fixed >= defender.hp ? defender.hp - 1 : fixed;
     if (capped !== fixed) activatedAbility = sturdy ? 'sturdy' : 'focus-sash';
-    totalDamage = Math.min(defender.hp, Math.max(0, capped)); defender.hp -= totalDamage;
+    totalDamage = Math.min(defender.hp, Math.max(0, capped));
+    if (focusBandSaves(state, battle, defender, totalDamage)) { bandSaved = true; totalDamage = defender.hp - 1; }
+    defender.hp -= totalDamage;
   }
   else if (move.power > 0) {
     const hits = move.minHits && move.maxHits ? move.minHits + Math.floor(random(state) * (move.maxHits - move.minHits + 1)) : 1;
     for (let hit = 0; hit < hits && defender.hp > 0; hit++) {
       const result = calculateDamage(combatant(attacker, battle), combatant(defender, battle), move, .85 + random(state) * .15);
       multiplier = result.multiplier; activatedAbility ??= result.abilityActivation;
-      const dealt = Math.min(defender.hp, result.damage); defender.hp -= dealt; totalDamage += dealt;
-      if (result.abilityActivation === 'immunity' || result.abilityActivation === 'absorb') break;
+      let dealt = Math.min(defender.hp, result.damage);
+      if (focusBandSaves(state, battle, defender, dealt)) { bandSaved = true; dealt = defender.hp - 1; }
+      defender.hp -= dealt; totalDamage += dealt;
+      if (result.abilityActivation === 'immunity' || result.abilityActivation === 'absorb' || result.abilityActivation === 'air-balloon') break;
     }
   }
   if (activatedAbility === 'absorb') {
     defender.hp = Math.min(battleMonsterMaxHp(battle, defender), defender.hp + Math.max(1, Math.floor(battleMonsterMaxHp(battle, defender) / 4)));
   }
   if (activatedAbility) {
-    if (activatedAbility === 'focus-sash') (battle.consumedTools ??= []).push(defender.instanceId);
-    const source = activatedAbility === 'focus-sash' ? '기합의띠' : monsterAbility(defender).name;
+    if (activatedAbility === 'focus-sash') consumeHeldTool(battle, defender);
+    const source = activatedAbility === 'focus-sash' ? '기합의띠' : activatedAbility === 'air-balloon' ? '풍선' : monsterAbility(defender).name;
     const detail = activatedAbility === 'sturdy' || activatedAbility === 'focus-sash' ? '쓰러지지 않았다' : activatedAbility === 'absorb' ? '공격을 흡수해 회복했다' : '공격을 무효화했다';
     events.push(event(battle, `${defender.nickname}의 ${source}: ${detail}.`, 'status'));
   }
+  if (bandSaved) events.push(event(battle, `${defender.nickname}의 기합의머리띠: 쓰러지지 않았다.`, 'status'));
   if (move.power > 0 || fixed !== undefined || isOhko) {
     let text = `${attacker.nickname}의 ${move.name}! ${totalDamage} 피해.`;
     if (multiplier > 1) text += ' 효과가 굉장했다.'; if (multiplier === 0) text += ' 효과가 없다.'; else if (multiplier < 1) text += ' 효과가 별로였다.';
     events.push(event(battle, text, 'damage'));
   }
+  const defenderTool = activeHeldTool(battle, defender), attackerTool = activeHeldTool(battle, attacker);
+  if (defenderTool === 'air-balloon' && totalDamage > 0) {
+    consumeHeldTool(battle, defender);
+    events.push(event(battle, `${defender.nickname}의 풍선이 터졌다.`, 'status'));
+  }
+  if (defenderTool === 'weakness-policy' && multiplier > 1 && totalDamage > 0 && defender.hp > 0) {
+    const raised = Math.abs(changeStage(battle, defender, 'attack', 2)) + Math.abs(changeStage(battle, defender, 'specialAttack', 2));
+    consumeHeldTool(battle, defender);
+    if (raised) events.push(event(battle, `${defender.nickname}의 약점보험: 공격과 특수공격이 크게 올랐다.`, 'status'));
+  }
 
   if (move.drain && totalDamage > 0) {
-    const amount = Math.max(1, Math.floor(totalDamage * Math.abs(move.drain) / 100));
+    const drained = Math.max(1, Math.floor(totalDamage * Math.abs(move.drain) / 100));
+    const amount = move.drain > 0 && attackerTool === 'big-root' ? Math.floor(drained * 1.3) : drained;
     if (move.drain > 0) { const before = attacker.hp; attacker.hp = Math.min(battleMonsterMaxHp(battle, attacker), attacker.hp + amount); hpRecovered += attacker.hp - before; } else {
       const recoil = Math.min(attacker.hp, amount); attacker.hp -= recoil;
       growth.recoilDamage = attacker.hp > 0 ? Math.min(1e9, growth.recoilDamage + recoil) : 0;
@@ -841,6 +960,11 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
     const amount = Math.max(1, Math.floor(battleMonsterMaxHp(battle, attacker) * move.healing / 100)); const before = attacker.hp; attacker.hp = Math.min(battleMonsterMaxHp(battle, attacker), attacker.hp + amount); hpRecovered += attacker.hp - before;
     events.push(event(battle, `${attacker.nickname}의 HP가 회복되었다.`, 'status'));
   }
+  if (attackerTool === 'shell-bell' && totalDamage > 0 && attacker.hp > 0) {
+    const before = attacker.hp; attacker.hp = Math.min(battleMonsterMaxHp(battle, attacker), attacker.hp + Math.max(1, Math.floor(totalDamage / 8)));
+    hpRecovered += attacker.hp - before;
+    if (attacker.hp > before) events.push(event(battle, `${attacker.nickname}은(는) 조개껍질방울로 ${attacker.hp - before} 회복했다.`, 'status'));
+  }
   let clearedBinding = false;
   if (move.id === 499 && totalDamage > 0) {
     statStageDelta += clearStages(battle, defender);
@@ -850,6 +974,11 @@ function performMove(state: GameState, battle: BattleState, attacker: Monster, d
     const recoil = Math.max(1, Math.floor(battleMonsterMaxHp(battle, attacker) / 10));
     attacker.hp = Math.max(0, attacker.hp - recoil);
     events.push(event(battle, `${attacker.nickname}은(는) 생명의구슬 반동으로 ${recoil} 피해를 입었다.`, 'status'));
+  }
+  if (defenderTool === 'rocky-helmet' && move.damageClass === 'physical' && totalDamage > 0 && attacker.hp > 0) {
+    const recoil = Math.min(attacker.hp, Math.max(1, Math.floor(battleMonsterMaxHp(battle, attacker) / 6)));
+    attacker.hp -= recoil;
+    events.push(event(battle, `${attacker.nickname}은(는) 울퉁불퉁멧으로 ${recoil} 피해를 입었다.`, 'status'));
   }
   if (move.id === 229 && totalDamage > 0 && ['trap', 'leech-seed'].includes(attacker.status ?? '')) {
     attacker.status = undefined; attacker.statusTurns = undefined; clearedBinding = true;
@@ -905,9 +1034,26 @@ function residual(battle: BattleState, monster: Monster, events: BattleLogEntry[
     monster.hp = Math.min(battleMonsterMaxHp(battle, monster), monster.hp + amount);
     if (monster.hp > before) events.push(event(battle, `${monster.nickname}은(는) 먹다남은음식으로 ${monster.hp - before} 회복했다.`, 'status'));
   }
+  if (monster.hp > 0 && monster.heldTool === 'black-sludge') {
+    const maxHp = battleMonsterMaxHp(battle, monster), before = monster.hp;
+    if (effectiveTypes(battle, monster).includes('poison')) {
+      monster.hp = Math.min(maxHp, monster.hp + Math.max(1, Math.floor(maxHp / 16)));
+      if (monster.hp > before) events.push(event(battle, `${monster.nickname}은(는) 검은오물로 ${monster.hp - before} 회복했다.`, 'status'));
+    } else {
+      monster.hp = Math.max(0, monster.hp - Math.max(1, Math.floor(maxHp / 8)));
+      events.push(event(battle, `${monster.nickname}은(는) 검은오물로 ${before - monster.hp} 피해를 입었다.`, 'status'));
+    }
+  }
+  reactHeldItems(battle, monster, events);
 }
 
 function monsterUsesLifeOrb(monster: Monster, damage: number): boolean { return monster.heldTool === 'life-orb' && damage > 0 && monster.hp > 0; }
+
+/** Amulet Coin doubles prize money once when a battle-eligible team member holds it. */
+function prizeMultiplier(state: GameState, battle: BattleState): number {
+  return battle.player.team.some(monster => monster.heldTool === 'amulet-coin'
+    && (!battle.policyRegion || !monsterRegionalUseReason(state, battle.policyRegion, monster))) ? 2 : 1;
+}
 
 function gainExperience(monster: Monster, amount: number, events?: BattleLogEntry[], battle?: BattleState, shared = false, maximumLevel = 100): ExperienceGain | undefined {
   maximumLevel = Math.max(1, Math.min(100, Math.floor(maximumLevel)));
@@ -955,32 +1101,35 @@ function concludeIfNeeded(state: GameState, battle: BattleState, events: BattleL
     const recipients = (state.experienceShare === false ? [winner] : battle.player.team).filter(monster => monster.hp > 0);
     const maximumLevel = battle.policyRegion ? regionalLevelCap(state, battle.policyRegion) : 100;
     for (const teammate of recipients) {
-      const sharedGain = gainExperience(teammate, fullAmount, events, battle, teammate.instanceId !== winner.instanceId, maximumLevel);
+      const amount = teammate.heldTool === 'lucky-egg' ? Math.floor(fullAmount * 1.5) : fullAmount;
+      const sharedGain = gainExperience(teammate, amount, events, battle, teammate.instanceId !== winner.instanceId, maximumLevel);
       if (sharedGain) experienceGains.push(sharedGain);
     }
     const next = battle.enemy.team.findIndex((monster) => monster.hp > 0);
     if (next >= 0) { battle.enemy.activeIndex = next; events.push(event(battle, `상대가 ${active(battle.enemy).nickname}을(를) 내보냈다.`)); }
     else {
+      const prize = prizeMultiplier(state, battle);
       if (battle.kind === 'gym' && battle.gymBadge) {
         recordCampaignGymVictory(state, battle.campaignRegion ?? 'kanto', battle.gymBadge);
-        state.player.money += 1500 * battle.gymBadge;
+        state.player.money += 1500 * battle.gymBadge * prize;
         events.push(event(battle, `배지 ${battle.gymBadge}을(를) 얻었다.`, 'reward'));
       } else if (battle.kind === 'trainer' && battle.trainerId) {
         const trainer = getFieldTrainer(battle.trainerId)!;
         state.defeatedFieldTrainers ??= [];
         state.defeatedFieldTrainers = [...new Set([...state.defeatedFieldTrainers, trainer.id])];
-        state.player.money += trainer.reward;
-        events.push(event(battle, `${trainer.name}에게 승리했다! 상금 ${trainer.reward.toLocaleString()}원을 받았다.`, 'reward'));
+        state.player.money += trainer.reward * prize;
+        events.push(event(battle, `${trainer.name}에게 승리했다! 상금 ${(trainer.reward * prize).toLocaleString()}원을 받았다.`, 'reward'));
       } else if (battle.trainerId) {
         const trainer = CAMPAIGN_TRAINERS.find(item => item.id === battle.trainerId)!;
         recordCampaignLeagueVictory(state, trainer);
-        state.player.money += trainer.kind === 'red' ? 30000 : trainer.kind === 'champion' ? 20000 : 8000;
+        state.player.money += (trainer.kind === 'red' ? 30000 : trainer.kind === 'champion' ? 20000 : 8000) * prize;
         events.push(event(battle, `${trainer.name} 클리어! 다음 도전이 열렸습니다.`, 'reward'));
       } else if (battle.kind === 'champion') {
-        state.championDefeated = true; state.player.money += 20000;
+        state.championDefeated = true; state.player.money += 20000 * prize;
         state.campaign ??= campaignProgress(state); state.campaign.kantoLeague = 5;
         events.push(event(battle, '챔피언이 되었다!', 'reward'));
-      } else state.player.money += Math.max(30, enemy.level * 8);
+      } else state.player.money += Math.max(30, enemy.level * 8) * prize;
+      if (prize > 1) events.push(event(battle, '부적금화로 상금이 2배가 되었다.', 'reward'));
       endBattle(state, result);
       return 'won';
     }
@@ -1034,7 +1183,8 @@ export function actBattle(state: GameState, action: BattleAction, aiChoice?: num
     if (!battle.canRun) throw new Error('이 전투에서는 도망칠 수 없습니다.');
     const player = active(battle.player); const enemy = active(battle.enemy);
     const chance = Math.min(.95, .45 + (player.stats.speed - enemy.stats.speed) / Math.max(1, enemy.stats.speed) * .3);
-    if (random(state) < chance) { endBattle(state, result); events.push(event(battle, '무사히 도망쳤다.')); for (const entry of events) addLog(state, entry.text); result.battleEnded = true; result.outcome = 'escaped'; return result; }
+    const smokeBall = battle.kind === 'wild' && activeHeldTool(battle, player) === 'smoke-ball';
+    if (smokeBall || random(state) < chance) { endBattle(state, result); events.push(event(battle, smokeBall ? `${player.nickname}의 연막탄으로 무사히 도망쳤다.` : '무사히 도망쳤다.')); for (const entry of events) addLog(state, entry.text); result.battleEnded = true; result.outcome = 'escaped'; return result; }
     events.push(event(battle, '도망치지 못했다.')); enemyActs(player);
   } else if (action.type === 'catch') {
     if (battle.kind !== 'wild') throw new Error('야생 포켓몬만 잡을 수 있습니다.');
@@ -1073,7 +1223,11 @@ export function actBattle(state: GameState, action: BattleAction, aiChoice?: num
     const playerMove: PokemonMove = playerSlot ? getMove(playerSlot.moveId) : { id: -1, name: '발버둥', englishName: 'Struggle', type: 'normal', power: 50, accuracy: 100, pp: 1, damageClass: 'physical', priority: 0 };
     const enemySlot = effectiveMoves(battle, enemy)[enemyPick.index];
     const enemyMove: PokemonMove = enemySlot ? getMove(enemySlot.moveId) : { id: -1, name: '발버둥', englishName: 'Struggle', type: 'normal', power: 50, accuracy: 100, pp: 1, damageClass: 'physical', priority: 0 };
-    const order = turnOrder(combatant(player, battle), playerMove, combatant(enemy, battle), enemyMove, random(state));
+    const samePriority = playerMove.priority === enemyMove.priority;
+    const quickClaw = { player: samePriority && activeHeldTool(battle, player) === 'quick-claw' && random(state) < .2,
+      enemy: samePriority && !enemyPick.wait && activeHeldTool(battle, enemy) === 'quick-claw' && random(state) < .2 };
+    const order = turnOrder(combatant(player, battle), playerMove, combatant(enemy, battle), enemyMove, random(state), quickClaw);
+    if (quickClaw.player !== quickClaw.enemy) events.push(event(battle, `${(quickClaw.player ? player : enemy).nickname}은(는) 선제공격손톱으로 먼저 움직였다.`, 'status'));
     if (order === 'player') { performMove(state, battle, player, enemy, resolvedPlayerIndex, events, executedMoves); if (enemyPick.wait) events.push(event(battle, `${enemy.nickname}은(는) 기다렸다.`)); else performMove(state, battle, enemy, player, enemyPick.index, events, executedMoves); }
     else { if (enemyPick.wait) events.push(event(battle, `${enemy.nickname}은(는) 기다렸다.`)); else performMove(state, battle, enemy, player, enemyPick.index, events, executedMoves); performMove(state, battle, player, enemy, resolvedPlayerIndex, events, executedMoves); }
   }
@@ -1083,7 +1237,7 @@ export function actBattle(state: GameState, action: BattleAction, aiChoice?: num
   if (outcome) { result.battleEnded = true; result.outcome = outcome; }
   else battle.turn++;
   if (outcome === 'won' && battle.kind === 'gym' && battle.gymBadge) {
-    result.gymVictory = { badge: battle.gymBadge, money: 1500 * battle.gymBadge, ...(battle.campaignRegion ? { region: battle.campaignRegion } : {}) };
+    result.gymVictory = { badge: battle.gymBadge, money: 1500 * battle.gymBadge * prizeMultiplier(state, battle), ...(battle.campaignRegion ? { region: battle.campaignRegion } : {}) };
   }
   for (const entry of events) addLog(state, entry.text);
   return result;
@@ -1488,6 +1642,7 @@ export function evolutionItemUses(item: InventoryItem): string {
 
 export function evolutionRoute(state: GameState, monster: Monster, evolution: Evolution, supplied?: InventoryItem): { item?: InventoryItem; shed?: boolean } | undefined {
   if (isMonsterInBattle(state, monster.instanceId)) return undefined;
+  if (monster.heldTool === 'everstone') return undefined;
   if (monster.speciesId === 104 && state.evolutionContext?.regionId === 'alola') {
     if (monster.level < 28) return undefined;
     if (supplied === 'evolution-catalyst') return state.inventory[supplied] > 0 ? { item: supplied } : undefined;
@@ -1993,7 +2148,10 @@ export function validateGame(value: unknown): GameState {
       }
     }
     if (battle.consumedTools !== undefined && (!Array.isArray(battle.consumedTools) || new Set(battle.consumedTools).size !== battle.consumedTools.length
-      || battle.consumedTools.some(id => !battleIds.has(id) || [...state.player.team, ...battle.enemy.team].find(monster => monster.instanceId === id)?.heldTool !== 'focus-sash'))) throw new Error('소모 도구 기록이 손상되었습니다.');
+      || battle.consumedTools.some(id => {
+        const tool = [...state.player.team, ...battle.enemy.team].find(monster => monster.instanceId === id)?.heldTool;
+        return !battleIds.has(id) || !CONSUMABLE_HELD_TOOLS.includes(tool as HeldTool);
+      }))) throw new Error('소모 도구 기록이 손상되었습니다.');
     if (battle.statStages) for (const [instanceId, stages] of Object.entries(battle.statStages)) {
       if (!battleIds.has(instanceId) || !stages || Object.entries(stages).some(([stat, stage]) => !['attack', 'defense', 'specialAttack', 'specialDefense', 'speed', 'accuracy', 'evasion'].includes(stat) || !Number.isInteger(stage) || stage < -6 || stage > 6)) throw new Error('능력 단계가 손상되었습니다.');
     }

@@ -1,7 +1,8 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import type { Graph } from '../../src/core/brain';
-import { createGame, createMonster } from '../../src/game/engine';
+import { createGame, createMonster, HELD_TOOL_DESCRIPTIONS, type HeldTool } from '../../src/game/engine';
+import { getFieldItemSources } from '../../src/openworld/item-sources';
 import { defaultView, packSave } from '../../src/game/storage';
 import { OpenWorldSimulation } from '../../src/openworld/simulation';
 import { mockAuthenticatedSession } from './helpers/authenticated-session';
@@ -33,10 +34,16 @@ test('roadside items render in 3D, collect once, persist and show acquisition so
   await page.locator('[data-tab="team"]').click();
   await expect(page.locator('#monster-transformation option[value^="tera:"]')).toHaveCount(0);
   await expect(page.locator(`#monster-tool option[value="${item.itemId}"]`)).toHaveJSProperty('disabled', false);
+  await expect(page.locator('#monster-tool optgroup')).toHaveCount(3);
+  expect(await page.locator('#monster-tool optgroup').evaluateAll(groups => groups.map(group => group.getAttribute('label')))).toEqual(['장착 도구', '열매', '보조']);
   await page.locator('#monster-tool').selectOption(item.itemId);
+  await expect(page.locator('#monster-tool')).toHaveValue(item.itemId);
+  await expect(page.locator('#monster-tool-description')).toHaveText(HELD_TOOL_DESCRIPTIONS[item.itemId as HeldTool]);
+  await page.locator('#monster-tool').scrollIntoViewIfNeeded(); await page.screenshot({ path: info.outputPath('team-tool.png') });
   await page.locator('.item-source-guide > summary').click();
   await page.locator(`[data-item-source="${item.itemId}"] > summary`).click();
-  await expect(page.locator(`[data-item-source="${item.itemId}"]`)).toContainText('12%');
+  const chance = getFieldItemSources(item.itemId)!.captures[0].chance;
+  await expect(page.locator(`[data-item-source="${item.itemId}"]`)).toContainText(`${Number((chance * 100).toFixed(2))}%`);
   await expect(page.locator(`[data-item-source="${item.itemId}"]`)).toContainText('길가에서 줍기');
   await page.locator('[data-tab="map"]').click(); await page.locator('#world-map-open').click();
   await expect(page.locator('#world-map-content svg image')).toHaveAttribute('href', /^data:image\/png;base64,/);

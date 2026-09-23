@@ -147,3 +147,15 @@
   .adventure .world-lower-hud { left: 367px; right: 10px; }
   .adventure .world-lower-hud > .world-battle-hud[open] .world-battle-deck { max-height: max(65px, calc(100dvh - var(--app-header-height) - var(--app-nav-height) - 125px)); }
 }
+
+/* Guide and exploration cards stop at the measured minimap width at every minimap size. */
+.adventure .world-next-guide { right: calc(36px + var(--world-radar-width, 164px)); }
+[data-battle-position=left] .adventure .world-next-guide { right: 336px; left: calc(36px + var(--world-radar-width, 164px)); }
+@media (max-width: 900px) {
+  .adventure .world-next-guide, .adventure .world-explore-panel { right: calc(22px + var(--world-radar-width, 98px)); }
+  [data-battle-position=left] .adventure .world-next-guide { left: 12px; }
+  .world-bag-panel { max-height: max(160px, calc(100dvh - var(--app-header-height) - var(--app-nav-height) - var(--world-radar-height, 200px) - var(--world-partner-height, 48px) - var(--world-chat-height, 48px) - 48px)); }
+}
+@media (max-height: 600px) and (min-width: 601px) and (max-width: 900px) {
+  .adventure .world-next-guide, .adventure .world-explore-panel { right: auto; }
+}

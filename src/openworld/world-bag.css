@@ -1,0 +1,54 @@
+/* Equipment list inside the minimap card. */
+.adventure .world-radar .world-bag { position: relative; margin-top: 6px; text-align: left; }
+.adventure .world-radar .world-bag > summary {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  min-height: 32px; padding: 4px 8px 4px 10px; list-style: none; cursor: pointer;
+  border: 1px solid var(--ui-hud-line); border-radius: 8px; background: #ffffff12; color: var(--ui-hud-text);
+  font-size: calc(12px * var(--ui-font-scale));
+}
+.adventure .world-radar .world-bag > summary::-webkit-details-marker { display: none; }
+.adventure .world-radar .world-bag > summary span { display: inline; margin: 0; font-size: inherit; }
+.adventure .world-radar .world-bag > summary b {
+  min-width: 24px; padding: 1px 7px; border-radius: 999px; text-align: center;
+  background: #ffffff1c; color: var(--ui-hud-text); font-size: calc(11px * var(--ui-font-scale));
+}
+.adventure .world-radar .world-bag[data-nearby=true] > summary { border-color: #e9c35f; }
+.adventure .world-radar .world-bag[data-nearby=true] > summary b { background: #e9c35f; color: #2b2410; }
+.adventure .world-radar .world-bag[open] > summary { background: var(--ui-accent); border-color: var(--ui-focus); }
+
+.world-bag-panel {
+  position: absolute; z-index: 30; top: 0; right: calc(100% + 18px);
+  width: 264px; max-height: min(62dvh, 540px); overflow: auto; overscroll-behavior: contain;
+  padding: 10px; display: grid; gap: 10px;
+  background: var(--ui-hud); color: var(--ui-hud-text);
+  border: 1px solid var(--ui-hud-line); border-radius: 12px; box-shadow: 0 10px 30px #0b221a55;
+}
+.world-bag-panel section { display: grid; gap: 4px; }
+.world-bag-panel :is(h3, h4) { margin: 0; color: var(--ui-hud-muted); font-weight: 600; }
+.world-bag-panel h3 { font-size: calc(11px * var(--ui-font-scale)); letter-spacing: .04em; }
+.world-bag-panel h4 { margin-top: 4px; font-size: calc(10px * var(--ui-font-scale)); }
+.adventure .world-bag-panel :is(span, small) { display: inline; margin: 0; letter-spacing: 0; opacity: 1; }
+.world-bag-panel button {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px;
+  width: 100%; min-height: 36px; padding: 5px 8px; text-align: left;
+  border: 1px solid var(--ui-hud-line); border-radius: 8px; background: var(--ui-hud-control); color: inherit;
+  font-size: calc(12px * var(--ui-font-scale));
+}
+.world-bag-panel button:not(:disabled):hover { border-color: var(--ui-focus); background: #ffffff1a; }
+.world-bag-panel button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.world-bag-panel button small { color: var(--ui-hud-muted); font-size: calc(11px * var(--ui-font-scale)); white-space: nowrap; }
+.world-bag-panel button img { width: 28px; height: 28px; object-fit: contain; image-rendering: pixelated; }
+.world-bag-panel .bag-pickup { grid-template-columns: 10px minmax(0, 1fr) auto; }
+.world-bag-panel .bag-pickup::before { content: ''; width: 9px; height: 9px; transform: rotate(45deg); background: #f0bd4d; }
+.world-bag-panel .bag-pickup.kind-mega-stone::before { background: #af73ef; }
+.world-bag-panel p { display: flex; justify-content: space-between; gap: 8px; margin: 0; padding: 4px 2px; border-bottom: 1px solid #ffffff10; font-size: calc(12px * var(--ui-font-scale)); }
+.world-bag-panel p b { font-weight: 600; color: var(--ui-hud-muted); }
+.world-bag-panel .bag-empty { color: var(--ui-hud-muted); border: 0; }
+
+@media (max-width: 900px) {
+  .world-bag-panel { top: calc(100% + 6px); right: 0; width: min(272px, calc(100vw - 24px)); max-height: min(52dvh, 420px); }
+  .adventure .world-radar .world-bag > summary { min-height: 30px; padding: 3px 6px; }
+}
+@media (min-width: 901px) {
+  [data-battle-position=left] .world-bag-panel { right: auto; left: calc(100% + 18px); }
+}

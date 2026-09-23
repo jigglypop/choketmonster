@@ -4,14 +4,14 @@ import { captureItemChances, FIELD_ITEM_STOCK_LIMIT, fieldItemCatalogCounts, gra
 
 describe('species capture item rewards', () => {
   it('keeps every supported item and rewards only its specified species', () => {
-    expect(fieldItemCatalogCounts()).toEqual({ heldTools: 6, megaStones: 64 });
+    expect(fieldItemCatalogCounts()).toEqual({ heldTools: 47, megaStones: 64 });
     expect(rollCapturedSpeciesItem(() => 0, 143)?.id).toBe('leftovers');
-    expect(rollCapturedSpeciesItem(() => 0, 19)).toBeUndefined();
+    expect(rollCapturedSpeciesItem(() => 0, 129)).toBeUndefined();
     expect(rollCapturedSpeciesItem(() => 0, 94)?.id).toBe('mega-stone:gengar-mega');
   });
-  it('balances tools at 12 percent and splits the four percent Mega chance across forms', () => {
-    expect(rollCapturedSpeciesItem(() => .11999, 143)?.id).toBe('leftovers');
-    expect(rollCapturedSpeciesItem(() => .12, 143)).toBeUndefined();
+  it('balances rare tools at 4 percent and splits the four percent Mega chance across forms', () => {
+    expect(rollCapturedSpeciesItem(() => .03999, 143)?.id).toBe('leftovers');
+    expect(rollCapturedSpeciesItem(() => .04, 143)).toBeUndefined();
     const choices = captureItemChances(6);
     expect(choices.reduce((sum, item) => sum + item.chance, 0)).toBeCloseTo(.04);
     expect(rollCapturedSpeciesItem(() => .04, 6)).toBeUndefined();

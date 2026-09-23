@@ -14,7 +14,7 @@ test('catching the specified Pokemon shows its equipment reward and makes it ava
   game.captureOffer = createMonster(game, 143, 5); game.captureOffer.hp = 0;
   game.dex.seen.push(143);
   const snapshot = world.snapshot();
-  for (let seed = 1; seed < 1000; seed++) { if (new Random(seed).next() < .12) { snapshot.rng = seed; break; } }
+  for (let seed = 1; seed < 1000; seed++) { if (new Random(seed).next() < .04) { snapshot.rng = seed; break; } }
   const itemId = 'leftovers', message = '먹다남은음식 +1';
   await page.routeWebSocket('**', socket => socket.close());
   await mockAuthenticatedSession(page);

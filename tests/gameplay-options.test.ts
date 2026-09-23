@@ -125,9 +125,11 @@ describe('transactional evolution purchases', () => {
 
 describe('held tools', () => {
   it('publishes the complete balanced shop catalog for held tools', () => {
-    expect(HELD_TOOL_PRICES).toEqual({
-      leftovers: 4000, 'choice-band': 6000, 'choice-specs': 6000,
-      'choice-scarf': 6000, 'life-orb': 8000, 'focus-sash': 4000,
+    expect(HELD_TOOLS).toHaveLength(47);
+    expect(HELD_TOOL_PRICES).toMatchObject({
+      leftovers: 6000, 'choice-band': 6000, 'choice-specs': 6000,
+      'choice-scarf': 6000, 'life-orb': 8000, 'focus-sash': 6000,
+      charcoal: 2000, 'oran-berry': 2000, 'expert-belt': 4000, 'assault-vest': 6000, 'lucky-egg': 6000,
     });
     for (const tool of HELD_TOOLS) {
       expect(ITEM_PRICES[tool]).toBe(HELD_TOOL_PRICES[tool]);

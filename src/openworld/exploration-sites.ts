@@ -24,7 +24,7 @@ export type RouteEdgeMarker = WorldPoint & {
   biome: WorldSample['biome'];
 };
 
-const THEME_BY_REGION: Record<WorldRegionId, ExplorationTheme> = {
+export const THEME_BY_REGION: Record<WorldRegionId, ExplorationTheme> = {
   kanto: 'classic', johto: 'heritage', hoenn: 'volcanic', sinnoh: 'alpine', unova: 'metro',
   kalos: 'garden', alola: 'island', galar: 'rail', hisui: 'frontier', paldea: 'mosaic',
 };

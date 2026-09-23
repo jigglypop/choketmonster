@@ -43,7 +43,7 @@ import type {
   WorldPoint,
   WorldSample,
 } from './types';
-import { createSceneryPlacements, SCENERY_ASSETS, type SceneryPlacement } from './scenery';
+import { cachedSceneryPlacements, SCENERY_ASSETS, type SceneryAssetId, type SceneryPlacement } from './scenery';
 import { createGrounding, terrainSurfaceHeight } from './grounding';
 import { getWorldAtlas, type WorldAtlas } from './atlas';
 import { hasPokemonModel } from '../game/assets';
@@ -72,6 +72,9 @@ import { FieldItemPickups } from './field-item-pickups';
 import { ExplorationLandmarks } from './exploration-landmarks';
 import { createOpenWorldRenderer } from './gpu-renderer';
 import { scenerySeed, townPavingCells, townStyle } from './town-style';
+import { DETAIL_KINDS, PAVING_CELL, detailNoise, isTownPaved, trailHalfWidth, type DetailKind } from './world-details';
+import { TownProps, createDetailGeometry, detailMaterial, regionalLandmarkGeometry, townPavingGeometry, useWorldDetails } from './town-details';
+import { THEME_BY_REGION } from './exploration-sites';
 const NATURE_DETAIL_RADIUS = 68;
 // Bound scenery streaming even though the view no longer uses fog.
 const NATURE_VISIBLE_RADIUS = 94;
@@ -185,12 +188,16 @@ const Terrain = memo(function Terrain({ sampleWorld, chunk, atlas, material, wat
 }, (before, after) => before.chunk.key === after.chunk.key && before.chunk.segments === after.chunk.segments
   && before.sampleWorld === after.sampleWorld && before.atlas === after.atlas && before.material === after.material && before.waterMaterial === after.waterMaterial && before.onNavigate === after.onNavigate);
 
-function InstancedPart({ geometry, material, sourceMatrix, placements, shadows }: {
+const IDENTITY_MATRIX = new Matrix4();
+const instanceScratch = { placement: new Matrix4(), result: new Matrix4(), position: new Vector3(), scale: new Vector3(), rotation: new Quaternion(), axis: new Vector3(0, 1, 0) };
+
+function InstancedPart({ geometry, material, sourceMatrix, placements, shadows, scale = 1 }: {
   geometry: BufferGeometry;
   material: Material | Material[];
   sourceMatrix: Matrix4;
   placements: readonly SceneryPlacement[];
   shadows: boolean;
+  scale?: number;
 }) {
   const mesh = useRef<InstancedMesh>(null);
   // Reuse GPU buffers when visibility changes the active instance count.
@@ -199,27 +206,22 @@ function InstancedPart({ geometry, material, sourceMatrix, placements, shadows }
   useEffect(() => { const instance = mesh.current; return () => { instance?.dispose(); }; }, [capacity.current]);
   useLayoutEffect(() => {
     if (!mesh.current) return;
-    const placementMatrix = new Matrix4();
-    const result = new Matrix4();
-    const position = new Vector3();
-    const scale = new Vector3();
-    const rotation = new Quaternion();
-    const axis = new Vector3(0, 1, 0);
+    const { placement, result, position, scale: size, rotation, axis } = instanceScratch;
     placements.forEach((item, index) => {
       position.set(item.x, item.y, item.z);
-      scale.setScalar(item.scale);
+      size.setScalar(item.scale * scale);
       rotation.setFromAxisAngle(axis, item.rotationY);
-      placementMatrix.compose(position, rotation, scale);
-      result.multiplyMatrices(placementMatrix, sourceMatrix);
+      placement.compose(position, rotation, size);
+      result.multiplyMatrices(placement, sourceMatrix);
       mesh.current!.setMatrixAt(index, result);
     });
     mesh.current.instanceMatrix.needsUpdate = true;
     mesh.current.computeBoundingSphere();
-  }, [placements, sourceMatrix]);
+  }, [placements, sourceMatrix, scale]);
   return <instancedMesh ref={mesh} args={[geometry, material, capacity.current]} count={placements.length} castShadow={shadows} receiveShadow dispose={null} />;
 }
 
-function InstancedAsset({ url, placements, shadows = false }: { url: string; placements: readonly SceneryPlacement[]; shadows?: boolean }) {
+function InstancedAsset({ url, placements, shadows = false, scale = 1 }: { url: string; placements: readonly SceneryPlacement[]; shadows?: boolean; scale?: number }) {
   const gltf = useCachedModel(url);
   const parts = useMemo(() => {
     if (!gltf) return [];
@@ -240,27 +242,85 @@ function InstancedAsset({ url, placements, shadows = false }: { url: string; pla
     }
   }, [parts]);
   if (!placements.length) return null;
-  return <group name={`nature:${url.split('/').at(-1)?.split('?')[0]}`}>{parts.map((part, index) => <InstancedPart key={index} geometry={part.geometry} material={part.material} sourceMatrix={part.matrix} placements={placements} shadows={shadows} />)}</group>;
+  return <group name={`nature:${url.split('/').at(-1)?.split('?')[0]}`}>{parts.map((part, index) => <InstancedPart key={index} geometry={part.geometry} material={part.material} sourceMatrix={part.matrix} placements={placements} shadows={shadows} scale={scale} />)}</group>;
 }
 
-function Nature({ sampleWorld, player, atlas, isVisible }: { sampleWorld: (x: number, z: number) => WorldSample; player: { x: number; z: number }; atlas: WorldAtlas; isVisible: VisibilityTest }) {
-  const placements = useMemo(() => createSceneryPlacements(sampleWorld, atlas), [sampleWorld, atlas]);
+// Placements are bucketed once so streaming only scans cells near the player.
+const NATURE_BUCKET = 32;
+type NatureLayer = { buckets: Map<number, SceneryPlacement[]>; radius: number; mobileRadius: number; lift: number; bound: number };
+const bucketKey = (ix: number, iz: number) => (ix + 512) * 1024 + iz + 512;
+function natureLayer(list: readonly SceneryPlacement[] | undefined, radius: number, mobileRadius: number, lift: number, bound: number): NatureLayer[] {
+  if (!list?.length) return [];
+  const buckets = new Map<number, SceneryPlacement[]>();
+  for (const item of list) {
+    const key = bucketKey(Math.floor(item.x / NATURE_BUCKET), Math.floor(item.z / NATURE_BUCKET));
+    let cell = buckets.get(key);
+    if (!cell) buckets.set(key, cell = []);
+    cell.push(item);
+  }
+  return [{ buckets, radius, mobileRadius, lift, bound }];
+}
+function nearbyPlacements(layers: readonly NatureLayer[], cellX: number, cellZ: number, player: { x: number; z: number }, isVisible: VisibilityTest, mobile: boolean, previous?: SceneryPlacement[]): SceneryPlacement[] {
+  const result: SceneryPlacement[] = [];
+  for (const layer of layers) {
+    const radius = mobile ? layer.mobileRadius : layer.radius;
+    const minX = Math.floor((cellX - radius) / NATURE_BUCKET), maxX = Math.floor((cellX + radius) / NATURE_BUCKET);
+    const minZ = Math.floor((cellZ - radius) / NATURE_BUCKET), maxZ = Math.floor((cellZ + radius) / NATURE_BUCKET);
+    for (let ix = minX; ix <= maxX; ix++) for (let iz = minZ; iz <= maxZ; iz++) {
+      const cell = layer.buckets.get(bucketKey(ix, iz));
+      if (cell) for (const item of cell) if (Math.hypot(item.x - cellX, item.z - cellZ) < radius
+        && (Math.hypot(item.x - player.x, item.z - player.z) < 12 || isVisible(item.x, item.y + layer.lift, item.z, layer.bound))) result.push(item);
+    }
+  }
+  // Unchanged sets keep their array identity, so instance matrices are not re-uploaded.
+  return previous && previous.length === result.length && previous.every((item, index) => item === result[index]) ? previous : result;
+}
+const DETAIL_RADIUS_IDS = new Set<SceneryAssetId>(['moss-boulder', 'moss-stone', 'fern']);
+const leagueFilters = new Map<string, (id: string) => boolean>();
+const leagueFilter = (region: string) => {
+  let filter = leagueFilters.get(region);
+  if (!filter) leagueFilters.set(region, filter = id => isRegionalLeagueLocation(region, id));
+  return filter;
+};
+
+function Nature({ sampleWorld, player, atlas, isVisible, mobile = false }: { sampleWorld: (x: number, z: number) => WorldSample; player: { x: number; z: number }; atlas: WorldAtlas; isVisible: VisibilityTest; mobile?: boolean }) {
+  const placements = useMemo(() => cachedSceneryPlacements(sampleWorld, atlas), [sampleWorld, atlas]);
+  const details = useWorldDetails(sampleWorld, atlas, leagueFilter(atlas.id));
+  const theme = THEME_BY_REGION[atlas.id];
+  const detailGeometries = useMemo(() => Object.fromEntries(DETAIL_KINDS.map(kind => [kind, createDetailGeometry(kind, theme)])) as Record<DetailKind, BufferGeometry>, [theme]);
+  useEffect(() => () => { Object.values(detailGeometries).forEach(geometry => geometry.dispose()); }, [detailGeometries]);
+  const layers = useMemo(() => {
+    const layers: Record<string, NatureLayer[]> = {};
+    for (const asset of SCENERY_ASSETS) {
+      const radius = DETAIL_RADIUS_IDS.has(asset.id) ? NATURE_DETAIL_RADIUS : NATURE_VISIBLE_RADIUS;
+      layers[asset.id] = [...natureLayer(placements[asset.id], radius, radius, 3, 6),
+        ...natureLayer(details?.framing[asset.id], NATURE_VISIBLE_RADIUS, 72, 3, 6)];
+    }
+    // Small procedural dressing streams in a tighter radius, smaller still on phones.
+    for (const kind of DETAIL_KINDS) layers[kind] = natureLayer(details?.ground[kind], kind === 'route-post' ? 70 : 46, kind === 'route-post' ? 50 : 30, .5, 2);
+    return layers;
+  }, [placements, details]);
   const cellX = Math.round(player.x / 16) * 16, cellZ = Math.round(player.z / 16) * 16;
+  const previous = useRef<Record<string, SceneryPlacement[]>>({});
   // Keep distant props bounded without adding fog or animated shader effects.
-  const nearby = useMemo(() => Object.fromEntries(SCENERY_ASSETS.map(asset => {
-    const visible = placements[asset.id]
-      .filter(item => Math.hypot(item.x - cellX, item.z - cellZ) < (['moss-boulder', 'moss-stone', 'fern'].includes(asset.id) ? NATURE_DETAIL_RADIUS : NATURE_VISIBLE_RADIUS) && (Math.hypot(item.x - player.x, item.z - player.z) < 12 || isVisible(item.x, item.y + 3, item.z, 6)))
-      .map(item => ({ ...item, scale: item.scale * asset.scale }));
-    return [asset.id, visible];
-  })), [placements, cellX, cellZ, isVisible]);
+  const nearby = useMemo(() => {
+    const next: Record<string, SceneryPlacement[]> = {};
+    for (const id of [...SCENERY_ASSETS.map(asset => asset.id), ...DETAIL_KINDS]) next[id] = nearbyPlacements(layers[id], cellX, cellZ, player, isVisible, mobile, previous.current[id]);
+    previous.current = next;
+    return next;
+  }, [layers, cellX, cellZ, isVisible, mobile]);
   return (
     <group userData={{ gaesupWorldObject: 'imported-nature-instances' }}>
       {SCENERY_ASSETS.filter(asset => nearby[asset.id].length).map(asset => <InstancedAsset
         key={asset.id}
         url={asset.url}
         placements={nearby[asset.id]}
+        scale={asset.scale}
         shadows={asset.id.startsWith('tree') || asset.id.startsWith('rock') || asset.id === 'cliff'}
       />)}
+      {DETAIL_KINDS.filter(kind => nearby[kind].length).map(kind => <group key={kind} name={`route-detail:${kind}`}>
+        <InstancedPart geometry={detailGeometries[kind]} material={detailMaterial()} sourceMatrix={IDENTITY_MATRIX} placements={nearby[kind]} shadows={false} />
+      </group>)}
     </group>
   );
 }
@@ -291,14 +351,14 @@ function TownPaving({ townId }: { townId: string }) {
     if (!ref.current) return;
     const matrix = new Matrix4(), base = new Color(color), cream = new Color('#e7dfc9');
     tiles.forEach(([x, z, accent], index) => {
-      ref.current!.setMatrixAt(index, matrix.makeTranslation(x * 1.12 * WORLD_SCALE, -.015, z * 1.12 * WORLD_SCALE));
-      ref.current!.setColorAt(index, cream.clone().lerp(base, accent ? .72 : .27));
+      ref.current!.setMatrixAt(index, matrix.makeTranslation(x * PAVING_CELL, 0, z * PAVING_CELL));
+      ref.current!.setColorAt(index, cream.clone().lerp(base, accent ? .56 : .2).multiplyScalar(.95 + (scenerySeed(`${townId}:${x}:${z}`) % 1000) / 1000 * .08));
     });
     ref.current.instanceMatrix.needsUpdate = true;
     if (ref.current.instanceColor) ref.current.instanceColor.needsUpdate = true;
-  }, [color, tiles]);
-  return <instancedMesh ref={ref} args={[undefined, undefined, tiles.length]} receiveShadow name="town-paving">
-    <boxGeometry args={[1.125 * WORLD_SCALE, .045, 1.125 * WORLD_SCALE]} /><meshStandardMaterial roughness={.94} />
+  }, [color, tiles, townId]);
+  return <instancedMesh ref={ref} args={[townPavingGeometry(), undefined, tiles.length]} receiveShadow name="town-paving">
+    <meshStandardMaterial roughness={.92} vertexColors />
   </instancedMesh>;
 }
 
@@ -353,49 +413,47 @@ function WorldLabel({ name, x, y, z }: { name: string; x: number; y: number; z: 
 }
 
 function RegionalLandmark({ region, x, y, z }: { region: string; x: number; y: number; z: number }) {
-  const mountain = ['hoenn', 'sinnoh', 'hisui'].includes(region);
   return <group name={`regional-landmark:${region}`} position={[x, y, z]}>
-    {mountain ? <>
-      <mesh position={[0, 3.5, 0]} castShadow><coneGeometry args={[7, 8, 7]} /><meshStandardMaterial color={region === 'hoenn' ? '#73584e' : '#7d8b87'} flatShading /></mesh>
-      <mesh position={[0, 6.5, 0]}><coneGeometry args={[2, 2.4, 7]} /><meshStandardMaterial color={region === 'hoenn' ? '#e59045' : '#ebf0e8'} flatShading /></mesh>
-    </> : region === 'johto' ? <>
-      <mesh position={[0, 2.6, 0]} castShadow><boxGeometry args={[3, 5.2, 3]} /><meshStandardMaterial color="#c49765" /></mesh>
-      {[0, 1, 2].map(i => <mesh key={i} position={[0, 2 + i * 1.5, 0]} rotation={[0, Math.PI / 4, 0]} castShadow><coneGeometry args={[4 - i * .65, 1.5, 4]} /><meshStandardMaterial color="#755b43" /></mesh>)}
-    </> : region === 'alola' ? <>
-      {[-2, 2].map(offset => <group key={offset} position={[offset, 0, 0]}><mesh position={[0, 2.5, 0]} castShadow><cylinderGeometry args={[.25, .45, 5, 6]} /><meshStandardMaterial color="#a9834a" /></mesh><mesh position={[0, 5, 0]} scale={[2.3, .45, 2.3]} castShadow><icosahedronGeometry args={[1.3, 0]} /><meshStandardMaterial color="#5d9661" /></mesh></group>)}
-    </> : <>
-      <mesh position={[0, 3, 0]} castShadow><cylinderGeometry args={[1.1, 2.2, 6, region === 'kalos' ? 4 : 8]} /><meshStandardMaterial color={region === 'galar' ? '#a35d5d' : '#bdb69c'} /></mesh>
-      <mesh position={[0, 6.1, 0]}><octahedronGeometry args={[1.6]} /><meshStandardMaterial color={region === 'paldea' ? '#8e78bd' : '#d3b66c'} /></mesh>
-    </>}
+    <mesh geometry={regionalLandmarkGeometry(region)} material={detailMaterial()} castShadow receiveShadow dispose={null} />
   </group>;
 }
 
 function TrailAndWater({ sampleWorld, player, badges, atlas, visible, gyms = atlas.gyms }: { sampleWorld: (x: number, z: number) => WorldSample; player: { x: number; z: number }; badges: number; atlas: WorldAtlas; visible: VisibilityTest; gyms?: WorldAtlas['gyms'] }) {
   const locations = useMemo(() => new Map(atlas.locations.map(item => [item.id, item])), [atlas]);
+  const details = useWorldDetails(sampleWorld, atlas, leagueFilter(atlas.id));
   const trail = useMemo(() => {
-    const vertices: number[] = [];
-    const indices: number[] = [];
+    const vertices: number[] = [], colors: number[] = [], indices: number[] = [];
+    const towns = atlas.locations.filter(item => item.kind === 'town' && !isRegionalLeagueLocation(atlas.id, item.id));
+    const paved = (x: number, z: number) => towns.some(town => Math.abs(x - town.x) < 18 && Math.abs(z - town.z) < 18 && isTownPaved(x - town.x, z - town.z));
+    const profile = [-1, -.72, .72, 1], shoulder = [.84, 1.03, 1.03, .84];
     for (const [fromId, toId] of atlas.surfaceConnections) {
       const from = locations.get(fromId)!, to = locations.get(toId)!;
       const dx = to.x - from.x, dz = to.z - from.z, length = Math.hypot(dx, dz) || 1;
-      const steps = Math.max(1, Math.ceil(length / 5));
-      const width = (1.45 + (scenerySeed(`${fromId}:${toId}`) % 5) * .15) * WORLD_SCALE;
-      const sideX = -dz / length * width, sideZ = dx / length * width;
+      const steps = Math.max(1, Math.ceil(length / 3.2));
+      const width = trailHalfWidth(fromId, toId);
+      const sideX = -dz / length, sideZ = dx / length;
       const offset = vertices.length / 3;
       for (let step = 0; step <= steps; step += 1) {
         const t = step / steps, x = from.x + dx * t, z = from.z + dz * t;
-        for (const direction of [-1, 1]) {
-          const px = x + sideX * direction, pz = z + sideZ * direction;
+        const wobble = step === 0 || step === steps ? 1 : 1 + (detailNoise(x, z, 77) - .5) * .18;
+        profile.forEach((lateral, column) => {
+          const reach = lateral * width * (column === 0 || column === 3 ? wobble : 1), px = x + sideX * reach, pz = z + sideZ * reach;
           vertices.push(px, terrainSurfaceHeight(sampleWorld, px, pz) + .055, pz);
-        }
-        if (step < steps && sampleWorld(from.x + dx * ((step + .5) / steps), from.z + dz * ((step + .5) / steps)).biome !== 'lake') {
-          const base = offset + step * 2;
-          indices.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
+          colors.push(shoulder[column], shoulder[column] * 1.01, shoulder[column] * .96);
+        });
+        const mx = from.x + dx * ((step + .5) / steps), mz = from.z + dz * ((step + .5) / steps);
+        if (step < steps && sampleWorld(mx, mz).biome !== 'lake' && !paved(mx, mz)) {
+          const base = offset + step * 4;
+          for (let column = 0; column < 3; column++) {
+            const a = base + column, c = base + 4 + column;
+            indices.push(a, c, a + 1, a + 1, c, c + 1);
+          }
         }
       }
     }
     const geometry = new BufferGeometry();
     geometry.setAttribute('position', new Float32BufferAttribute(vertices, 3));
+    geometry.setAttribute('color', new Float32BufferAttribute(colors, 3));
     geometry.setAttribute('uv', new Float32BufferAttribute(vertices.flatMap((_, index) => index % 3 === 0 ? [vertices[index] * .28, vertices[index + 2] * .28] : []), 2));
     geometry.setIndex(indices);
     geometry.computeVertexNormals();
@@ -404,12 +462,13 @@ function TrailAndWater({ sampleWorld, player, badges, atlas, visible, gyms = atl
   useEffect(() => () => trail.dispose(), [trail]);
   return (
     <group name={`region-landmarks:${atlas.id}`} userData={{ gaesupWorldObject: 'region-landmarks' }}>
-      <mesh geometry={trail} receiveShadow><SurfaceMaterial surface="path" color={regionTrailColor(atlas)} /></mesh>
+      <mesh geometry={trail} receiveShadow><SurfaceMaterial surface="path" color={regionTrailColor(atlas)} vertexColors /></mesh>
       {atlas.id !== 'kanto' && atlas.locations.filter(item => item.kind === 'special' && !isRegionalLeagueLocation(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) < 70 && visible(item.x, 5, item.z, 10)).map(item => <RegionalLandmark key={item.id} region={atlas.id} x={item.x} y={terrainSurfaceHeight(sampleWorld, item.x, item.z)} z={item.z} />)}
       {atlas.locations.filter(item => isRegionalLeagueLocation(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) < 100)
         .map(item => <RegionalLeagueLandmark key={item.id} region={atlas.id} x={item.x} y={terrainSurfaceHeight(sampleWorld, item.x, item.z)} z={item.z} />)}
       {atlas.locations.filter(item => item.kind === 'town' && !isRegionalLeagueLocation(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) <= 85 && visible(item.x, 3, item.z, 14 * WORLD_SCALE)).map(town => <group key={town.id} name={`town:${town.id}`} position={[town.x, terrainSurfaceHeight(sampleWorld, town.x, town.z) + .05, town.z]}>
         <TownPaving townId={town.id} />
+        {details?.towns.get(town.id) && <TownProps layout={details.towns.get(town.id)!} color={townStyle(town.id).color} />}
         {atlas.buildingOffsets(town).map(([x, z], index) => <group key={index} position={[x, 0, z]} scale={WORLD_SCALE}>
           <TownBuilding townId={town.id} townColor={townStyle(town.id).color} index={index} gym={gyms.find(item => item.locationId === town.id)} badges={badges} showGymLabel={Math.hypot(town.x - player.x, town.z - player.z) <= 14 * WORLD_SCALE} />
         </group>)}
@@ -516,7 +575,7 @@ function PokemonModel({ creature, url, onStatus }: { creature: WorldCreature; ur
     });
     return () => { active = false; clearTimeout(deadline); restore.forEach(reset => reset()); };
   }, [gltf, normalized]);
-  useFrame(({ clock }, delta) => {
+  useFrame(({ clock, camera }, delta) => {
     mixer.current?.update(Math.min(delta, .05) * (creature.action === 'walk' ? MathUtils.clamp((creature.movementSpeed ?? 2.4) / 2.4, .65, 1.8) : 1));
     if (!root.current) return;
     const gait = MathUtils.clamp(creature.movementSpeed ?? 2.4, 1.2, 5.2);
@@ -527,15 +586,16 @@ function PokemonModel({ creature, url, onStatus }: { creature: WorldCreature; ur
     root.current.rotation.z = creature.action === 'fainted' ? Math.PI / 2 : !gltf?.animations.length && creature.action === 'walk' ? Math.sin(phase) * .045 : 0;
     if (!ground.current && normalized) ground.current = createGrounding(normalized.visual, root.current, normalized.grounding);
     const animated = !!gltf?.animations.length;
-    // Animated grounding walks the support vertices of every skinned mesh.
-    // Keep clip playback at the display frame rate while bounding that CPU
-    // traversal to 30 Hz. Models using the procedural walk bounce still need
-    // the exact per-frame reset before their absolute phase offset is applied.
-    if (!animated || creature.action === 'attack' || clock.elapsedTime >= nextGroundingAt.current || groundedAction.current !== creature.action) {
+    // Grounding skins the support vertices on the CPU, so clip playback stays at
+    // the display rate while the floor fit runs at 30 Hz near the camera, 10 Hz
+    // far away, and 4 Hz while a fainted body lies still (full vertex scan).
+    // The procedural walk bounce is re-applied every frame below.
+    if (creature.action === 'attack' || clock.elapsedTime >= nextGroundingAt.current || groundedAction.current !== creature.action) {
       root.current.parent?.getWorldPosition(worldPosition.current);
       ground.current?.(worldPosition.current.y);
       groundingOffset.current = root.current.position.y;
-      nextGroundingAt.current = clock.elapsedTime + 1 / 30;
+      const far = camera.position.distanceTo(worldPosition.current) > 30;
+      nextGroundingAt.current = clock.elapsedTime + (creature.action === 'fainted' ? 1 / 4 : far ? 1 / 10 : 1 / 30);
       groundedAction.current = creature.action;
     }
     root.current.position.y = groundingOffset.current;
@@ -1038,7 +1098,7 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
       <Physics gravity={[0, -18, 0]} timeStep="vary">
         {cave ? <CaveInterior cave={cave} player={snapshot.player} mobile={windowState.mobile} onNavigate={onNavigate} /> : <>
           <group key={`terrain:${sceneId}`}>{chunks.map(chunk => <Terrain key={`${chunk.key}:${chunk.segments}`} sampleWorld={sample} atlas={atlas} chunk={chunk} material={groundMaterial} waterMaterial={waterMaterials[chunk.distance <= (windowState.mobile ? 24 : 40) ? 'detailed' : 'simple']} onNavigate={onNavigate} />)}</group>
-          <Nature key={`nature:${sceneId}`} sampleWorld={sample} player={snapshot.player} atlas={atlas} isVisible={windowState.visible} />
+          <Nature key={`nature:${sceneId}`} sampleWorld={sample} player={snapshot.player} atlas={atlas} isVisible={windowState.visible} mobile={windowState.mobile} />
           <ExplorationLandmarks atlas={atlas} sampleWorld={sample} player={snapshot.player} visibility={windowState.visible} onNavigate={onNavigate} badges={snapshot.badges ?? 0} />
           <TrailAndWater key={`water:${sceneId}`} sampleWorld={sample} player={snapshot.player} atlas={atlas} gyms={snapshot.gyms} visible={windowState.visible} badges={snapshot.badges ?? 0} />
         </>}

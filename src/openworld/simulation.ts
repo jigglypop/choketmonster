@@ -33,7 +33,7 @@ export type WorldBiome = 'meadow' | 'forest' | 'lake' | 'rock';
 export type WorldPosition = { x: number; z: number; heading: number };
 export type WorldFood = { id: number; x: number; z: number };
 export type WorldRespawn = { id: string; speciesId: number; level: number; biome: WorldBiome; originX: number; originZ: number; remainingSeconds: number };
-export type WorldTarget = { kind: 'food' | 'player' | 'wild' | 'explore'; id: string; x: number; z: number };
+export type WorldTarget = { kind: 'food' | 'player' | 'wild' | 'explore' | 'item'; id: string; x: number; z: number };
 export type WorldBrainState = Omit<BrainState, 'graph'> & { graphId: string };
 export type OpenWorldEntity = {
   id: string; kind: 'wild' | 'companion'; speciesId: number; level: number;
@@ -95,6 +95,12 @@ const MANUAL_CONTROL_HOLD = .3;
 const SPAWN_TRAVEL_DISTANCE = 24;
 const WILD_UNLOAD_DISTANCE = 38;
 const BATTLE_INTERVAL = 0.9;
+/** A wild opponent stays beside a partner that walks during battle. */
+const BATTLE_FOLLOW_DISTANCE = 4.2;
+/** Leaving the opponent this far behind (a town edge or an obstacle) becomes a run attempt. */
+const BATTLE_ESCAPE_DISTANCE = 14;
+/** Automatic exploration detours for a roadside item only when it is this close. */
+const AUTO_PICKUP_DETOUR = 18;
 const UNIQUE_SPECIES = new Set([144, 145, 146, 150, 151]);
 const DIRECTIONS = [{ x: 0, z: -1 }, { x: 1, z: 0 }, { x: 0, z: 1 }, { x: -1, z: 0 }] as const;
 const finite = (value: number) => typeof value === 'number' && Number.isFinite(value);
@@ -177,8 +183,18 @@ export class OpenWorldSimulation {
 
   drainItemDropEvents() { return this.pendingItemDropEvents.splice(0); }
 
+  /** Walking within reach of a roadside item picks it up, including during a wild battle. */
+  collectNearbyFieldItems(): FieldItemDrop[] {
+    const drops: FieldItemDrop[] = [];
+    for (const pickup of this.fieldPickups) {
+      if (distance(this.player, pickup) > FIELD_PICKUP_COLLECT_DISTANCE) continue;
+      const drop = this.collectFieldItem(pickup.id); if (drop) drops.push(drop);
+    }
+    return drops;
+  }
+
   collectFieldItem(id: string): FieldItemDrop | undefined {
-    if (this.game.battle || this.game.captureOffer) return;
+    if (this.game.captureOffer) return;
     const pickup = this.fieldPickups.find(item => item.id === id);
     if (!pickup || distance(this.player, pickup) > FIELD_PICKUP_COLLECT_DISTANCE) return;
     const item = getFieldItem(pickup.itemId); if (!item) return;
@@ -411,10 +427,8 @@ export class OpenWorldSimulation {
 
   movePartner(position: WorldPosition): boolean {
     if (!this.modelsReady) return false;
-    if (this.game.battle?.kind === 'wild' && this.game.battle.canRun && this.controlMode === 'manual') {
-      this.requestAction({ type: 'run' }); return false;
-    }
-    if (this.game.battle || this.game.captureOffer || ![position.x, position.z, position.heading].every(finite) || !Number.isInteger(position.heading) || position.heading < 0 || position.heading > 4) return false;
+    // Wild battles continue while the partner walks; the opponent follows it.
+    if ((this.game.battle && this.game.battle.kind !== 'wild') || this.game.captureOffer || ![position.x, position.z, position.heading].every(finite) || !Number.isInteger(position.heading) || position.heading < 0 || position.heading > 4) return false;
     const companion = this.entities.find(entity => entity.kind === 'companion'); if (!companion) return false;
     this.lastMovementBlock = undefined;
     if (!getCaveScene(this.sceneId)) {
@@ -427,7 +441,8 @@ export class OpenWorldSimulation {
     this.recordEvolutionWalk(distance(companion, position));
     companion.x = position.x; companion.z = position.z; companion.heading = position.heading; companion.action = position.heading; companion.reward = 0;
     const brain = this.brain(companion.id); brain.state.previous = null;
-    this.player = structuredClone(position); this.manualControlRemaining = MANUAL_CONTROL_HOLD; this.recordTownVisit(); return true;
+    this.player = structuredClone(position); this.manualControlRemaining = MANUAL_CONTROL_HOLD; this.recordTownVisit();
+    this.collectNearbyFieldItems(); return true;
   }
 
   syncPlayerToCompanion(): WorldPosition {
@@ -670,7 +685,7 @@ export class OpenWorldSimulation {
       this.advanceRespawns(deltaSeconds);
       if (this.controlMode === 'auto' && !this.selectionPinned) this.selectedWildId = this.nearestWildToCompanion()?.id;
       this.stepMovement(deltaSeconds, learning, epsilon, manualControlActive, events);
-      this.syncPlayerToCompanion(); this.recordTownVisit();
+      this.syncPlayerToCompanion(); this.recordTownVisit(); this.collectNearbyFieldItems();
       const selected = this.selectedWildId ? this.entities.find(entity => entity.id === this.selectedWildId) : undefined;
       const companion = this.entities.find(entity => entity.kind === 'companion');
       const selectedContact = selected && (!this.selectionPinned || this.trackingSelected) && this.canEngageWild(selected.id);
@@ -689,6 +704,7 @@ export class OpenWorldSimulation {
     } else if (!this.battleWildId) throw new Error('Open-world battle is missing its wild entity');
 
     if (this.game.battle) {
+      this.followBattlePartner(deltaSeconds, manualControlActive);
       if (this.controlMode === 'manual' && !this.pendingAction && !this.pendingCapture) { this.battleElapsed = 0; this.tick++; return { tick: this.tick, events, battleActive: true }; }
       this.battleElapsed += deltaSeconds;
       while (this.game.battle && this.battleElapsed >= BATTLE_INTERVAL) {
@@ -763,6 +779,32 @@ export class OpenWorldSimulation {
       }
       entity.action = action; entity.reward = reward; occupied.push({ x: entity.x, z: entity.z });
       events.push({ type, entityId: entity.id, x: entity.x, z: entity.z, reward });
+    }
+  }
+
+  /** Keeps a wild opponent beside a partner that walks during battle. Never consumes RNG. */
+  private followBattlePartner(deltaSeconds: number, partnerMoving: boolean): void {
+    const battle = this.game.battle, companion = this.entities.find(entity => entity.kind === 'companion');
+    if (!battle || !companion) return;
+    if (!partnerMoving) companion.action = 4;
+    const wild = battle.kind === 'wild' ? this.entities.find(entity => entity.kind === 'wild' && entity.id === this.battleWildId) : undefined;
+    if (!wild) return;
+    const gap = distance(wild, companion);
+    wild.action = 4;
+    if (gap > BATTLE_FOLLOW_DISTANCE && deltaSeconds > 0) {
+      const speed = Math.max(movementSpeed(wild.speciesId, wild.level), movementSpeed(companion.speciesId, companion.level) * 1.1);
+      const stepDistance = Math.min(gap - BATTLE_FOLLOW_DISTANCE * .75, speed * deltaSeconds);
+      const dx = (companion.x - wild.x) / gap, dz = (companion.z - wild.z) / gap;
+      const x = wild.x + dx * stepDistance, z = wild.z + dz * stepDistance;
+      if (!this.pathBlocked(wild, x, z, [])) {
+        wild.x = x; wild.z = z;
+        wild.heading = Math.abs(dx) > Math.abs(dz) ? (dx > 0 ? 1 : 3) : (dz > 0 ? 2 : 0);
+        wild.action = wild.heading;
+      }
+    }
+    // Only walking away counts; an explicitly chosen move, item or ball is never replaced.
+    if (partnerMoving && distance(wild, companion) > BATTLE_ESCAPE_DISTANCE && battle.canRun && !battle.awaitingSwitch && !this.pendingAction && !this.pendingCapture) {
+      this.pendingAction = { type: 'run' }; this.pendingCapture = false; this.pendingBall = undefined;
     }
   }
 
@@ -1076,8 +1118,11 @@ export class OpenWorldSimulation {
   private targetFor(entity: OpenWorldEntity): WorldTarget | undefined {
     if (entity.kind === 'companion') {
       const selected = this.selectedWildId ? this.entities.find(item => item.id === this.selectedWildId) : undefined;
+      const exploring = this.controlMode === 'auto' && !this.selectionPinned;
+      const item = exploring ? this.pickupTarget(entity, selected ? distance(entity, selected) : Infinity) : undefined;
+      if (item) return item;
       if (selected && (!this.selectionPinned || this.trackingSelected)) return { kind: 'wild', id: selected.id, x: selected.x, z: selected.z };
-      if (this.controlMode === 'auto' && !this.selectionPinned) return this.explorationTarget(entity);
+      if (exploring) return this.explorationTarget(entity);
       return { kind: 'player', id: 'player', x: this.player.x, z: this.player.z };
     }
     let nearestFood: WorldFood | undefined, nearestDistance = Infinity;
@@ -1089,6 +1134,16 @@ export class OpenWorldSimulation {
       }
     }
     return nearestFood ? { kind: 'food', id: String(nearestFood.id), x: nearestFood.x, z: nearestFood.z } : undefined;
+  }
+
+  /** A reachable roadside item that is closer than the nearest wild target. */
+  private pickupTarget(entity: OpenWorldEntity, wildDistance: number): WorldTarget | undefined {
+    let best: WorldTarget | undefined, bestDistance = Math.min(AUTO_PICKUP_DETOUR, wildDistance);
+    for (const pickup of this.fieldPickups) {
+      const gap = distance(entity, pickup);
+      if (gap < bestDistance && !this.pathBlocked(entity, pickup.x, pickup.z, [])) { best = { kind: 'item', id: pickup.id, x: pickup.x, z: pickup.z }; bestDistance = gap; }
+    }
+    return best;
   }
 
   /** Game-designed waypoints feed the existing sensory inputs. The circuit

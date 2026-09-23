@@ -25,7 +25,7 @@ function Pickup({ item, player, sample, onNavigate, onCollect }: { item: WorldFi
         <mesh position={[0, .05, -.181]}><boxGeometry args={[.12, .2, .04]} /><meshStandardMaterial color="#f3d47c" metalness={.25} /></mesh>
       </>}
     </group>
-    {distance < 12 && <Html center position={[0, 1.35, 0]} zIndexRange={[8, 7]}><button className={`world-pickup-label ${stone ? 'mega' : ''}`} data-field-pickup={item.id} data-item-id={item.itemId} onClick={interact}>{item.name}<small>{close ? '줍기' : `${Math.round(distance)}m`}</small></button></Html>}
+    {distance < 30 && <Html center position={[0, 1.35, 0]} zIndexRange={[8, 7]}><button className={`world-pickup-label ${stone ? 'mega' : ''}`} data-field-pickup={item.id} data-item-id={item.itemId} onClick={interact}>{item.name}<small>{close ? '줍기' : `${Math.round(distance)}m`}</small></button></Html>}
   </group>;
 }
 

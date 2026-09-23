@@ -170,3 +170,13 @@ export function createSceneryPlacements(sampleWorld: (x: number, z: number) => W
   }
   return result;
 }
+
+const placementCache = new WeakMap<(x: number, z: number) => WorldSample, Map<string, Record<SceneryAssetId, SceneryPlacement[]>>>();
+/** The world grid scan is deterministic, so re-entering a region reuses it instead of rescanning. */
+export function cachedSceneryPlacements(sampleWorld: (x: number, z: number) => WorldSample, atlas: WorldAtlas): Record<SceneryAssetId, SceneryPlacement[]> {
+  let byAtlas = placementCache.get(sampleWorld);
+  if (!byAtlas) placementCache.set(sampleWorld, byAtlas = new Map());
+  let placements = byAtlas.get(atlas.mapVersion);
+  if (!placements) byAtlas.set(atlas.mapVersion, placements = createSceneryPlacements(sampleWorld, atlas));
+  return placements;
+}
