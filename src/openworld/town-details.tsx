@@ -5,8 +5,7 @@ import {
 } from 'three';
 import type { WorldAtlas } from './atlas';
 import type { WorldSample } from './types';
-import { THEME_COLORS } from './exploration-landmarks';
-import type { ExplorationTheme } from './exploration-sites';
+import { THEME_COLORS, type ExplorationTheme } from './exploration-sites';
 import { cachedSceneryPlacements } from './scenery';
 import { PAVING_CELL, createWorldDetails, type DetailKind, type TownLayout, type TownProp, type WorldDetails } from './world-details';
 
@@ -79,20 +78,20 @@ function addBlades(builder: MergedBuilder, count: number, radius: number, salt: 
   }
 }
 
+/** A bloom on a thin stem: a flat, open head with a small centre, so it reads as a flower rather than a bead. */
 function addFlower(builder: MergedBuilder, base: Matrix4, color: Tint, height = .34, size = .09) {
-  builder.add(new ConeGeometry(.022, height, 3, 1, true), '#5a9e48', base.clone().multiply(at(0, height / 2, 0)), { soft: .5 });
-  builder.add(new IcosahedronGeometry(size, 0), color, base.clone().multiply(at(0, height + size * .3, 0, 0, 1, .62, 1)), { soft: .35 });
-  builder.add(new IcosahedronGeometry(size * .38, 0), '#ffd35a', base.clone().multiply(at(0, height + size * .62, 0, 0, 1, .6, 1)), { soft: .35 });
+  builder.add(new ConeGeometry(.016, height, 3, 1, true), '#5a9e48', base.clone().multiply(at(0, height / 2, 0)), { soft: .5 });
+  builder.add(new IcosahedronGeometry(size, 0), color, base.clone().multiply(at(0, height + size * .2, 0, 0, 1.15, .38, 1.15)), { soft: .35 });
+  builder.add(new IcosahedronGeometry(size * .34, 0), '#ffd35a', base.clone().multiply(at(0, height + size * .42, 0, 0, 1, .5, 1)), { soft: .35 });
 }
 
 /** Procedural instanced detail kinds; route posts take the region palette. */
 export function createDetailGeometry(kind: DetailKind, theme: ExplorationTheme): BufferGeometry {
   const builder = new MergedBuilder(), colors = THEME_COLORS[theme];
   if (kind === 'flower-patch') {
-    // A little pastel posy: a leafy tuft with five blooms.
-    addBlades(builder, 4, .18, 2, .8);
-    builder.add(new SphereGeometry(.13, 7, 5), LEAF[0], at(0, .06, 0, 0, 1.3, .55, 1.3), { soft: .5 });
-    [[.14, .05], [-.12, .11], [.03, -.15], [-.15, -.08], [.12, .17]].forEach(([x, z], index) => addFlower(builder, at(x, 0, z), FLOWERS[index], .24 + (index % 3) * .05, .1));
+    // A few wild blooms among grass blades: white, yellow and lilac, small and low like meadow flowers.
+    addBlades(builder, 6, .2, 2, .7);
+    [[.12, .04, 1], [-.1, .1, 0], [.02, -.13, 3]].forEach(([x, z, tint], index) => addFlower(builder, at(x, 0, z), FLOWERS[tint], .18 + (index % 2) * .06, .065));
   } else if (kind === 'pebbles') {
     [[0, 0, .22, '#8d8b80'], [.26, .12, .15, '#a19d8e'], [-.18, .2, .12, '#7b7a70']].forEach(([x, z, size, color]) =>
       builder.add(new IcosahedronGeometry(size as number, 0), color as string, at(x as number, (size as number) * .25, z as number, (x as number) * 9, 1, .55, 1)));

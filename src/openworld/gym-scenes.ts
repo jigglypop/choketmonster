@@ -22,6 +22,8 @@ export type GymScene = {
   challenger: ScenePoint;
   /** The marked battle court. Stepping onto it starts the leader battle. */
   court: { minX: number; maxX: number; minZ: number; maxZ: number };
+  /** Where the challenger's partner battles: half a gap short of the court centre, facing the opponent across it. */
+  battleSpot: ScenePoint;
   contains(x: number, z: number, margin?: number): boolean;
   sample(x: number, z: number): WorldSample;
 };
@@ -32,6 +34,8 @@ const LEAGUE_WIDTH = 28, LEAGUE_DEPTH = 46;
 /** The league stadium's entry walk ends this far south of its centre. */
 const STADIUM_FRONT = 10;
 const scenes = new Map<string, GymScene | null>();
+/** Metres between the two battling Pokémon in a hall; they stand either side of the court centre. */
+export const HALL_BATTLE_GAP = 6;
 
 export const LEAGUE_LOCATION_IDS: Readonly<Partial<Record<string, string>>> = Object.freeze({
   johto: 'tohjo-falls', kanto: 'indigo-plateau', hoenn: 'ever-grande-city',
@@ -98,10 +102,11 @@ export function getGymScene(sceneId: string): GymScene | undefined {
   const challenger = { x: centerX, z: layout.kind === 'league' ? leader.z - 17 : minZ + 12 };
   const courtInset = layout.kind === 'league' ? 6 : 4;
   const court = { minX: minX + courtInset, maxX: maxX - courtInset, minZ: challenger.z + 1.5, maxZ: leader.z - 3 };
+  const battleSpot = { x: centerX, z: (court.minZ + court.maxZ) / 2 - HALL_BATTLE_GAP / 2 };
   const scene: GymScene = {
     kind: layout.kind, sceneId, regionId, locationId, minX, maxX, minZ, maxZ, floorY, door,
     entrance: { x: centerX, z: minZ + 4 }, exit: { x: centerX, z: minZ + 2 },
-    leader, challenger, court, contains, sample,
+    leader, challenger, court, battleSpot, contains, sample,
   };
   scenes.set(sceneId, scene);
   return scene;

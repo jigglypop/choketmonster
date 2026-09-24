@@ -1,5 +1,7 @@
 import { REGIONAL_ENCOUNTER_POOLS, REGIONAL_ENCOUNTER_SOURCE, type RegionalEncounterPool, type RegionalEncounterSlot } from './regional-encounters.generated';
-import { getSpecies } from './pokemon';
+import { KANTO_LOCATIONS, type KantoLocation } from '../openworld/kanto';
+import { JOHTO_LOCATIONS } from '../openworld/johto';
+import { baseWildBand, fitWildSlots, placeRareSpecies, preferredRareBiome, rareSpawnLevels, wildLevelRange, type RareAnchor, type RareBiome } from './wild-levels';
 import { combineEncounterPeriods } from './encounter-runtime';
 
 export type EncounterRegion = 'kanto' | 'johto';
@@ -61,17 +63,36 @@ const TOWN_LOCATION_IDS: Record<EncounterRegion, ReadonlySet<string>> = {
   kanto: new Set(['pallet','viridian','pewter','cerulean','saffron','vermilion','lavender','celadon','fuchsia','cinnabar']),
   johto: new Set(['new-bark','cherrygrove','violet','azalea','goldenrod','ecruteak','olivine','cianwood','mahogany','blackthorn']),
 };
+/** Surface halves of one source location use only their own entrance's table, as their dungeon floors do. */
+const SURFACE_AREAS: Record<EncounterRegion, Readonly<Record<string, readonly string[]>>> = {
+  kanto: {},
+  johto: { 'dark-cave-west': ['violet-city-entrance'], 'dark-cave-east': ['blackthorn-city-entrance'] },
+};
+const LOCATIONS: Record<EncounterRegion, ReadonlyMap<string, KantoLocation>> = {
+  kanto: new Map(KANTO_LOCATIONS.map(location => [location.id, location])),
+  johto: new Map(JOHTO_LOCATIONS.map(location => [location.id, location])),
+};
+/** The location's wild band before dungeon depth: Kanto's authored bands and Johto's game bands. */
+export function regionalBaseBand(region: EncounterRegion, worldLocationId: string): { minLevel: number; maxLevel: number } {
+  const location = LOCATIONS[region].get(worldLocationId);
+  return location ? baseWildBand(region, location) : { minLevel: 1, maxLevel: 100 };
+}
 const runtimePoolCache=new Map<string,readonly RuntimeEncounterPool[]>();
-/** All source time tables combined with equal per-period mass. Towns never emit wild encounters. A dungeon floor passes its own source areas. */
+/**
+ * All source time tables combined with equal per-period mass. Towns never emit wild encounters. A dungeon floor passes its own source areas.
+ * Slots keep their species unless it lies far below its evolution level in this band; then its pre-evolution takes the slot (wildSpeciesForBand).
+ */
 export function regionalRuntimePools(region: EncounterRegion, worldLocationId: string, period: EncounterPeriod, biome?: string, areas?: readonly string[]): readonly RuntimeEncounterPool[] {
   if (TOWN_LOCATION_IDS[region].has(worldLocationId)) return [];
-  const locationId=sourceLocationId(region,worldLocationId),preferred=biome==='lake'?'surf':'walk',inArea=(pool:RegionalEncounterPool)=>!areas||areas.includes(pool.areaName);
-  const key=`${region}|${locationId}|${period}|${preferred}|${areas?.join(',')??'*'}`;const cached=runtimePoolCache.get(key);if(cached)return cached;
+  const scope=areas??SURFACE_AREAS[region][worldLocationId];
+  const locationId=sourceLocationId(region,worldLocationId),preferred=biome==='lake'?'surf':'walk',inArea=(pool:RegionalEncounterPool)=>!scope||scope.includes(pool.areaName);
+  const key=`${region}|${worldLocationId}|${period}|${preferred}|${biome==='rock'?'rock':''}|${scope?.join(',')??'*'}`;const cached=runtimePoolCache.get(key);if(cached)return cached;
   const source=REGIONAL_ENCOUNTER_POOLS[region].filter(pool=>pool.locationId===locationId&&pool.method===preferred&&inArea(pool))
     .map(pool=>({...pool,slots:pool.slots.filter(slot=>slot.speciesId<=REGIONAL_DEX_LIMIT[region])})).filter(pool=>pool.slots.length);
   const bridge=!source.length&&region==='johto'&&worldLocationId==='dragons-den'&&biome==='rock'
     ? REGIONAL_ENCOUNTER_POOLS[region].filter(pool=>pool.locationId===locationId&&pool.method==='surf'&&inArea(pool)) : source;
-  const result=Object.freeze(combineEncounterPeriods(bridge,period).map(pool=>Object.freeze({...pool,slots:Object.freeze(pool.slots)})));
+  const band=regionalBaseBand(region,worldLocationId);
+  const result=Object.freeze(combineEncounterPeriods(bridge,period).map(pool=>Object.freeze({...pool,slots:Object.freeze(fitWildSlots(pool.slots,()=>band))})));
   runtimePoolCache.set(key,result);return result;
 }
 
@@ -83,49 +104,73 @@ export function sourceSpeciesIds(region: EncounterRegion): number[] {
   return [...new Set(REGIONAL_ENCOUNTER_POOLS[region].flatMap(pool => pool.slots.map(slot => slot.speciesId)))].sort((a, b) => a - b);
 }
 
-export function supplementalSpeciesIds(region: EncounterRegion): number[] {
-  return regionalSpeciesIds(region);
+type SourceHabitat = { locationId: string; method: 'walk' | 'surf'; slots: readonly RegionalEncounterSlot[] };
+const sourceHabitatCache = new Map<EncounterRegion, readonly SourceHabitat[]>();
+/**
+ * Source tables the 3D world actually uses: grass tables on land places, surf tables on sea places,
+ * and Dragon's Den's surf-only table on its floors. A surf table beside a land route with no water,
+ * or a grass table on open sea, never spawns; its species count as missing.
+ */
+function sourceHabitats(region: EncounterRegion): readonly SourceHabitat[] {
+  const cached = sourceHabitatCache.get(region); if (cached) return cached;
+  const habitats: SourceHabitat[] = [];
+  for (const locationId of REGIONAL_WORLD_LOCATION_IDS[region]) {
+    const location = LOCATIONS[region].get(locationId);
+    if (!location || TOWN_LOCATION_IDS[region].has(locationId)) continue;
+    const sea = location.kind === 'sea', slots = regionalRuntimePools(region, locationId, 'day', sea ? 'lake' : 'rock').flatMap(pool => pool.slots);
+    if (slots.length) habitats.push({ locationId, method: sea || (region === 'johto' && locationId === 'dragons-den') ? 'surf' : 'walk', slots });
+  }
+  sourceHabitatCache.set(region, habitats); return habitats;
 }
 
+/** Species that spawn from the original tables somewhere in the region's 3D world. */
 export function runtimeSourceSpeciesIds(region: EncounterRegion): number[] {
-  const locations = new Set(REGIONAL_WORLD_LOCATION_IDS[region].map(id => sourceLocationId(region, id)));
-  return [...new Set(REGIONAL_ENCOUNTER_POOLS[region].filter(pool => locations.has(pool.locationId) && (pool.method === 'walk' || pool.method === 'surf')).flatMap(pool => pool.slots.map(slot => slot.speciesId)).filter(id=>id<=REGIONAL_DEX_LIMIT[region]))].sort((a,b) => a-b);
+  return [...new Set(sourceHabitats(region).flatMap(habitat => habitat.slots.map(slot => slot.speciesId)))].sort((a,b) => a-b);
+}
+
+/** Regional dex species the original tables never spawn; only these get an authored rare distribution. */
+export function supplementalSpeciesIds(region: EncounterRegion): number[] {
+  const source = new Set(runtimeSourceSpeciesIds(region));
+  return regionalSpeciesIds(region).filter(speciesId => !source.has(speciesId));
 }
 
 const SPECIAL_LATE = new Set([144,145,146,150,151,243,244,245,249,250,251]);
-const STARTERS = new Set([1,4,7,152,155,158]);
-export type SupplementalEncounterRule = { speciesId: number; locationId: string; period: EncounterPeriod; biome: 'meadow'|'forest'|'lake'|'rock'; requiredBadges: number; origin: 'supplemental'; rarity: 'rare' };
-const supplementalRuleCache = new Map<EncounterRegion, SupplementalEncounterRule[]>();
-export function supplementalEncounterRules(region: EncounterRegion): SupplementalEncounterRule[] {
-  const cached = supplementalRuleCache.get(region); if (cached) return cached;
-  type Anchor = { locationId:string; biome:SupplementalEncounterRule['biome']; badge:number };
-  const anchors:Anchor[] = region === 'kanto' ? [
+export type SupplementalEncounterRule = { speciesId: number; locationId: string; period: EncounterPeriod; biome: RareBiome; requiredBadges: number; minLevel: number; origin: 'supplemental'; rarity: 'rare' };
+type AuthoredAnchor = readonly [locationId: string, biome: RareBiome, badges: number];
+/** Rare places and the badge stage each belongs to. Their level is the place's own band. */
+const RARE_ANCHORS: Record<EncounterRegion, readonly AuthoredAnchor[]> = {
+  kanto: [
     ['route-1','meadow',0],['route-24','meadow',1],['route-11','meadow',2],['route-8','meadow',3],['route-16','meadow',4],['route-15','meadow',5],['pokemon-mansion','meadow',7],['route-23','meadow',8],
     ['viridian-forest','forest',0],['route-19','lake',5],['route-20-east','lake',6],['route-21','lake',7],
     ['mt-moon','rock',0],['diglett-cave-east','rock',2],['rock-tunnel','rock',3],['power-plant','rock',5],['seafoam-islands','rock',6],['victory-road','rock',8],['cerulean-cave','rock',8],
-  ].map(([locationId,biome,badge])=>({locationId:locationId as string,biome:biome as Anchor['biome'],badge:badge as number})) : [
+  ],
+  johto: [
     ['route-29','meadow',0],['route-32','meadow',1],['route-34','meadow',2],['route-37','meadow',3],['route-38','meadow',4],['route-43','meadow',5],['route-44','meadow',7],['route-27','meadow',8],
     ['ilex-forest','forest',2],['national-park','forest',3],['route-40','lake',4],['lake-of-rage','lake',6],
     ['union-cave','rock',1],['slowpoke-well','rock',2],['whirl-islands','rock',4],['mt-mortar','rock',5],['ice-path','rock',7],['dragons-den','rock',8],['mt-silver','rock',8],
-  ].map(([locationId,biome,badge])=>({locationId:locationId as string,biome:biome as Anchor['biome'],badge:badge as number}));
-  const speciesIds = supplementalSpeciesIds(region);
-  const speciesPerBadge = Math.max(1, Math.ceil(speciesIds.length / 8));
-  const rules: SupplementalEncounterRule[] = speciesIds.map((speciesId, index): SupplementalEncounterRule => {
-    const types=getSpecies(speciesId).types;
-    const biome: SupplementalEncounterRule['biome'] = types.includes('water') ? 'lake' : types.some(type=>type==='rock'||type==='ground') ? 'rock' : types.some(type=>type==='bug'||type==='grass') ? 'forest' : 'meadow';
-    const progressionBadge = SPECIAL_LATE.has(speciesId) ? 8 : STARTERS.has(speciesId) ? 4 : Math.min(7, Math.floor(index / speciesPerBadge));
-    const forced = region==='kanto' && [144,146].includes(speciesId) ? anchors.find(anchor=>anchor.locationId===(speciesId===144?'seafoam-islands':'victory-road'))
-      : region==='kanto' && [145,150,151].includes(speciesId) ? anchors.find(anchor=>anchor.locationId===(speciesId===145?'power-plant':'cerulean-cave'))
-      : region==='johto' && speciesId===249 ? anchors.find(anchor=>anchor.locationId==='whirl-islands')
-      : region==='johto' && speciesId===250 ? {locationId:'bell-tower',biome:'meadow' as const,badge:8}
-      : region==='johto' && SPECIAL_LATE.has(speciesId) ? anchors.find(anchor=>anchor.locationId==='mt-silver') : undefined;
-    const candidates=anchors.filter(anchor=>anchor.biome===biome),delta=Math.min(...candidates.map(anchor=>Math.abs(anchor.badge-progressionBadge)));
-    const closest=candidates.filter(anchor=>Math.abs(anchor.badge-progressionBadge)===delta),anchor=forced??closest[speciesId%closest.length];
-    const requiredBadges=Math.max(progressionBadge,anchor.badge);
-    return { speciesId, biome:anchor.biome, locationId: anchor.locationId,
-    period: (['morning','day','night'] as const)[speciesId % 3],
-    requiredBadges,
-    origin: 'supplemental', rarity: 'rare' };
+  ],
+};
+/** Legendary lairs: Seafoam B4F, Power Plant, Victory Road, Cerulean Cave; Whirl Islands, Bell Tower, Mt. Silver. */
+function legendaryAnchor(region: EncounterRegion, speciesId: number): { locationId: string; biome: RareBiome } | undefined {
+  if (region === 'kanto') return speciesId === 144 ? { locationId: 'seafoam-islands', biome: 'rock' } : speciesId === 145 ? { locationId: 'power-plant', biome: 'rock' }
+    : speciesId === 146 ? { locationId: 'victory-road', biome: 'rock' } : speciesId === 150 || speciesId === 151 ? { locationId: 'cerulean-cave', biome: 'rock' } : undefined;
+  return speciesId === 249 ? { locationId: 'whirl-islands', biome: 'rock' } : speciesId === 250 ? { locationId: 'bell-tower', biome: 'meadow' }
+    : SPECIAL_LATE.has(speciesId) ? { locationId: 'mt-silver', biome: 'rock' } : undefined;
+}
+const supplementalRuleCache = new Map<EncounterRegion, SupplementalEncounterRule[]>();
+/**
+ * Rare slots for species missing from the original tables. Placement follows biology, not Pokédex
+ * order: the evolution level floor, base stat total and species class (starter, pseudo-legendary,
+ * legendary) choose the badge stage, and the anchor's band must hold that level (placeRareSpecies).
+ */
+export function supplementalEncounterRules(region: EncounterRegion): SupplementalEncounterRule[] {
+  const cached = supplementalRuleCache.get(region); if (cached) return cached;
+  const anchors: RareAnchor[] = RARE_ANCHORS[region].map(([locationId, biome, badges]) => ({ locationId, biome, stages: [badges, badges], gate: badges, ...regionalBaseBand(region, locationId) })), load = new Map<string, number>();
+  const rules = supplementalSpeciesIds(region).map((speciesId): SupplementalEncounterRule => {
+    const lair = legendaryAnchor(region, speciesId);
+    const placement = lair ? { locationId: lair.locationId, biome: lair.biome, requiredBadges: 8, minLevel: 50 }
+      : (({ anchor, requiredBadges, minLevel }) => ({ locationId: anchor.locationId, biome: anchor.biome, requiredBadges, minLevel }))(placeRareSpecies(region, speciesId, anchors, preferredRareBiome(speciesId), load));
+    return { speciesId, ...placement, period: (['morning','day','night'] as const)[speciesId % 3], origin: 'supplemental', rarity: 'rare' };
   });
   supplementalRuleCache.set(region, rules); return rules;
 }
@@ -136,34 +181,36 @@ export function regionalSupplementalRules(region: EncounterRegion, worldLocation
   return supplementalEncounterRules(region).filter(rule => rule.locationId === worldLocationId && (floor || rule.biome === biome) && rule.requiredBadges <= badges);
 }
 
-/** Every twentieth spawn advances through the authored missing-species pool; other spawns use original slot weights. */
+/** Level range of a rare spawn in a band: legendaries at Lv.50 or the band top, others from their placement minimum. */
+export function supplementalRuleLevels(rule: Pick<SupplementalEncounterRule, 'speciesId' | 'minLevel'>, band: { min: number; max: number }): { minLevel: number; maxLevel: number } {
+  if (SPECIAL_LATE.has(rule.speciesId)) { const level = Math.max(50, band.max); return { minLevel: level, maxLevel: level }; }
+  return rareSpawnLevels(rule.minLevel, band);
+}
+
+/**
+ * Every twentieth spawn advances through the authored missing-species pool; other spawns use original slot weights.
+ * The returned level range is the runtime range: the band (with dungeon depth) raised to the species' evolution floor.
+ */
 export function chooseRegionalEncounter(region: EncounterRegion, worldLocationId: string, period: EncounterPeriod, biome: string, badges: number, spawnSerial: number, random: () => number, fallbackLevel: { min: number; max: number }, floor?: EncounterFloor): RegionalEncounter {
   const supplemental = regionalSupplementalRules(region, worldLocationId, biome, badges, floor);
   if (supplemental.length && spawnSerial % 20 === 0) {
-    const rule = supplemental[(Math.floor(spawnSerial / 20) - 1) % supplemental.length];
-    const level = SPECIAL_LATE.has(rule.speciesId) ? Math.max(50, fallbackLevel.max) : Math.max(fallbackLevel.min, 5 + rule.requiredBadges * 5);
-    return { speciesId: rule.speciesId, minLevel: level, maxLevel: Math.max(level, fallbackLevel.max), origin: 'supplemental' };
+    const rule = supplemental[((Math.floor(spawnSerial / 20) - 1) % supplemental.length + supplemental.length) % supplemental.length];
+    return { speciesId: rule.speciesId, ...supplementalRuleLevels(rule, fallbackLevel), origin: 'supplemental' };
   }
   const pools = regionalRuntimePools(region, worldLocationId, period, biome, floor?.areas);
   const slots = pools.flatMap(pool => pool.slots.map(slot => ({ slot, pool })));
-  if (!slots.length) {
-    const speciesId = spawnSerial % 20 === 0 ? supplemental[(Math.floor(spawnSerial / 20) - 1) % supplemental.length]?.speciesId : undefined;
-    if (!speciesId) throw new Error(`No ${period} encounter at ${region}:${worldLocationId}:${biome}`);
-    return { speciesId, minLevel: fallbackLevel.min, maxLevel: fallbackLevel.max, origin: 'supplemental' };
-  }
+  if (!slots.length) throw new Error(`No ${period} encounter at ${region}:${worldLocationId}:${biome}`);
   const total = slots.reduce((sum, item) => sum + item.slot.weight, 0);
   let roll = random() * total;
   const selected = slots.find(item => (roll -= item.slot.weight) < 0) ?? slots.at(-1)!;
-  return { ...selected.slot, origin: 'source', sourceLocationId: selected.pool.locationId, sourceAreaId: selected.pool.areaId, method: selected.pool.method };
+  return { speciesId: selected.slot.speciesId, ...wildLevelRange(selected.slot.speciesId, fallbackLevel.min, fallbackLevel.max), origin: 'source', sourceLocationId: selected.pool.locationId, sourceAreaId: selected.pool.areaId, method: selected.pool.method };
 }
 
 export function regionalSpeciesHabitats(speciesId: number) {
   const results: Array<{ region: EncounterRegion; locationIds: string[]; periods: EncounterPeriod[]; methods: string[]; requiredBadges: number; origin: EncounterOrigin; rarity: number | 'rare' }> = [];
   for (const region of ['kanto','johto'] as const) {
-    const reverse = new Map<string,string[]>();
-    for (const id of REGIONAL_WORLD_LOCATION_IDS[region]) { const key=sourceLocationId(region,id), list=reverse.get(key)??[]; list.push(id); reverse.set(key,list); }
-    const pools = speciesId<=REGIONAL_DEX_LIMIT[region] ? REGIONAL_ENCOUNTER_POOLS[region].filter(pool => reverse.has(pool.locationId) && (pool.method==='walk'||pool.method==='surf') && pool.slots.some(slot=>slot.speciesId===speciesId)) : [];
-    if (pools.length) results.push({ region, locationIds:[...new Set(pools.flatMap(pool=>reverse.get(pool.locationId)!).filter(id=>!TOWN_LOCATION_IDS[region].has(id)))], periods:['morning','day','night'], methods:[...new Set(pools.map(pool=>pool.method))], requiredBadges:0, origin:'source', rarity:Math.min(...pools.flatMap(pool=>pool.slots.filter(slot=>slot.speciesId===speciesId).map(slot=>slot.weight))) });
+    const habitats = speciesId <= REGIONAL_DEX_LIMIT[region] ? sourceHabitats(region).filter(habitat => habitat.slots.some(slot => slot.speciesId === speciesId)) : [];
+    if (habitats.length) results.push({ region, locationIds: [...new Set(habitats.map(habitat => habitat.locationId))], periods: ['morning','day','night'], methods: [...new Set(habitats.map(habitat => habitat.method))], requiredBadges: 0, origin: 'source', rarity: Math.min(...habitats.flatMap(habitat => habitat.slots.filter(slot => slot.speciesId === speciesId).map(slot => slot.weight))) });
     const rules=supplementalEncounterRules(region).filter(rule=>rule.speciesId===speciesId);
     for(const rule of rules) results.push({region,locationIds:[rule.locationId],periods:['morning','day','night'],methods:[rule.biome==='lake'?'surf':'walk'],requiredBadges:rule.requiredBadges,origin:'supplemental',rarity:'rare'});
   }

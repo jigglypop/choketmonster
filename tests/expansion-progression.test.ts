@@ -6,9 +6,7 @@ import { OpenWorldSimulation, serializeOpenWorld, restoreOpenWorld, regionalEnco
 import { nextDestinationGuide } from '../src/openworld/next-destination';
 import { getMove, getSpecies } from '../src/data/pokemon';
 import { calculateDamage } from '../src/game/battle';
-import { expansionSupplementalRules } from '../src/data/expansion-spawns';
-import { expansionEncounterPools } from '../src/data/expansion-encounters';
-import { getWorldAtlas } from '../src/openworld/atlas';
+import { expansionSourceSpeciesIds, expansionSupplementalRules } from '../src/data/expansion-spawns';
 import { isPlayableSpecies } from '../src/openworld/availability';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8'));
@@ -65,8 +63,9 @@ describe('Hoenn through Alola runtime progression', () => {
     }
   }, 50_000);
   it('offers every native species through an original pool or a labeled rare supplement', () => {
-    for (const [region, first, last] of [['hoenn',252,386],['sinnoh',387,493],['unova',494,649],['kalos',650,721],['alola',722,809]] as const) {
-      const atlas = getWorldAtlas(region), source = new Set(atlas.locations.flatMap(location => expansionEncounterPools(region,location.id).filter(pool => pool.method === 'walk' || pool.method === 'surf').flatMap(pool => pool.slots.map(slot => slot.speciesId))));
+    for (const [region, first, last] of [['hoenn',252,386],['sinnoh',387,493],['unova',494,649],['kalos',650,721],['alola',722,809],['galar',810,898],['hisui',899,905],['paldea',906,1025]] as const) {
+      // Source means the tables the 3D world spawns from: walk on land places, surf on sea places.
+      const source = new Set(expansionSourceSpeciesIds(region));
       const rules = expansionSupplementalRules(region), added = new Set(rules.map(rule => rule.speciesId));
       for (let id = first; id <= last; id++) { expect(source.has(id) || added.has(id), `${region}:${id}`).toBe(true); expect(isPlayableSpecies(id)).toBe(true); }
       for (const rule of rules) {

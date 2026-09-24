@@ -1,14 +1,13 @@
 import type { CampaignRegion } from './campaign';
 import { campaignTravelReason, getRegionalBadges } from './campaign';
 import type { GameState, Monster } from './engine';
+import { levelCapForBadges } from '../data/wild-levels';
 
 export const REGIONAL_STARTERS: Readonly<Record<CampaignRegion, readonly [number, number, number]>> = {
   kanto: [1, 4, 7], johto: [152, 155, 158], hoenn: [252, 255, 258], sinnoh: [387, 390, 393],
   unova: [495, 498, 501], kalos: [650, 653, 656], alola: [722, 725, 728],
   galar: [810, 813, 816], hisui: [722, 155, 501], paldea: [906, 909, 912],
 };
-
-const LEVEL_CAPS = [20, 30, 40, 50, 60, 70, 80, 90, 100] as const;
 
 export function isCampaignRegion(value: unknown): value is CampaignRegion {
   return typeof value === 'string' && Object.hasOwn(REGIONAL_STARTERS, value);
@@ -23,8 +22,7 @@ export function needsRegionalStarter(game: GameState, region: CampaignRegion): b
 }
 
 export function regionalLevelCap(game: GameState, region: CampaignRegion): number {
-  const badges = getRegionalBadges(game, region);
-  return LEVEL_CAPS[Math.max(0, Math.min(8, badges))];
+  return levelCapForBadges(getRegionalBadges(game, region));
 }
 
 export function monsterRegionalUseReason(game: GameState, region: CampaignRegion, monster: Monster): string | undefined {

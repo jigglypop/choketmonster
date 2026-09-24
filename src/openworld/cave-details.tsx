@@ -127,7 +127,7 @@ export function CaveDetails({ cave, material, player, mobile, onNavigate }: {
     <Batch name="cave-rock-strata" entries={all.ledges} material={material} />
     <Batch name="cave-stalactites" entries={close.stalactites} material={material} pointed />
     <Batch name="cave-stalagmites" entries={close.stalagmites} material={material} pointed />
-    <Batch name="cave-rock-features" entries={rockFeatures} material={material} castsShadow={false} />
+    <Batch name="cave-rock-features" entries={rockFeatures} material={material} />
     <ContactShadows cave={cave} entries={shadowCasters} />
     {cave.relief.pools.map((pool, index) => <mesh key={index} name={`cave-water:${index}`} position={[pool.x, pool.level, pool.z]} rotation={[-Math.PI / 2, 0, 0]}
       onClick={event => { event.stopPropagation(); if (event.button === 0 && event.delta <= 5) onNavigate({ x: event.point.x, z: event.point.z }); }}>

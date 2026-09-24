@@ -1,5 +1,6 @@
 import type { WorldSample } from './types';
 import type { KantoGate, KantoGym, KantoLocation, KantoLocationKind, KantoTraversal } from './kanto';
+import { terrainProgressGates } from './progression-gates';
 import { terrainPlateauHeight } from './terrain-elevation';
 import { WORLD_MAX, WORLD_SCALE, scaleWorldDistance } from './world-space';
 import {
@@ -48,10 +49,14 @@ const location = (
 // Coordinates preserve the relative layout of the Gold/Silver overworld:
 // New Bark is southeast, Goldenrod is west-central, Ecruteak is north of it,
 // the Olivine/Cianwood sea is west, and Blackthorn sits beyond the northeast mountains.
+// Badges follow HeartGold/SoulSilver: the Route 32 check (1), Cut through Ilex Forest (2), Sudowoodo on
+// Route 36 (3), Olivine and Surf to Cianwood after Morty (4), Route 42 to Mahogany after Jasmine (6), the Ice Path
+// after Pryce (7), Waterfall on the league road (8). Ecruteak's gym door lies in the Bell Tower's cell, so the tower
+// opens with the town.
 export const JOHTO_LOCATIONS: readonly JohtoLocation[] = [
   location('new-bark', '연두마을', 65, 70, 'town', 2, 4),
-  location('route-27', '27번 도로', 88, 70, 'route', 28, 38),
-  location('tohjo-falls', '동성폭포', 106, 60, 'cave', 30, 42),
+  location('route-27', '27번 도로', 88, 70, 'route', 28, 38, 8),
+  location('tohjo-falls', '동성폭포', 106, 60, 'cave', 30, 42, 8),
   location('mt-silver', '은빛산', 114, 48, 'cave', 40, 55, 8),
   location('route-29', '29번 도로', 50, 57, 'route', 2, 4),
   location('cherrygrove', '무궁시티', 35, 58, 'town', 2, 5),
@@ -59,43 +64,43 @@ export const JOHTO_LOCATIONS: readonly JohtoLocation[] = [
   location('route-31', '31번 도로', 24, 30, 'route', 3, 6),
   location('violet', '도라지시티', 12, 25, 'town', 4, 8),
   location('sprout-tower', '모다피의 탑', 16, 18, 'special', 3, 6),
-  location('route-32', '32번 도로', 5, 34, 'route', 4, 8),
-  location('ruins-of-alph', '알프의 유적', -2, 25, 'special', 5, 10),
-  location('union-cave', '연결동굴', 0, 44, 'cave', 5, 9),
-  location('route-33', '33번 도로', -8, 50, 'route', 5, 9),
-  location('azalea', '고동마을', -12, 55, 'town', 6, 12),
-  location('slowpoke-well', '야돈의 우물', -12, 63, 'cave', 6, 10),
-  location('ilex-forest', '너도밤나무숲', -25, 40, 'forest', 5, 10),
-  location('route-34', '34번 도로', -35, 20, 'route', 7, 12),
-  location('goldenrod', '금빛시티', -35, 0, 'town', 8, 16),
-  location('route-35', '35번 도로', -41, -10, 'route', 10, 16),
-  location('national-park', '자연공원', -27, -17, 'forest', 10, 18),
-  location('route-36', '36번 도로', -8, -10, 'route', 12, 18),
-  location('route-37', '37번 도로', -8, -20, 'route', 13, 19),
-  location('ecruteak', '인주시티', -8, -28, 'town', 14, 22),
-  location('burned-tower', '불탄탑', -15, -34, 'special', 14, 22),
-  location('bell-tower', '방울탑', -1, -35, 'special', 20, 40),
-  location('route-38', '38번 도로', -24, -31, 'route', 14, 22),
-  location('route-39', '39번 도로', -38, -22, 'route', 15, 23),
-  location('olivine', '담청시티', -45, -20, 'town', 16, 25),
-  location('lighthouse', '빛남의 등대', -51, -27, 'special', 17, 26),
-  location('route-40', '40번 수로', -55, -6, 'sea', 16, 25),
-  location('whirl-islands', '소용돌이섬', -65, 2, 'cave', 20, 30),
-  location('route-41', '41번 수로', -70, 7, 'sea', 18, 28),
-  location('cianwood', '진청시티', -75, 10, 'town', 20, 30),
-  location('route-42-west', '42번 도로 서쪽', 5, -28, 'route', 15, 24),
-  location('mt-mortar', '절구산', 17, -28, 'cave', 16, 28),
-  location('route-42-east', '42번 도로 동쪽', 27, -28, 'route', 16, 25),
-  location('mahogany', '황토마을', 35, -28, 'town', 17, 28),
-  location('route-43', '43번 도로', 35, -44, 'route', 17, 28),
-  location('lake-of-rage', '분노의호수', 35, -62, 'sea', 20, 35),
-  location('route-44', '44번 도로', 49, -28, 'route', 20, 32),
-  location('ice-path', '얼음샛길', 61, -28, 'cave', 22, 36),
-  location('blackthorn', '검은먹시티', 72, -28, 'town', 24, 40),
-  location('dragons-den', '용의굴', 80, -36, 'cave', 30, 45),
-  location('route-45', '45번 도로', 70, -5, 'route', 22, 36),
+  location('route-32', '32번 도로', 5, 34, 'route', 4, 8, 1),
+  location('ruins-of-alph', '알프의 유적', -2, 25, 'special', 5, 10, 1),
+  location('union-cave', '연결동굴', 0, 44, 'cave', 5, 9, 1),
+  location('route-33', '33번 도로', -8, 50, 'route', 5, 9, 1),
+  location('azalea', '고동마을', -12, 55, 'town', 6, 12, 1),
+  location('slowpoke-well', '야돈의 우물', -12, 63, 'cave', 6, 10, 1),
+  location('ilex-forest', '너도밤나무숲', -25, 40, 'forest', 5, 10, 2),
+  location('route-34', '34번 도로', -35, 20, 'route', 7, 12, 2),
+  location('goldenrod', '금빛시티', -35, 0, 'town', 8, 16, 2),
+  location('route-35', '35번 도로', -41, -10, 'route', 10, 16, 2),
+  location('national-park', '자연공원', -27, -17, 'forest', 10, 18, 2),
+  location('route-36', '36번 도로', -8, -10, 'route', 12, 18, 3),
+  location('route-37', '37번 도로', -8, -20, 'route', 13, 19, 3),
+  location('ecruteak', '인주시티', -8, -28, 'town', 14, 22, 3),
+  location('burned-tower', '불탄탑', -15, -34, 'special', 14, 22, 3),
+  location('bell-tower', '방울탑', -1, -35, 'special', 20, 40, 3),
+  location('route-38', '38번 도로', -24, -31, 'route', 14, 22, 4),
+  location('route-39', '39번 도로', -38, -22, 'route', 15, 23, 4),
+  location('olivine', '담청시티', -45, -20, 'town', 16, 25, 4),
+  location('lighthouse', '빛남의 등대', -51, -27, 'special', 17, 26, 4),
+  location('route-40', '40번 수로', -55, -6, 'sea', 16, 25, 4),
+  location('whirl-islands', '소용돌이섬', -65, 2, 'cave', 20, 30, 4),
+  location('route-41', '41번 수로', -70, 7, 'sea', 18, 28, 4),
+  location('cianwood', '진청시티', -75, 10, 'town', 20, 30, 4),
+  location('route-42-west', '42번 도로 서쪽', 5, -28, 'route', 15, 24, 4),
+  location('mt-mortar', '절구산', 17, -28, 'cave', 16, 28, 6),
+  location('route-42-east', '42번 도로 동쪽', 27, -28, 'route', 16, 25, 6),
+  location('mahogany', '황토마을', 35, -28, 'town', 17, 28, 6),
+  location('route-43', '43번 도로', 35, -44, 'route', 17, 28, 6),
+  location('lake-of-rage', '분노의호수', 35, -62, 'sea', 20, 35, 6),
+  location('route-44', '44번 도로', 49, -28, 'route', 20, 32, 7),
+  location('ice-path', '얼음샛길', 61, -28, 'cave', 22, 36, 7),
+  location('blackthorn', '검은먹시티', 72, -28, 'town', 24, 40, 7),
+  location('dragons-den', '용의굴', 80, -36, 'cave', 30, 45, 7),
+  location('route-45', '45번 도로', 70, -5, 'route', 22, 36, 7),
   location('route-46', '46번 도로', 65, 35, 'route', 3, 12),
-  location('dark-cave-east', '어둠의동굴 동쪽', 56, -5, 'cave', 12, 24),
+  location('dark-cave-east', '어둠의동굴 동쪽', 56, -5, 'cave', 12, 24, 7),
   location('dark-cave-west', '어둠의동굴 서쪽', 19, 28, 'cave', 3, 12),
 ];
 
@@ -115,10 +120,10 @@ export const JOHTO_CONNECTIONS: ReadonlyArray<readonly [string, string]> = [
 
 export const JOHTO_SURFACE_CONNECTIONS = JOHTO_CONNECTIONS;
 
-// Terrain stays independent of campaign state. Regional gyms and badge progress
-// are supplied by game/campaign.ts; requiredBadges gates the Silver Mountain area.
-export const JOHTO_GATES: readonly JohtoGate[] = [];
+// Terrain stays independent of campaign state. Regional gyms and badge progress are supplied by
+// game/campaign.ts; the gates mark where a place's requiredBadges begins on each road.
 export const JOHTO_GYMS: readonly JohtoGym[] = [];
+export const JOHTO_GATES: readonly JohtoGate[] = terrainProgressGates(JOHTO_LOCATIONS, JOHTO_CONNECTIONS, johtoLocationAt, JOHTO_GYMS, '배지');
 
 const byId = new Map(JOHTO_LOCATIONS.map(item => [item.id, item]));
 const surfaceSegments = JOHTO_SURFACE_CONNECTIONS.map(([from, to]) => {
@@ -231,9 +236,9 @@ export function nearestJohtoWalkable(x: number, z: number, badges = 0): { x: num
   return fallback ? safeJohtoArrival(fallback.id, badges) : undefined;
 }
 
-export function johtoTravelPoint(townId: string): { x: number; z: number } | undefined {
+export function johtoTravelPoint(townId: string, badges = 0): { x: number; z: number } | undefined {
   const town = byId.get(townId);
-  return town?.kind === 'town' ? safeJohtoArrival(townId) : undefined;
+  return town?.kind === 'town' ? safeJohtoArrival(townId, badges) : undefined;
 }
 
 export function johtoEncounters(locationId: string, badges: number): number[] {
@@ -241,7 +246,8 @@ export function johtoEncounters(locationId: string, badges: number): number[] {
   return found && Number.isFinite(badges) && badges >= found.requiredBadges ? [...found.encounters] : [];
 }
 
-export function johtoGateHalfWidth(_gate: JohtoGate): number { return 0; }
+/** Terrain gates span the walkable road (3.2 on each side); they draw no physics wall. */
+export function johtoGateHalfWidth(gate: JohtoGate): number { return gate.terrainBoundary ? scaleWorldDistance(3.2) : 0; }
 
 /** Ready-to-admit atlas contract; atlas.ts remains responsible for gameplay exposure. */
 export const JOHTO_ATLAS = {

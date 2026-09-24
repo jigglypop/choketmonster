@@ -12,6 +12,7 @@ import { SINNOH_LOCATIONS, sampleSinnohWorld } from './sinnoh';
 import { UNOVA_LOCATIONS, sampleUnovaWorld } from './unova';
 import { KALOS_LOCATIONS, sampleKalosWorld } from './kalos';
 import { ALOLA_LOCATIONS, sampleAlolaWorld } from './alola';
+import { GALAR_LOCATIONS, sampleGalarWorld } from './galar';
 import { HISUI_LOCATIONS, sampleHisuiWorld } from './hisui';
 import { PALDEA_LOCATIONS, samplePaldeaWorld } from './paldea';
 
@@ -71,6 +72,8 @@ export type CaveScene = {
   wild: boolean;
   /** This floor holds the location's rare supplemental and legendary spawns. */
   supplemental: boolean;
+  /** Legendary Pokémon waiting on this floor, one at a time, until each is caught. */
+  legendary?: readonly number[];
   width: number;
   depth: number;
   legacyWidth: number;
@@ -96,6 +99,7 @@ const REGIONS: Record<string, RegionData> = {
   unova: { locations: UNOVA_LOCATIONS, sample: sampleUnovaWorld },
   kalos: { locations: KALOS_LOCATIONS, sample: sampleKalosWorld },
   alola: { locations: ALOLA_LOCATIONS, sample: sampleAlolaWorld },
+  galar: { locations: GALAR_LOCATIONS, sample: sampleGalarWorld },
   hisui: { locations: HISUI_LOCATIONS, sample: sampleHisuiWorld },
   paldea: { locations: PALDEA_LOCATIONS, sample: samplePaldeaWorld },
 };
@@ -243,6 +247,7 @@ function buildDungeon(plan: DungeonPlan): CaveScene[] {
   };
   const wild = plan.floors.map((floor, index) => floorHasWild(plan.regionId, encounterFor(index).id, floor.areas));
   const anchor = plan.anchor ?? wild.lastIndexOf(true);
+  if (plan.legendary?.length && !wild[anchor]) throw new Error(`${plan.regionId}:${plan.id}: the legendary floor needs a wild table`);
   // Roads that leave a cave at a narrow angle move both entrances farther out so they never overlap.
   let ends = plan.surfaceLocations.map((locationId, index) => surfaceEnd(plan, region, exactLocation, locationId, index));
   for (let reach = scaleWorldDistance(2.2); ends.length === 2 && Math.hypot(ends[0].surface.x - ends[1].surface.x, ends[0].surface.z - ends[1].surface.z) < 8 && reach < 24; reach += .5)
@@ -323,9 +328,10 @@ function buildDungeon(plan: DungeonPlan): CaveScene[] {
       dungeonId: plan.id, dungeonName: plan.name, dungeonLabel: plan.label, name: count > 1 ? `${plan.name} ${floor.label}` : plan.name,
       label: count > 1 ? `${plan.label} ${dungeonFloorAsciiLabel(floor.key)}` : plan.label,
       floorIndex: index, floorCount: count, floorLabel: floor.label, level: floor.level,
-      encounterLocationId: encounter.id, minLevel: encounter.minLevel, maxLevel: encounter.maxLevel,
+      encounterLocationId: encounter.id, minLevel: plan.levels?.[0] ?? encounter.minLevel, maxLevel: plan.levels?.[1] ?? encounter.maxLevel,
       levelShift: farthest <= 4 ? distance : Math.round(distance * 4 / farthest), encounters: encounter.encounters,
       ...(floor.areas ? { encounterAreas: floor.areas } : {}), wild: wild[index], supplemental: index === anchor && wild[index],
+      ...(index === anchor && plan.legendary?.length ? { legendary: plan.legendary } : {}),
       width, depth, legacyWidth, legacyDepth, tileSize: TILE_SIZE, silhouette, outline, portals, stairs, wallSegments, relief, ...(room ? { room } : {}), sample,
     };
   });

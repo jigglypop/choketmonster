@@ -5,7 +5,7 @@ import { supplementalEncounterRules, WORLD_DAY_SECONDS } from '../src/data/regio
 import { createGame } from '../src/game/engine';
 import type { FieldPolicy } from '../src/game/field';
 import { getWorldAtlas } from '../src/openworld/atlas';
-import { CAVE_SCENES } from '../src/openworld/caves';
+import { CAVE_SCENES, getCaveScene } from '../src/openworld/caves';
 import { OpenWorldSimulation } from '../src/openworld/simulation';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
@@ -46,8 +46,13 @@ describe('actual open-world supplemental reachability',()=>{
       world.worldClockSeconds=phaseSeconds[rule.period];
       const local=rules.filter(item=>item.locationId===rule.locationId&&item.biome===rule.biome&&item.requiredBadges<=8);
       const index=local.findIndex(item=>item.speciesId===rule.speciesId);
+      // A legendary already standing on its lair floor has appeared; being one of a kind, it never spawns twice.
+      if(world.entities.some(entity=>entity.kind==='wild'&&entity.speciesId===rule.speciesId)){spawned.add(rule.speciesId);continue;}
       (world as any).spawnSerial=(index+1)*20;
-      const entity=(world as any).spawnWildAt(point);spawned.add(entity.speciesId);
+      let entity=(world as any).spawnWildAt(point);
+      // A lair's waiting legendary takes its floor's first spawn and stays there, as in play; the rule's own spawn follows.
+      while(entity.speciesId!==rule.speciesId&&getCaveScene(world.sceneId)?.legendary?.includes(entity.speciesId)){spawned.add(entity.speciesId);(world as any).spawnSerial=(index+1)*20;entity=(world as any).spawnWildAt(point);}
+      spawned.add(entity.speciesId);
       world.entities.splice(world.entities.indexOf(entity),1);(world as any).brains.delete(entity.id);
     }
     expect([...spawned].sort((a,b)=>a-b)).toEqual(rules.map(rule=>rule.speciesId));

@@ -4,7 +4,7 @@ import type { Graph } from '../src/core/brain';
 import type { FieldPolicy } from '../src/game/field';
 import { createGame } from '../src/game/engine';
 import { gymTeam } from '../src/game/gym-teams';
-import { getGymScene, gymSceneId, leagueSceneId, onGymCourt } from '../src/openworld/gym-scenes';
+import { getGymScene, gymSceneId, HALL_BATTLE_GAP, leagueSceneId, onGymCourt } from '../src/openworld/gym-scenes';
 import { OpenWorldSimulation } from '../src/openworld/simulation';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
@@ -48,13 +48,14 @@ describe('gym hall', () => {
     expect(world.enterGym('pewter')).toBe(false);
   });
 
-  it('fights the leader with the full party from the challenger mark', () => {
+  it('fights the leader with the full party at the centre of the court', () => {
     const { game, world, hall } = atPewterDoor(52_003);
     expect(world.enterGym('pewter')).toBe(true);
     expect(onGymCourt(hall, hall.challenger.x, hall.challenger.z)).toBe(false);
     expect(onGymCourt(hall, hall.challenger.x, hall.court.minZ + 1)).toBe(true);
     expect(world.challengeGymHall()).toBe(true);
-    expect(world.player).toMatchObject(hall.challenger);
+    expect(world.player).toMatchObject(hall.battleSpot);
+    expect(hall.battleSpot.z + HALL_BATTLE_GAP / 2).toBeCloseTo((hall.court.minZ + hall.court.maxZ) / 2);
     expect(world.controlMode).toBe('auto');
     expect(game.battle?.kind).toBe('gym');
     expect(game.battle?.enemy.team.map(monster => [monster.speciesId, monster.level])).toEqual(gymTeam('kanto', 1)!.map(entry => [...entry]));

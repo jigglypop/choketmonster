@@ -6,7 +6,11 @@ import type { WorldAtlas } from './atlas';
 import type { VisibilityTest } from './lod';
 import type { WorldPoint, WorldSample } from './types';
 import { terrainSurfaceHeight } from './grounding';
-import { buildExplorationSites, buildRouteEdgeMarkers, nearbyExplorationSites, type ExplorationSite, type ExplorationTheme, type RouteEdgeMarker } from './exploration-sites';
+import { THEME_COLORS, buildExplorationSites, buildRouteEdgeMarkers, nearbyExplorationSites, type ExplorationSite, type ExplorationTheme, type RouteEdgeMarker } from './exploration-sites';
+import { bridgeGeometry, edgeMarkerGeometry, lookoutGeometry, restSpotGeometry, signpostGeometry } from './landmark-geometry';
+import { detailMaterial } from './town-details';
+
+export { THEME_COLORS };
 
 export type ExplorationLandmarksProps = {
   atlas: WorldAtlas;
@@ -15,14 +19,6 @@ export type ExplorationLandmarksProps = {
   visibility: VisibilityTest;
   onNavigate: (point: WorldPoint) => void;
   badges: number;
-};
-
-export const THEME_COLORS: Record<ExplorationTheme, { wood: string; accent: string; stone: string }> = {
-  classic: { wood: '#765534', accent: '#d94f45', stone: '#8f968d' }, heritage: { wood: '#5f4431', accent: '#a94b42', stone: '#817a70' },
-  volcanic: { wood: '#57463c', accent: '#e36b3e', stone: '#6e625d' }, alpine: { wood: '#6c5541', accent: '#8cb9cf', stone: '#8c989c' },
-  metro: { wood: '#4d5960', accent: '#e8b64b', stone: '#77858b' }, garden: { wood: '#74604b', accent: '#8e73ad', stone: '#aca28f' },
-  island: { wood: '#8a6039', accent: '#48a9a0', stone: '#ac9b78' }, rail: { wood: '#594c43', accent: '#b84d4d', stone: '#73777a' },
-  frontier: { wood: '#745b3c', accent: '#6e9470', stone: '#80796b' }, mosaic: { wood: '#75543e', accent: '#d38251', stone: '#99907d' },
 };
 
 function clickTo(site: ExplorationSite, onNavigate: (point: WorldPoint) => void) {
@@ -57,81 +53,86 @@ function SignBoard({ name, color, onNavigate }: { name: string; color: string; o
 function Signpost({ site, directions, onNavigate, showLabel }: { site: ExplorationSite; directions: Array<WorldPoint & { name: string }>; onNavigate: (point: WorldPoint) => void; showLabel: boolean }) {
   const colors = THEME_COLORS[site.theme], arms = Math.min(3, directions.length);
   return <group name={site.id} rotation={[0, site.yaw, 0]} onClick={clickTo(site, onNavigate)}>
-    <mesh position={[0, 1.35, 0]} castShadow><cylinderGeometry args={[.13, .18, 2.7, site.theme === 'metro' ? 8 : 6]} /><meshStandardMaterial color={colors.wood} roughness={.8} /></mesh>
+    <mesh geometry={signpostGeometry(site.theme)} material={detailMaterial()} castShadow dispose={null} />
     {directions.slice(0, arms).map((direction, index) => <group key={index} position={[(index % 2 ? -1 : 1) * .72, 2.2 - index * .43, 0]}>
       <SignBoard name={direction.name} color={index === 0 ? colors.accent : colors.wood} onNavigate={() => onNavigate(direction)} />
     </group>)}
-    <mesh position={[0, 2.87, 0]} rotation={[0, Math.PI / 4, 0]} castShadow><octahedronGeometry args={[.28]} /><meshStandardMaterial color={colors.accent} /></mesh>
     {showLabel && <NearbyLabel site={site} />}
   </group>;
 }
 
-function RestSpot({ site, onNavigate, showLabel }: { site: ExplorationSite; onNavigate: (point: WorldPoint) => void; showLabel: boolean }) {
-  const colors = THEME_COLORS[site.theme];
+/** Turns a roadside site so its local -z looks away from the road and +z faces it. */
+function awayFromRoad(atlas: WorldAtlas, site: ExplorationSite): number {
+  const x = Math.cos(site.yaw) * 2, z = -Math.sin(site.yaw) * 2;
+  const side = atlas.distanceToPath(site.x + x, site.z + z) >= atlas.distanceToPath(site.x - x, site.z - z) ? 1 : -1;
+  return site.yaw - side * Math.PI / 2;
+}
+
+function RestSpot({ site, rotation, onNavigate, showLabel }: { site: ExplorationSite; rotation: number; onNavigate: (point: WorldPoint) => void; showLabel: boolean }) {
+  return <group name={site.id} rotation={[0, rotation, 0]} onClick={clickTo(site, onNavigate)}>
+    <mesh geometry={restSpotGeometry(site.theme)} material={detailMaterial()} castShadow receiveShadow dispose={null} />
+    {showLabel && <NearbyLabel site={site} />}
+  </group>;
+}
+
+function Lookout({ site, rotation, onNavigate, showLabel }: { site: ExplorationSite; rotation: number; onNavigate: (point: WorldPoint) => void; showLabel: boolean }) {
+  return <group name={site.id} rotation={[0, rotation, 0]} onClick={clickTo(site, onNavigate)}>
+    <mesh geometry={lookoutGeometry(site.theme)} material={detailMaterial()} castShadow receiveShadow dispose={null} />
+    {showLabel && <NearbyLabel site={site} />}
+  </group>;
+}
+
+const bridgeGeometries = new Map<string, ReturnType<typeof bridgeGeometry>>();
+function Bridge({ site, sampleWorld, onNavigate, showLabel }: { site: ExplorationSite; sampleWorld: (x: number, z: number) => WorldSample; onNavigate: (point: WorldPoint) => void; showLabel: boolean }) {
+  const geometry = useMemo(() => {
+    const key = `${site.id}:${site.x}:${site.z}:${site.span}`;
+    let value = bridgeGeometries.get(key);
+    if (!value) bridgeGeometries.set(key, value = bridgeGeometry(site, (x, z) => terrainSurfaceHeight(sampleWorld, x, z)));
+    return value;
+  }, [site, sampleWorld]);
+  // GPU buffers go when the bridge streams out; the CPU copy stays cached for re-entry.
+  useEffect(() => () => geometry.dispose(), [geometry]);
   return <group name={site.id} rotation={[0, site.yaw, 0]} onClick={clickTo(site, onNavigate)}>
-    <mesh position={[0, .62, 0]} castShadow receiveShadow><boxGeometry args={[2.5, .24, .72]} /><meshStandardMaterial color={colors.wood} roughness={.9} /></mesh>
-    {[-.88, .88].map(x => <mesh key={x} position={[x, .28, 0]} castShadow><boxGeometry args={[.2, .62, .55]} /><meshStandardMaterial color={colors.stone} roughness={1} /></mesh>)}
-    <mesh position={[-1.7, .32, -.15]} castShadow><cylinderGeometry args={[.42, .5, .36, 9]} /><meshStandardMaterial color={colors.stone} roughness={1} /></mesh>
-    <mesh position={[-1.7, .56, -.15]}><circleGeometry args={[.28, 12]} /><meshBasicMaterial color={site.theme === 'volcanic' ? '#e7793f' : colors.accent} /></mesh>
+    <mesh geometry={geometry} material={detailMaterial()} castShadow receiveShadow dispose={null} />
     {showLabel && <NearbyLabel site={site} />}
   </group>;
 }
 
-function Lookout({ site, onNavigate, showLabel }: { site: ExplorationSite; onNavigate: (point: WorldPoint) => void; showLabel: boolean }) {
-  const colors = THEME_COLORS[site.theme];
-  return <group name={site.id} rotation={[0, site.yaw, 0]} onClick={clickTo(site, onNavigate)}>
-    <mesh position={[0, .16, 0]} receiveShadow><cylinderGeometry args={[2.1, 2.25, .32, site.theme === 'mosaic' ? 8 : 16]} /><meshStandardMaterial color={colors.stone} roughness={.95} /></mesh>
-    {[-1.7, 0, 1.7].map(x => <mesh key={x} position={[x, .82, -.9]} castShadow><boxGeometry args={[.12, 1.25, .12]} /><meshStandardMaterial color={colors.wood} /></mesh>)}
-    <mesh position={[0, 1.3, -.9]} castShadow><boxGeometry args={[3.6, .14, .16]} /><meshStandardMaterial color={colors.wood} /></mesh>
-    <mesh position={[0, 1.28, .45]} rotation={[-.24, 0, 0]} castShadow><cylinderGeometry args={[.22, .34, 1.35, 10]} /><meshStandardMaterial color={colors.accent} metalness={.25} roughness={.5} /></mesh>
-    {showLabel && <NearbyLabel site={site} />}
-  </group>;
-}
-
-function BridgeRails({ site, onNavigate, showLabel }: { site: ExplorationSite; onNavigate: (point: WorldPoint) => void; showLabel: boolean }) {
-  const colors = THEME_COLORS[site.theme];
-  return <group name={site.id} rotation={[0, site.yaw, 0]} onClick={clickTo(site, onNavigate)}>
-    {[-1, 1].map(side => <group key={side} position={[side * 2.15, 0, 0]}>
-      {[-3.2, 0, 3.2].map(z => <mesh key={z} position={[0, .76, z]} castShadow><boxGeometry args={[.14, 1.45, .14]} /><meshStandardMaterial color={colors.stone} /></mesh>)}
-      <mesh position={[0, 1.35, 0]} castShadow><boxGeometry args={[.16, .16, 6.55]} /><meshStandardMaterial color={colors.accent} metalness={site.theme === 'metro' || site.theme === 'rail' ? .35 : 0} /></mesh>
-    </group>)}
-    {showLabel && <NearbyLabel site={site} />}
-  </group>;
-}
-
-function EdgeMarkerInstances({ markers, sampleWorld, color }: { markers: readonly RouteEdgeMarker[]; sampleWorld: (x: number, z: number) => WorldSample; color: string }) {
+function EdgeMarkerInstances({ markers, sampleWorld, theme, water }: { markers: readonly RouteEdgeMarker[]; sampleWorld: (x: number, z: number) => WorldSample; theme: ExplorationTheme; water: boolean }) {
   const ref = useRef<InstancedMesh>(null), matrix = useMemo(() => new Matrix4(), []), rotation = useMemo(() => new Quaternion(), []);
+  const geometry = useMemo(() => edgeMarkerGeometry(theme, water), [theme, water]);
+  useEffect(() => () => geometry.dispose(), [geometry]);
   useLayoutEffect(() => {
     if (!ref.current) return;
     markers.forEach((marker, index) => {
-      const y = terrainSurfaceHeight(sampleWorld, marker.x, marker.z) + .62;
       rotation.setFromAxisAngle(new Vector3(0, 1, 0), marker.yaw);
-      matrix.compose(new Vector3(marker.x, y, marker.z), rotation, new Vector3(1, marker.biome === 'rock' ? 1.25 : 1, 1));
+      matrix.compose(new Vector3(marker.x, terrainSurfaceHeight(sampleWorld, marker.x, marker.z), marker.z), rotation, new Vector3(1, marker.biome === 'rock' ? 1.15 : 1, 1));
       ref.current!.setMatrixAt(index, matrix);
     });
     ref.current.count = markers.length; ref.current.instanceMatrix.needsUpdate = true; ref.current.computeBoundingSphere();
   }, [markers, sampleWorld, matrix, rotation]);
-  return <instancedMesh ref={ref} args={[undefined, undefined, markers.length]} castShadow frustumCulled>
-    <cylinderGeometry args={[.11, .16, 1.24, 6]} /><meshStandardMaterial color={color} roughness={.86} />
-  </instancedMesh>;
+  return <instancedMesh ref={ref} args={[geometry, detailMaterial(), markers.length]} castShadow={!water} frustumCulled dispose={null} />;
 }
 
 /** 3D roadside landmarks derived from the active atlas. TrailAndWater remains the sole road-surface owner. */
 export function ExplorationLandmarks({ atlas, sampleWorld, player, visibility, onNavigate, badges }: ExplorationLandmarksProps) {
   const sites = useMemo(() => buildExplorationSites(atlas, sampleWorld, badges), [atlas, sampleWorld, badges]);
   const markers = useMemo(() => buildRouteEdgeMarkers(atlas, sampleWorld, badges), [atlas, sampleWorld, badges]);
-  const nearbySites = nearbyExplorationSites(sites, player, 92).filter(site => visibility(site.x, sampleWorld(site.x, site.z).height + 2, site.z, 7));
+  const nearbySites = nearbyExplorationSites(sites, player, 92).filter(site => visibility(site.x, sampleWorld(site.x, site.z).height + 2, site.z, Math.max(7, (site.span ?? 0) / 2 + 2)));
   const nearbyMarkers = nearbyExplorationSites(markers, player, 82).filter(marker => visibility(marker.x, sampleWorld(marker.x, marker.z).height + 1, marker.z, 2));
-  const markerGroups = [...new Map(nearbyMarkers.map(marker => [marker.theme, nearbyMarkers.filter(item => item.theme === marker.theme)])).entries()];
+  const markerGroups = [...new Map(nearbyMarkers.map(marker => {
+    const water = marker.biome === 'lake';
+    return [`${marker.theme}:${water}`, { theme: marker.theme, water, items: nearbyMarkers.filter(item => item.theme === marker.theme && (item.biome === 'lake') === water) }];
+  })).entries()];
   return <group name={`exploration-landmarks:${atlas.id}`} userData={{ gaesupWorldObject: 'exploration-landmarks' }}>
-    {markerGroups.map(([theme, items]) => <EdgeMarkerInstances key={theme} markers={items} sampleWorld={sampleWorld} color={THEME_COLORS[theme].accent} />)}
+    {markerGroups.map(([key, group]) => <EdgeMarkerInstances key={`${key}:${group.items.length}`} markers={group.items} sampleWorld={sampleWorld} theme={group.theme} water={group.water} />)}
     {nearbySites.map(site => {
       const y = terrainSurfaceHeight(sampleWorld, site.x, site.z), showLabel = Math.hypot(site.x - player.x, site.z - player.z) <= 15;
       return <group key={site.id} position={[site.x, y, site.z]}>
         {site.kind === 'junction' ? <Signpost site={site} directions={site.connectedLocationIds.flatMap(id => { const place = atlas.locations.find(item => item.id === id); return place ? [{ name: place.name, x: place.x, z: place.z }] : []; })} onNavigate={onNavigate} showLabel={showLabel} />
-          : site.kind === 'rest' ? <RestSpot site={site} onNavigate={onNavigate} showLabel={showLabel} />
-            : site.kind === 'lookout' ? <Lookout site={site} onNavigate={onNavigate} showLabel={showLabel} />
-              : <BridgeRails site={site} onNavigate={onNavigate} showLabel={showLabel} />}
+          : site.kind === 'rest' ? <RestSpot site={site} rotation={awayFromRoad(atlas, site)} onNavigate={onNavigate} showLabel={showLabel} />
+            : site.kind === 'lookout' ? <Lookout site={site} rotation={awayFromRoad(atlas, site)} onNavigate={onNavigate} showLabel={showLabel} />
+              : <Bridge site={site} sampleWorld={sampleWorld} onNavigate={onNavigate} showLabel={showLabel} />}
       </group>;
     })}
   </group>;

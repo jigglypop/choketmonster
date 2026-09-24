@@ -15,6 +15,9 @@ export type ExplorationSite = WorldPoint & {
   biome: WorldSample['biome'];
   destination: WorldPoint;
   connectedLocationIds: readonly string[];
+  /** Bridges only: deck length along `yaw`. A pier has land only at its local -z end. */
+  span?: number;
+  pier?: boolean;
 };
 
 export type RouteEdgeMarker = WorldPoint & {
@@ -27,6 +30,14 @@ export type RouteEdgeMarker = WorldPoint & {
 export const THEME_BY_REGION: Record<WorldRegionId, ExplorationTheme> = {
   kanto: 'classic', johto: 'heritage', hoenn: 'volcanic', sinnoh: 'alpine', unova: 'metro',
   kalos: 'garden', alola: 'island', galar: 'rail', hisui: 'frontier', paldea: 'mosaic',
+};
+
+export const THEME_COLORS: Record<ExplorationTheme, { wood: string; accent: string; stone: string }> = {
+  classic: { wood: '#765534', accent: '#d94f45', stone: '#8f968d' }, heritage: { wood: '#5f4431', accent: '#a94b42', stone: '#817a70' },
+  volcanic: { wood: '#57463c', accent: '#e36b3e', stone: '#6e625d' }, alpine: { wood: '#6c5541', accent: '#8cb9cf', stone: '#8c989c' },
+  metro: { wood: '#4d5960', accent: '#e8b64b', stone: '#77858b' }, garden: { wood: '#74604b', accent: '#8e73ad', stone: '#aca28f' },
+  island: { wood: '#8a6039', accent: '#48a9a0', stone: '#ac9b78' }, rail: { wood: '#594c43', accent: '#b84d4d', stone: '#73777a' },
+  frontier: { wood: '#745b3c', accent: '#6e9470', stone: '#80796b' }, mosaic: { wood: '#75543e', accent: '#d38251', stone: '#99907d' },
 };
 
 type Segment = { id: string; from: KantoLocation; to: KantoLocation; dx: number; dz: number; length: number; yaw: number };
@@ -64,6 +75,22 @@ function labelFor(kind: ExplorationSiteKind, biome: WorldSample['biome']): strin
 
 const landmarkKinds = new Set<KantoLocationKind>(['forest', 'cave', 'sea', 'special']);
 
+/** Bridge decks overlap the bank by this much at every land end. */
+export const BRIDGE_ABUTMENT = 2.2;
+const BRIDGE_MIN_SPAN = 7, BRIDGE_MAX_WATER = 30, PIER_REACH = 11;
+
+/** Stretches of water along a road centreline, in metres from `from`. Short dry gaps are bridged over. */
+function waterRuns(sample: (x: number, z: number) => WorldSample, edge: Segment): Array<{ start: number; end: number }> {
+  const runs: Array<{ start: number; end: number }> = [];
+  for (let along = 0; along <= edge.length; along += .5) {
+    if (sample(edge.from.x + edge.dx * along / edge.length, edge.from.z + edge.dz * along / edge.length).biome !== 'lake') continue;
+    const last = runs.at(-1);
+    if (last && along - last.end <= 3) last.end = along;
+    else runs.push({ start: along, end: along });
+  }
+  return runs;
+}
+
 /** Deterministic, atlas-derived points of interest. They do not alter collision or progression. */
 export function buildExplorationSites(atlas: WorldAtlas, sampleWorld: (x: number, z: number) => WorldSample, badges: number): ExplorationSite[] {
   const available = Math.max(0, Number.isFinite(badges) ? badges : 0), edges = segments(atlas, available);
@@ -84,14 +111,30 @@ export function buildExplorationSites(atlas: WorldAtlas, sampleWorld: (x: number
   }
 
   edges.forEach((edge, index) => {
-    const seed = scenerySeed(`${atlas.id}:${edge.id}`), waterSamples = [.25, .5, .75].map(t => sampleWorld(edge.from.x + edge.dx * t, edge.from.z + edge.dz * t));
-    const crossesWater = edge.from.kind === 'sea' || edge.to.kind === 'sea' || waterSamples.some(sample => sample.biome === 'lake');
-    if (crossesWater) {
-      const t = waterSamples.findIndex(sample => sample.biome === 'lake');
-      const at = t < 0 ? .5 : [.25, .5, .75][t];
-      const x = edge.from.x + edge.dx * at, z = edge.from.z + edge.dz * at, terrain = sampleWorld(x, z);
-      if (!terrain.blocked) sites.push({ x, z, id: `bridge:${edge.id}`, kind: 'bridge', label: labelFor('bridge', terrain.biome), yaw: edge.yaw,
-        theme, biome: terrain.biome, destination: { x, z }, connectedLocationIds: [edge.from.id, edge.to.id] });
+    const seed = scenerySeed(`${atlas.id}:${edge.id}`), runs = waterRuns(sampleWorld, edge);
+    if (edge.from.kind === 'sea' || edge.to.kind === 'sea' || runs.length) {
+      // Short channels get a bank-to-bank bridge; open water gets a jetty from each shore. Mid-sea stretches stay open.
+      const spans: Array<{ from: number; to: number; pier: boolean }> = [];
+      for (const run of runs) {
+        const landBefore = run.start > .75, landAfter = run.end < edge.length - .75, width = run.end - run.start;
+        if (landBefore && landAfter && width <= BRIDGE_MAX_WATER) {
+          const pad = Math.max(BRIDGE_ABUTMENT, (BRIDGE_MIN_SPAN - width) / 2);
+          spans.push({ from: Math.max(0, run.start - pad), to: Math.min(edge.length, run.end + pad), pier: false });
+          continue;
+        }
+        const reach = Math.min(PIER_REACH, width - 1);
+        if (reach < 3) continue;
+        if (landBefore) spans.push({ from: Math.max(0, run.start - BRIDGE_ABUTMENT), to: run.start + reach, pier: true });
+        if (landAfter) spans.push({ from: Math.min(edge.length, run.end + BRIDGE_ABUTMENT), to: run.end - reach, pier: true });
+      }
+      spans.forEach((span, count) => {
+        const middle = (span.from + span.to) / 2, x = edge.from.x + edge.dx * middle / edge.length, z = edge.from.z + edge.dz * middle / edge.length;
+        const terrain = sampleWorld(x, z);
+        if (terrain.blocked) return;
+        sites.push({ x, z, id: `bridge:${edge.id}${count ? `:${count + 1}` : ''}`, kind: 'bridge', label: labelFor('bridge', terrain.biome),
+          yaw: span.to >= span.from ? edge.yaw : edge.yaw + Math.PI, theme, biome: terrain.biome, destination: { x, z },
+          connectedLocationIds: [edge.from.id, edge.to.id], span: Math.abs(span.to - span.from), pier: span.pier });
+      });
       return;
     }
     if (index % 3 !== seed % 3) return;

@@ -188,7 +188,7 @@ describe('cave simulation scenes', () => {
     Object.assign(game.campaign!, { johtoBadges: cleared.badges, johtoLeague: 5, kantoLeague: 5,
       expansion: Object.fromEntries(['hoenn', 'sinnoh', 'unova', 'kalos', 'alola', 'galar', 'hisui', 'paldea'].map(region => [region, structuredClone(cleared)])) });
     const later = CAVE_SCENES.filter(scene => scene.regionId !== 'kanto' && scene.regionId !== 'johto');
-    expect(new Set(later.map(scene => scene.regionId))).toEqual(new Set(['hoenn', 'sinnoh', 'unova', 'kalos', 'alola', 'hisui', 'paldea']));
+    expect(new Set(later.map(scene => scene.regionId))).toEqual(new Set(['hoenn', 'sinnoh', 'unova', 'kalos', 'alola', 'galar', 'hisui', 'paldea']));
     for (const [index, cave] of later.entries()) {
       const world = new OpenWorldSimulation(graph, game, 7400 + index, undefined, policy);
       world.changeRegion(cave.regionId as Parameters<typeof world.changeRegion>[0]);
@@ -197,7 +197,8 @@ describe('cave simulation scenes', () => {
       const wilds = world.entities.filter(entity => entity.kind === 'wild');
       expect(wilds, cave.sceneId).toHaveLength(cave.wild ? 15 : 0);
       const tables = new Set(expansionEncounterSpecies(cave.regionId as ExpansionRegion, cave.encounterLocationId, 8, world.dayPeriod, 'rock', 20, { areas: cave.encounterAreas, supplemental: cave.supplemental }));
-      expect(wilds.every(entity => tables.has(entity.speciesId) || expansionSupplementalRules(cave.regionId as ExpansionRegion).some(rule => rule.speciesId === entity.speciesId)), cave.sceneId).toBe(true);
+      // A lair floor also holds its waiting legendary.
+      expect(wilds.every(entity => tables.has(entity.speciesId) || cave.legendary?.includes(entity.speciesId) || expansionSupplementalRules(cave.regionId as ExpansionRegion).some(rule => rule.speciesId === entity.speciesId)), cave.sceneId).toBe(true);
       const restored = new OpenWorldSimulation(graph, game, world.seed, world.snapshot(), policy);
       expect(restored.sceneId).toBe(cave.sceneId);
       expect(restored.movePlayer({ ...doorway.interior, heading: 0 })).toBe(true);
@@ -226,4 +227,23 @@ describe('cave simulation scenes', () => {
       expect(restored.rosterStatus().total, cave.sceneId).toBe(15);
     }
   },120_000);
+
+  it('puts a lair legendary out first after eight badges, one of a kind and never again once caught', () => {
+    const lair = getCaveScene('cave:kanto:power-plant')!;
+    expect(lair.legendary).toEqual([145]);
+    const arrive = (badges: number, seed: number) => {
+      const game = createGame(1, `legendary-lair-${badges}`);
+      game.player.badges = badges; game.defeatedGyms = Array.from({ length: badges }, (_, index) => index + 1);
+      const world = new OpenWorldSimulation(graph, game, seed, undefined, policy);
+      world.sceneId = lair.sceneId; (world as any).resetScenePopulation(lair.portals[0].interiorArrival);
+      return { game, world, zapdos: () => world.entities.filter(entity => entity.kind === 'wild' && entity.speciesId === 145) };
+    };
+    expect(arrive(7, 7191).zapdos()).toHaveLength(0);
+    const { game, world, zapdos } = arrive(8, 7192);
+    expect(zapdos()).toHaveLength(1);
+    expect(zapdos()[0].level).toBeGreaterThanOrEqual(50);
+    game.versionCaught!.red.push(145);
+    (world as any).resetScenePopulation(lair.portals[0].interiorArrival);
+    expect(zapdos()).toHaveLength(0);
+  });
 });

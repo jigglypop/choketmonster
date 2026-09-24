@@ -6,6 +6,7 @@ import {
 import { DUNGEON_PLANS, dungeonPlanForScene, dungeonSceneIdsByRegion } from '../src/openworld/dungeons';
 import { findWorldPath } from '../src/openworld/navigation';
 import dungeonSceneIds from '../src/data/dungeon-scenes.json';
+import { isLegendarySpecies } from '../src/game/legendary';
 import {
   WORLD_MAX, WORLD_MIN, migrateSurfaceSnapshotCoordinates, surfaceSceneId,
 } from '../src/openworld/world-space';
@@ -207,5 +208,14 @@ describe('multi-floor dungeons', () => {
   it('shares the allowed dungeon scene ids with the save server', () => {
     expect(dungeonSceneIds).toEqual(dungeonSceneIdsByRegion());
     for (const scene of CAVE_SCENES) expect(dungeonPlanForScene(scene.sceneId)?.plan.id).toBe(scene.dungeonId);
+  });
+
+  it('keeps each legendary lair on one wild floor that lists only legendary or mythical Pokémon', () => {
+    for (const plan of DUNGEON_PLANS.filter(item => item.legendary?.length)) {
+      const lairs = CAVE_SCENES.filter(scene => scene.regionId === plan.regionId && scene.dungeonId === plan.id && scene.legendary);
+      expect(lairs, plan.id).toHaveLength(1);
+      expect(lairs[0].wild, plan.id).toBe(true);
+      for (const speciesId of plan.legendary!) expect(isLegendarySpecies(speciesId), `${plan.id}:${speciesId}`).toBe(true);
+    }
   });
 });

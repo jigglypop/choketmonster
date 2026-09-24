@@ -1,5 +1,6 @@
 import { Brain, validateGraph, type BrainState, type Graph } from '../core/brain';
 import { addEvolutionSteps } from '../game/evolution-progress';
+import { isLegendarySpecies } from '../game/legendary';
 import { advanceEggProgress } from '../game/breeding';
 import { Random, clamp } from '../core/random';
 import { POKEMON, getMove, getSpecies } from '../data/pokemon';
@@ -108,7 +109,6 @@ const AUTO_PICKUP_DETOUR = 18;
 const GYM_DOOR_REACH = 6;
 /** Walking onto a dungeon entrance, exit or stairs within this distance uses it. */
 export const PORTAL_WALK_RADIUS = 1.1;
-const UNIQUE_SPECIES = new Set([144, 145, 146, 150, 151]);
 type RoadsideDrop = RoadsideItem & { quantity: 1 };
 const DIRECTIONS = [{ x: 0, z: -1 }, { x: 1, z: 0 }, { x: 0, z: 1 }, { x: -1, z: 0 }] as const;
 const finite = (value: number) => typeof value === 'number' && Number.isFinite(value);
@@ -440,6 +440,8 @@ export class OpenWorldSimulation {
       }
       if (legacyExpansionAtlas && travelReason) this.migrateUnavailableRegion(this.game.campaign?.startRegion === 'johto' ? 'johto' : 'kanto');
       this.migrateUnavailableWildSpecies(needsRedEncounterMigration(checkpoint, this.game.adventureVersion));
+      // Story gates added after a save was made can close the ground the player stands on.
+      this.leaveLockedGround();
       // Older and interrupted checkpoints can be short of the current minimum.
       // Keep every validated saved individual and deterministically fill only the missing slots.
       this.fillRoster(12);
@@ -494,10 +496,20 @@ export class OpenWorldSimulation {
 
   /** With `leaveWild`, a wild battle in progress ends as an escape before the jump. */
   teleportToTown(townId: string, leaveWild = false): boolean {
-    const battle = this.game.battle;
-    if ((battle && !(leaveWild && battle.kind === 'wild')) || this.game.captureOffer || !this.visitedTownIds.includes(townId)) return false;
+    if (!this.visitedTownIds.includes(townId)) return false;
     const arrival = this.atlas.travelPoint(townId, this.regionalBadges);
-    if (!arrival) return false;
+    return Boolean(arrival) && this.jumpTo(arrival!, leaveWild);
+  }
+
+  /** Jumps to walkable ground nearest a map point on the surface; the route gates for the current badges still apply. */
+  teleportToPoint(point: { x: number; z: number }, leaveWild = false): boolean {
+    const arrival = this.atlas.nearestWalkable(point.x, point.z, this.regionalBadges);
+    return Boolean(arrival) && this.jumpTo(arrival!, leaveWild);
+  }
+
+  private jumpTo(arrival: { x: number; z: number }, leaveWild: boolean): boolean {
+    const battle = this.game.battle;
+    if ((battle && !(leaveWild && battle.kind === 'wild')) || this.game.captureOffer) return false;
     if (battle) {
       leaveWildBattle(this.game);
       this.battleWildId = undefined; this.selectionPinned = false; this.trackingSelected = false; this.resetTrainerTurn();
@@ -728,15 +740,21 @@ export class OpenWorldSimulation {
     return true;
   }
 
-  /** Inside a hall: step onto the challenger's mark and battle. Gym leaders fight automatically; league trainers by hand. */
+  /** Inside a hall: walk out to the court centre and battle. Gym leaders fight automatically; league trainers by hand. */
   challengeGymHall(): boolean {
     const gym = getGymScene(this.sceneId);
     if (!gym || this.game.battle || this.game.captureOffer) return false;
     const previous = this.player;
-    this.placeInsideScene(gym.challenger, 2);
+    this.placeInsideScene(gym.battleSpot, 2);
     if (gym.kind === 'league' ? this.challengeLocalTrainer() : this.challengeLocalGym()) { if (gym.kind === 'gym') this.controlMode = 'auto'; return true; }
     this.placeInsideScene(previous);
     return false;
+  }
+
+  /** Between league trainers the partner steps back to the challenger's mark, off the court, so the next battle waits for a step. */
+  returnToChallengerMark(): void {
+    const gym = getGymScene(this.sceneId);
+    if (gym && !this.game.battle && !this.game.captureOffer) this.placeInsideScene(gym.challenger, 2);
   }
 
   /** The league trainer waiting in this hall, if any. */
@@ -1121,31 +1139,49 @@ export class OpenWorldSimulation {
     companion.speciesId = lead.speciesId; companion.level = lead.level;
   }
 
+  /** Legendary and mythical Pokémon are one of a kind: taken once caught, or while one already roams or waits to respawn here. */
+  private uniqueTaken(speciesId: number): boolean {
+    const version = this.game.adventureVersion ?? 'red', caught = this.game.versionCaught?.[version] ?? this.game.dex.caught;
+    return caught.includes(speciesId) || this.entities.some(entity => entity.kind === 'wild' && entity.speciesId === speciesId)
+      || this.respawnQueue.some(pending => pending.speciesId === speciesId);
+  }
+
+  /** The next legendary waiting on this lair floor once the region's eight badges are held, if any is still free. */
+  private waitingLegend(): number | undefined {
+    const species = getCaveScene(this.sceneId)?.legendary;
+    if (!species?.length || this.regionalBadges < 8) return undefined;
+    return species.find(speciesId => !this.uniqueTaken(speciesId));
+  }
+
   private encounterAt(position: { x: number; z: number }): { speciesId: number; level: number } {
     const location = this.locationAt(position.x, position.z), floor = this.encounterFloor;
     const band = regionalWildLevels(this.game, this.regionId, location), shift = getCaveScene(this.sceneId)?.levelShift ?? 0;
     // Deeper floors of a dungeon hold slightly stronger Pokémon.
     const levels = { minLevel: Math.min(100, band.minLevel + shift), maxLevel: Math.min(100, band.maxLevel + shift) };
+    // A lair's legendary is the first to appear on its floor, at Lv.50 or the floor's top level.
+    const legend = this.waitingLegend();
+    if (legend !== undefined) return { speciesId: legend, level: Math.min(100, Math.max(50, levels.maxLevel)) };
     const encounterRegion = this.regionId === 'johto' ? 'johto' : 'kanto';
     const biome = this.sampleWorld(position.x, position.z).biome;
-    const encounter = isExpansionRegion(this.regionId)
-      ? chooseExpansionEncounter(this.regionId, location.id, this.dayPeriod, biome, this.regionalBadges, this.spawnSerial, () => this.rng.next(), { min: levels.minLevel, max: levels.maxLevel }, floor)
-      : chooseRegionalEncounter(encounterRegion, location.id, this.dayPeriod, biome, this.regionalBadges, this.spawnSerial, () => this.rng.next(), { min: levels.minLevel, max: levels.maxLevel }, floor);
-    const min = Math.max(1, encounter.origin==='source'?levels.minLevel:encounter.minLevel), max = Math.max(min, encounter.origin==='source'?levels.maxLevel:encounter.maxLevel);
+    const choose = (serial: number) => isExpansionRegion(this.regionId)
+      ? chooseExpansionEncounter(this.regionId, location.id, this.dayPeriod, biome, this.regionalBadges, serial, () => this.rng.next(), { min: levels.minLevel, max: levels.maxLevel }, floor)
+      : chooseRegionalEncounter(encounterRegion, location.id, this.dayPeriod, biome, this.regionalBadges, serial, () => this.rng.next(), { min: levels.minLevel, max: levels.maxLevel }, floor);
+    let encounter = choose(this.spawnSerial);
+    // A legendary already caught or present is rerolled from the ordinary slots (a serial off the rare-slot cadence).
+    for (let attempt = 1; attempt <= 4 && isLegendarySpecies(encounter.speciesId) && this.uniqueTaken(encounter.speciesId); attempt++) encounter = choose(this.spawnSerial * 20 + attempt);
+    // Encounters carry their runtime level range, never below the species' evolution floor.
+    const min = Math.max(1, encounter.minLevel), max = Math.max(min, encounter.maxLevel);
     return { speciesId: encounter.speciesId, level: min + this.rng.int(max - min + 1) };
   }
 
   private spawnPool(locationId: string, biome?: string): number[] {
-    const version = this.game.adventureVersion ?? 'red';
-    const caught = this.game.versionCaught?.[version] ?? this.game.dex.caught;
     const encounterRegion = this.regionId === 'johto' ? 'johto' : 'kanto', floor = this.encounterFloor;
     if (!this.sceneHasWilds) return [];
     const candidates = isExpansionRegion(this.regionId) ? expansionEncounterSpecies(this.regionId, locationId, this.regionalBadges, this.dayPeriod, biome, this.spawnSerial, floor)
       : biome === undefined ? regionalEncounters(locationId, this.regionalBadges, this.regionId)
       : [...regionalRuntimePools(encounterRegion, locationId, this.dayPeriod, biome, floor?.areas).flatMap(pool => pool.slots.map(slot => slot.speciesId)),
         ...(this.spawnSerial % 20 === 0 ? regionalSupplementalRules(encounterRegion, locationId, biome, this.regionalBadges, floor).map(rule => rule.speciesId) : [])];
-    return [...new Set(candidates)].filter(speciesId => !UNIQUE_SPECIES.has(speciesId)
-      || (!caught.includes(speciesId) && !this.entities.some(entity => entity.kind === 'wild' && entity.speciesId === speciesId) && !this.respawnQueue.some(pending => pending.speciesId === speciesId)));
+    return [...new Set(candidates)].filter(speciesId => !isLegendarySpecies(speciesId) || !this.uniqueTaken(speciesId));
   }
 
   changeVersion(version: string): void {
@@ -1501,6 +1537,17 @@ export class OpenWorldSimulation {
     this.visitedTownIds = migrateVisits(this.visitedTownIds);
     this.visitedTownsByRegion[this.regionId] = migrateVisits(this.visitedTownsByRegion[this.regionId] ?? this.visitedTownIds);
     this.migrateKantoBoundaries();
+  }
+
+  /** On the surface, a player standing where the current badges no longer open steps to the nearest open ground. */
+  private leaveLockedGround(): void {
+    if (!this.onSurfaceMap || this.game.battle || this.game.captureOffer) return;
+    if (this.atlas.locationAt(this.player.x, this.player.z).requiredBadges <= this.regionalBadges) return;
+    const arrival = this.atlas.nearestWalkable(this.player.x, this.player.z, this.regionalBadges) ?? this.atlas.start;
+    const companion = this.entities.find(entity => entity.kind === 'companion');
+    this.player = { ...this.player, x: arrival.x, z: arrival.z };
+    if (companion) { companion.x = arrival.x; companion.z = arrival.z; companion.target = undefined; }
+    this.spawnAnchor = { ...this.player };
   }
 
   private migrateKantoBoundaries(): void {

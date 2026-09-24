@@ -8,6 +8,7 @@ import { ALOLA_GYMS } from '../openworld/alola';
 import { GALAR_GYMS } from '../openworld/galar';
 import { HISUI_GYMS } from '../openworld/hisui';
 import { PALDEA_GYMS } from '../openworld/paldea';
+import { baseWildBand } from '../data/wild-levels';
 
 export type ExpansionCampaignRegion = 'hoenn' | 'sinnoh' | 'unova' | 'kalos' | 'alola' | 'galar' | 'hisui' | 'paldea';
 export type CampaignRegion = 'johto' | 'kanto' | ExpansionCampaignRegion;
@@ -37,17 +38,18 @@ export const JOHTO_CAMPAIGN_GYMS: readonly KantoGym[] = [
   { locationId: 'blackthorn', badge: 8, badgeName: '라이징배지', name: '이향', speciesId: 230, level: 40 },
 ];
 
+/** League parties. Kanto uses Pokémon Red/Blue levels (53-65), which follow its Lv.50 eighth gym. */
 export const CAMPAIGN_TRAINERS: readonly CampaignTrainer[] = [
   { id: 'johto-will', name: '사천왕 일목', region: 'johto', locationId: 'tohjo-falls', kind: 'elite', team: [[178,42],[124,42],[103,43],[80,43],[178,44]] },
   { id: 'johto-koga', name: '사천왕 독수', region: 'johto', locationId: 'tohjo-falls', kind: 'elite', team: [[168,43],[49,43],[205,44],[89,44],[169,45]] },
   { id: 'johto-bruno', name: '사천왕 시바', region: 'johto', locationId: 'tohjo-falls', kind: 'elite', team: [[237,44],[106,44],[107,45],[95,45],[68,46]] },
   { id: 'johto-karen', name: '사천왕 카렌', region: 'johto', locationId: 'tohjo-falls', kind: 'elite', team: [[197,45],[45,45],[94,46],[198,46],[229,47]] },
   { id: 'johto-lance', name: '챔피언 목호', region: 'johto', locationId: 'tohjo-falls', kind: 'champion', team: [[130,47],[149,48],[6,48],[142,49],[149,49],[149,50]] },
-  { id: 'kanto-lorelei', name: '사천왕 칸나', region: 'kanto', locationId: 'indigo-plateau', kind: 'elite', team: [[87,70],[91,70],[80,71],[124,71],[131,72]] },
-  { id: 'kanto-bruno', name: '사천왕 시바', region: 'kanto', locationId: 'indigo-plateau', kind: 'elite', team: [[95,71],[107,71],[106,72],[95,72],[68,73]] },
-  { id: 'kanto-agatha', name: '사천왕 국화', region: 'kanto', locationId: 'indigo-plateau', kind: 'elite', team: [[94,72],[42,72],[93,73],[24,73],[94,74]] },
-  { id: 'kanto-lance', name: '사천왕 목호', region: 'kanto', locationId: 'indigo-plateau', kind: 'elite', team: [[130,73],[148,73],[148,74],[142,74],[149,75]] },
-  { id: 'kanto-blue', name: '챔피언 그린', region: 'kanto', locationId: 'indigo-plateau', kind: 'champion', team: [[18,75],[65,75],[112,76],[103,76],[130,77],[6,78]] },
+  { id: 'kanto-lorelei', name: '사천왕 칸나', region: 'kanto', locationId: 'indigo-plateau', kind: 'elite', team: [[87,54],[91,53],[80,54],[124,56],[131,56]] },
+  { id: 'kanto-bruno', name: '사천왕 시바', region: 'kanto', locationId: 'indigo-plateau', kind: 'elite', team: [[95,53],[107,55],[106,55],[95,56],[68,58]] },
+  { id: 'kanto-agatha', name: '사천왕 국화', region: 'kanto', locationId: 'indigo-plateau', kind: 'elite', team: [[94,56],[42,56],[93,55],[24,58],[94,60]] },
+  { id: 'kanto-lance', name: '사천왕 목호', region: 'kanto', locationId: 'indigo-plateau', kind: 'elite', team: [[130,58],[148,56],[148,56],[142,60],[149,62]] },
+  { id: 'kanto-blue', name: '챔피언 그린', region: 'kanto', locationId: 'indigo-plateau', kind: 'champion', team: [[18,61],[65,59],[112,61],[103,61],[130,63],[6,65]] },
   { id: 'red', name: '레드', region: 'johto', locationId: 'mt-silver', kind: 'red', team: [[25,88],[196,82],[143,84],[3,84],[6,84],[9,84]] },
   { id: 'hoenn-sidney', name: '사천왕 혁진', region: 'hoenn', locationId: 'ever-grande-city', kind: 'elite', team: [[262,46],[275,48],[332,48],[319,48],[359,49]] },
   { id: 'hoenn-phoebe', name: '사천왕 회연', region: 'hoenn', locationId: 'ever-grande-city', kind: 'elite', team: [[356,48],[354,49],[302,50],[354,49],[356,51]] },
@@ -190,21 +192,8 @@ export function validateExpansionCampaign(game: GameState): void {
   }
 }
 
-// Local encounter identities and weights stay fixed. These level bands are game rules.
-const johtoBands: Record<string, readonly [number, number]> = {
-  'route-32': [8,12], 'union-cave': [10,14], 'route-33': [10,14], 'slowpoke-well': [11,15],
-  'ilex-forest': [14,18], 'route-34': [16,20], 'route-35': [18,23], 'national-park': [18,23],
-  'route-36': [20,24], 'route-37': [22,26], 'burned-tower': [23,28], 'bell-tower': [28,34],
-  'route-38': [26,30], 'route-39': [27,31], 'route-40': [28,32], 'route-41': [29,33],
-  'whirl-islands': [30,35], 'route-42-west': [30,34], 'mt-mortar': [31,36], 'route-42-east': [32,36],
-  'route-43': [33,37], 'lake-of-rage': [34,38], 'route-44': [35,39], 'ice-path': [36,40],
-  'route-45': [37,41], 'dark-cave-east': [33,38], 'dragons-den': [39,43],
-  'route-27': [40,45], 'tohjo-falls': [42,47],
-};
+// Local encounter identities and weights stay fixed. The level bands are game rules (JOHTO_WILD_BANDS).
 export function regionalWildLevels(game: GameState, region: string, location: KantoLocation): { minLevel: number; maxLevel: number } {
   if (region === 'johto' && location.id === 'mt-silver' && canChallengeRed(game)) return { minLevel: 72, maxLevel: 80 };
-  if (region === 'johto' && johtoBands[location.id]) {
-    const [minLevel, maxLevel] = johtoBands[location.id]; return { minLevel, maxLevel };
-  }
-  return { minLevel: location.minLevel, maxLevel: location.maxLevel };
+  return baseWildBand(region, location);
 }

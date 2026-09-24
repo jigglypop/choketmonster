@@ -59,6 +59,7 @@ export const LATE_REGION_ENCOUNTER_POOLS: Readonly<Record<LateRegion, readonly A
     ['casseroya-lake', 'surf', 40, 55, [976, 977, 978, 979, 980]],
     ['south-province-area-six', 'walk', 42, 56, [967, 968, 969, 970, 971]],
     ['area-zero', 'walk', 55, 70, [984, 985, 986, 987, 988]],
-    ['paldea-pokemon-league', 'walk', 58, 72, [1005, 1006, 1007, 1008, 1009]],
+    // Koraidon and Miraidon wait in the Area Zero lair instead of roaming the league grounds.
+    ['paldea-pokemon-league', 'walk', 58, 72, [1005, 1006, 1009, 1010, 989]],
   ]),
 };

@@ -1,0 +1,48 @@
+/* Loaded last. Region chat on one type scale: text and meta sizes only. It closes from its ×
+   into a round icon with the unread count; on phones that icon shares the bottom row with the partner bar. */
+.adventure .social-dock {
+  --chat-text: calc(14px * var(--ui-font-scale, 1));
+  --chat-meta: calc(12px * var(--ui-font-scale, 1));
+  font-size: var(--chat-text);
+  line-height: 1.5;
+}
+.adventure .social-dock .social-toolbar { display: flex; align-items: center; gap: 8px; height: auto; min-height: 32px; margin: 0 0 6px; flex-wrap: nowrap; }
+.adventure .social-dock .social-channel b { font-size: var(--chat-text); font-weight: 700; }
+.adventure .social-dock .social-channel small { font-size: var(--chat-meta); }
+.adventure .social-dock .social-players > summary { display: flex; align-items: center; min-height: 28px; padding: 3px 10px; border-radius: 99px; font-size: var(--chat-meta); }
+.adventure .social-dock #world-chat-collapse {
+  display: grid; place-items: center; flex: none;
+  width: 32px; height: 32px; min-height: 0; padding: 0;
+  border: 0; border-radius: 50%; background: #ffffff14; color: var(--ui-hud-text);
+  font-size: 20px; line-height: 1;
+}
+.adventure .social-dock #world-chat-collapse:hover { background: #ffffff26; }
+.adventure .social-dock #world-chat-log p { padding: 2px 0; line-height: 1.5; }
+.adventure .social-dock #world-chat-log :is(p, b, span) { font-size: var(--chat-text); }
+.adventure .social-dock #world-chat-input { font-size: var(--chat-text); }
+.adventure .social-dock #world-chat-input::placeholder { font-size: var(--chat-text); }
+.adventure .social-dock :is(#world-chat-log .world-chat-empty, #world-chat-login, #world-chat-error, #world-chat-latest, .social-identity, .social-identity span, .social-player-popover > small, #world-player-list small, #world-trainer-track small) { font-size: var(--chat-meta); }
+.adventure .social-dock :is(#world-player-list b, #world-trainer-track b) { font-size: var(--chat-text); }
+
+.adventure .social-dock.chat-collapsed { width: auto; padding: 0; border-radius: 50%; }
+.adventure .social-dock.chat-collapsed > :not(.social-toolbar),
+.adventure .social-dock.chat-collapsed .social-toolbar > :not(#world-chat-collapse) { display: none; }
+.adventure .social-dock.chat-collapsed .social-toolbar { display: block; min-height: 0; margin: 0; }
+.adventure .social-dock.chat-collapsed #world-chat-collapse { position: relative; width: 44px; height: 44px; background: transparent; }
+.adventure .social-dock.chat-collapsed .chat-unread {
+  position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box;
+  border-radius: 9px; background: #e5484d; color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center;
+}
+
+@media (max-width: 900px) {
+  /* The input keeps 16px so iOS does not zoom the field on focus; messages sit one step below it. */
+  .adventure .social-dock { --chat-text: calc(15px * var(--ui-font-scale, 1)); }
+  .adventure .social-dock #world-chat-input, .adventure .social-dock #world-chat-input::placeholder { font-size: max(16px, var(--chat-text)); }
+
+  /* Bottom: the selected wild card and an open chat above one row of partner bar and chat icon. */
+  .adventure .world-lower-hud { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "target target" "chat chat" "partner icon"; gap: 0 8px; align-items: start; }
+  .adventure .world-lower-hud > .world-target { grid-area: target; margin-bottom: 6px; }
+  .adventure .world-lower-hud > .social-dock { grid-area: chat; margin-bottom: 6px; }
+  .adventure .world-lower-hud > .world-battle-hud { grid-area: partner; }
+  .adventure .world-lower-hud > .social-dock.chat-collapsed { grid-area: icon; width: auto !important; margin: 0; padding: 0; }
+}

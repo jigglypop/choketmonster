@@ -5,6 +5,7 @@ import { defaultView, packSave } from '../../src/game/storage';
 import { OpenWorldSimulation } from '../../src/openworld/simulation';
 import type { Graph } from '../../src/core/brain';
 import { getSpecies } from '../../src/data/pokemon';
+import { openExplorePanel } from './helpers/explore-panel';
 
 test.setTimeout(240_000);
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
@@ -33,7 +34,8 @@ async function prepare(context: BrowserContext, index: number) {
   const page = await context.newPage();
   await page.goto(base);
   await expect(page.locator('#ow-host')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
-  await expect(page.locator('#world-trade-open')).toBeVisible({ timeout: 30_000 });
+  // Trade lives in the exploration settings, beside the pause button.
+  await openExplorePanel(page); await expect(page.locator('#world-trade-open')).toBeVisible({ timeout: 30_000 });
   await expect(page.locator('#ow-host')).toHaveAttribute('data-paused', 'true');
   return { page, user, game, boxed };
 }
@@ -94,7 +96,7 @@ test('two authenticated trainers trade colliding IDs and money, preserve a full 
     const expected = await brainStep(left.page, left.boxed, left.game.player.team[0], 2);
     const actual = await brainStep(right.page, received, left.game.player.team[0], 2);
     expect(actual).toEqual(expected);
-    await right.page.reload(); await expect(right.page.locator('#world-trade-open')).toBeVisible({ timeout: 30_000 });
+    await right.page.reload(); await openExplorePanel(right.page); await expect(right.page.locator('#world-trade-open')).toBeVisible({ timeout: 30_000 });
     await right.page.locator('#world-trade-open').click();
     await expect(right.page.locator('[data-create]')).toBeVisible({ timeout: 20_000 });
     await right.page.locator('[data-create]').click();

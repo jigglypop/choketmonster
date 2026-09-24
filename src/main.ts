@@ -46,6 +46,7 @@ import './ui/hud-layout.css';
 import './ui/glass.css';
 import './ui/auth-glass.css';
 import './ui/hud-card.css';
+import './ui/hud-social.css';
 import { openMachineDialog } from './ui/machine-dialog';
 import { statusLabel } from './game/status-labels';
 import { mountInterfaceSettings } from './ui/settings';
@@ -265,7 +266,8 @@ function prepareWorld() {
     learning: () => view.learning, setLearning: value => { view.learning = value; }, notify, trade: () => void tradePanel.open(), openAccount: () => accountPanel?.open(),
     editMoves: instanceId => { selectedMonsterId = instanceId; tab = 'team'; render(); $('#team-detail').scrollIntoView({ block: 'start', behavior: 'smooth' }); },
     changed: immediate => { shellStats(); if (immediate) return saveNow(false, true); queueSave(); } });
-  worldPanel.paused = view.openWorldPaused ?? false;
+  // A saved pause is often a transient one (tab switch, trade, save); exploring always resumes on load.
+  worldPanel.paused = false;
 }
 function render() {
   syncMusicScene();

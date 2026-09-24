@@ -39,8 +39,9 @@ export function showGymVictory(victory: GymVictory, world = true): Promise<void>
   }
   const unlocked = world ? atlas.gates.filter(gate => gate.requiredBadges === victory.badge) : [];
   dialog.querySelector<HTMLElement>('.gym-victory-unlocks')!.hidden = !unlocked.length;
-  for (const gate of unlocked) {
-    const item = document.createElement('li'); item.textContent = `${locationName(gate.from)} → ${locationName(gate.to)}`;
+  // One road can carry several boundary signs; list each opened road once.
+  for (const road of new Set(unlocked.map(gate => `${locationName(gate.from)} → ${locationName(gate.to)}`))) {
+    const item = document.createElement('li'); item.textContent = road;
     dialog.querySelector('ul')!.append(item);
   }
   dialog.querySelector('.gym-victory-next')!.textContent = !world

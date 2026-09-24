@@ -31,7 +31,7 @@ import { playGameSound } from '../audio';
 import { currentAccount } from '../game/account';
 import { WORLD_MIN, WORLD_MAX } from './world-space';
 import { getCaveScene, cavePortalAtSurface, cavePortalAtInterior, caveStairsAt, dungeonEntrance } from './caves';
-import { getGymScene, gymSceneId, LEAGUE_LOCATION_IDS, leagueSceneId, onGymCourt, type GymScene } from './gym-scenes';
+import { getGymScene, gymSceneId, HALL_BATTLE_GAP, LEAGUE_LOCATION_IDS, leagueSceneId, onGymCourt, type GymScene } from './gym-scenes';
 import { gymTeam } from '../game/gym-teams';
 import { technicalMachines } from '../game/technical-machines';
 import { nextDestinationGuide, regionalItinerary, type DestinationGuide } from './next-destination';
@@ -44,6 +44,7 @@ const types: Record<string, string> = { normal: '노말', fire: '불꽃', water:
 const escape = (text: unknown) => String(text).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const pokemonDisplayHeight = (speciesId: number) => pokemonWorldDisplayHeight(getSpecies(speciesId).heightMeters);
 const MANUAL_IDLE_SECONDS = .25;
+const CHAT_ICON = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H10l-4.5 3.5V16H4z"/></svg>';
 type Options = { game: GameState; graph: Graph; policy: FieldPolicy; checkpoint?: OpenWorldSnapshot; learning(): boolean; setLearning(value: boolean): void; musicChanged?(): void; editMoves?(instanceId: string): void; trade?(): void; openAccount?(): void; notify(message: string, error?: boolean): void; changed(immediate?: boolean): void | Promise<void> };
 
 export class OpenWorldPanel {
@@ -127,6 +128,7 @@ export class OpenWorldPanel {
     if (event.code === 'Space') { event.preventDefault(); (document.activeElement as HTMLElement | null)?.blur(); this.button('#world-pause').click(); }
   };
   paused = false;
+  private pausedByRenderer = false;
 
   constructor(private readonly options: Options) {
     const seed = options.checkpoint?.seed ?? [...options.game.seed].reduce((value, c) => (Math.imul(value, 31) + c.charCodeAt(0)) >>> 0, 517);
@@ -144,23 +146,22 @@ export class OpenWorldPanel {
       <div id="ow-host"></div>
       <section id="world-recovery" class="world-recovery" aria-label="탐험 상태" hidden><p id="world-recovery-message" aria-live="polite"></p><div><button id="world-resume">계속 탐험</button><button id="world-model-retry" hidden>모델 다시 불러오기</button></div></section>
       <section class="world-hud-card" aria-label="탐험">
-        <button id="world-next-guide" class="world-next-guide" aria-label="다음 목적지 길안내" aria-expanded="false"></button>
-        <aside class="world-radar" data-size="${this.minimapSize}"><button id="world-map-open" aria-label="지역 전체 지도 열기"><span class="world-minimap-frame"><canvas id="world-minimap" width="180" height="180" aria-label="카메라 방향으로 회전하는 월드 지도"></canvas><b id="world-minimap-heading" aria-hidden="true">북</b></span></button><div class="world-minimap-controls" role="group" aria-label="미니맵 크기"><button id="world-minimap-smaller" type="button" aria-label="미니맵 축소" ${this.minimapSize === 'small' ? 'disabled' : ''}>−</button><span id="world-minimap-size">${this.minimapSize === 'small' ? '작게' : this.minimapSize === 'large' ? '크게' : '보통'}</span><button id="world-minimap-larger" type="button" aria-label="미니맵 확대" ${this.minimapSize === 'large' ? 'disabled' : ''}>＋</button></div><span id="world-position"></span><small id="world-map-caption">지역 지도 ↗</small><details class="world-bag" id="world-bag"><summary aria-label="도구 목록"><span>도구</span><b id="world-bag-count">0</b></summary><div class="world-bag-panel" id="world-bag-content"></div></details></aside>
         <details class="world-explore-panel"><summary class="world-explore-toggle"><div><strong id="world-location-short">성도</strong><small id="world-explore-short">성도</small></div><i>⌄</i></summary><div class="world-explore-scroll">
-        <div class="world-tools"><button id="world-pause">Ⅱ 일시 정지</button></div>
+        <div class="world-tools"><button id="world-pause">Ⅱ 일시 정지</button><button id="world-trade-open" title="포켓몬 교환 · 게임 머니 거래">교환</button></div>
         <button id="world-trainer-open" class="world-trainer-open">트레이너 배틀</button>
         <fieldset class="world-automation"><legend>자동 설정</legend><label><input id="world-auto-catch" type="checkbox" checked><span>자동 포획</span></label><label title="건강한 팀원 모두 같은 경험치"><input id="world-exp-share" type="checkbox" checked><span>팀 경험치 공유</span></label><label><input id="world-learning" type="checkbox" checked><span id="world-learning-label">기술 학습</span></label></fieldset>
-        <div class="world-control-mode" role="group" aria-label="조작 모드"><div class="world-mode-buttons"><button id="world-mode-auto">자동</button><button id="world-mode-manual">수동</button></div><div class="world-control-copy"><strong id="world-control-title"></strong><small id="world-control-help"></small></div></div>
+        <div class="world-control-mode"><div class="world-control-copy"><strong id="world-control-title"></strong><small id="world-control-help"></small></div></div>
         <div class="world-gym" id="world-gym"></div>
         </div></details>
+        <button id="world-next-guide" class="world-next-guide" aria-label="다음 목적지 길안내" aria-expanded="false"></button>
       </section>
-      <button id="world-heal" class="world-heal">캠프 회복</button>
+      <aside class="world-radar" data-size="${this.minimapSize}"><button id="world-map-open" aria-label="지역 전체 지도 열기"><span class="world-minimap-frame"><canvas id="world-minimap" width="180" height="180" aria-label="카메라 방향으로 회전하는 월드 지도"></canvas><b id="world-minimap-heading" aria-hidden="true">북</b></span></button><div class="world-minimap-controls" role="group" aria-label="미니맵 크기"><button id="world-minimap-smaller" type="button" aria-label="미니맵 축소" ${this.minimapSize === 'small' ? 'disabled' : ''}>−</button><span id="world-minimap-size">${this.minimapSize === 'small' ? '작게' : this.minimapSize === 'large' ? '크게' : '보통'}</span><button id="world-minimap-larger" type="button" aria-label="미니맵 확대" ${this.minimapSize === 'large' ? 'disabled' : ''}>＋</button></div><span id="world-position"></span><small id="world-map-caption">지역 지도 ↗</small><details class="world-bag" id="world-bag"><summary aria-label="도구 목록"><span>도구</span><b id="world-bag-count">0</b></summary><div class="world-bag-panel" id="world-bag-content"></div></details></aside>
+      <div class="world-quick-actions"><div class="world-mode-buttons" role="group" aria-label="조작 모드"><button id="world-mode-auto">자동</button><button id="world-mode-manual">수동</button></div><button id="world-heal" class="world-heal">캠프 회복</button><div id="world-cave-exits" class="world-cave-exits" hidden></div></div>
       <button id="world-gym-notice" class="world-gym-notice" hidden></button>
-      <div id="world-cave-exits" class="world-cave-exits" hidden></div>
       <div class="world-lower-hud">
       <section class="world-multiplayer social-dock" aria-label="지역 채팅">
         <div id="world-trainer-track" hidden></div>
-        <header class="social-toolbar"><span class="social-channel"><span id="world-realtime-dot"></span><b id="world-chat-region">성도</b><small id="world-realtime-status">연결 중</small></span><details class="social-players"><summary aria-label="접속 트레이너와 위치"><span id="world-realtime-count">0명</span></summary><div class="social-player-popover"><div class="social-identity"><span>내 트레이너</span><strong id="world-chat-identity"></strong></div><div id="world-player-list" aria-label="같은 지역 플레이어"></div><small>이름을 누르면 위치를 표시합니다.</small></div></details><button id="world-trade-open" title="포켓몬 교환 · 게임 머니 거래">교환</button><button id="world-chat-collapse" aria-label="채팅 기록 접기" aria-expanded="true">⌄</button></header>
+        <header class="social-toolbar"><span class="social-channel"><span id="world-realtime-dot"></span><b id="world-chat-region">성도</b><small id="world-realtime-status">연결 중</small></span><details class="social-players"><summary aria-label="접속 트레이너와 위치"><span id="world-realtime-count">0명</span></summary><div class="social-player-popover"><div class="social-identity"><span>내 트레이너</span><strong id="world-chat-identity"></strong></div><div id="world-player-list" aria-label="같은 지역 플레이어"></div><small>이름을 누르면 위치를 표시합니다.</small></div></details><button id="world-chat-collapse" aria-label="채팅 기록 접기" aria-expanded="true">⌄</button></header>
         <div id="world-chat-log" role="log" aria-label="지역 대화" aria-live="polite" tabindex="0"></div><button id="world-chat-latest" hidden>새 메시지 ↓</button>
         <form id="world-chat-form"><input id="world-chat-input" aria-label="지역 채팅 메시지" autocomplete="off" placeholder="로그인하고 대화하기" enterkeyhint="send"><button type="button" id="world-chat-login">가입 / 로그인</button><button id="world-chat-send" aria-label="메시지 전송" title="Enter로 전송">↑</button></form><small id="world-chat-error" role="status"></small>
       </section>
@@ -181,12 +182,14 @@ export class OpenWorldPanel {
       <div class="world-feed" id="world-feed" aria-live="polite"></div>
       <div class="world-respawn" id="world-respawn"></div>
     </section>`;
-    const layoutSizes: Array<[string, string, 'height' | 'width']> = [['.world-radar', '--world-radar-height', 'height'], ['.world-radar', '--world-radar-width', 'width'], ['#world-next-guide', '--world-guide-height', 'height'], ['#world-gym-notice', '--world-gym-notice-height', 'height'], ['.world-hud-card', '--world-hud-card-height', 'height'], ['.world-battle-hud', '--world-partner-height', 'height'], ['.world-explore-toggle', '--world-explore-toggle-height', 'height'], ['.social-dock', '--world-chat-height', 'height']];
+    const layoutSizes: Array<[string, string, 'height' | 'width']> = [['.world-radar', '--world-radar-height', 'height'], ['.world-radar', '--world-radar-width', 'width'], ['#world-next-guide', '--world-guide-height', 'height'], ['#world-gym-notice', '--world-gym-notice-height', 'height'], ['.world-hud-card', '--world-hud-card-height', 'height'], ['.world-quick-actions', '--world-quick-height', 'height'], ['.world-lower-hud', '--world-lower-height', 'height'], ['.world-battle-hud', '--world-partner-height', 'height'], ['.world-explore-toggle', '--world-explore-toggle-height', 'height'], ['.social-dock', '--world-chat-height', 'height']];
     this.layoutObserver = new ResizeObserver(entries => {
       for (const entry of entries) {
         for (const [, variable, dimension] of layoutSizes.filter(([selector]) => entry.target.matches(selector))) {
           const rect = entry.target.getBoundingClientRect();
-          host.style.setProperty(variable, `${Math.ceil(dimension === 'width' ? rect.width : rect.height)}px`);
+          // The toast lives outside the screen host, so the bottom stack height is also published on the root.
+          const target = variable === '--world-lower-height' ? document.documentElement : host;
+          target.style.setProperty(variable, `${Math.ceil(dimension === 'width' ? rect.width : rect.height)}px`);
         }
         if (entry.target.matches('.world-radar')) this.syncMinimapResolution();
       }
@@ -197,7 +200,10 @@ export class OpenWorldPanel {
     this.renderer = mountOpenWorld(host.querySelector('#ow-host')!, {
       getSnapshot: () => this.renderSnapshot(), sampleWorld: (x, z) => this.simulation.sampleWorld(x, z), modelUrl: pokemonModelUrl, spriteUrl: pokemonSpriteUrl,
       onReady: () => {
-        this.ready = true; this.refreshRecovery();
+        this.ready = true;
+        // A pause the lost renderer caused ends with the new renderer; a pause the player chose stays.
+        if (this.pausedByRenderer) { this.pausedByRenderer = false; this.paused = false; }
+        this.refreshRecovery();
         if (getGymScene(this.simulation.sceneId)) { this.cameraHeading = CARDINAL_CAMERA_HEADINGS.south; this.renderer?.setCameraHeading(this.cameraHeading); }
       },
       onLoadProgress: (percent, detail) => {
@@ -210,7 +216,7 @@ export class OpenWorldPanel {
         this.loading ??= createWorldLoading(host.querySelector('.adventure')!);
         this.loading?.fail(`3D 월드를 준비하지 못했습니다. ${error instanceof Error ? error.message : String(error)}`);
       },
-      onRendererLost: () => { this.ready = false; this.paused = true; this.simulation.requireReadyModels(); this.refresh(); },
+      onRendererLost: () => { if (!this.paused) this.pausedByRenderer = true; this.ready = false; this.paused = true; this.simulation.requireReadyModels(); this.refresh(); },
       onNavigationStart: () => { this.pendingGymEntry = undefined; this.pendingFieldChallenge = undefined; this.pendingDungeonEntry = undefined; return this.noteManualInput(); },
       onMovementInput: () => this.noteManualInput(),
       onMovementEnd: () => {
@@ -261,6 +267,11 @@ export class OpenWorldPanel {
         this.setChatCollapsed(true);
         this.host?.querySelector<HTMLDetailsElement>('.world-explore-panel')?.removeAttribute('open');
       }
+    });
+    // Small screens keep one panel open at a time, so the field stays in view.
+    const explorePanel = this.host.querySelector<HTMLDetailsElement>('.world-explore-panel')!;
+    explorePanel.addEventListener('toggle', () => {
+      if (explorePanel.open && this.compactViewport.matches) { this.setChatCollapsed(true); battleHud.open = false; }
     });
     this.compactViewport.addEventListener('change', this.onViewportChange);
     this.button('#world-mode-auto').onclick = () => { this.changeMode('auto'); if (this.paused) void this.resume(); };
@@ -372,15 +383,15 @@ export class OpenWorldPanel {
     this.button('#world-pause').onclick = async () => {
       if (this.paused) { await this.resume(); return; }
       this.paused = true; this.refresh();
-      const button = this.button('#world-pause'); button.disabled = true;
       try {
         // A request already in flight still owns a durable neural result. Finish
         // it before marking this paused snapshot saved, so reload sees that head.
-        if (this.paused) await this.serverRequest;
-        await this.options.changed(true);
+        // The button stays usable meanwhile; a world resumed first saves on its own schedule.
+        await this.serverRequest;
+        if (this.paused) await this.options.changed(true);
       } catch (error) {
         this.pauseWithError(error, 'world');
-      } finally { button.disabled = false; this.refresh(); }
+      }
     };
     this.button('#world-heal').onclick = () => {
       if (this.options.game.battle) return this.options.notify('배틀을 마친 뒤 회복할 수 있습니다.');
@@ -549,7 +560,7 @@ export class OpenWorldPanel {
     const world = this.simulation, hall = getGymScene(world.sceneId); if (!hall) return;
     if (hall.kind === 'league' && outcome === 'won') {
       heal(this.options.game); world.reconcileTeamChange();
-      if (world.hallTrainer) return;
+      if (world.hallTrainer) { world.returnToChallengerMark(); return; }
     }
     if (world.exitGym()) this.afterSceneChange();
   }
@@ -692,6 +703,13 @@ export class OpenWorldPanel {
   }
 
   private async resume(): Promise<void> {
+    // A plain pause holds no failed work, so it resumes at once. Waiting on the
+    // network or a save here made repeated toggles drop input and stay paused.
+    if (!this.recoveryError) {
+      this.paused = false; this.options.changed(); this.refresh();
+      this.options.notify('탐험을 재개했습니다.');
+      return;
+    }
     if (this.recovering) return;
     this.recovering = true; this.paused = true;
     const host = this.host;
@@ -739,14 +757,16 @@ export class OpenWorldPanel {
     host.dataset.ready = String(this.ready && !blocked);
     host.dataset.paused = String(this.paused);
     banner.hidden = !failed && !this.paused && !this.recoveryError;
-    this.html('#world-recovery-message', escape(this.recovering ? '연결과 저장 상태를 확인하고 있습니다…'
+    // Only retrying failed work blocks the resume button; a plain pause never does.
+    const retrying = this.recovering && Boolean(this.recoveryError);
+    this.html('#world-recovery-message', escape(retrying ? '연결과 저장 상태를 확인하고 있습니다…'
       : this.recoveryError ? this.recoveryError.message
       : failed ? '포켓몬 3D 모델을 불러오지 못했습니다. 해당 개체의 이동·배틀을 멈췄습니다.'
       : '탐험이 일시 정지되어 있습니다.'));
     const resume = this.button('#world-resume');
     resume.hidden = !this.paused && !this.recoveryError;
     // The simulation itself waits for required models, so resuming never needs to.
-    resume.disabled = this.recovering;
+    resume.disabled = retrying;
     resume.textContent = this.recoveryError ? '다시 연결하고 재개' : '계속 탐험';
     const retry = this.button('#world-model-retry');
     retry.hidden = !failed; retry.disabled = this.recovering;
@@ -764,7 +784,7 @@ export class OpenWorldPanel {
     const battle = this.options.game.battle, world = this.simulation, points = new Map<string, WorldPoint & { height: number }>();
     if (!battle) return points;
     const companion = world.entities.find(entity => entity.kind === 'companion');
-    const opponent = battle.kind === 'wild' ? world.entities.find(entity => entity.id === world.battleWildId) : { x: world.player.x, z: world.player.z + (getGymScene(world.sceneId) ? 6 : -3) };
+    const opponent = battle.kind === 'wild' ? world.entities.find(entity => entity.id === world.battleWildId) : { x: world.player.x, z: world.player.z + (getGymScene(world.sceneId) ? HALL_BATTLE_GAP : -3) };
     const place = (team: readonly Monster[], point?: { x: number; z: number }) => {
       if (point) for (const monster of team) points.set(monster.instanceId, { x: point.x, z: point.z, height: pokemonDisplayHeight(monster.speciesId) });
     };
@@ -784,7 +804,7 @@ export class OpenWorldPanel {
     const hallTrainer = this.simulation.hallTrainer, hallAce = hallTrainer?.team.at(-1);
     // The leader's ace waits on the dais until the battle begins.
     // Trainer and hall opponents are drawn beside the partner rather than simulated; both face each other.
-    const opponentPoint = battle && battle.kind !== 'wild' ? { x: this.simulation.player.x, z: this.simulation.player.z + (hall ? 6 : -3) } : undefined;
+    const opponentPoint = battle && battle.kind !== 'wild' ? { x: this.simulation.player.x, z: this.simulation.player.z + (hall ? HALL_BATTLE_GAP : -3) } : undefined;
     const hallLeader = hallGym ? { speciesId: hallGym.speciesId, level: hallGym.level } : hallAce ? { speciesId: hallAce[0], level: hallAce[1] } : undefined;
     return {
       guide: battle || hall ? undefined : this.destinationGuide(),
@@ -874,7 +894,7 @@ export class OpenWorldPanel {
     if (followLatest) this.unreadChats = 0;
     this.button('#world-chat-latest').hidden = this.unreadChats === 0;
     this.html('#world-chat-latest', `새 메시지 ${this.unreadChats}개 ↓`);
-    this.button('#world-chat-collapse').textContent = collapsed ? `채팅${this.unreadChats ? ` ${this.unreadChats}` : ''} 열기` : '접기';
+    this.renderChatToggle(collapsed);
     if (view.error && account) this.html('#world-chat-error', escape(view.error));
     else if (!account) this.html('#world-chat-error', '');
     else if (view.status === 'connected' && !this.input('#world-chat-input').value) this.html('#world-chat-error', '');
@@ -882,13 +902,19 @@ export class OpenWorldPanel {
     if (mapPeers) this.html('#world-map-peers', this.mapPeers());
   }
 
+  /** A closed chat is only an icon with the unread count; an open one closes from its ×. */
+  private renderChatToggle(collapsed: boolean): void {
+    const toggle = this.button('#world-chat-collapse');
+    toggle.setAttribute('aria-expanded', String(!collapsed));
+    toggle.setAttribute('aria-label', collapsed ? `채팅 열기${this.unreadChats ? ` · ${this.unreadChats}` : ''}` : '채팅 접기');
+    this.html('#world-chat-collapse', collapsed ? `${CHAT_ICON}${this.unreadChats ? `<b class="chat-unread">${Math.min(99, this.unreadChats)}</b>` : ''}` : '<span aria-hidden="true">×</span>');
+  }
+
   private setChatCollapsed(collapsed: boolean): void {
     if (!this.host) return;
     this.host.querySelector('.social-dock')!.classList.toggle('chat-collapsed', collapsed);
     const toggle = this.button('#world-chat-collapse');
-    toggle.setAttribute('aria-expanded', String(!collapsed));
-    toggle.setAttribute('aria-label', collapsed ? '채팅 열기' : '채팅 접기');
-    toggle.textContent = collapsed ? '채팅 열기' : '접기';
+    this.renderChatToggle(collapsed);
     if (!collapsed) {
       if (this.compactViewport.matches) {
         this.host.querySelector<HTMLDetailsElement>('.world-battle-hud')!.open = false;
@@ -980,12 +1006,14 @@ export class OpenWorldPanel {
     return { x: (unrotated.x - 120) / scale + centerX, z: (unrotated.y - 120) / scale + centerZ };
   }
 
-  /** Visited towns are fast-travel targets, also from the middle of a wild battle. */
-  private teleportFromMap(townId: string): boolean {
-    const world = this.simulation, inBattle = !!this.options.game.battle;
-    if (world.atlas.locations.find(item => item.id === townId)?.kind !== 'town' || !world.teleportToTown(townId, true)) return false;
+  /** Any unlocked map place is a fast-travel target, also from the middle of a wild battle; visited towns land at their safe entrance. */
+  private teleportFromMap(locationId: string): boolean {
+    const world = this.simulation, inBattle = !!this.options.game.battle, place = world.atlas.locations.find(item => item.id === locationId);
+    if (!place || place.kind === 'sea') return false;
+    if (place.requiredBadges > world.regionalBadges) { this.options.notify(progressionRequirement(place.requiredBadges, world.regionalBadges, world.atlas.gyms, world.regionId === 'hisui' ? '조사증' : '배지'), true); return false; }
+    if (!(place.kind === 'town' && world.teleportToTown(place.id, true)) && !world.teleportToPoint(place, true)) return false;
     this.host!.querySelector<HTMLDialogElement>('#world-map-dialog')!.close();
-    this.options.notify('안전한 마을 입구로 이동했습니다.');
+    this.options.notify(place.kind === 'town' && world.visitedTownIds.includes(place.id) ? '안전한 마을 입구로 이동했습니다.' : `${place.name}으로 순간이동했습니다.`);
     // An immediate save reports its own failure; a battle that just ended must not replay on reload.
     void Promise.resolve(this.options.changed(inBattle)).catch(() => undefined); this.refresh(); this.renderer?.update();
     return true;

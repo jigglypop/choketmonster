@@ -467,35 +467,65 @@ function TrailAndWater({ sampleWorld, player, badges, atlas, visible, gyms = atl
     const vertices: number[] = [], colors: number[] = [], indices: number[] = [];
     const towns = atlas.locations.filter(item => item.kind === 'town' && !isRegionalLeagueLocation(atlas.id, item.id));
     const paved = (x: number, z: number) => towns.some(town => Math.abs(x - town.x) < 18 && Math.abs(z - town.z) < 18 && isTownPaved(x - town.x, z - town.z));
-    const profile = [-1, -.72, .72, 1], shoulder = [.9, 1.02, 1.02, .9];
-    for (const [fromId, toId] of atlas.surfaceConnections) {
+    // Solid dirt to the wobbling edge, then a feather column that fades into the lawn (alpha in the vertex colour).
+    const profile = [-1.22, -1, -.74, .74, 1, 1.22], shoulder = [.86, .9, 1.02, 1.02, .9, .86], alpha = [0, .96, 1, 1, .96, 0];
+    const push = (x: number, z: number, tone: number, opacity: number) => {
+      vertices.push(x, terrainSurfaceHeight(sampleWorld, x, z) + .055, z);
+      colors.push(tone, tone * 1.01, tone * .96, opacity);
+    };
+    // Each edge meanders smoothly (a value noise every 4.5 m) within the ±9% the grass clearance allows.
+    const meander = (salt: number, distance: number) => {
+      const cell = Math.floor(distance / 4.5), t = distance / 4.5 - cell, eased = t * t * (3 - 2 * t);
+      return 1 + (detailNoise(cell, salt, 77) * (1 - eased) + detailNoise(cell + 1, salt, 77) * eased - .5) * .18;
+    };
+    const joints = new Map<string, number>();
+    atlas.surfaceConnections.forEach(([fromId, toId], index) => {
       const from = locations.get(fromId)!, to = locations.get(toId)!;
       const dx = to.x - from.x, dz = to.z - from.z, length = Math.hypot(dx, dz) || 1;
-      const steps = Math.max(1, Math.ceil(length / 3.2));
+      const steps = Math.max(1, Math.ceil(length / 1.8));
       const width = trailHalfWidth(fromId, toId);
+      for (const id of [fromId, toId]) joints.set(id, Math.max(joints.get(id) ?? 0, width));
       const sideX = -dz / length, sideZ = dx / length;
       const offset = vertices.length / 3;
       for (let step = 0; step <= steps; step += 1) {
-        const t = step / steps, x = from.x + dx * t, z = from.z + dz * t;
-        const wobble = step === 0 || step === steps ? 1 : 1 + (detailNoise(x, z, 77) - .5) * .18;
+        const t = step / steps, x = from.x + dx * t, z = from.z + dz * t, end = step === 0 || step === steps;
         profile.forEach((lateral, column) => {
-          const reach = lateral * width * (column === 0 || column === 3 ? wobble : 1), px = x + sideX * reach, pz = z + sideZ * reach;
-          vertices.push(px, terrainSurfaceHeight(sampleWorld, px, pz) + .055, pz);
-          colors.push(shoulder[column], shoulder[column] * 1.01, shoulder[column] * .96);
+          const edge = column < 2 || column > 3, wobble = end || !edge ? 1 : meander(index * 2 + (column < 2 ? 0 : 1), t * length);
+          const reach = lateral * width * wobble;
+          push(x + sideX * reach, z + sideZ * reach, shoulder[column], alpha[column]);
         });
         const mx = from.x + dx * ((step + .5) / steps), mz = from.z + dz * ((step + .5) / steps);
         if (step < steps && sampleWorld(mx, mz).biome !== 'lake' && !paved(mx, mz)) {
-          const base = offset + step * 4;
-          for (let column = 0; column < 3; column++) {
-            const a = base + column, c = base + 4 + column;
-            indices.push(a, c, a + 1, a + 1, c, c + 1);
+          // Counter-clockwise seen from above, so the front face (and its normal) points at the sky.
+          const base = offset + step * 6;
+          for (let column = 0; column < 5; column++) {
+            const a = base + column, c = base + 6 + column;
+            indices.push(a, a + 1, c, a + 1, c + 1, c);
           }
         }
+      }
+    });
+    // Round joints fill the notch where straight roads meet at an angle or end.
+    for (const [id, width] of joints) {
+      const node = locations.get(id)!;
+      if (node.kind === 'sea' || paved(node.x, node.z) || sampleWorld(node.x, node.z).biome === 'lake') continue;
+      const center = vertices.length / 3, rim = 20;
+      push(node.x, node.z, 1.02, 1);
+      for (let index = 0; index < rim; index++) {
+        const angle = index / rim * Math.PI * 2, cos = Math.cos(angle), sin = Math.sin(angle);
+        push(node.x + cos * width * .74, node.z + sin * width * .74, 1.02, 1);
+        push(node.x + cos * width, node.z + sin * width, .9, .96);
+        push(node.x + cos * width * 1.22, node.z + sin * width * 1.22, .86, 0);
+      }
+      for (let index = 0; index < rim; index++) {
+        const a = center + 1 + index * 3, b = center + 1 + (index + 1) % rim * 3;
+        indices.push(center, b, a);
+        for (let ring = 0; ring < 2; ring++) indices.push(a + ring, b + ring, a + ring + 1, a + ring + 1, b + ring, b + ring + 1);
       }
     }
     const geometry = new BufferGeometry();
     geometry.setAttribute('position', new Float32BufferAttribute(vertices, 3));
-    geometry.setAttribute('color', new Float32BufferAttribute(colors, 3));
+    geometry.setAttribute('color', new Float32BufferAttribute(colors, 4));
     geometry.setAttribute('uv', new Float32BufferAttribute(vertices.flatMap((_, index) => index % 3 === 0 ? [vertices[index] * .28, vertices[index + 2] * .28] : []), 2));
     geometry.setIndex(indices);
     geometry.computeVertexNormals();
@@ -1045,11 +1075,15 @@ function PlayerCamera({ snapshot, options, destination, onDestination, commands 
     minDistance={MIN_CAMERA_DISTANCE} maxDistance={MAX_CAMERA_DISTANCE} minPolarAngle={.38} maxPolarAngle={1.18} />;
 }
 
-function Sunlight({ player, mobile }: { player: { x: number; z: number }; mobile: boolean }) {
+/**
+ * The one shadow-casting light, following the player. Outdoors it is the sun; indoors (caves, dungeon rooms,
+ * halls) it hangs almost overhead like the ceiling lamps, dimmer and tinted, so floors still take shadows.
+ */
+function Sunlight({ player, mobile, indoor = false, color = '#fff3da', intensity = 2.55 }: { player: { x: number; z: number }; mobile: boolean; indoor?: boolean; color?: string; intensity?: number }) {
   const sun = useRef<DirectionalLight>(null);
   const target = useMemo(() => new Object3D(), []);
   const elapsed = useRef(1);
-  const reach = mobile ? 16 : 24;
+  const reach = mobile ? 16 : 24, [offsetX, height, offsetZ] = indoor ? [5, 30, 4] : [28, 52, 22];
   useFrame((_, delta) => {
     elapsed.current += delta;
     if (sun.current && elapsed.current >= 1 / (mobile ? 10 : 15)) {
@@ -1059,7 +1093,7 @@ function Sunlight({ player, mobile }: { player: { x: number; z: number }; mobile
   });
   const x = Math.round(player.x / 4) * 4, z = Math.round(player.z / 4) * 4;
   useLayoutEffect(() => { target.position.set(x, 0, z); target.updateMatrixWorld(); }, [x, z, target]);
-  return <><primitive object={target} /><directionalLight ref={sun} target={target} position={[x + 28, 52, z + 22]} intensity={2.55} color="#fff3da" castShadow
+  return <><primitive object={target} /><directionalLight ref={sun} target={target} position={[x + offsetX, height, z + offsetZ]} intensity={intensity} color={color} castShadow
     shadow-autoUpdate={false} shadow-mapSize={[mobile ? 256 : 512, mobile ? 256 : 512]}
     shadow-camera-near={1} shadow-camera-far={120} shadow-camera-left={-reach} shadow-camera-right={reach}
     shadow-camera-top={reach} shadow-camera-bottom={-reach} shadow-normalBias={.06} shadow-bias={-.0004} /></>;
@@ -1160,7 +1194,8 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
     <>
       <hemisphereLight color={look ? look.light : indoor ? '#d9eeed' : '#eaf6ff'} groundColor={look ? look.ground : indoor ? '#434f3f' : '#6f8a57'} intensity={look ? look.intensity : gymHall ? 1.25 : 1.22} />
       <SkyLighting />
-      {!indoor && <Sunlight player={snapshot.player} mobile={windowState.mobile} />}
+      {indoor ? <Sunlight player={snapshot.player} mobile={windowState.mobile} indoor color={look?.lamp ?? '#fff6e8'} intensity={look ? 1.1 : 1.3} />
+        : <Sunlight player={snapshot.player} mobile={windowState.mobile} />}
       {look && <pointLight position={[snapshot.player.x, 5, snapshot.player.z]} color={look.lamp} intensity={look.lampIntensity} distance={28} decay={1.4} />}
       <Physics gravity={[0, -18, 0]} timeStep="vary">
         {cave?.room ? <DungeonInterior scene={cave} onNavigate={onNavigate} />

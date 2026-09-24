@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { Color, DataTexture, EquirectangularReflectionMapping, FloatType, LinearFilter, LinearSRGBColorSpace, MeshStandardMaterial, PMREMGenerator, RepeatWrapping, RGBAFormat, SRGBColorSpace, Texture, TextureLoader } from 'three';
 import { MeshStandardNodeMaterial, type Node } from 'three/webgpu';
 import {
-  abs, attribute, color, cos, dot, float, instanceIndex, length, materialColor, materialRoughness, max, min, mix, normalMap, normalView, normalize,
+  abs, attribute, color, cos, dot, float, floor, fract, instanceIndex, length, materialColor, materialRoughness, max, min, mix, normalMap, normalView, normalize,
   positionLocal, positionViewDirection, positionWorld, pow, sin, smoothstep, texture, time, vec2, vec3,
 } from 'three/tsl';
 import { distanceToWaterSurface, selectWaterLod, type WaterLod, type WaterLodPlayer } from './water-lod';
@@ -48,10 +48,11 @@ export function worldSurfaceColor(atlas: WorldAtlas, sample: WorldSample, x: num
   const variation = Math.sin(x * .19 + Math.sin(z * .11)) * Math.cos(z * .17);
   const grass = new Color(atlas.palette.ground).multiplyScalar(1 + variation * .065);
   const pathDistance = atlas.distanceToPath(x, z);
-  if (pathDistance <= 3.2 * WORLD_SCALE) {
-    // Worn soil under the road fades into a grassy verge toward the corridor edge.
-    const verge = Math.max(0, Math.min(1, (pathDistance - 2 * WORLD_SCALE) / (1.2 * WORLD_SCALE)));
-    return new Color(regionTrailColor(atlas)).lerp(new Color(atlas.palette.ground), .28).lerp(grass, verge * verge * (3 - 2 * verge) * .7);
+  if (pathDistance <= 4 * WORLD_SCALE) {
+    // The feathered trail ribbon draws the dirt itself. Terrain vertices are metres apart, so soil
+    // tint here would smear across the verge; the lawn only warms faintly where feet wear it.
+    const worn = 1 - Math.max(0, Math.min(1, (pathDistance - 1.6 * WORLD_SCALE) / (2.4 * WORLD_SCALE)));
+    return grass.lerp(new Color(regionTrailColor(atlas)).lerp(new Color(atlas.palette.ground), .6), worn * worn * (3 - 2 * worn) * .35);
   }
   return grass;
 }
@@ -165,6 +166,27 @@ export function detailSurface(material: MeshStandardMaterial, textures: SurfaceT
   material.needsUpdate = true;
 }
 
+/** Sine-free hash (Hoskins) so grit stays stable at large world coordinates on every GPU. */
+function gritHash(cell: Node<'vec2'>): Node<'float'> {
+  const p = fract(vec3(cell.x, cell.y, cell.x).mul(.1031));
+  const q = p.add(dot(p, vec3(p.y, p.z, p.x).add(33.33)));
+  return fract(q.x.add(q.y).mul(q.z));
+}
+
+/** Clean, warm packed dirt: a soft painted mottle, fine grit and scattered pebbles over the trail tint. */
+function pathDirt(base: Node<'vec3'>, luma: Node<'float'>): Node<'vec3'> {
+  const ground = positionWorld.xz;
+  const mottle = sin(ground.x.mul(.61).add(sin(ground.y.mul(.43)).mul(1.4))).mul(cos(ground.y.mul(.57).sub(ground.x.mul(.19))));
+  const fine = ground.mul(6), cell = floor(fine), blend = smoothstep(0, 1, fract(fine));
+  const grit = mix(mix(gritHash(cell), gritHash(cell.add(vec2(1, 0))), blend.x), mix(gritHash(cell.add(vec2(0, 1))), gritHash(cell.add(1)), blend.x), blend.y);
+  // Round pebbles: one jittered dot in a few of the 45 cm cells.
+  const coarse = ground.mul(2.2), stone = floor(coarse), spot = vec2(gritHash(stone.add(17)), gritHash(stone.add(29))).mul(.6).add(.2);
+  const pebble = float(1).sub(smoothstep(.07, .11, length(fract(coarse).sub(spot)))).mul(smoothstep(.8, .83, gritHash(stone.add(41))));
+  const warm = mix(vec3(1), vec3(1.05, .98, .88), smoothstep(-.4, .9, mottle));
+  return base.mul(warm).mul(mottle.mul(.045).add(1)).mul(mix(float(.955), float(1.03), grit)).mul(float(1).sub(pebble.mul(.16)))
+    .mul(luma.mul(.22).add(.93).clamp(.95, 1.05));
+}
+
 function applySurfaceNodes(material: MeshStandardNodeMaterial, textures: SurfaceTextures, surface: Surface) {
   const detailUv = positionWorld.xz.mul(surface === 'ground' ? GRASS_TEXTURE_REPEAT : surface === 'path' ? .28 : .45);
   const albedo = texture(textures.diffuse, detailUv);
@@ -178,7 +200,7 @@ function applySurfaceNodes(material: MeshStandardNodeMaterial, textures: Surface
   const tint = surface === 'ground' ? mix(vec3(1), albedo.rgb.mul(.72), .06)
     : surface === 'path' ? mix(vec3(1), albedo.rgb.mul(vec3(1.05, .94, .78)), .16)
       : vec3(1);
-  material.colorNode = materialColor.rgb.mul(contrast).mul(tint);
+  material.colorNode = surface === 'path' ? pathDirt(materialColor.rgb, luma) : materialColor.rgb.mul(contrast).mul(tint);
   material.roughnessNode = arm.g.mul(materialRoughness).clamp(surface === 'rock' ? .82 : .88, 1);
   if (surface !== 'rock') material.normalNode = normalMap(texture(textures.normal, detailUv).rgb, vec2(.07, .07));
   material.userData.openWorldNodeEffect = `surface:${surface}`;
@@ -276,8 +298,9 @@ type SurfaceMaterialOptions = { surface: Surface; color?: string; vertexColors?:
 export function useSurfaceMaterial({ surface, color, vertexColors = false, visible = true }: SurfaceMaterialOptions) {
   const textures = useSurfaceTextures(surface);
   const material = useMemo(() => {
+    // Trail ribbons feather into the lawn through their vertex alpha.
     const result = new MeshStandardNodeMaterial({ color, vertexColors, roughness: .94, metalness: 0,
-      polygonOffset: surface === 'path', polygonOffsetFactor: -1, visible });
+      polygonOffset: surface === 'path', polygonOffsetFactor: -1, transparent: surface === 'path', visible });
     applySurfaceNodes(result, textures, surface);
     return result;
   }, [color, vertexColors, textures, surface, visible]);

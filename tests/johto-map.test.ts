@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   JOHTO_CONNECTIONS, JOHTO_GATES, JOHTO_GYMS, JOHTO_LOCATIONS, JOHTO_MAP_VERSION, JOHTO_START, JOHTO_SURFACE_CONNECTIONS,
-  distanceToJohtoPath, evaluateJohtoTraversal, johtoBuildingOffsets, johtoEncounters, johtoLocationAt, johtoTravelPoint,
+  distanceToJohtoPath, evaluateJohtoTraversal, johtoBuildingOffsets, johtoEncounters, johtoGateHalfWidth, johtoLocationAt, johtoTravelPoint,
   johtoGoldSourceLocationId, nearestJohtoWalkable, safeJohtoArrival, sampleJohtoWorld,
 } from '../src/openworld/johto';
 import { JOHTO_GOLD_ENCOUNTERS } from '../src/data/johto-gold-encounters';
 import { terrainSurfaceHeight } from '../src/openworld/grounding';
+import { JOHTO_CAMPAIGN_GYMS } from '../src/game/campaign';
+import { getGymScene, gymSceneId } from '../src/openworld/gym-scenes';
+import { findWorldPath } from '../src/openworld/navigation';
 
 describe('Johto v3 exploration map', () => {
   it('places the ten cities in their Gold-era relative directions and covers Routes 29-46', () => {
@@ -63,11 +66,54 @@ describe('Johto v3 exploration map', () => {
     expect(reached).toContain('dark-cave-west');
   });
 
+  it('opens each area with the HeartGold/SoulSilver badge that first lets the player reach it', () => {
+    const at = (id: string) => JOHTO_LOCATIONS.find(item => item.id === id)!;
+    expect(Object.fromEntries(['violet', 'route-32', 'ilex-forest', 'route-36', 'cianwood', 'mt-mortar', 'route-44', 'tohjo-falls', 'mt-silver']
+      .map(id => [id, at(id).requiredBadges]))).toEqual({ violet: 0, 'route-32': 1, 'ilex-forest': 2, 'route-36': 3, cianwood: 4, 'mt-mortar': 6, 'route-44': 7, 'tohjo-falls': 8, 'mt-silver': 8 });
+    for (const gym of JOHTO_CAMPAIGN_GYMS) expect(at(gym.locationId).requiredBadges, gym.locationId).toBeLessThan(gym.badge);
+    for (let badges = 0; badges <= 8; badges++) {
+      const reached = new Set(['new-bark']), queue = ['new-bark'];
+      for (let head = 0; head < queue.length; head++) for (const [a, b] of JOHTO_CONNECTIONS) {
+        const next = a === queue[head] ? b : b === queue[head] ? a : undefined;
+        if (next && !reached.has(next) && at(next).requiredBadges <= badges) { reached.add(next); queue.push(next); }
+      }
+      expect(JOHTO_LOCATIONS.filter(item => item.requiredBadges <= badges && !reached.has(item.id)).map(item => item.id), `stage ${badges}`).toEqual([]);
+    }
+  });
+
+  it('walks from New Bark to every gym door with one badge fewer than the gym awards', () => {
+    let from: { x: number; z: number } = JOHTO_START;
+    for (const gym of JOHTO_CAMPAIGN_GYMS) {
+      const badges = gym.badge - 1, door = getGymScene(gymSceneId('johto', gym.locationId))!.door;
+      const sample = (x: number, z: number) => ({ ...sampleJohtoWorld(x, z), blocked: !evaluateJohtoTraversal({ x, z }, { x, z }, badges).allowed });
+      const path = findWorldPath(from, door, sample, 60_000);
+      expect(path.length, `${gym.locationId} with ${badges}`).toBeGreaterThan(0);
+      expect(Math.hypot(path.at(-1)!.x - door.x, path.at(-1)!.z - door.z)).toBeLessThan(1.5);
+      from = door;
+    }
+  }, 60_000);
+
+  it('marks every badge boundary on a road with a gate at the real locked terrain', () => {
+    expect(JOHTO_GATES.length).toBeGreaterThan(0);
+    const byId = new Map(JOHTO_LOCATIONS.map(item => [item.id, item]));
+    for (const gate of JOHTO_GATES) {
+      const a = byId.get(gate.from)!, b = byId.get(gate.to)!, length = Math.hypot(b.x - a.x, b.z - a.z), p = gate.position!;
+      const before = { x: p.x - (b.x - a.x) / length * .01, z: p.z - (b.z - a.z) / length * .01 };
+      const after = { x: p.x + (b.x - a.x) / length * .01, z: p.z + (b.z - a.z) / length * .01 };
+      expect(evaluateJohtoTraversal(before, before, gate.requiredBadges - 1).allowed).not.toBe(evaluateJohtoTraversal(after, after, gate.requiredBadges - 1).allowed);
+      expect(evaluateJohtoTraversal(before, after, gate.requiredBadges).allowed).toBe(true);
+      expect(evaluateJohtoTraversal(after, before, gate.requiredBadges).allowed).toBe(true);
+      expect(gate).toMatchObject({ terrainBoundary: true, badgeLabel: '배지' });
+      expect(johtoGateHalfWidth(gate)).toBeGreaterThan(0);
+    }
+  });
+
   it('provides collision-safe arrivals, buildings and out-of-bounds recovery', () => {
     for (const town of JOHTO_LOCATIONS.filter(item => item.kind === 'town')) {
-      const arrival = safeJohtoArrival(town.id);
+      const arrival = safeJohtoArrival(town.id, town.requiredBadges);
       expect(arrival).toBeDefined(); expect(sampleJohtoWorld(arrival!.x, arrival!.z).blocked).toBe(false);
-      expect(johtoTravelPoint(town.id)).toEqual(arrival);
+      expect(johtoTravelPoint(town.id, town.requiredBadges)).toEqual(arrival);
+      if (town.requiredBadges) expect(johtoTravelPoint(town.id, town.requiredBadges - 1), town.id).toBeUndefined();
       expect(johtoBuildingOffsets(town).length).toBeGreaterThan(0);
       expect(johtoBuildingOffsets(town).some(([dx, dz]) => sampleJohtoWorld(town.x + dx, town.z + dz).blocked)).toBe(true);
     }
@@ -90,11 +136,12 @@ describe('Johto v3 exploration map', () => {
   });
 
   it('exposes habitat tables without pretending Kanto badges are Johto badges', () => {
-    expect(JOHTO_GYMS).toEqual([]); expect(JOHTO_GATES).toEqual([]);
+    expect(JOHTO_GYMS).toEqual([]);
     expect(johtoEncounters('route-29', 0).toSorted((a, b) => a - b)).toEqual([16, 19, 161]);
-    expect(johtoEncounters('route-40', 0).toSorted((a, b) => a - b)).toEqual([72, 73]);
+    expect(johtoEncounters('route-40', 3)).toEqual([]);
+    expect(johtoEncounters('route-40', 4).toSorted((a, b) => a - b)).toEqual([72, 73]);
     expect(johtoEncounters('dark-cave-west', 0).length).toBeGreaterThan(0);
-    expect(johtoEncounters('dark-cave-east', 0).length).toBeGreaterThan(0);
+    expect(johtoEncounters('dark-cave-east', 7).length).toBeGreaterThan(0);
     for (const town of JOHTO_LOCATIONS.filter(location => location.kind === 'town')) {
       expect(johtoEncounters(town.id, 0), town.id).toEqual([]);
     }

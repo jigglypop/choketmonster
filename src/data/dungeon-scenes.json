@@ -80,6 +80,12 @@
     "whirl-islands-b3f"
   ],
   "hoenn": [
+    "ancient-tomb",
+    "cave-of-origin",
+    "cave-of-origin-b1f",
+    "cave-of-origin-b2f",
+    "cave-of-origin-b3f",
+    "desert-ruins",
     "fiery-path",
     "granite-cave",
     "granite-cave-b1f",
@@ -87,11 +93,19 @@
     "hoenn-victory-road",
     "hoenn-victory-road-b1f",
     "hoenn-victory-road-b2f",
+    "island-cave",
     "meteor-falls",
     "meteor-falls-b1f",
-    "rusturf-tunnel"
+    "rusturf-tunnel",
+    "sky-pillar",
+    "sky-pillar-2f",
+    "sky-pillar-3f",
+    "sky-pillar-4f",
+    "sky-pillar-5f",
+    "southern-island"
   ],
   "sinnoh": [
+    "acuity-cavern",
     "iron-island",
     "iron-island-b1f",
     "iron-island-b2f",
@@ -108,9 +122,25 @@
     "oreburgh-gate-b1f",
     "sinnoh-victory-road",
     "sinnoh-victory-road-2f",
-    "sinnoh-victory-road-b1f"
+    "sinnoh-victory-road-b1f",
+    "snowpoint-temple",
+    "snowpoint-temple-b1f",
+    "snowpoint-temple-b2f",
+    "snowpoint-temple-b3f",
+    "snowpoint-temple-b4f",
+    "snowpoint-temple-b5f",
+    "spear-pillar",
+    "stark-mountain",
+    "stark-mountain-b1f",
+    "turnback-cave",
+    "turnback-cave-b1f",
+    "turnback-cave-b2f",
+    "turnback-cave-b3f",
+    "valor-cavern",
+    "verity-cavern"
   ],
   "unova": [
+    "abundant-shrine",
     "celestial-tower",
     "celestial-tower-2f",
     "celestial-tower-3f",
@@ -123,6 +153,13 @@
     "dragonspiral-tower",
     "dragonspiral-tower-2f",
     "dreamyard",
+    "giant-chasm",
+    "giant-chasm-b1f",
+    "giant-chasm-b2f",
+    "giant-chasm-b3f",
+    "mistralton-cave",
+    "mistralton-cave-2f",
+    "mistralton-cave-3f",
     "relic-castle",
     "relic-castle-b1f",
     "relic-castle-b2f",
@@ -133,6 +170,8 @@
     "wellspring-cave-b1f"
   ],
   "kalos": [
+    "flare-secret-hq",
+    "flare-secret-hq-b2f",
     "frost-cavern",
     "frost-cavern-2f",
     "frost-cavern-3f",
@@ -141,22 +180,53 @@
     "reflection-cave",
     "reflection-cave-b1f",
     "reflection-cave-b2f",
-    "reflection-cave-b3f"
+    "reflection-cave-b3f",
+    "terminus-cave",
+    "terminus-cave-b1f",
+    "terminus-cave-b2f",
+    "terminus-cave-b3f"
   ],
   "alola": [
+    "altar-of-the-moone",
+    "altar-of-the-sunne",
     "blush-mountain",
     "mount-hokulani",
     "mount-lanakila",
+    "ruins-of-abundance",
+    "ruins-of-conflict",
+    "ruins-of-hope",
+    "ruins-of-life",
+    "ten-carat-hill",
+    "ten-carat-hill-b1f",
     "vast-poni-canyon",
     "verdant-cavern",
     "wela-volcano-park"
   ],
   "hisui": [
-    "coronet-highlands"
+    "coronet-highlands",
+    "firespit-island",
+    "hisui-acuity-cavern",
+    "hisui-snowpoint-temple",
+    "hisui-snowpoint-temple-b1f",
+    "hisui-turnback-cave",
+    "hisui-turnback-cave-b1f",
+    "hisui-valor-cavern",
+    "hisui-verity-cavern"
   ],
   "paldea": [
     "area-zero",
+    "firescourge-shrine",
     "glaseado-mountain",
+    "grasswither-shrine",
+    "groundblight-shrine",
+    "icerend-shrine",
     "south-province-area-six"
+  ],
+  "galar": [
+    "energy-plant",
+    "energy-plant-2f",
+    "slumbering-weald",
+    "slumbering-weald-b1f",
+    "split-decision-ruins"
   ]
 }

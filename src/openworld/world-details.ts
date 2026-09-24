@@ -281,8 +281,10 @@ function dressRoute(context: Context, from: KantoLocation, to: KantoLocation, ha
     if (terrain.biome === 'lake' || onPaving(context, x, z) || (nearest < lateral - .05 && nearest < MAX_TRAIL_HALF_WIDTH + .2)
       || nearAny(context.sites, x, z, 2.6) || nearAny(context.gates, x, z, 4)) continue;
     const selector = detailNoise(x, z, salt + 2);
-    if (selector >= .52 && selector < .72) ground['flower-patch'].push(placement(context, x, z, 21, .7, 1.1));
-    else if (selector >= .72 && selector < .86) ground.pebbles.push(placement(context, x, z, 22, .7, 1.2));
+    // Flowers only bloom inside slow drifts, so the verge carries occasional clusters instead of an evenly spaced line.
+    const drift = detailNoise(Math.floor(x / 9), Math.floor(z / 9), salt + 5);
+    if (selector >= .52 && selector < .72) { if (drift > .62) ground['flower-patch'].push(placement(context, x, z, 21, .55, .9)); }
+    else if (selector >= .72 && selector < .8) ground.pebbles.push(placement(context, x, z, 22, .7, 1.2));
   }
   // Blocked shoulder just outside the corridor: shrubs in woodland, stones on rock.
   for (let along = start + 1.5; along <= end; along += 4.4) for (const side of [-1, 1]) {

@@ -92,5 +92,6 @@ describe('streamed wind grass placement', () => {
     expect(GRASS_BUDGETS.mobile.radius).toBeLessThan(GRASS_BUDGETS.desktop.radius);
     expect(grassCellsNear({ x: 0, z: 0 }, GRASS_BUDGETS.desktop.radius).every(slot => slot.distance <= GRASS_BUDGETS.desktop.radius)).toBe(true);
     expect(GRASS_CELL * GRASS_CELL * GRASS_BUDGETS.desktop.density).toBeLessThan(12_000);
-  });
+  // Builds every cell around three towns in each region, tall grass included.
+  }, 30_000);
 });

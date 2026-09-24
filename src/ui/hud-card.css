@@ -1,5 +1,6 @@
-/* One exploration card at the top left: destination, minimap and the exploration settings.
-   Loaded after glass.css, so it replaces the three separate HUD surfaces. */
+/* Place card at the top left: where you are and where to go next; its settings drop down below it.
+   The minimap stands alone at the top right, with auto/manual and camp recovery under it.
+   Loaded after glass.css. */
 .adventure .world-hud-card {
   position: absolute;
   z-index: 8;
@@ -18,7 +19,7 @@
   -webkit-backdrop-filter: var(--glass-blur-hud);
   backdrop-filter: var(--glass-blur-hud);
 }
-.adventure .world-hud-card > :is(#world-next-guide, .world-radar, .world-explore-panel) {
+.adventure .world-hud-card > :is(#world-next-guide, .world-explore-panel) {
   position: static;
   inset: auto;
   transform: none;
@@ -32,38 +33,68 @@
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
-.adventure .world-hud-card > #world-next-guide { padding: 9px 10px; background: rgba(255, 255, 255, .07); }
+/* The destination stays in view while the settings are open. */
+.adventure .world-hud-card > #world-next-guide { display: flex; padding: 9px 10px; background: rgba(255, 255, 255, .07); }
 .adventure .world-hud-card > #world-next-guide:hover { background: rgba(255, 255, 255, .12); }
-.adventure .world-hud-card > .world-radar {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  grid-template-areas: "map controls" "map position" "map caption" "map bag";
-  align-items: center;
-  column-gap: 12px;
-  row-gap: 3px;
-  padding: 2px 0;
-  text-align: left;
+.adventure .world-hud-card > .world-explore-panel { overflow: visible; }
+.adventure .world-hud-card .world-explore-scroll {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: max(120px, calc(100dvh - var(--app-header-height) - var(--world-hud-card-height, 130px) - var(--world-chat-height, 60px) - 70px));
+  overflow: auto;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
+  padding: 10px;
+  background: var(--ui-hud);
+  border: 1px solid var(--glass-edge-dark);
+  border-radius: 16px;
+  box-shadow: 0 12px 32px rgba(6, 20, 15, .22);
+  -webkit-backdrop-filter: var(--glass-blur-hud);
+  backdrop-filter: var(--glass-blur-hud);
 }
-.adventure .world-hud-card > .world-radar > #world-map-open { grid-area: map; }
-.adventure .world-hud-card > .world-radar > .world-minimap-controls { grid-area: controls; justify-content: space-between; margin: 0; }
-.adventure .world-hud-card > .world-radar > #world-position { grid-area: position; margin: 0; }
-.adventure .world-hud-card > .world-radar > #world-map-caption { grid-area: caption; margin: 0; }
-.adventure .world-hud-card > .world-radar > .world-bag { grid-area: bag; margin: 2px 0 0; }
-.adventure .world-hud-card .world-radar[data-size=small] canvas { width: 96px; height: 96px; }
-.adventure .world-hud-card .world-radar[data-size=medium] canvas { width: 120px; height: 120px; }
-.adventure .world-hud-card .world-radar[data-size=large] canvas { width: 152px; height: 152px; }
-.adventure .world-hud-card > .world-explore-panel { overflow: visible; border-top: 1px solid var(--ui-hud-line); border-radius: 0; }
-/* Open settings stop above the chat dock and scroll inside. */
-.adventure .world-hud-card .world-explore-scroll { max-height: max(100px, calc(100dvh - var(--app-header-height) - var(--app-nav-height, 0px) - var(--world-chat-height, 240px) - 350px)); overflow: auto; }
-.adventure .world-hud-card .world-bag-panel { left: calc(100% + 18px); right: auto; }
 
-.adventure .world-heal {
+/* Auto/manual and camp recovery, together under the minimap; the nameplate toggle follows them. */
+.adventure .world-quick-actions {
   position: absolute;
   z-index: 8;
-  top: calc(var(--app-header-height) + 16px);
+  top: calc(var(--app-header-height) + 26px + var(--world-radar-height, 200px));
   right: 20px;
+  display: grid;
+  gap: 6px;
+  width: var(--world-radar-width, 164px);
+}
+.adventure .world-quick-actions .world-mode-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  background: var(--ui-hud);
+  border: 1px solid var(--glass-edge-dark);
+  border-radius: 14px;
+  box-shadow: 0 8px 22px rgba(6, 20, 15, .2);
+  -webkit-backdrop-filter: var(--glass-blur-hud);
+  backdrop-filter: var(--glass-blur-hud);
+}
+.adventure .world-quick-actions .world-mode-buttons button {
+  min-height: 34px;
+  padding: 4px 6px;
+  color: var(--ui-hud-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  font: inherit;
+  font-size: calc(13px * var(--ui-font-scale, 1));
+  font-weight: 650;
+  cursor: pointer;
+}
+.adventure .world-quick-actions .world-mode-buttons button[aria-pressed=true] { color: var(--ui-hud-text); background: var(--ui-accent); }
+.adventure .world-heal {
+  width: 100%;
   min-height: 40px;
-  padding: 8px 18px;
+  padding: 8px 12px;
   color: var(--ui-hud-text);
   background: var(--ui-hud);
   border: 1px solid var(--glass-edge-dark);
@@ -77,38 +108,48 @@
   cursor: pointer;
 }
 .adventure .world-heal:disabled { opacity: .5; cursor: default; }
+/* Cave and hall exits join the action group, clear of toasts at the bottom centre. */
+.adventure .world-quick-actions .world-cave-exits:not([hidden]) { position: static; display: grid; gap: 4px; max-width: none; transform: none; }
+.adventure .world-quick-actions .world-cave-exits :is(button, select) { width: 100%; min-height: 38px; box-sizing: border-box; font-size: calc(13px * var(--ui-font-scale, 1)); }
 .adventure .world-heal:hover:not(:disabled) { background: color-mix(in srgb, var(--ui-hud) 80%, white); }
+.adventure .ow-camera-controls { top: calc(var(--app-header-height) + 36px + var(--world-radar-height, 200px) + var(--world-quick-height, 90px)); }
 
-/* The minimap left the top right: camp recovery sits there, the challenge notice at the top centre. */
+/* The minimap's bag list opens over the controls below it. */
+.adventure .world-radar { z-index: 9; }
+
+/* The challenge notice sits at the top centre. */
 .adventure .world-gym-notice { top: calc(var(--app-header-height) + 16px); left: 50%; translate: -50% 0; }
 
 @media (min-width: 901px) {
   [data-battle-position=left] .adventure .world-hud-card { left: auto; right: 20px; }
-  [data-battle-position=left] .adventure .world-heal { left: 20px; right: auto; }
-  [data-battle-position=left] .adventure .world-hud-card .world-bag-panel { left: auto; right: calc(100% + 18px); }
+  [data-battle-position=left] .adventure .world-quick-actions { left: 20px; right: auto; }
 }
 @media (max-width: 900px) {
   .adventure .world-hud-card {
-    top: calc(var(--app-header-height) + 12px);
-    left: 12px;
-    right: 12px;
+    top: calc(var(--app-header-height) + 8px);
+    left: 10px;
+    right: calc(20px + var(--world-radar-width, 86px));
     width: auto;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: start;
-    padding: 6px;
+    gap: 4px;
+    padding: 4px;
   }
-  .adventure .world-hud-card > #world-next-guide { grid-column: 1; grid-row: 1; }
-  .adventure .world-hud-card > .world-radar { grid-column: 2; grid-row: 1 / span 2; display: block; text-align: center; }
-  .adventure .world-hud-card > .world-radar > :is(#world-position, #world-map-caption) { display: none; }
-  .adventure .world-hud-card .world-radar[data-size] canvas { width: 86px; height: 86px; }
-  .adventure .world-hud-card .world-radar[data-size=large] canvas { width: 112px; height: 112px; }
-  .adventure .world-hud-card > .world-explore-panel { grid-column: 1; grid-row: 2; }
-  .adventure .world-hud-card .world-explore-scroll { max-height: max(70px, calc(100dvh - var(--app-header-height) - var(--app-nav-height) - 330px)); }
-  .adventure .world-hud-card .world-bag-panel { left: auto; right: 0; }
-  .adventure .world-heal { top: calc(var(--app-header-height) + 20px + var(--world-hud-card-height, 200px)); left: auto; right: 12px; }
-  .adventure .world-gym-notice { top: calc(var(--app-header-height) + 20px + var(--world-hud-card-height, 200px)); left: 12px; translate: none; max-width: calc(100% - 140px); }
+  .adventure .world-hud-card .world-explore-scroll { max-height: max(120px, calc(100dvh - var(--app-header-height) - var(--world-hud-card-height, 110px) - var(--app-nav-height) - var(--world-partner-height, 48px) - 40px)); }
+  /* Landscape phones used to park the minimap beside a narrow card; it stays at the top right. */
+  .adventure .world-radar { top: calc(var(--app-header-height) + 8px); right: 10px; left: auto; }
+  .adventure .world-radar > :is(#world-position, #world-map-caption) { display: none; }
+  .adventure .world-quick-actions { top: calc(var(--app-header-height) + 14px + var(--world-radar-height, 130px)); right: 10px; left: auto; gap: 4px; }
+  .adventure .world-quick-actions .world-mode-buttons { gap: 2px; padding: 3px; border-radius: 12px; }
+  .adventure .world-quick-actions .world-mode-buttons button { min-height: 32px; padding: 2px; font-size: calc(12px * var(--ui-font-scale, 1)); }
+  .adventure .world-heal { min-height: 36px; padding: 4px 6px; font-size: calc(12px * var(--ui-font-scale, 1)); }
+  .adventure .world-quick-actions .world-cave-exits :is(button, select) { min-height: 36px; padding: 4px 6px; font-size: calc(12px * var(--ui-font-scale, 1)); }
+  .adventure .ow-camera-controls { inset: calc(var(--app-header-height) + 20px + var(--world-radar-height, 130px) + var(--world-quick-height, 80px)) 10px auto auto; }
+  .adventure .world-gym-notice { top: calc(var(--app-header-height) + 16px + var(--world-hud-card-height, 110px)); left: 10px; translate: none; max-width: calc(100% - 40px - var(--world-radar-width, 86px)); }
 }
-/* Phone: notices float above the partner and chat bars instead of covering them. */
+/* Landscape phones keep the place card to a left column instead of a strip across the top. */
+@media (max-height: 600px) and (min-width: 601px) and (max-width: 900px) {
+  .adventure .world-hud-card { right: auto; width: 300px; }
+}
+/* Phone: notices float just above the measured bottom stack (wild card, chat, partner bar) instead of covering it. */
 @media (max-width: 900px) {
-  body:has(.adventure) #toast { bottom: calc(var(--app-nav-height, 0px) + 124px); }
+  body:has(.adventure) #toast { bottom: calc(var(--app-nav-height, 0px) + 20px + var(--world-lower-height, 104px)); }
 }

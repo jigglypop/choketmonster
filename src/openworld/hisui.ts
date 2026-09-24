@@ -15,11 +15,14 @@ export const HISUI_LOCATIONS:readonly KantoLocation[]=[
   l('highlands-camp','산기슭 기지',14,-18,'town',[34,44],3),l('coronet-highlands','천관산 기슭',29,-28,'cave',[38,50],3),l('moonview-arena','영월의 전장',45,-21,'special',[43,54],4),
   l('icelands-camp','동토 기지',43,-50,'town',[46,58],5),l('alabaster-icelands','순백 동토',60,-56,'route',[48,60],5),l('icepeak-arena','빙산의 전장',75,-48,'special',[52,64],6),
   l('temple-of-sinnoh','신오신전',84,-72,'special',[58,70],7),
+  l('hisui-verity-cavern','진실호수 동굴',-51,26,'cave',[55,65],8),l('hisui-valor-cavern','입지호수 동굴',-25,61,'cave',[55,65],8),l('hisui-acuity-cavern','예지호수 동굴',60,-69,'cave',[60,70],8),
+  l('firespit-island','불꽃섬',-13,-8,'cave',[60,70],8),l('hisui-snowpoint-temple','선단신전',43,-64,'special',[60,70],8),l('hisui-turnback-cave','돌아오는동굴',10,-31,'cave',[65,75],8),
 ];
 export const HISUI_CONNECTIONS:ReadonlyArray<readonly[string,string]>=[
   ['jubilife-village','aspiration-hill'],['aspiration-hill','fieldlands-camp'],['fieldlands-camp','deertrack-path'],['deertrack-path','grandtree-arena'],
   ['jubilife-village','mirelands-camp'],['mirelands-camp','crimson-mirelands'],['crimson-mirelands','brava-arena'],['jubilife-village','coastlands-camp'],['coastlands-camp','cobalt-coastlands'],['cobalt-coastlands','molten-arena'],
   ['jubilife-village','highlands-camp'],['highlands-camp','coronet-highlands'],['coronet-highlands','moonview-arena'],['jubilife-village','icelands-camp'],['icelands-camp','alabaster-icelands'],['alabaster-icelands','icepeak-arena'],['moonview-arena','temple-of-sinnoh'],['icepeak-arena','temple-of-sinnoh'],
+  ['deertrack-path','hisui-verity-cavern'],['mirelands-camp','hisui-valor-cavern'],['alabaster-icelands','hisui-acuity-cavern'],['coastlands-camp','firespit-island'],['icelands-camp','hisui-snowpoint-temple'],['highlands-camp','hisui-turnback-cave'],
 ];
 export const HISUI_GYMS:readonly KantoGym[]=[
   {locationId:'grandtree-arena',badge:1,badgeName:'들판 조사증',name:'사마자르 진정',speciesId:900,level:18},{locationId:'brava-arena',badge:2,badgeName:'습지 조사증',name:'드레디어 진정',speciesId:549,level:28},
