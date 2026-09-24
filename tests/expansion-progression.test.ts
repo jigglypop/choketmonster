@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { DUNGEON_PLANS } from '../src/openworld/dungeons';
 import { describe, expect, it } from 'vitest';
 import { createGame, createMonster, heal, challengeCampaignGym, challengeCampaignTrainer, actBattle, serializeGame, restoreGame, validateGame, type GameState } from '../src/game/engine';
 import { campaignTravelReason, getCampaignGyms, getRegionalBadges } from '../src/game/campaign';
@@ -67,7 +68,9 @@ describe('Hoenn through Alola runtime progression', () => {
       // Source means the tables the 3D world spawns from: walk on land places, surf on sea places.
       const source = new Set(expansionSourceSpeciesIds(region));
       const rules = expansionSupplementalRules(region), added = new Set(rules.map(rule => rule.speciesId));
-      for (let id = first; id <= last; id++) { expect(source.has(id) || added.has(id), `${region}:${id}`).toBe(true); expect(isPlayableSpecies(id)).toBe(true); }
+      // Legendary and mythical species wait in lairs instead of rare slots.
+      const lairs = new Set(DUNGEON_PLANS.flatMap(plan => plan.legendary ?? []));
+      for (let id = first; id <= last; id++) { expect(source.has(id) || added.has(id) || lairs.has(id), `${region}:${id}`).toBe(true); expect(isPlayableSpecies(id)).toBe(true); }
       for (const rule of rules) {
         expect(rule.origin).toBe('supplemental'); expect(source.has(rule.speciesId)).toBe(false);
         expect(regionalEncounters(rule.locationId, 8, region, rule.period, rule.biome)).toContain(rule.speciesId);

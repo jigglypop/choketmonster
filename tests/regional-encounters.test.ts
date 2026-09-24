@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { isLegendarySpecies } from '../src/game/legendary';
+import { DUNGEON_PLANS } from '../src/openworld/dungeons';
 import { chooseRegionalEncounter, encounterPeriodAt, regionalEncounterFrequency, regionalRuntimePools, regionalSpeciesIds, runtimeSourceSpeciesIds, SELECTED_ENCOUNTER_VERSIONS, supplementalEncounterRules, supplementalSpeciesIds, WORLD_DAY_SECONDS } from '../src/data/regional-encounters';
 import { duplicateMergeValue } from '../src/game/growth';
 
@@ -40,12 +42,14 @@ describe('fixed regional encounter sources', () => {
     expect(selected.origin).toBe('supplemental');
   });
 
-  it('gates starters and legendary supplements to later revisits', () => {
+  it('gates starters to later revisits and keeps legendaries in their lairs', () => {
     const rules = supplementalEncounterRules('johto');
-    expect(new Set(supplementalEncounterRules('kanto').map(rule => rule.locationId)).size).toBeGreaterThanOrEqual(15);
+    // Kanto's four legendary-only lairs no longer hold rare slots.
+    expect(new Set(supplementalEncounterRules('kanto').map(rule => rule.locationId)).size).toBeGreaterThanOrEqual(13);
     expect(new Set(rules.map(rule => rule.locationId)).size).toBeGreaterThanOrEqual(15);
     expect(rules.filter(rule => [152,155,158].includes(rule.speciesId)).every(rule => rule.requiredBadges >= 4)).toBe(true);
-    expect(rules.filter(rule => [243,244,245,249,250,251].includes(rule.speciesId)).every(rule => rule.requiredBadges === 8)).toBe(true);
+    for (const region of ['kanto','johto'] as const) expect(supplementalEncounterRules(region).some(rule => isLegendarySpecies(rule.speciesId))).toBe(false);
+    for (const speciesId of [144,145,146,150,151,243,244,245,249,250,251]) expect(DUNGEON_PLANS.some(plan => plan.legendary?.includes(speciesId)), String(speciesId)).toBe(true);
   });
 
   it('makes every supplemental rule reachable by revisiting its gated place and period', () => {
@@ -61,7 +65,8 @@ describe('fixed regional encounter sources', () => {
   });
 
   it('uses the same bounded level percentage for every duplicate species', () => {
-    expect(Array.from({ length: 251 }, (_, index) => regionalEncounterFrequency(index + 1)).every(frequency => frequency > 0)).toBe(true);
+    // Legendary and mythical Pokémon are lair-only, outside the table and rare-cycle index.
+    expect(Array.from({ length: 251 }, (_, index) => index + 1).every(speciesId => isLegendarySpecies(speciesId) ? regionalEncounterFrequency(speciesId) === 0 : regionalEncounterFrequency(speciesId) > 0)).toBe(true);
     for (const speciesId of [1, 19, 72, 144, 151, 163, 249, 251]) {
       expect(speciesId).toBeGreaterThan(0);
       expect(duplicateMergeValue({ level: 20 })).toEqual({ levels: 1, percent: 5 });

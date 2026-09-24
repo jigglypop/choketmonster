@@ -65,12 +65,8 @@ export class OpenWorldPanel {
   private manualIdleSeconds = 0;
   private manualMovementActive = false;
   private serverRequest?: Promise<void>;
-  private recoveryError?: { message: string; source: 'server' | 'world' };
-  private recovering = false;
-  private readonly onConnectionRestored = () => {
-    if (this.recoveryError?.source === 'server') void this.resume();
-    this.renderer?.retryModels();
-  };
+  private readonly lastErrorAt: Partial<Record<'server' | 'world', number>> = {};
+  private readonly onConnectionRestored = () => { this.renderer?.retryModels(); };
   private multiplayer?: MultiplayerSession;
   private movingUntil = 0;
   private trackedPlayerId?: string;
@@ -124,8 +120,6 @@ export class OpenWorldPanel {
       else if (index === 0) this.host.querySelector<HTMLButtonElement>('#world-struggle')?.click();
     }
     if (event.code === 'KeyB') { event.preventDefault(); this.button('#world-catch').click(); }
-    // A focused button would also activate on keyup and toggle the pause straight back.
-    if (event.code === 'Space') { event.preventDefault(); (document.activeElement as HTMLElement | null)?.blur(); this.button('#world-pause').click(); }
   };
   paused = false;
   private pausedByRenderer = false;
@@ -144,10 +138,10 @@ export class OpenWorldPanel {
     this.simulation.requireReadyModels();
     host.innerHTML = `<section class="adventure" aria-label="오픈월드 모험">
       <div id="ow-host"></div>
-      <section id="world-recovery" class="world-recovery" aria-label="탐험 상태" hidden><p id="world-recovery-message" aria-live="polite"></p><div><button id="world-resume">계속 탐험</button><button id="world-model-retry" hidden>모델 다시 불러오기</button></div></section>
+      <section id="world-recovery" class="world-recovery" aria-label="탐험 상태" hidden><p id="world-recovery-message" aria-live="polite"></p><div><button id="world-model-retry" hidden>모델 다시 불러오기</button></div></section>
       <section class="world-hud-card" aria-label="탐험">
         <details class="world-explore-panel"><summary class="world-explore-toggle"><div><strong id="world-location-short">성도</strong><small id="world-explore-short">성도</small></div><i>⌄</i></summary><div class="world-explore-scroll">
-        <div class="world-tools"><button id="world-pause">Ⅱ 일시 정지</button><button id="world-trade-open" title="포켓몬 교환 · 게임 머니 거래">교환</button></div>
+        <div class="world-tools"><button id="world-trade-open" title="포켓몬 교환 · 게임 머니 거래">교환</button></div>
         <button id="world-trainer-open" class="world-trainer-open">트레이너 배틀</button>
         <fieldset class="world-automation"><legend>자동 설정</legend><label><input id="world-auto-catch" type="checkbox" checked><span>자동 포획</span></label><label title="건강한 팀원 모두 같은 경험치"><input id="world-exp-share" type="checkbox" checked><span>팀 경험치 공유</span></label><label><input id="world-learning" type="checkbox" checked><span id="world-learning-label">기술 학습</span></label></fieldset>
         <div class="world-control-mode"><div class="world-control-copy"><strong id="world-control-title"></strong><small id="world-control-help"></small></div></div>
@@ -258,7 +252,6 @@ export class OpenWorldPanel {
     this.multiplayer.join(this.presence());
     window.addEventListener('keydown', this.hotkeys);
     window.addEventListener('online', this.onConnectionRestored);
-    this.button('#world-resume').onclick = () => void this.resume();
     this.button('#world-model-retry').onclick = () => { this.renderer?.retryModels(); };
     const battleHud = this.host.querySelector<HTMLDetailsElement>('.world-battle-hud')!;
     battleHud.open = false;
@@ -274,7 +267,7 @@ export class OpenWorldPanel {
       if (explorePanel.open && this.compactViewport.matches) { this.setChatCollapsed(true); battleHud.open = false; }
     });
     this.compactViewport.addEventListener('change', this.onViewportChange);
-    this.button('#world-mode-auto').onclick = () => { this.changeMode('auto'); if (this.paused) void this.resume(); };
+    this.button('#world-mode-auto').onclick = () => this.changeMode('auto');
     this.button('#world-mode-manual').onclick = () => this.changeMode('manual');
     this.button('#world-gym-notice').onclick = () => this.startNextChallenge();
     this.button('#world-edit-moves').onclick = () => {
@@ -380,19 +373,6 @@ export class OpenWorldPanel {
     let composing = false;
     chatInput.addEventListener('compositionstart', () => { composing = true; }); chatInput.addEventListener('compositionend', () => { composing = false; });
     chat.addEventListener('submit', event => { event.preventDefault(); if (composing) return; if (this.multiplayer?.sendChat(chatInput.value)) { chatInput.value = ''; this.html('#world-chat-error', ''); this.scrollChatToLatest(); } else this.html('#world-chat-error', this.multiplayer?.view.status === 'connected' ? '1~200자로 입력해 주세요.' : '연결을 복구하고 있습니다. 입력한 내용은 유지됩니다.'); });
-    this.button('#world-pause').onclick = async () => {
-      if (this.paused) { await this.resume(); return; }
-      this.paused = true; this.refresh();
-      try {
-        // A request already in flight still owns a durable neural result. Finish
-        // it before marking this paused snapshot saved, so reload sees that head.
-        // The button stays usable meanwhile; a world resumed first saves on its own schedule.
-        await this.serverRequest;
-        if (this.paused) await this.options.changed(true);
-      } catch (error) {
-        this.pauseWithError(error, 'world');
-      }
-    };
     this.button('#world-heal').onclick = () => {
       if (this.options.game.battle) return this.options.notify('배틀을 마친 뒤 회복할 수 있습니다.');
       heal(this.options.game); playGameSound('heal'); this.options.notify('캠프에서 HP·상태 이상을 회복했습니다.'); this.options.changed(); this.refresh();
@@ -620,7 +600,6 @@ export class OpenWorldPanel {
   private catchVictory(): void { const caught = this.simulation.captureVictory(); if (caught) playGameSound('capture'); this.options.notify(caught ? '포획 성공! 팀 또는 박스에 저장했습니다.' : '볼이 없어 포획을 패스합니다.'); this.options.changed(); this.refresh(); }
 
   private encounter(id: string): void {
-    if (this.recoveryError || this.recovering) return;
     const wild = this.simulation.entities.find(entity => entity.id === id);
     if (!wild || wild.kind !== 'wild') return;
     this.simulation.selectWild(id, true);
@@ -653,9 +632,7 @@ export class OpenWorldPanel {
     // itself gates a battle turn until all required decisions are present.
     if (!this.serverRequest) {
       this.serverRequest = this.simulation.prepareServerBattle(this.options.learning())
-        .catch(error => {
-          this.pauseWithError(error, 'server');
-        }).finally(() => { this.serverRequest = undefined; });
+        .catch(error => this.reportError(error, 'server')).finally(() => { this.serverRequest = undefined; });
     }
     const battlers = this.battlerPoints();
     const result = this.simulation.step({ deltaSeconds: .25, learning: this.options.learning() });
@@ -691,44 +668,19 @@ export class OpenWorldPanel {
     if (result.tick % 20 === 0) this.options.changed();
     this.refresh();
     } catch (error) {
-      this.pauseWithError(error, 'world');
+      this.reportError(error, 'world');
     } finally { this.tickPending = false; }
   }
 
-  private pauseWithError(error: unknown, source: 'server' | 'world'): void {
-    this.paused = true;
-    this.recoveryError = { message: error instanceof Error ? error.message : String(error), source };
-    this.options.notify(`${this.recoveryError.message} · 화면의 ‘다시 연결하고 재개’를 눌러 재시도할 수 있습니다.`, true);
-    this.refresh();
-  }
-
-  private async resume(): Promise<void> {
-    // A plain pause holds no failed work, so it resumes at once. Waiting on the
-    // network or a save here made repeated toggles drop input and stay paused.
-    if (!this.recoveryError) {
-      this.paused = false; this.options.changed(); this.refresh();
-      this.options.notify('탐험을 재개했습니다.');
-      return;
-    }
-    if (this.recovering) return;
-    this.recovering = true; this.paused = true;
-    const host = this.host;
-    let source: 'server' | 'world' = 'server';
-    this.refreshRecovery();
-    try {
-      // Preserve pending neural finalizations and retry the same idempotent turn.
-      // Never switch to a different circuit or discard a failed request's memory.
-      await this.serverRequest;
-      await this.simulation.prepareServerBattle(this.options.learning());
-      if (this.host !== host) return;
-      source = 'world';
-      this.recoveryError = undefined;
-      this.paused = false;
-      await this.options.changed(true);
-      this.options.notify('탐험을 재개했습니다.');
-    } catch (error) {
-      if (this.host === host) this.pauseWithError(error, source);
-    } finally { this.recovering = false; if (this.host === host) this.refresh(); }
+  /**
+   * Errors never stop exploring: each is shown (at most once per half minute per kind) and the next tick tries again.
+   * A failed neural request keeps its memory: the battle turn waits and the same idempotent request is sent again.
+   */
+  private reportError(error: unknown, source: 'server' | 'world'): void {
+    const now = performance.now();
+    if (now - (this.lastErrorAt[source] ?? -Infinity) < 30_000) return;
+    this.lastErrorAt[source] = now;
+    this.options.notify(error instanceof Error ? error.message : String(error), true);
   }
 
   private refreshRecovery(): void {
@@ -756,20 +708,10 @@ export class OpenWorldPanel {
     host.dataset.rendererReady = String(this.ready);
     host.dataset.ready = String(this.ready && !blocked);
     host.dataset.paused = String(this.paused);
-    banner.hidden = !failed && !this.paused && !this.recoveryError;
-    // Only retrying failed work blocks the resume button; a plain pause never does.
-    const retrying = this.recovering && Boolean(this.recoveryError);
-    this.html('#world-recovery-message', escape(retrying ? '연결과 저장 상태를 확인하고 있습니다…'
-      : this.recoveryError ? this.recoveryError.message
-      : failed ? '포켓몬 3D 모델을 불러오지 못했습니다. 해당 개체의 이동·배틀을 멈췄습니다.'
-      : '탐험이 일시 정지되어 있습니다.'));
-    const resume = this.button('#world-resume');
-    resume.hidden = !this.paused && !this.recoveryError;
-    // The simulation itself waits for required models, so resuming never needs to.
-    resume.disabled = retrying;
-    resume.textContent = this.recoveryError ? '다시 연결하고 재개' : '계속 탐험';
-    const retry = this.button('#world-model-retry');
-    retry.hidden = !failed; retry.disabled = this.recovering;
+    // The banner only reports Pokémon models that failed to load; exploring itself never pauses.
+    banner.hidden = !failed;
+    this.html('#world-recovery-message', escape('포켓몬 3D 모델을 불러오지 못했습니다. 해당 개체의 이동·배틀을 멈췄습니다.'));
+    this.button('#world-model-retry').hidden = !failed;
   }
 
   private destinationGuide(): DestinationGuide {
@@ -1127,7 +1069,7 @@ export class OpenWorldPanel {
     this.html('#world-combatants', `${card(lead, '파트너')}${enemy ? card(enemy, battle!.kind === 'wild' ? '야생' : campaignTrainer?.name ?? getCampaignGyms(game, battle!.campaignRegion ?? world.regionId).find(item => item.badge === battle!.gymBadge)?.name ?? '체육관') + enemyParty : `<div class="world-growth"><small>다음 레벨까지 ${Math.max(0, xpEnd - lead.xp)} EXP</small><div class="world-xp"><i style="width:${xp}%"></i></div><span>${species.moves.filter(move => move.level > lead.level).slice(0, 1).map(move => `Lv.${move.level} ${getMove(move.moveId).name} 습득`).join('') || '현재 레벨의 기술을 모두 익혔습니다.'}</span></div>`}`);
     const moveLayout = getMoveLayout({ ...lead, moves });
     this.button('#world-edit-moves').disabled = !this.options.editMoves;
-    this.html('#world-transformations', battleTransformationsHtml(game, this.recovering));
+    this.html('#world-transformations', battleTransformationsHtml(game, false));
     this.host.querySelectorAll<HTMLButtonElement>('[data-battle-transformation]').forEach(button => button.onclick = async () => {
       const paused = this.paused, currentBattle = game.battle;
       const formIdentifier = this.host!.querySelector<HTMLSelectElement>('[data-mega-form]')?.value;
@@ -1162,7 +1104,7 @@ export class OpenWorldPanel {
     host.dataset.scene = world.sceneId;
     this.html('#world-position', `${world.player.x.toFixed(0)}, ${world.player.z.toFixed(0)}`);
     this.html('#world-feed', game.logs.slice(-3).map(log => `<p>${escape(log)}</p>`).join(''));
-    this.html('#world-battle-state', game.captureOffer ? '승리! 포획 여부를 선택하세요' : battle ? `${battle.awaitingSwitch ? '교체할 포켓몬 선택' : world.escaping ? '도망 시도 중' : world.controlMode === 'manual' ? '기술 선택 대기' : '자동 배틀'} · 턴 ${battle.turn}` : this.paused ? '탐험 일시 정지' : world.controlMode === 'manual' ? '수동 탐험 · 배틀 버튼으로만 전투' : '가까운 포켓몬 추적 · 접근하면 배틀');
+    this.html('#world-battle-state', game.captureOffer ? '승리! 포획 여부를 선택하세요' : battle ? `${battle.awaitingSwitch ? '교체할 포켓몬 선택' : world.escaping ? '도망 시도 중' : world.controlMode === 'manual' ? '기술 선택 대기' : '자동 배틀'} · 턴 ${battle.turn}` : world.controlMode === 'manual' ? '수동 탐험 · 배틀 버튼으로만 전투' : '가까운 포켓몬 추적 · 접근하면 배틀');
     this.button('#world-mode-auto').setAttribute('aria-pressed', String(world.controlMode === 'auto'));
     this.button('#world-mode-manual').setAttribute('aria-pressed', String(world.controlMode === 'manual'));
     this.html('#world-control-title', world.controlMode === 'manual' ? '수동 이동' : '자동 이동 · 배틀');
@@ -1218,7 +1160,6 @@ export class OpenWorldPanel {
     this.button('#world-run').disabled = !battle?.canRun;
     this.button('#world-heal').disabled = Boolean(battle);
     this.button('#world-trainer-open').disabled = Boolean(battle || offer);
-    this.button('#world-pause').textContent = this.paused ? '▶ 계속 탐험' : 'Ⅱ 일시 정지';
     this.input('#world-auto-catch').checked = world.autoCapture;
     this.input('#world-exp-share').checked = game.experienceShare !== false;
     const ledger = world.rewardLedgers[lead.instanceId], signed = (n: number) => `${n >= 0 ? '+' : ''}${n.toFixed(2)}`;

@@ -1,6 +1,7 @@
 import { Brain, validateGraph, type BrainState, type Graph } from '../core/brain';
 import { addEvolutionSteps } from '../game/evolution-progress';
 import { isLegendarySpecies } from '../game/legendary';
+import { DUNGEON_PLANS } from './dungeons';
 import { advanceEggProgress } from '../game/breeding';
 import { Random, clamp } from '../core/random';
 import { POKEMON, getMove, getSpecies } from '../data/pokemon';
@@ -1141,8 +1142,8 @@ export class OpenWorldSimulation {
 
   /** Legendary and mythical Pokémon are one of a kind: taken once caught, or while one already roams or waits to respawn here. */
   private uniqueTaken(speciesId: number): boolean {
-    const version = this.game.adventureVersion ?? 'red', caught = this.game.versionCaught?.[version] ?? this.game.dex.caught;
-    return caught.includes(speciesId) || this.entities.some(entity => entity.kind === 'wild' && entity.speciesId === speciesId)
+    // The whole Pokédex counts: a legendary outside this version's dex is still caught once and for all.
+    return this.game.dex.caught.includes(speciesId) || this.entities.some(entity => entity.kind === 'wild' && entity.speciesId === speciesId)
       || this.respawnQueue.some(pending => pending.speciesId === speciesId);
   }
 
@@ -1167,8 +1168,8 @@ export class OpenWorldSimulation {
       ? chooseExpansionEncounter(this.regionId, location.id, this.dayPeriod, biome, this.regionalBadges, serial, () => this.rng.next(), { min: levels.minLevel, max: levels.maxLevel }, floor)
       : chooseRegionalEncounter(encounterRegion, location.id, this.dayPeriod, biome, this.regionalBadges, serial, () => this.rng.next(), { min: levels.minLevel, max: levels.maxLevel }, floor);
     let encounter = choose(this.spawnSerial);
-    // A legendary already caught or present is rerolled from the ordinary slots (a serial off the rare-slot cadence).
-    for (let attempt = 1; attempt <= 4 && isLegendarySpecies(encounter.speciesId) && this.uniqueTaken(encounter.speciesId); attempt++) encounter = choose(this.spawnSerial * 20 + attempt);
+    // Legendary and mythical Pokémon live only in their lairs; a table slot holding one is rerolled from the ordinary slots.
+    for (let attempt = 1; attempt <= 8 && isLegendarySpecies(encounter.speciesId); attempt++) encounter = choose(this.spawnSerial * 20 + attempt);
     // Encounters carry their runtime level range, never below the species' evolution floor.
     const min = Math.max(1, encounter.minLevel), max = Math.max(min, encounter.maxLevel);
     return { speciesId: encounter.speciesId, level: min + this.rng.int(max - min + 1) };
@@ -1181,7 +1182,8 @@ export class OpenWorldSimulation {
       : biome === undefined ? regionalEncounters(locationId, this.regionalBadges, this.regionId)
       : [...regionalRuntimePools(encounterRegion, locationId, this.dayPeriod, biome, floor?.areas).flatMap(pool => pool.slots.map(slot => slot.speciesId)),
         ...(this.spawnSerial % 20 === 0 ? regionalSupplementalRules(encounterRegion, locationId, biome, this.regionalBadges, floor).map(rule => rule.speciesId) : [])];
-    return [...new Set(candidates)].filter(speciesId => !isLegendarySpecies(speciesId) || !this.uniqueTaken(speciesId));
+    // Lair legendaries come from waitingLegend(), never from a place's pool.
+    return [...new Set(candidates)].filter(speciesId => !isLegendarySpecies(speciesId));
   }
 
   changeVersion(version: string): void {
@@ -1259,6 +1261,9 @@ export class OpenWorldSimulation {
   }
 
   private spawnWild(): OpenWorldEntity {
+    // A lair's waiting legendary appears at its altar at the end of the last floor.
+    const altar = getCaveScene(this.sceneId)?.altar;
+    if (altar && this.waitingLegend() !== undefined && !this.entities.some(entity => distance(entity, altar) < 1)) return this.spawnWildAt(altar);
     return this.spawnWildAt(this.localSpawnPosition());
   }
 
@@ -1280,7 +1285,11 @@ export class OpenWorldSimulation {
     for (const pending of this.respawnQueue) pending.remainingSeconds = Math.max(0, pending.remainingSeconds - deltaSeconds);
     const ready = this.respawnQueue.filter(pending => pending.remainingSeconds === 0);
     this.respawnQueue = this.respawnQueue.filter(pending => pending.remainingSeconds > 0);
-    for (const _pending of ready) this.spawnWild();
+    // No open spawn point nearby (a small unlocked pocket, a crowded floor) must not stop the world; try again shortly.
+    for (const pending of ready) {
+      try { this.spawnWild(); }
+      catch { this.respawnQueue.push({ ...pending, remainingSeconds: 3 }); }
+    }
   }
 
   /** Preserve saved identity and brain state while remapping illegal town spawns to a route pool. */
@@ -1730,15 +1739,24 @@ export function redEncounters(locationId: string, badges: number, regionId: Worl
   return getWorldAtlas('kanto').encounters(locationId, badges);
 }
 
+/** Legendaries waiting in the lairs reached from a map place (the dungeon's own place, else its first entrance), once eight badges are held. */
+function lairLegendaries(regionId: WorldRegionId, locationId: string, badges: number): number[] {
+  if (badges < 8) return [];
+  const places = getWorldAtlas(regionId).locations;
+  return DUNGEON_PLANS.filter(plan => plan.regionId === regionId && plan.legendary?.length
+    && (places.some(place => place.id === plan.id) ? plan.id : plan.surfaceLocations[0]) === locationId).flatMap(plan => plan.legendary!);
+}
+
 /** Region geography determines encounters; collection version never reshuffles them. */
 export function regionalEncounters(locationId: string, _badges: number, regionId: WorldRegionId = 'kanto', period?: EncounterPeriod, biome?: string): number[] {
-  if (isExpansionRegion(regionId)) return expansionEncounterSpecies(regionId, locationId, _badges, period, biome);
+  const lairs = lairLegendaries(regionId, locationId, _badges);
+  if (isExpansionRegion(regionId)) return [...new Set([...expansionEncounterSpecies(regionId, locationId, _badges, period, biome), ...lairs])].sort((a, b) => a - b);
   if (regionId !== 'kanto' && regionId !== 'johto') return [];
   const source = (biome === undefined
     ? [...regionalRuntimePools(regionId, locationId, period ?? 'day', 'meadow'), ...regionalRuntimePools(regionId, locationId, period ?? 'day', 'lake')]
     : regionalRuntimePools(regionId, locationId, period ?? 'day', biome)).flatMap(pool => pool.slots.map(slot => slot.speciesId));
   const supplemental=supplementalEncounterRules(regionId).filter(rule=>rule.locationId===locationId&&rule.requiredBadges<=_badges&&(!biome||rule.biome===biome)).map(rule=>rule.speciesId);
-  return [...new Set([...source, ...supplemental])].sort((a, b) => a - b);
+  return [...new Set([...source, ...supplemental, ...lairs])].sort((a, b) => a - b);
 }
 
 /** Compatibility entry point: selecting a collection version never broadens the layout. */

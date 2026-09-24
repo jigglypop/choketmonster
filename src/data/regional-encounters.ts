@@ -3,6 +3,8 @@ import { KANTO_LOCATIONS, type KantoLocation } from '../openworld/kanto';
 import { JOHTO_LOCATIONS } from '../openworld/johto';
 import { baseWildBand, fitWildSlots, placeRareSpecies, preferredRareBiome, rareSpawnLevels, wildLevelRange, type RareAnchor, type RareBiome } from './wild-levels';
 import { combineEncounterPeriods } from './encounter-runtime';
+import { isLegendarySpecies } from '../game/legendary';
+import { DUNGEON_PLANS } from '../openworld/dungeons';
 
 export type EncounterRegion = 'kanto' | 'johto';
 export type EncounterPeriod = 'morning' | 'day' | 'night';
@@ -134,7 +136,6 @@ export function supplementalSpeciesIds(region: EncounterRegion): number[] {
   return regionalSpeciesIds(region).filter(speciesId => !source.has(speciesId));
 }
 
-const SPECIAL_LATE = new Set([144,145,146,150,151,243,244,245,249,250,251]);
 export type SupplementalEncounterRule = { speciesId: number; locationId: string; period: EncounterPeriod; biome: RareBiome; requiredBadges: number; minLevel: number; origin: 'supplemental'; rarity: 'rare' };
 type AuthoredAnchor = readonly [locationId: string, biome: RareBiome, badges: number];
 /** Rare places and the badge stage each belongs to. Their level is the place's own band. */
@@ -150,27 +151,19 @@ const RARE_ANCHORS: Record<EncounterRegion, readonly AuthoredAnchor[]> = {
     ['union-cave','rock',1],['slowpoke-well','rock',2],['whirl-islands','rock',4],['mt-mortar','rock',5],['ice-path','rock',7],['dragons-den','rock',8],['mt-silver','rock',8],
   ],
 };
-/** Legendary lairs: Seafoam B4F, Power Plant, Victory Road, Cerulean Cave; Whirl Islands, Bell Tower, Mt. Silver. */
-function legendaryAnchor(region: EncounterRegion, speciesId: number): { locationId: string; biome: RareBiome } | undefined {
-  if (region === 'kanto') return speciesId === 144 ? { locationId: 'seafoam-islands', biome: 'rock' } : speciesId === 145 ? { locationId: 'power-plant', biome: 'rock' }
-    : speciesId === 146 ? { locationId: 'victory-road', biome: 'rock' } : speciesId === 150 || speciesId === 151 ? { locationId: 'cerulean-cave', biome: 'rock' } : undefined;
-  return speciesId === 249 ? { locationId: 'whirl-islands', biome: 'rock' } : speciesId === 250 ? { locationId: 'bell-tower', biome: 'meadow' }
-    : SPECIAL_LATE.has(speciesId) ? { locationId: 'mt-silver', biome: 'rock' } : undefined;
-}
 const supplementalRuleCache = new Map<EncounterRegion, SupplementalEncounterRule[]>();
 /**
  * Rare slots for species missing from the original tables. Placement follows biology, not Pokédex
- * order: the evolution level floor, base stat total and species class (starter, pseudo-legendary,
- * legendary) choose the badge stage, and the anchor's band must hold that level (placeRareSpecies).
+ * order: the evolution level floor, base stat total and species class (starter, pseudo-legendary)
+ * choose the badge stage, and the anchor's band must hold that level (placeRareSpecies).
+ * Legendary and mythical Pokémon get no rare slot: they wait only in their lairs (dungeons.ts).
  */
 export function supplementalEncounterRules(region: EncounterRegion): SupplementalEncounterRule[] {
   const cached = supplementalRuleCache.get(region); if (cached) return cached;
   const anchors: RareAnchor[] = RARE_ANCHORS[region].map(([locationId, biome, badges]) => ({ locationId, biome, stages: [badges, badges], gate: badges, ...regionalBaseBand(region, locationId) })), load = new Map<string, number>();
-  const rules = supplementalSpeciesIds(region).map((speciesId): SupplementalEncounterRule => {
-    const lair = legendaryAnchor(region, speciesId);
-    const placement = lair ? { locationId: lair.locationId, biome: lair.biome, requiredBadges: 8, minLevel: 50 }
-      : (({ anchor, requiredBadges, minLevel }) => ({ locationId: anchor.locationId, biome: anchor.biome, requiredBadges, minLevel }))(placeRareSpecies(region, speciesId, anchors, preferredRareBiome(speciesId), load));
-    return { speciesId, ...placement, period: (['morning','day','night'] as const)[speciesId % 3], origin: 'supplemental', rarity: 'rare' };
+  const rules = supplementalSpeciesIds(region).filter(speciesId => !isLegendarySpecies(speciesId)).map((speciesId): SupplementalEncounterRule => {
+    const { anchor, requiredBadges, minLevel } = placeRareSpecies(region, speciesId, anchors, preferredRareBiome(speciesId), load);
+    return { speciesId, locationId: anchor.locationId, biome: anchor.biome, requiredBadges, minLevel, period: (['morning','day','night'] as const)[speciesId % 3], origin: 'supplemental', rarity: 'rare' };
   });
   supplementalRuleCache.set(region, rules); return rules;
 }
@@ -181,9 +174,8 @@ export function regionalSupplementalRules(region: EncounterRegion, worldLocation
   return supplementalEncounterRules(region).filter(rule => rule.locationId === worldLocationId && (floor || rule.biome === biome) && rule.requiredBadges <= badges);
 }
 
-/** Level range of a rare spawn in a band: legendaries at Lv.50 or the band top, others from their placement minimum. */
+/** Level range of a rare spawn in a band, from its placement minimum. */
 export function supplementalRuleLevels(rule: Pick<SupplementalEncounterRule, 'speciesId' | 'minLevel'>, band: { min: number; max: number }): { minLevel: number; maxLevel: number } {
-  if (SPECIAL_LATE.has(rule.speciesId)) { const level = Math.max(50, band.max); return { minLevel: level, maxLevel: level }; }
   return rareSpawnLevels(rule.minLevel, band);
 }
 
@@ -208,6 +200,14 @@ export function chooseRegionalEncounter(region: EncounterRegion, worldLocationId
 
 export function regionalSpeciesHabitats(speciesId: number) {
   const results: Array<{ region: EncounterRegion; locationIds: string[]; periods: EncounterPeriod[]; methods: string[]; requiredBadges: number; origin: EncounterOrigin; rarity: number | 'rare' }> = [];
+  // Legendary and mythical Pokémon are found only at their lairs, reached from the lair's own map place or its entrance.
+  if (isLegendarySpecies(speciesId)) {
+    for (const plan of DUNGEON_PLANS.filter(item => item.legendary?.includes(speciesId) && (item.regionId === 'kanto' || item.regionId === 'johto'))) {
+      const places = plan.regionId === 'kanto' ? KANTO_LOCATIONS : JOHTO_LOCATIONS;
+      results.push({ region: plan.regionId as EncounterRegion, locationIds: [places.some(place => place.id === plan.id) ? plan.id : plan.surfaceLocations[0]], periods: ['morning','day','night'], methods: ['walk'], requiredBadges: 8, origin: 'supplemental', rarity: 'rare' });
+    }
+    return results;
+  }
   for (const region of ['kanto','johto'] as const) {
     const habitats = speciesId <= REGIONAL_DEX_LIMIT[region] ? sourceHabitats(region).filter(habitat => habitat.slots.some(slot => slot.speciesId === speciesId)) : [];
     if (habitats.length) results.push({ region, locationIds: [...new Set(habitats.map(habitat => habitat.locationId))], periods: ['morning','day','night'], methods: [...new Set(habitats.map(habitat => habitat.method))], requiredBadges: 0, origin: 'source', rarity: Math.min(...habitats.flatMap(habitat => habitat.slots.filter(slot => slot.speciesId === speciesId).map(slot => slot.weight))) });

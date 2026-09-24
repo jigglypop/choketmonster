@@ -149,18 +149,19 @@ describe('cave simulation scenes', () => {
     expect(wilds.every(entity => floorSpecies.has(entity.speciesId) || rare.has(entity.speciesId))).toBe(true);
     expect(wilds.every(entity => entity.level >= 20 + third.levelShift)).toBe(true);
 
-    // Only the anchor floor hosts a dungeon's legendary: Articuno waits on Seafoam B4F.
+    // A dungeon's legendaries wait at an altar on its last wild floor, never in a rare slot: Articuno on Seafoam B4F.
     const seafoam = dungeonFloors({ regionId: 'kanto', dungeonId: 'seafoam-islands' });
-    expect(seafoam.filter(floor => floor.supplemental).map(floor => floor.floorLabel)).toEqual(['지하 4층']);
-    const at = (floor: typeof seafoam[number]) => regionalSupplementalRules('kanto', floor.encounterLocationId, 'rock', 8, { areas: floor.encounterAreas, supplemental: floor.supplemental }).map(rule => rule.speciesId);
-    expect(at(seafoam.at(-1)!)).toContain(144);
-    expect(at(seafoam[0])).toEqual([]);
-    const legendaryFloors = [['kanto', 'cerulean-cave', 150, '지하 1층'], ['kanto', 'victory-road', 146, '2층'], ['kanto', 'power-plant', 145, undefined],
-      ['johto', 'whirl-islands', 249, '지하 3층'], ['johto', 'bell-tower', 250, '9층']] as const;
+    expect(seafoam.filter(floor => floor.legendary).map(floor => floor.floorLabel)).toEqual(['지하 4층']);
+    expect(seafoam.at(-1)!.legendary).toEqual([144]);
+    const legendaryFloors = [['kanto', 'cerulean-cave', 150, '지하 1층'], ['kanto', 'victory-road', 146, '3층'], ['kanto', 'power-plant', 145, undefined],
+      ['johto', 'whirl-islands', 249, '지하 3층'], ['johto', 'bell-tower', 250, '옥상']] as const;
     for (const [region, dungeonId, speciesId, label] of legendaryFloors) {
-      const anchor = dungeonFloors({ regionId: region, dungeonId }).find(floor => floor.supplemental)!;
-      expect(anchor.floorLabel, dungeonId).toBe(label ?? anchor.floorLabel);
-      expect(supplementalEncounterRules(region).some(rule => rule.speciesId === speciesId && rule.locationId === anchor.encounterLocationId), dungeonId).toBe(true);
+      const floors = dungeonFloors({ regionId: region, dungeonId }), lair = floors.find(floor => floor.legendary)!;
+      expect(lair.floorLabel, dungeonId).toBe(label ?? lair.floorLabel);
+      expect(lair, dungeonId).toBe(floors.filter(floor => floor.wild).at(-1));
+      expect(lair.legendary, dungeonId).toContain(speciesId);
+      expect(lair.sample(lair.altar!.x, lair.altar!.z).blocked, dungeonId).toBe(false);
+      expect(supplementalEncounterRules(region).some(rule => rule.speciesId === speciesId), dungeonId).toBe(false);
     }
   });
 
@@ -242,7 +243,7 @@ describe('cave simulation scenes', () => {
     const { game, world, zapdos } = arrive(8, 7192);
     expect(zapdos()).toHaveLength(1);
     expect(zapdos()[0].level).toBeGreaterThanOrEqual(50);
-    game.versionCaught!.red.push(145);
+    game.dex.caught.push(145); game.versionCaught!.red.push(145);
     (world as any).resetScenePopulation(lair.portals[0].interiorArrival);
     expect(zapdos()).toHaveLength(0);
   });

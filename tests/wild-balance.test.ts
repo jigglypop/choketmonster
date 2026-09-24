@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DUNGEON_PLANS } from '../src/openworld/dungeons';
 import { POKEMON } from '../src/data/pokemon';
 import {
   chooseRegionalEncounter, regionalBaseBand, regionalRuntimePools, regionalSpeciesIds, REGIONAL_WORLD_LOCATION_IDS, runtimeSourceSpeciesIds,
@@ -87,13 +88,16 @@ describe('rare supplemental spawns follow biology, not Pokédex order', () => {
     for (const region of ['kanto', 'johto'] as const) {
       const source = new Set(runtimeSourceSpeciesIds(region)), rules = supplementalEncounterRules(region), rare = new Set(rules.map(rule => rule.speciesId));
       expect(rules.every(rule => !source.has(rule.speciesId))).toBe(true);
-      expect(regionalSpeciesIds(region).filter(id => !source.has(id) && !rare.has(id))).toEqual([]);
+      // Legendary and mythical species wait in lairs instead of rare slots.
+      const lairs = new Set(DUNGEON_PLANS.flatMap(plan => plan.legendary ?? []));
+      expect(regionalSpeciesIds(region).filter(id => !source.has(id) && !rare.has(id) && !lairs.has(id))).toEqual([]);
       expect(rules.length).toBeLessThan(regionalSpeciesIds(region).length);
     }
     for (const region of EXPANSIONS) {
       const source = new Set(expansionSourceSpeciesIds(region)), rare = new Set(expansionSupplementalRules(region).map(rule => rule.speciesId));
       const [first, last] = NATIVE[region];
-      for (let id = first; id <= last; id++) expect(source.has(id) || rare.has(id), `${region}:${id}`).toBe(true);
+      const lairs = new Set(DUNGEON_PLANS.flatMap(plan => plan.legendary ?? []));
+      for (let id = first; id <= last; id++) expect(source.has(id) || rare.has(id) || lairs.has(id), `${region}:${id}`).toBe(true);
       expect([...rare].every(id => !source.has(id))).toBe(true);
     }
   });
@@ -128,16 +132,11 @@ describe('rare supplemental spawns follow biology, not Pokédex order', () => {
     }
   });
 
-  it('keeps the Kanto and Johto legendary lairs', () => {
-    const lair = (region: 'kanto' | 'johto', speciesId: number) => supplementalEncounterRules(region).find(rule => rule.speciesId === speciesId);
-    expect(lair('kanto', 144)).toMatchObject({ locationId: 'seafoam-islands', requiredBadges: 8 });
-    expect(lair('kanto', 145)).toMatchObject({ locationId: 'power-plant', requiredBadges: 8 });
-    expect(lair('kanto', 146)).toMatchObject({ locationId: 'victory-road', requiredBadges: 8 });
-    expect(lair('kanto', 150)).toMatchObject({ locationId: 'cerulean-cave', requiredBadges: 8 });
-    expect(lair('kanto', 151)).toMatchObject({ locationId: 'cerulean-cave', requiredBadges: 8 });
-    expect(lair('johto', 249)).toMatchObject({ locationId: 'whirl-islands', requiredBadges: 8 });
-    expect(lair('johto', 250)).toMatchObject({ locationId: 'bell-tower', requiredBadges: 8 });
-    for (const id of [243, 244, 245, 251]) expect(lair('johto', id)).toMatchObject({ locationId: 'mt-silver', requiredBadges: 8 });
+  it('keeps the Kanto and Johto legendaries in their lairs, never in rare slots', () => {
+    const lair = (region: 'kanto' | 'johto', speciesId: number) => DUNGEON_PLANS.find(plan => plan.regionId === region && plan.legendary?.includes(speciesId))?.id;
+    expect([144, 145, 146, 150, 151].map(id => lair('kanto', id))).toEqual(['seafoam-islands', 'power-plant', 'victory-road', 'cerulean-cave', 'cerulean-cave']);
+    expect([243, 244, 245, 249, 250, 251].map(id => lair('johto', id))).toEqual(['burned-tower', 'burned-tower', 'burned-tower', 'whirl-islands', 'bell-tower', 'ilex-shrine']);
+    for (const region of ['kanto', 'johto'] as const) expect(supplementalEncounterRules(region).filter(rule => [144, 145, 146, 150, 151, 243, 244, 245, 249, 250, 251].includes(rule.speciesId))).toEqual([]);
   });
 });
 

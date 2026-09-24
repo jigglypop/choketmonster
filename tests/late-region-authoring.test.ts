@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DUNGEON_PLANS } from '../src/openworld/dungeons';
 import { createGame, restoreGame, serializeGame, validateGame } from '../src/game/engine';
 import { campaignTravelReason, getCampaignGyms, getNextCampaignTrainer, recordCampaignGymVictory, recordCampaignLeagueVictory, validateExpansionCampaign } from '../src/game/campaign';
 import { expansionEncounterPoolOrigin, expansionEncounterPools } from '../src/data/expansion-encounters';
@@ -56,7 +57,9 @@ describe('Galar, Hisui and Paldea authored regions', () => {
       const atlas = getWorldAtlas(id);
       const base = new Set(atlas.locations.flatMap(location => expansionEncounterPools(id, location.id).flatMap(pool => pool.slots.map(slot => slot.speciesId))));
       const supplement = new Set(expansionSupplementalRules(id).map(rule => rule.speciesId));
-      for (let speciesId = first; speciesId <= last; speciesId++) expect(base.has(speciesId) || supplement.has(speciesId), `${id}:${speciesId}`).toBe(true);
+      // Legendary and mythical species wait in lairs instead of rare slots.
+      const lairs = new Set(DUNGEON_PLANS.flatMap(plan => plan.legendary ?? []));
+      for (let speciesId = first; speciesId <= last; speciesId++) expect(base.has(speciesId) || supplement.has(speciesId) || lairs.has(speciesId), `${id}:${speciesId}`).toBe(true);
     }
   });
 

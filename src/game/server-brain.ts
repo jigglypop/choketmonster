@@ -71,6 +71,8 @@ async function saveBrains(entries: { key: string; previous?: string; state: Loca
   });
 }
 const HASH = /^[a-f0-9]{64}$/;
+/** How long one neural batch keeps retrying through a busy server, timeouts and gateway errors before it fails. */
+const BATCH_RETRY_MS = 60_000;
 const scopeSeed = (value: string) => value.startsWith('account:') ? value.split(':').slice(2).join(':') : value;
 const validDecision = (value: unknown): value is ServerDecision => {
   const row = value as ServerDecision;
@@ -180,14 +182,23 @@ async function sendBatch(fullBody: { clientId: string; steps: (ReplayStep & { cr
       ? { ...step, checkpoint } : step;
   }) };
   let restored = false;
+  // The server answers a repeated requestId with its committed response, so waiting and resending is safe.
+  // A batch the client stopped waiting for keeps running there and makes this client busy (429) until it ends.
+  const deadline = Date.now() + BATCH_RETRY_MS, pause = (attempt: number) => new Promise(resolve => setTimeout(resolve, Math.min(4000, 250 * 2 ** attempt)));
   for (let attempt = 0; ; attempt++) {
-    const response = await fetch('/api/local-brains/step-batch', { method: 'POST', credentials: 'omit',
-      headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(20000) });
+    let response: Response;
+    try {
+      response = await fetch('/api/local-brains/step-batch', { method: 'POST', credentials: 'omit',
+        headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(30_000) });
+    } catch (error) {
+      if (Date.now() < deadline) { await pause(attempt); continue; }
+      throw error;
+    }
     const value = await response.json().catch(() => ({}));
     if (response.status === 428 && !restored && fullBody.steps.some(step => step.checkpoint)) {
       body = fullBody; restored = true; continue;
     }
-    if (response.status === 429 && attempt < 3) { await new Promise(resolve => setTimeout(resolve, 120 * (attempt + 1))); continue; }
+    if ((response.status === 429 || response.status === 502 || response.status === 503 || response.status === 504) && Date.now() < deadline) { await pause(attempt); continue; }
     if (!response.ok) throw new Error(value.message ?? '서버 회로 오류 (' + response.status + ')');
     for (const step of fullBody.steps) {
       const key = fullBody.clientId + ':' + step.creatureId;

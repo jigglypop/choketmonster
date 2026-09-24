@@ -3,6 +3,8 @@ import { getWorldAtlas } from '../openworld/atlas';
 import { surfaceBadges } from '../openworld/dungeon-gates';
 import type { EncounterFloor, EncounterPeriod, RegionalEncounter, SupplementalEncounterRule } from './regional-encounters';
 import { combineEncounterPeriods } from './encounter-runtime';
+import { isLegendarySpecies } from '../game/legendary';
+import { DUNGEON_PLANS } from '../openworld/dungeons';
 import { bandStages, fitWildSlots, levelCapForBadges, placeRareSpecies, preferredRareBiome, rareSpawnLevels, rareSpawnProfile, wildLevelRange, type RareAnchor, type RareBiome } from './wild-levels';
 
 export function isExpansionRegion(region: string): region is ExpansionRegion { return ['hoenn', 'sinnoh', 'unova', 'kalos', 'alola', 'galar', 'hisui', 'paldea'].includes(region); }
@@ -55,8 +57,9 @@ const cache = new Map<ExpansionRegion, SupplementalEncounterRule[]>();
 /**
  * Original walk/surf tables are fixed; native species they never spawn get explicitly authored rare slots.
  * Placement follows biology (wild-levels.ts): evolution floor, base stat total and class set the badge stage and
- * minimum level, and the place's band must hold it. Eight-badge species (legendaries, pseudo-legendary finals,
- * 570+ totals) keep one lair per species spread over the region's habitats and spawn from Lv.50.
+ * minimum level, and the place's band must hold it. Eight-badge species (pseudo-legendary finals, 570+ totals)
+ * keep one place per species spread over the region's habitats and spawn from Lv.50. Legendary and mythical
+ * Pokémon get no rare slot: they wait only in their lairs (dungeons.ts).
  */
 export function expansionSupplementalRules(region: ExpansionRegion): SupplementalEncounterRule[] {
   const cached = cache.get(region); if (cached) return cached;
@@ -69,7 +72,7 @@ export function expansionSupplementalRules(region: ExpansionRegion): Supplementa
   const [first, last] = ranges[region];
   const rules: SupplementalEncounterRule[] = [], load = new Map<string, number>();
   for (let speciesId = first; speciesId <= last; speciesId++) {
-    if (source.has(speciesId)) continue;
+    if (source.has(speciesId) || isLegendarySpecies(speciesId)) continue;
     const preferred = preferredRareBiome(speciesId, true), profile = rareSpawnProfile(speciesId);
     let placement: { anchor: RareAnchor; requiredBadges: number; minLevel: number };
     if (profile.minBadges === 8) {
@@ -123,6 +126,11 @@ type ExpansionHabitat = { region: ExpansionRegion; locationIds: string[]; period
 let habitatCache: Map<number, ExpansionHabitat[]> | undefined;
 /** Where each species spawns: the tables the world uses (after evolution-floor fitting) and the rare slots. */
 export function expansionSpeciesHabitats(speciesId: number): readonly ExpansionHabitat[] {
+  // Legendary and mythical Pokémon are found only at their lairs, reached from the lair's own map place or its entrance.
+  if (isLegendarySpecies(speciesId)) return DUNGEON_PLANS.filter(plan => plan.legendary?.includes(speciesId) && plan.regionId !== 'kanto' && plan.regionId !== 'johto').map(plan => {
+    const place = getWorldAtlas(plan.regionId).locations.some(location => location.id === plan.id) ? plan.id : plan.surfaceLocations[0];
+    return { region: plan.regionId as ExpansionRegion, locationIds: [place], periods: ['morning', 'day', 'night'], methods: ['walk'], requiredBadges: 8, origin: 'supplemental', rarity: 'rare' };
+  });
   if (!habitatCache) {
     habitatCache = new Map();
     const add = (id: number, habitat: ExpansionHabitat) => { const items = habitatCache!.get(id) ?? []; items.push(habitat); habitatCache!.set(id, items); };

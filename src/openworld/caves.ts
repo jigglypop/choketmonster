@@ -72,8 +72,10 @@ export type CaveScene = {
   wild: boolean;
   /** This floor holds the location's rare supplemental and legendary spawns. */
   supplemental: boolean;
-  /** Legendary Pokémon waiting on this floor, one at a time, until each is caught. */
+  /** Legendary Pokémon waiting on this floor, one at a time, until each is caught. Only a dungeon's last wild floor holds them. */
   legendary?: readonly number[];
+  /** Where the waiting legendary appears: the open spot farthest from every doorway on the lair floor. */
+  altar?: ScenePoint;
   width: number;
   depth: number;
   legacyWidth: number;
@@ -183,6 +185,17 @@ function doorway(region: RegionData, center: ScenePoint, seed: number): { door: 
   return undefined;
 }
 
+/** The open spot, with two metres of room on every side, farthest from all of a floor's doorways. */
+function farthestOpenPoint(sample: (x: number, z: number) => WorldSample, doors: readonly ScenePoint[], width: number, depth: number): ScenePoint {
+  let best: ScenePoint = { x: 0, z: 0 }, score = -1;
+  for (let z = Math.ceil(-depth / 2); z <= depth / 2; z++) for (let x = Math.ceil(-width / 2); x <= width / 2; x++) {
+    if ([[0, 0], [2, 0], [-2, 0], [0, 2], [0, -2]].some(([dx, dz]) => sample(x + dx, z + dz).blocked)) continue;
+    const clearance = Math.min(...doors.map(door => Math.hypot(door.x - x, door.z - z)));
+    if (clearance > score) { score = clearance; best = { x, z }; }
+  }
+  return best;
+}
+
 type SurfaceEnd = Omit<CavePortal, 'interior' | 'interiorArrival'>;
 function surfaceEnd(plan: DungeonPlan, region: RegionData, exactLocation: KantoLocation | undefined, locationId: string, index: number, reach = scaleWorldDistance(2.2)): SurfaceEnd {
   const surfaceLocation = region.locations.find(item => item.id === locationId);
@@ -247,7 +260,9 @@ function buildDungeon(plan: DungeonPlan): CaveScene[] {
   };
   const wild = plan.floors.map((floor, index) => floorHasWild(plan.regionId, encounterFor(index).id, floor.areas));
   const anchor = plan.anchor ?? wild.lastIndexOf(true);
-  if (plan.legendary?.length && !wild[anchor]) throw new Error(`${plan.regionId}:${plan.id}: the legendary floor needs a wild table`);
+  // Legendaries wait at the end of the dungeon: its last floor with wild Pokémon, whatever the rare-slot anchor.
+  const lairFloor = wild.lastIndexOf(true);
+  if (plan.legendary?.length && lairFloor < 0) throw new Error(`${plan.regionId}:${plan.id}: a legendary lair needs a wild floor`);
   // Roads that leave a cave at a narrow angle move both entrances farther out so they never overlap.
   let ends = plan.surfaceLocations.map((locationId, index) => surfaceEnd(plan, region, exactLocation, locationId, index));
   for (let reach = scaleWorldDistance(2.2); ends.length === 2 && Math.hypot(ends[0].surface.x - ends[1].surface.x, ends[0].surface.z - ends[1].surface.z) < 8 && reach < 24; reach += .5)
@@ -331,7 +346,7 @@ function buildDungeon(plan: DungeonPlan): CaveScene[] {
       encounterLocationId: encounter.id, minLevel: plan.levels?.[0] ?? encounter.minLevel, maxLevel: plan.levels?.[1] ?? encounter.maxLevel,
       levelShift: farthest <= 4 ? distance : Math.round(distance * 4 / farthest), encounters: encounter.encounters,
       ...(floor.areas ? { encounterAreas: floor.areas } : {}), wild: wild[index], supplemental: index === anchor && wild[index],
-      ...(index === anchor && plan.legendary?.length ? { legendary: plan.legendary } : {}),
+      ...(index === lairFloor && plan.legendary?.length ? { legendary: plan.legendary, altar: farthestOpenPoint(sample, points, width, depth) } : {}),
       width, depth, legacyWidth, legacyDepth, tileSize: TILE_SIZE, silhouette, outline, portals, stairs, wallSegments, relief, ...(room ? { room } : {}), sample,
     };
   });
