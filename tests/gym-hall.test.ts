@@ -44,6 +44,25 @@ describe('gym hall', () => {
     expect(restored.sceneId).toBe('surface:kanto');
   });
 
+  it('never leaves a wild Pokémon on the hall floor, and recovers a save that did', () => {
+    const { game, world, hall } = atPewterDoor(52_004);
+    expect(world.enterGym('pewter')).toBe(true);
+    // A wild that ends up on the hall floor while the player is inside is moved off it on the way out.
+    const wild = world.entities.find(entity => entity.kind === 'wild')!;
+    Object.assign(wild, hall.leader);
+    expect(world.exitGym()).toBe(true);
+    const onBlockedGround = () => world.entities.filter(entity => entity.kind === 'wild' && (world.sampleWorld(entity.x, entity.z).blocked || hall.contains(entity.x, entity.z)));
+    expect(onBlockedGround()).toEqual([]);
+    // Older saves may hold one on ground that is blocked now: it steps to open ground instead of voiding the save.
+    const snapshot = world.snapshot(), atlas = world.atlas;
+    let blocked = { x: hall.door.x, z: hall.door.z };
+    for (let reach = 1; reach < 80 && !atlas.sample(blocked.x, blocked.z).blocked; reach++) blocked = { x: hall.door.x, z: hall.door.z + reach };
+    expect(atlas.sample(blocked.x, blocked.z).blocked).toBe(true);
+    Object.assign(snapshot.entities.find(entity => entity.kind === 'wild')!, blocked);
+    const restored = new OpenWorldSimulation(graph, game, world.seed, snapshot, policy);
+    expect(restored.entities.filter(entity => restored.sampleWorld(entity.x, entity.z).blocked)).toEqual([]);
+  });
+
   it('refuses the door from across town', () => {
     const { world, hall } = atPewterDoor(52_002);
     world.player = { x: hall.door.x + 20, z: hall.door.z, heading: 0 };

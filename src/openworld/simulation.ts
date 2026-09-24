@@ -765,6 +765,13 @@ export class OpenWorldSimulation {
     if (!gym || this.game.battle || this.game.captureOffer) return false;
     this.sceneId = surfaceSceneId(this.regionId); this.surfaceReturn = undefined;
     this.placeInsideScene(gym.door);
+    // The hall floor is rock or woods on the surface; nothing may stay standing where the hall was.
+    for (const entity of this.wildEntities()) {
+      if (!this.sampleWorld(entity.x, entity.z).blocked && !gym.contains(entity.x, entity.z)) continue;
+      const point = this.localSpawnPosition();
+      Object.assign(entity, point, this.encounterAt(point)); entity.target = undefined;
+    }
+    this.foods = this.foods.filter(food => !this.sampleWorld(food.x, food.z).blocked && !gym.contains(food.x, food.z));
     return true;
   }
 
@@ -1231,22 +1238,26 @@ export class OpenWorldSimulation {
   }
 
   private localSpawnPosition(): { x: number; z: number } {
+    // Inside a hall, wild Pokémon keep to the surface outside it: around its door, never on its floor, which is
+    // rock or woods once the player walks back out.
+    const hall = getGymScene(this.sceneId), center = hall ? hall.door : this.player;
+    const ground = (x: number, z: number) => hall ? (hall.contains(x, z, 3) ? { height: 0, biome: 'rock' as const, blocked: true } : this.atlas.sample(x, z)) : this.sampleWorld(x, z);
     // Stream nearby zones: the location under the spawn controls species and level.
-    const current = this.locationAt(this.player.x, this.player.z);
+    const current = this.locationAt(center.x, center.z);
     for (let attempt = 0; attempt < 2500; attempt++) {
       const radius = 6 + this.rng.next() * (attempt < 1000 ? 18 : 35), angle = this.rng.next() * Math.PI * 2;
-      const x = this.player.x + Math.cos(angle) * radius, z = this.player.z + Math.sin(angle) * radius;
+      const x = center.x + Math.cos(angle) * radius, z = center.z + Math.sin(angle) * radius;
       const location = this.locationAt(x, z);
-      const sample = this.sampleWorld(x, z);
+      const sample = ground(x, z);
       if (!sample.blocked && !this.isSafeTown(x, z) && location.minLevel <= current.maxLevel + 4 && this.spawnPool(location.id, sample.biome).length && !this.entities.some(entity => distance(entity, { x, z }) < 2)) return { x, z };
     }
     // Surface locations are another coordinate space; a dungeon floor spawns only on itself.
     if (getCaveScene(this.sceneId)) throw new Error(`No ${this.sceneId} spawn position`);
-    for (const location of [...this.atlas.locations].sort((a, b) => distance(a, this.player) - distance(b, this.player))) {
+    for (const location of [...this.atlas.locations].sort((a, b) => distance(a, center) - distance(b, center))) {
       if (location.kind === 'town' || !this.spawnPool(location.id).length) continue;
       for (let radius = 0; radius <= 18; radius += 2) for (let step = 0; step < 16; step++) {
         const angle = step / 16 * Math.PI * 2, point = { x: location.x + Math.cos(angle) * radius, z: location.z + Math.sin(angle) * radius };
-        const sample = this.sampleWorld(point.x, point.z);
+        const sample = ground(point.x, point.z);
         if (this.locationAt(point.x, point.z).id === location.id && !sample.blocked && !this.isSafeTown(point.x, point.z) && this.spawnPool(location.id, sample.biome).length
           && !this.entities.some(entity => distance(entity, point) < 2)) return point;
       }
@@ -1606,6 +1617,25 @@ export class OpenWorldSimulation {
     if (Array.isArray(checkpoint.foods)) checkpoint.foods = checkpoint.foods.filter(food => !food || !finite(food.x) || !finite(food.z) || !scene.sample(food.x, food.z).blocked);
   }
 
+  /**
+   * Surface and hall checkpoints: anything left standing on ground that is blocked now (the floor of a hall that has
+   * since closed, a gate or building added after the save) steps to the nearest open ground instead of voiding the save.
+   */
+  private settleSurfaceCheckpoint(checkpoint: OpenWorldSnapshot, hall: ReturnType<typeof getGymScene>): void {
+    const blocked = (x: number, z: number) => hall ? this.atlas.sample(x, z).blocked && !hall.contains(x, z, -1.4) : this.atlas.sample(x, z).blocked;
+    const settle = (point: { x: number; z: number } | undefined | null) => {
+      if (!point || ![point.x, point.z].every(finite) || Math.abs(point.x) > WORLD_MAX || Math.abs(point.z) > WORLD_MAX || !blocked(point.x, point.z)) return;
+      const next = this.atlas.nearestWalkable(point.x, point.z, 8); if (next) { point.x = next.x; point.z = next.z; }
+    };
+    if (!hall) settle(checkpoint.player);
+    if (Array.isArray(checkpoint.entities)) for (const entity of checkpoint.entities) settle(entity);
+    if (Array.isArray(checkpoint.respawnQueue)) for (const pending of checkpoint.respawnQueue) {
+      if (!pending) continue;
+      const point = { x: pending.originX, z: pending.originZ }; settle(point); pending.originX = point.x; pending.originZ = point.z;
+    }
+    if (Array.isArray(checkpoint.foods)) checkpoint.foods = checkpoint.foods.filter(food => !food || !finite(food.x) || !finite(food.z) || !blocked(food.x, food.z));
+  }
+
   private restore(checkpoint: OpenWorldSnapshot): void {
     this.fieldItemPickupStates = validateFieldItemPickupStates(checkpoint?.fieldItemPickupStates);
     checkpoint = structuredClone(checkpoint);
@@ -1623,6 +1653,7 @@ export class OpenWorldSimulation {
     if (!cave && !gymHall && this.sceneId !== surfaceSceneId(this.regionId)) throw new Error('Unknown open-world scene');
     if ((cave ?? gymHall) && (cave ?? gymHall)!.regionId !== this.regionId) throw new Error('Scene region mismatch');
     if (cave) this.settleDungeonCheckpoint(checkpoint, cave);
+    else if (!legacyKantoMap) this.settleSurfaceCheckpoint(checkpoint, gymHall);
     if (this.regionId === 'kanto') {
       if (checkpoint.mapVersion !== undefined && !['kanto-v1', KANTO_MAP_VERSION].includes(checkpoint.mapVersion)) throw new Error('Unknown Kanto map version');
     } else if (checkpoint.mapVersion !== this.atlas.mapVersion) throw new Error(`Unknown ${this.regionId} map version`);

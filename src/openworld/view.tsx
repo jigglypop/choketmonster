@@ -827,6 +827,13 @@ function Creature({ creature, selected, distance, options, showLabels, model }: 
     options.onModelStatus?.(id, status, speciesId);
   }, [modelKey, options.onModelStatus]);
   const modelReady = model && modelState.modelKey === modelKey && modelState.status === 'ready';
+  const modelUrl = creature.formModelUrl ?? (supportedModel && !creature.formIdentifier ? (options.modelUrl ?? (id => `/models/pokemon/${id}.glb`))(creature.speciesId) : undefined);
+  // The last model that finished loading stands in while a new form or species loads (Mega Evolution, evolution),
+  // so the creature never vanishes for the length of a download.
+  const [shown, setShown] = useState<{ key: string; url: string; speciesId: number } | null>(null);
+  useEffect(() => { if (modelReady && modelUrl) setShown({ key: modelKey, url: modelUrl, speciesId: creature.speciesId }); }, [creature.speciesId, modelKey, modelReady, modelUrl]);
+  const standIn = model && shown && shown.key !== modelKey && !modelReady ? shown : undefined;
+  const standInCreature = useMemo(() => standIn ? { ...creature, speciesId: standIn.speciesId, formIdentifier: undefined, formModelUrl: undefined } : undefined, [creature, standIn]);
   useEffect(() => {
     if (supportedModel || creature.formIdentifier) return;
     options.onModelStatus?.(creature.id, 'failed', creature.speciesId);
@@ -874,6 +881,7 @@ function Creature({ creature, selected, distance, options, showLabels, model }: 
       onClick={event => { event.stopPropagation(); if (!creature.remotePlayer) options.onSelect(creature.id); }}
       onDoubleClick={event => { event.stopPropagation(); if (!creature.remotePlayer) options.onInteract?.(creature.id); }}
     >
+      {standIn && standInCreature && <PokemonModel key={`stand-in:${standIn.key}`} creature={standInCreature} url={standIn.url} />}
       {model && creature.formModelUrl
         ? <PokemonModel key={modelKey} creature={creature} url={creature.formModelUrl} onStatus={onModelStatus} />
         : model && creature.formIdentifier

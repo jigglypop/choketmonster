@@ -38,6 +38,7 @@ import { nextDestinationGuide, regionalItinerary, type DestinationGuide } from '
 import { pokemonPresentation, battleTransformationsHtml, combatFormSprite, fieldMegaForm } from '../ui/pokemon-presentation';
 import { getAlolaCombatForm, getCombatForm } from '../data/pokemon-combat-forms';
 import { getPokemonFormModelSource } from '../data/pokemon-form-models';
+import { acquireModel } from '../three/model-cache';
 import { CARDINAL_CAMERA_HEADINGS, cameraMapRotation, compassLabel, mapKindSymbol, nearestMapOrientation, rotateMapPoint, unrotateMapPoint, type MapOrientation } from './map-presentation';
 
 const types: Record<string, string> = { normal: '노말', fire: '불꽃', water: '물', grass: '풀', electric: '전기', ice: '얼음', fighting: '격투', poison: '독', ground: '땅', flying: '비행', psychic: '에스퍼', bug: '벌레', rock: '바위', ghost: '고스트', dragon: '드래곤', steel: '강철', dark: '악', fairy: '페어리' };
@@ -105,6 +106,7 @@ export class OpenWorldPanel {
   private bagTab: 'tools' | 'machines' = 'tools';
   private previousBattle?: GameState['battle'];
   private guideCache?: { key: string; guide: DestinationGuide };
+  private megaPreload?: { url: string; release(): void };
   private starterDialog?: HTMLDialogElement;
   private lastPresence = { x: Number.NaN, z: Number.NaN };
   private readonly htmlCache = new WeakMap<Element, string>();
@@ -714,6 +716,17 @@ export class OpenWorldPanel {
     this.button('#world-model-retry').hidden = !failed;
   }
 
+  /** In battle, the partner's Mega form loads before the button is pressed, so the change on screen is immediate. */
+  private preloadMegaModel(monster?: Monster): void {
+    const identifier = monster?.heldTool?.startsWith('mega-stone:') ? monster.heldTool.slice('mega-stone:'.length) : undefined;
+    const url = identifier ? getPokemonFormModelSource(identifier)?.url : undefined;
+    if (url === this.megaPreload?.url) return;
+    this.megaPreload?.release();
+    if (!url) { this.megaPreload = undefined; return; }
+    const request = acquireModel(url); request.promise.catch(() => undefined);
+    this.megaPreload = { url, release: request.release };
+  }
+
   private destinationGuide(): DestinationGuide {
     const world = this.simulation, game = this.options.game;
     const key = `${world.regionId}:${world.sceneId}:${getRegionalBadges(game, world.regionId)}:${JSON.stringify(game.campaign)}:${Math.round(world.player.x / 5)}:${Math.round(world.player.z / 5)}`;
@@ -742,6 +755,7 @@ export class OpenWorldPanel {
     const cue = (id?: string) => { const shown = id ? this.cues.get(id) : undefined; return shown && now >= shown.start && now < shown.end ? { key: shown.key, text: shown.text, moveType: shown.moveType } : undefined; };
     const ally = battle ? battle.player.team[battle.player.activeIndex] : game.player.team[firstUsableRegionalTeamIndex(game, this.simulation.regionId)] ?? game.player.team[0];
     const enemy = battle?.enemy.team[battle.enemy.activeIndex];
+    this.preloadMegaModel(battle ? ally : undefined);
     const hall = getGymScene(this.simulation.sceneId), hallGym = hall?.kind === 'gym' ? getCampaignGyms(game, this.simulation.regionId).find(gym => gym.locationId === hall.locationId) : undefined;
     const hallTrainer = this.simulation.hallTrainer, hallAce = hallTrainer?.team.at(-1);
     // The leader's ace waits on the dais until the battle begins.
