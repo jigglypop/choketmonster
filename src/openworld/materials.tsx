@@ -12,6 +12,7 @@ import type { WorldSample } from './types';
 import { WORLD_MIN, WORLD_MAX, WORLD_SCALE } from './world-space';
 import { prepareShorelinePixels, SHORELINE_RESOLUTION } from './shoreline-texture';
 import { townStyle } from './town-style';
+import { isTownPaved } from './world-details';
 
 export const GRASS_TEXTURE_REPEAT = .28;
 
@@ -20,21 +21,28 @@ export type SurfaceTextures = { diffuse: Texture; normal: Texture; arm: Texture 
 export type WaterMaterialOptions = { lake?: boolean; center?: readonly [number, number]; extent?: readonly [number, number]; radius?: number; waterNormals?: Texture };
 
 const BIOME_COLORS: Record<Exclude<WorldSample['biome'], 'meadow' | 'lake'>, string> = {
-  forest: '#285b35', rock: '#777763',
+  forest: '#5c9b4d', rock: '#9a9582',
 };
 
-/** Vertex tint for the world map. Town and route tint stays atlas-specific while
- * the shared grass/dirt PBR textures remain visible through the material. */
+/** Woodland floor: a deeper lawn under the trees rather than a dark band. */
+export const forestFloorColor = (atlas: WorldAtlas) => new Color(BIOME_COLORS.forest).lerp(new Color(atlas.palette.ground), .4);
+
+/** Lawn and woodland blade roots matching the terrain tint beneath the wind grass. */
+export const fieldGrassColors = (atlas: WorldAtlas) => ({ lawn: new Color(atlas.palette.ground), forest: forestFloorColor(atlas) });
+
+/** Vertex tint for the world map. Town and route tint stays atlas-specific; the field
+ * reads as a painted pastel lawn with only a light trace of the shared PBR textures. */
 export function worldSurfaceColor(atlas: WorldAtlas, sample: WorldSample, x: number, z: number): Color {
   if (sample.biome === 'lake') return new Color(atlas.palette.water);
-  if (sample.surface === 'snow') return new Color('#dce7e7').lerp(new Color('#aab8b8'), .18);
-  if (sample.surface === 'desert') return new Color('#c89d5d').lerp(new Color(atlas.palette.ground), .12);
-  if (sample.surface === 'mountain') return new Color('#74756c').lerp(new Color(atlas.palette.ground), .1);
-  if (sample.biome === 'rock') return new Color(atlas.id === 'sinnoh' || atlas.id === 'hisui' ? '#acb1ab' : BIOME_COLORS.rock);
-  if (sample.biome === 'forest') return new Color(BIOME_COLORS.forest).lerp(new Color(atlas.palette.ground), .16);
+  if (sample.surface === 'snow') return new Color('#eef5f6').lerp(new Color('#c3d3d8'), .15);
+  if (sample.surface === 'desert') return new Color('#e6c890').lerp(new Color(atlas.palette.ground), .08);
+  if (sample.surface === 'mountain') return new Color('#a09a88').lerp(new Color(atlas.palette.ground), .12);
+  if (sample.biome === 'rock') return new Color(atlas.id === 'sinnoh' || atlas.id === 'hisui' ? '#b4b8b0' : BIOME_COLORS.rock);
+  if (sample.biome === 'forest') return forestFloorColor(atlas);
   const nearest = atlas.locationAt(x, z);
   const landmarkDistance = Math.hypot(x - nearest.x, z - nearest.z);
-  if (nearest.kind === 'town' && landmarkDistance <= 8.5 * WORLD_SCALE) return new Color(townStyle(nearest.id).color).lerp(new Color('#e8dfc5'), .38);
+  // Only the plaza under the paving keeps the town tint; the lawn runs right up to its curb.
+  if (nearest.kind === 'town' && landmarkDistance <= 8.5 * WORLD_SCALE && isTownPaved(x - nearest.x, z - nearest.z)) return new Color(townStyle(nearest.id).color).lerp(new Color('#e8dfc5'), .38);
   // Bake broad variation once per terrain vertex instead of evaluating three
   // trigonometric functions for every grass fragment on every frame.
   const variation = Math.sin(x * .19 + Math.sin(z * .11)) * Math.cos(z * .17);
@@ -48,8 +56,9 @@ export function worldSurfaceColor(atlas: WorldAtlas, sample: WorldSample, x: num
   return grass;
 }
 
+/** Warm, light tan dirt paths. */
 export function regionTrailColor(atlas: WorldAtlas): string {
-  return `#${new Color('#a77745').lerp(new Color(atlas.palette.town), .38).getHexString()}`;
+  return `#${new Color('#d8ae78').lerp(new Color(atlas.palette.town), .22).getHexString()}`;
 }
 
 /** Palette meshes gain canopy depth and a restrained back-lit leaf response. */
@@ -163,13 +172,15 @@ function applySurfaceNodes(material: MeshStandardNodeMaterial, textures: Surface
   const luma = dot(albedo.rgb, vec3(.2126, .7152, .0722));
   const macro = surface === 'ground' ? float(0) : sin(positionWorld.x.mul(.19).add(sin(positionWorld.z.mul(.11))))
     .mul(cos(positionWorld.z.mul(.17)));
-  const contrast = luma.mul(1.35).add(.72).clamp(.68, 1.32).mul(macro.mul(.065).add(1));
-  const tint = surface === 'ground' ? mix(vec3(1), albedo.rgb.mul(.72), .22)
-    : surface === 'path' ? mix(vec3(1), albedo.rgb.mul(vec3(1.05, .94, .78)), .5)
+  // Lawn and dirt keep only a soft painted grain of the photo textures; rock stays fully textured.
+  const contrast = surface === 'rock' ? luma.mul(1.35).add(.72).clamp(.68, 1.32)
+    : luma.mul(surface === 'ground' ? .55 : .75).add(surface === 'ground' ? .86 : .8).clamp(.88, 1.13).mul(macro.mul(.04).add(1));
+  const tint = surface === 'ground' ? mix(vec3(1), albedo.rgb.mul(.72), .06)
+    : surface === 'path' ? mix(vec3(1), albedo.rgb.mul(vec3(1.05, .94, .78)), .16)
       : vec3(1);
   material.colorNode = materialColor.rgb.mul(contrast).mul(tint);
   material.roughnessNode = arm.g.mul(materialRoughness).clamp(surface === 'rock' ? .82 : .88, 1);
-  if (surface !== 'rock') material.normalNode = normalMap(texture(textures.normal, detailUv).rgb, vec2(.15, .15));
+  if (surface !== 'rock') material.normalNode = normalMap(texture(textures.normal, detailUv).rgb, vec2(.07, .07));
   material.userData.openWorldNodeEffect = `surface:${surface}`;
 }
 
@@ -293,8 +304,8 @@ export function createTerrainMaterial(textures: SurfaceTextures, waterNormals: T
   const wet = smoothstep(.28, .74, edge);
   const shallows = float(1).sub(smoothstep(.62, .98, coverage));
   const bank = smoothstep(.05, .42, coverage).mul(float(1).sub(wet));
-  const earth = mix(groundColor, color('#9d9c72').mul(.84), bank.mul(.65));
-  let water = mix(color(waterColor).mul(.76), color('#72aaa0'), shallows.mul(.65));
+  const earth = mix(groundColor, color('#d7c893'), bank.mul(.55));
+  let water = mix(color(waterColor).mul(.84), color('#8ad6cb'), shallows.mul(.65));
   const clock = time;
   const a = positionWorld.xz.mul(.07).add(vec2(clock.mul(.003), clock.mul(.002)));
   const b = positionWorld.zx.mul(.093).sub(vec2(clock.mul(.002), clock.mul(.003)));
@@ -305,10 +316,10 @@ export function createTerrainMaterial(textures: SurfaceTextures, waterNormals: T
   if (detailed) {
     const ripple = sin(positionWorld.x.mul(.7).add(positionWorld.z.mul(.5)).sub(clock.mul(.55)));
     const reflection = pow(float(1).sub(max(dot(waterNormal, positionViewDirection), 0)), 3);
-    water = mix(water.mul(waterSample.r.sub(.5).mul(.16).add(1)), color('#a7c9cc'), reflection.mul(.18));
+    water = mix(water.mul(waterSample.r.sub(.5).mul(.16).add(1)), color('#cdeef2'), reflection.mul(.18));
     const foam = smoothstep(.38, .5, edge).mul(float(1).sub(smoothstep(.58, .75, edge)))
-      .mul(smoothstep(.1, .85, ripple)).mul(.16);
-    water = mix(water, color('#d1e0cc'), foam);
+      .mul(smoothstep(.1, .85, ripple)).mul(.22);
+    water = mix(water, color('#f1faf4'), foam);
   }
   material.colorNode = mix(earth, water, wet);
   material.roughnessNode = mix(groundRoughness, float(detailed ? .48 : .58), wet);

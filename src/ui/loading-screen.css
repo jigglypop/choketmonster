@@ -1,2 +1,232 @@
-.adventure-loading{position:fixed;inset:0;z-index:200;display:grid;place-items:center;overflow:auto;padding:24px;background:radial-gradient(ellipse at 20% 10%,#c8e6ff,transparent 65%),#ecf5fa;color:#173f50;font:15px/1.5 system-ui,sans-serif}.adventure-loading[hidden]{display:none}.adventure-loading__card{display:grid;grid-template-columns:minmax(0,380px) minmax(0,340px);width:min(100%,720px);overflow:hidden;border:1px solid #ffffffb3;border-radius:24px;background:#fffffff2;box-shadow:0 24px 80px #23465b22}.adventure-loading__art{display:block;width:100%;height:100%;max-height:78vh;object-fit:cover;object-position:center top;aspect-ratio:2/3}.adventure-loading__body{display:flex;flex-direction:column;justify-content:center;padding:32px;gap:22px}.adventure-loading__eyebrow{font-size:11px;font-weight:800;letter-spacing:.18em;color:#557f94}.adventure-loading h1{margin:8px 0 0;font-size:28px;line-height:1.3;letter-spacing:-.06em;word-break:keep-all}.adventure-loading__stage{display:grid;gap:7px}.adventure-loading__label{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px}.adventure-loading__label span{font-variant-numeric:tabular-nums;color:#587589}.adventure-loading progress{display:block;appearance:none;width:100%;height:9px;border:0;border-radius:20px;overflow:hidden;background:#e5edf2;color:#438fbd}.adventure-loading progress::-webkit-progress-bar{background:#e5edf2;border-radius:20px}.adventure-loading progress::-webkit-progress-value{background:linear-gradient(90deg,#499cd3,#83cbbb);border-radius:20px;transition:width .2s}.adventure-loading progress::-moz-progress-bar{background:#499cd3;border-radius:20px}.adventure-loading__detail{min-height:2.8em;margin:0;font-size:12px;color:#557589;overflow-wrap:anywhere}.adventure-loading__status{margin:0;min-height:3em;font-size:13px;color:#557589}.adventure-loading__retry{border:0;border-radius:10px;padding:12px;background:#245e82;color:white;font:inherit;font-weight:700;cursor:pointer}.adventure-loading__retry[hidden]{display:none}.adventure-loading[data-failed=true] .adventure-loading__status{color:#ab443a}.adventure-loading--world{position:absolute;z-index:35}.adventure-loading--world .adventure-loading__art{max-height:70vh}@media(max-width:600px){.adventure-loading{padding:12px}.adventure-loading__card{grid-template-columns:1fr;max-width:360px;border-radius:18px}.adventure-loading__art{height:min(49svh,440px);max-height:none;aspect-ratio:auto;object-position:center 25%}.adventure-loading__body{padding:18px 22px;gap:12px}.adventure-loading h1{font-size:23px;margin-top:3px}.adventure-loading__detail{min-height:0}.adventure-loading__status{min-height:0}.adventure-loading--world .adventure-loading__art{height:36svh}}@media(prefers-reduced-motion:reduce){.adventure-loading progress::-webkit-progress-value{transition:none}}
-.startup-auth{display:grid;gap:14px}.startup-auth[hidden],[data-loading-stages][hidden],[data-auth-confirm][hidden],.startup-auth__error[hidden]{display:none}.startup-auth label{display:grid;gap:5px;font-size:14px}.startup-auth input{box-sizing:border-box;min-width:0;width:100%;min-height:44px;padding:10px 12px;border:1px solid #b8cbc7;border-radius:8px;background:white;color:#173f39;font:inherit}.startup-auth__modes{display:grid;grid-template-columns:1fr 1fr;gap:8px}.startup-auth button{min-height:44px;border:1px solid #bdd1cb;border-radius:8px;padding:10px;font:inherit;cursor:pointer;background:#edf5f1;color:#244a3c}.startup-auth__modes button[aria-pressed=true],button.startup-auth__submit{background:#28594a;color:white;border-color:#28594a}.startup-auth button:disabled{opacity:.55;cursor:wait}.startup-auth__error{margin:0;color:#a43229;font-size:13px;overflow-wrap:anywhere}[data-loading-stages]{display:grid;gap:18px}.adventure-loading__status:empty{display:none}@media(max-width:600px){.adventure-loading:has(.startup-auth:not([hidden])){align-items:start}.adventure-loading:has(.startup-auth:not([hidden])) .adventure-loading__art{height:27svh;object-position:center top}}
+@font-face {
+  font-family: 'Choket Sans';
+  src: url('/fonts/ChoketSansVariable.woff2') format('woff2-variations');
+  font-weight: 45 930;
+  font-display: swap;
+}
+
+/* Two pastel tones (lilac, blush) over glass; shared with the in-game account dialog. */
+:root {
+  --pastel-lilac: #bdb8ff;
+  --pastel-blush: #ffcadf;
+  --pastel-ink: #24233b;
+  --pastel-muted: rgba(36, 35, 59, .62);
+  --pastel-glass: rgba(255, 255, 255, .3);
+  --pastel-glass-strong: rgba(255, 255, 255, .56);
+  --pastel-edge: rgba(255, 255, 255, .58);
+  --pastel-blur: blur(26px) saturate(1.7);
+  --pastel-shadow: 0 24px 60px rgba(44, 38, 104, .24), inset 0 1px 0 rgba(255, 255, 255, .7);
+  --pastel-font: 'Choket Sans', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+}
+
+.adventure-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  overflow: hidden;
+  isolation: isolate;
+  background: #3b3f86 url('data:image/webp;base64,UklGRhIBAABXRUJQVlA4IAYBAAAQBgCdASogABIAPrVMnkmnJCKhMAgA4BaJbACdMoMYPaGg3ipmBABDqN/7/moTTG3UfDYWLEdkDjgA/olIdy1RvvsyvDmTDTc33iFP2t8N7AEg8hz9G6hywhQhZXLcuNwuiGTbSL+Gh0SmwPMJOkZRor9YHYWpmgm/PF+jWakiJqBd2OVZ/kdXB1FcTsBi3+F9WWWv99yRdifw1PAtebDZq7SMvxnGvUeFvjW2wz8h63ygQj8qtSqZKlRQFRyIWyrXQhV/E7iKxXVv+v+sZvAOdFzoLx1mQ+xHlJMSHXLfjY12AlNfAkbUuchDpyQLV4fM5cVBK3xVnnvmJyLbIwzPimD3MKAA') 43% 40% / cover;
+  color: var(--pastel-ink);
+  font: 500 15px/1.5 var(--pastel-font);
+  letter-spacing: -.01em;
+  -webkit-font-smoothing: antialiased;
+}
+.adventure-loading[hidden] { display: none; }
+
+.adventure-loading__scene { position: absolute; inset: 0; z-index: -1; overflow: hidden; }
+.adventure-loading__scene::before {
+  content: '';
+  position: absolute;
+  inset: -48px;
+  background: url('./art/title-960.webp') 43% 40% / cover;
+  filter: blur(28px) saturate(1.25);
+}
+.adventure-loading__art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 43% 38%;
+  transform-origin: 44% 34%;
+  animation: adventure-drift 30s ease-in-out infinite alternate;
+}
+.adventure-loading__scene::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent 62%, rgba(46, 38, 96, .22));
+}
+.adventure-loading__sparkles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(circle, #fffaf0 0 1.4px, transparent 3px),
+    radial-gradient(circle, #fff 0 1px, transparent 2.5px);
+  background-size: 210px 250px, 300px 320px;
+  background-position: 20px 40px, 110px 160px;
+  opacity: .55;
+  animation: adventure-sparkle 18s linear infinite;
+}
+
+.adventure-loading__card {
+  grid-row: 2;
+  justify-self: end;
+  width: min(360px, calc(100% - 32px));
+  margin: 0 clamp(16px, 4.5vw, 64px) clamp(16px, 6vh, 64px);
+}
+.adventure-loading__body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: calc(100svh - 32px);
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid var(--pastel-edge);
+  border-radius: 28px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, .42), rgba(255, 255, 255, .2));
+  box-shadow: var(--pastel-shadow);
+  -webkit-backdrop-filter: var(--pastel-blur);
+  backdrop-filter: var(--pastel-blur);
+  animation: adventure-rise .7s cubic-bezier(.2, .8, .2, 1) both;
+}
+.adventure-loading__title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.adventure-loading__stage { display: grid; gap: 8px; }
+.adventure-loading__label { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; }
+.adventure-loading__label strong { font-weight: 650; }
+.adventure-loading__label span { font-variant-numeric: tabular-nums; color: var(--pastel-muted); }
+.adventure-loading progress {
+  display: block;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border: 0;
+  border-radius: 99px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, .45);
+  color: var(--pastel-lilac);
+}
+.adventure-loading progress::-webkit-progress-bar { background: rgba(255, 255, 255, .45); border-radius: 99px; }
+.adventure-loading progress::-webkit-progress-value { background: linear-gradient(90deg, var(--pastel-lilac), var(--pastel-blush)); border-radius: 99px; transition: width .25s; }
+.adventure-loading progress::-moz-progress-bar { background: linear-gradient(90deg, var(--pastel-lilac), var(--pastel-blush)); border-radius: 99px; }
+.adventure-loading__detail { min-height: 2.8em; margin: 0; font-size: 12px; color: var(--pastel-muted); overflow-wrap: anywhere; }
+.adventure-loading__status { margin: 0; min-height: 1.5em; font-size: 13px; color: var(--pastel-muted); text-align: center; }
+.adventure-loading__status:empty { display: none; }
+.adventure-loading[data-failed=true] .adventure-loading__status { color: #c2476a; }
+
+.adventure-loading__retry,
+button.startup-auth__submit {
+  min-height: 50px;
+  border: 1px solid rgba(255, 255, 255, .7);
+  border-radius: 16px;
+  padding: 12px;
+  background: linear-gradient(135deg, var(--pastel-lilac), var(--pastel-blush));
+  box-shadow: 0 10px 24px rgba(128, 112, 214, .28), inset 0 1px 0 rgba(255, 255, 255, .6);
+  color: var(--pastel-ink);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform .15s, box-shadow .15s, filter .15s;
+}
+.adventure-loading__retry:hover,
+button.startup-auth__submit:hover:not(:disabled) { filter: brightness(1.04) saturate(1.05); box-shadow: 0 14px 30px rgba(128, 112, 214, .34), inset 0 1px 0 rgba(255, 255, 255, .6); }
+.adventure-loading__retry:active,
+button.startup-auth__submit:active:not(:disabled) { transform: scale(.985); }
+.adventure-loading__retry[hidden] { display: none; }
+
+.adventure-loading--world { position: absolute; z-index: 35; }
+
+.startup-auth { display: grid; gap: 14px; }
+.startup-auth[hidden],
+[data-loading-stages][hidden],
+[data-auth-confirm][hidden],
+.startup-auth__error[hidden] { display: none; }
+.startup-auth label { display: grid; gap: 7px; font-size: 12.5px; font-weight: 600; color: var(--pastel-muted); }
+.startup-auth input {
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+  min-height: 48px;
+  padding: 11px 15px;
+  border: 1px solid var(--pastel-edge);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .5);
+  color: var(--pastel-ink);
+  font: inherit;
+  font-size: 15px;
+  transition: border-color .15s, box-shadow .15s, background .15s;
+}
+.startup-auth input:focus { outline: none; background: rgba(255, 255, 255, .72); border-color: var(--pastel-lilac); box-shadow: 0 0 0 4px rgba(189, 184, 255, .38); }
+.startup-auth__modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, .45);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .22);
+}
+.startup-auth__modes button {
+  min-height: 40px;
+  border: 0;
+  border-radius: 12px;
+  padding: 8px;
+  background: transparent;
+  color: var(--pastel-muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .2s, color .2s, box-shadow .2s;
+}
+.startup-auth__modes button[aria-pressed=true] { background: rgba(255, 255, 255, .78); color: var(--pastel-ink); box-shadow: 0 4px 14px rgba(84, 72, 170, .14); }
+.startup-auth button:disabled { opacity: .55; cursor: wait; }
+.startup-auth__error { margin: 0; color: #c2476a; font-size: 13px; overflow-wrap: anywhere; }
+[data-loading-stages] { display: grid; gap: 16px; }
+
+@keyframes adventure-drift {
+  from { transform: scale(1.02); }
+  to { transform: scale(1.08) translate3d(-.6%, .5%, 0); }
+}
+@keyframes adventure-sparkle {
+  from { background-position: 20px 40px, 110px 160px; }
+  to { background-position: 60px -210px, 80px -160px; }
+}
+@keyframes adventure-rise {
+  from { opacity: 0; transform: translateY(14px); }
+}
+
+@media (orientation: portrait), (max-width: 700px) {
+  .adventure-loading__art {
+    height: min(100%, calc(100vw / .9));
+    bottom: auto;
+    object-position: 43% 36%;
+    -webkit-mask-image: linear-gradient(180deg, #000 72%, transparent);
+    mask-image: linear-gradient(180deg, #000 72%, transparent);
+  }
+  .adventure-loading__card { justify-self: stretch; width: auto; margin: 0 16px max(16px, env(safe-area-inset-bottom)); }
+  .adventure-loading__body { padding: 20px; gap: 13px; border-radius: 24px; }
+  .adventure-loading__detail { min-height: 0; }
+}
+@media (orientation: landscape) and (max-height: 520px) {
+  .adventure-loading__card { width: min(340px, calc(100% - 32px)); margin: 0 16px 12px; }
+  .adventure-loading__body { padding: 14px 16px; gap: 10px; max-height: calc(100svh - 24px); }
+  .startup-auth { gap: 9px; }
+  .startup-auth input { min-height: 42px; }
+  button.startup-auth__submit, .adventure-loading__retry { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .adventure-loading__art, .adventure-loading__sparkles, .adventure-loading__body { animation: none; }
+  .adventure-loading progress::-webkit-progress-value { transition: none; }
+}

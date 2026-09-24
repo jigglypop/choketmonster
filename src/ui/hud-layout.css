@@ -163,3 +163,41 @@
 @media (max-height: 600px) and (min-width: 601px) and (max-width: 900px) {
   .adventure .world-next-guide, .adventure .world-explore-panel { right: auto; }
 }
+
+/* Next gym (or league trainer): one tap walks in, or starts the field battle where no hall exists. */
+.adventure .world-gym-notice {
+  position: absolute;
+  z-index: 7;
+  top: calc(var(--app-header-height) + 26px + var(--world-guide-height, 60px));
+  left: 336px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 460px;
+  padding: 7px 16px 7px 7px;
+  border: 1px solid rgba(255, 255, 255, .7);
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(189, 184, 255, .88), rgba(255, 202, 223, .88));
+  box-shadow: 0 12px 30px rgba(60, 40, 140, .28), inset 0 1px 0 rgba(255, 255, 255, .7);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  backdrop-filter: blur(14px) saturate(1.4);
+  color: #24233b;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  animation: world-gym-notice-in .5s cubic-bezier(.2, .8, .2, 1) both;
+  transition: transform .15s, filter .15s;
+}
+.adventure .world-gym-notice[hidden] { display: none; }
+.adventure .world-gym-notice img { flex: none; width: 44px; height: 44px; object-fit: contain; border-radius: 12px; background: rgba(255, 255, 255, .55); }
+.adventure .world-gym-notice span { display: grid; gap: 1px; min-width: 0; }
+.adventure .world-gym-notice strong { font-size: calc(14px * var(--ui-font-scale, 1)); font-weight: 700; letter-spacing: -.01em; }
+.adventure .world-gym-notice small { font-size: calc(11.5px * var(--ui-font-scale, 1)); color: rgba(36, 35, 59, .66); }
+.adventure .world-gym-notice:hover { filter: brightness(1.04); transform: translateY(-1px); }
+@keyframes world-gym-notice-in { from { opacity: 0; transform: translateY(-8px); } }
+@media (max-width: 900px) {
+  .adventure .world-gym-notice { top: calc(var(--app-header-height) + 20px + var(--world-guide-height, 80px)); left: 12px; right: 110px; max-width: none; }
+  .adventure .world-explore-panel { top: calc(var(--app-header-height) + 28px + var(--world-guide-height, 80px) + var(--world-gym-notice-height, 0px)); }
+  .adventure:has(.world-explore-panel[open]) .world-gym-notice { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .adventure .world-gym-notice { animation: none; } }

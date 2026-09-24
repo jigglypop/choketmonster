@@ -1,5 +1,6 @@
 import type { BattleState } from '../game/engine';
 import type { KantoLocation } from '../openworld/kanto';
+import { dungeonPlanForScene } from '../openworld/dungeons';
 
 export type MusicScene = {
   started: boolean;
@@ -56,12 +57,19 @@ const places: Record<string, MusicCue> = {
   'route-15': 'route11', 'route-24': 'route24', 'route-25': 'route24',
 };
 
+/** Every floor of a dungeon shares its theme: towers and buildings have their own, the rest are caves. */
+function dungeonCue(sceneId: string): MusicCue {
+  const plan = dungeonPlanForScene(sceneId)?.plan;
+  if (plan?.id.endsWith('victory-road')) return 'victory-road';
+  return plan?.kind === 'tower' ? 'tower' : plan?.kind === 'building' ? 'mansion' : 'cave';
+}
+
 export function selectMusicCue(scene: MusicScene): MusicCue {
   if (!scene.started) return 'opening';
   if (scene.battle?.kind === 'gym') return 'gym-battle';
   if (scene.sceneId?.startsWith('league:')) return scene.battle ? 'champion-battle' : 'gym';
   if (scene.sceneId?.startsWith('gym:')) return 'gym';
-  if (scene.sceneId?.startsWith('cave:')) return scene.sceneId.endsWith(':victory-road') ? 'victory-road' : 'cave';
+  if (scene.sceneId?.startsWith('cave:')) return dungeonCue(scene.sceneId);
   const location = scene.location;
   if (!location) return 'route1';
   if (places[location.id]) return places[location.id];

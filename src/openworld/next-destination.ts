@@ -1,7 +1,8 @@
-import { campaignTravelReason, getCampaignGyms, getNextCampaignTrainer, getRegionalBadges } from '../game/campaign';
+import { campaignEntryReason, getCampaignGyms, getNextCampaignTrainer, getRegionalBadges, onwardCampaignRegion } from '../game/campaign';
 import type { GameState } from '../game/engine';
 import type { WorldAtlas } from './atlas';
-import { getCaveScene } from './caves';
+import { dungeonExits, getCaveScene, stairsToward } from './caves';
+import { openDungeonExits, portalBadges } from './dungeon-gates';
 import { findWorldPath } from './navigation';
 import type { WorldPoint, WorldSample } from './types';
 
@@ -11,10 +12,9 @@ export type DestinationGuide = {
   status: 'route' | 'arrived' | 'unreachable' | 'complete';
 };
 
-const onwardRegions: Partial<Record<WorldAtlas['id'], readonly [string, string]>> = {
-  johto: ['kanto', '관동'], kanto: ['hoenn', '호연'], hoenn: ['sinnoh', '신오'],
-  sinnoh: ['unova', '하나'], unova: ['kalos', '칼로스'], kalos: ['alola', '알로라'],
-  alola: ['galar', '가라르'], galar: ['hisui', '히스이'], hisui: ['paldea', '팔데아'],
+const REGION_NAMES: Record<string, string> = {
+  johto: '성도', kanto: '관동', hoenn: '호연', sinnoh: '신오', unova: '하나',
+  kalos: '칼로스', alola: '알로라', galar: '가라르', hisui: '히스이', paldea: '팔데아',
 };
 
 /** Authored campaign guidance, independent of the neural policy and its random stream. */
@@ -48,26 +48,30 @@ export function nextDestinationGuide(game: GameState, atlas: WorldAtlas, sceneId
   const destinationId = gym?.locationId ?? trainer?.locationId;
   const destination = atlas.locations.find(item => item.id === destinationId);
   if (!destination) {
-    const onward = onwardRegions[atlas.id];
-    return { title: `${atlas.name} 주요 도전 완료`, detail: onward && !campaignTravelReason(game, onward[0]) ? `지도에서 ${onward[1]} 여행을 선택하세요.` : '지도에서 수집할 지역을 확인하세요.', points: [], status: 'complete' };
+    const onward = onwardCampaignRegion(game, atlas.id);
+    return { title: `${atlas.name} 주요 도전 완료`, detail: onward && !campaignEntryReason(game, onward) ? `지도에서 ${REGION_NAMES[onward]} 여행을 선택하세요.` : '지도에서 수집할 지역을 확인하세요.', points: [], status: 'complete' };
   }
   const recommendedLevel = gym?.level ?? Math.max(...trainer!.team.map(([, level]) => level));
   const base = { title: `${destination.name} · ${gym?.name ?? trainer!.name}`, destinationId, destinationName: destination.name, recommendedLevel };
   const cave = getCaveScene(sceneId);
-  let next: WorldPoint | undefined, nextName: string | undefined;
+  let next: WorldPoint | undefined, nextName: string | undefined, floorStep = false;
   let sample: (x: number, z: number) => WorldSample = atlas.sample;
   if (cave) {
-    const exits = cave.portals.map(portal => {
+    // Every exit of the dungeon counts; one on another floor is reached by the stairs toward it.
+    const exits = openDungeonExits(cave.sceneId, badges).map(({ scene, portal }) => {
       const route = regionalItinerary(atlas, portal.surfaceLocationId, destination.id, badges);
       const cost = route.slice(1).reduce((sum, id, index) => {
         const a = atlas.locations.find(item => item.id === route[index])!, b = atlas.locations.find(item => item.id === id)!;
         return sum + Math.hypot(a.x - b.x, a.z - b.z);
       }, 0);
-      return { portal, route, cost };
-    }).filter(exit => exit.route.length).sort((a, b) => a.cost - b.cost);
-    const exit = exits[0]; sample = cave.sample;
-    next = exit?.portal.interiorArrival;
-    nextName = exit ? `${atlas.locations.find(item => item.id === exit.portal.surfaceLocationId)?.name ?? '지상'} 출구` : undefined;
+      return { scene, portal, route, cost };
+    }).filter(exit => exit.route.length).sort((a, b) => a.cost - b.cost || Math.abs(a.scene.floorIndex - cave.floorIndex) - Math.abs(b.scene.floorIndex - cave.floorIndex));
+    const exit = exits[0], stairs = exit && stairsToward(cave, exit.scene); sample = cave.sample;
+    if (stairs) { next = stairs.interior; nextName = stairs.targetLabel; floorStep = true; }
+    else {
+      next = exit?.portal.interiorArrival;
+      nextName = exit ? `${atlas.locations.find(item => item.id === exit.portal.surfaceLocationId)?.name ?? '지상'} 출구` : undefined;
+    }
   } else {
     const current = atlas.locationAt(player.x, player.z), route = regionalItinerary(atlas, current.id, destination.id, badges);
     if (current.id === destination.id && Math.hypot(player.x - destination.x, player.z - destination.z) < 12)
@@ -78,9 +82,9 @@ export function nextDestinationGuide(game: GameState, atlas: WorldAtlas, sceneId
       const edgeOnSurface = atlas.surfaceConnections.some(([a, b]) => (a === current.id && b === location.id) || (b === current.id && a === location.id));
       const passage = atlas.caves.find(item => item.id === location.id || item.id === current.id
         || item.portals.some(portal => portal.surfaceLocationId === current.id || portal.surfaceLocationId === location.id));
-      const portal = passage && !edgeOnSurface ? [...passage.portals].sort((a, b) => Math.hypot(a.surface.x - player.x, a.surface.z - player.z) - Math.hypot(b.surface.x - player.x, b.surface.z - player.z))[0] : undefined;
+      const portal = passage && !edgeOnSurface ? dungeonExits(passage).filter(item => portalBadges(item.scene, item.portal) <= badges).map(item => item.portal).sort((a, b) => Math.hypot(a.surface.x - player.x, a.surface.z - player.z) - Math.hypot(b.surface.x - player.x, b.surface.z - player.z))[0] : undefined;
       next = portal?.surface ?? atlas.safeArrival(location.id, badges);
-      nextName = portal ? `${passage!.name} 입구` : location.name;
+      nextName = portal ? `${passage!.dungeonName} 입구` : location.name;
     }
     // Respect locked terrain while drawing directions as well as while moving.
     sample = (x, z) => {
@@ -92,5 +96,5 @@ export function nextDestinationGuide(game: GameState, atlas: WorldAtlas, sceneId
   const points = findWorldPath(player, next, sample);
   if (!points.length && Math.hypot(next.x - player.x, next.z - player.z) > 2)
     return { ...base, nextName, detail: `${nextName} 방향 · 지도에서 연결된 길을 확인하세요.`, points: [], status: 'unreachable' };
-  return { ...base, nextName, detail: `${nextName} ${cave ? '쪽 출구로' : '방향으로'} 이동하세요.`, points, status: 'route' };
+  return { ...base, nextName, detail: `${nextName} ${cave && !floorStep ? '쪽 출구로' : '방향으로'} 이동하세요.`, points, status: 'route' };
 }

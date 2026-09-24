@@ -6,6 +6,8 @@ export type EncounterRegion = 'kanto' | 'johto';
 export type EncounterPeriod = 'morning' | 'day' | 'night';
 export type EncounterOrigin = 'source' | 'supplemental';
 export type RegionalEncounter = { speciesId: number; minLevel: number; maxLevel: number; origin: EncounterOrigin; sourceLocationId?: string; sourceAreaId?: number; method?: string };
+/** One dungeon floor: its source areas (undefined: the whole location) and whether it holds the location's rare slots. */
+export type EncounterFloor = { areas?: readonly string[]; supplemental: boolean };
 
 export const WORLD_DAY_SECONDS = 20 * 60;
 export const REGIONAL_DEX_LIMIT = { kanto: 151, johto: 251 } as const;
@@ -60,15 +62,15 @@ const TOWN_LOCATION_IDS: Record<EncounterRegion, ReadonlySet<string>> = {
   johto: new Set(['new-bark','cherrygrove','violet','azalea','goldenrod','ecruteak','olivine','cianwood','mahogany','blackthorn']),
 };
 const runtimePoolCache=new Map<string,readonly RuntimeEncounterPool[]>();
-/** All source time tables combined with equal per-period mass. Towns never emit wild encounters. */
-export function regionalRuntimePools(region: EncounterRegion, worldLocationId: string, period: EncounterPeriod, biome?: string): readonly RuntimeEncounterPool[] {
+/** All source time tables combined with equal per-period mass. Towns never emit wild encounters. A dungeon floor passes its own source areas. */
+export function regionalRuntimePools(region: EncounterRegion, worldLocationId: string, period: EncounterPeriod, biome?: string, areas?: readonly string[]): readonly RuntimeEncounterPool[] {
   if (TOWN_LOCATION_IDS[region].has(worldLocationId)) return [];
-  const locationId=sourceLocationId(region,worldLocationId),preferred=biome==='lake'?'surf':'walk';
-  const key=`${region}|${locationId}|${period}|${preferred}`;const cached=runtimePoolCache.get(key);if(cached)return cached;
-  const source=REGIONAL_ENCOUNTER_POOLS[region].filter(pool=>pool.locationId===locationId&&pool.method===preferred)
+  const locationId=sourceLocationId(region,worldLocationId),preferred=biome==='lake'?'surf':'walk',inArea=(pool:RegionalEncounterPool)=>!areas||areas.includes(pool.areaName);
+  const key=`${region}|${locationId}|${period}|${preferred}|${areas?.join(',')??'*'}`;const cached=runtimePoolCache.get(key);if(cached)return cached;
+  const source=REGIONAL_ENCOUNTER_POOLS[region].filter(pool=>pool.locationId===locationId&&pool.method===preferred&&inArea(pool))
     .map(pool=>({...pool,slots:pool.slots.filter(slot=>slot.speciesId<=REGIONAL_DEX_LIMIT[region])})).filter(pool=>pool.slots.length);
   const bridge=!source.length&&region==='johto'&&worldLocationId==='dragons-den'&&biome==='rock'
-    ? REGIONAL_ENCOUNTER_POOLS[region].filter(pool=>pool.locationId===locationId&&pool.method==='surf') : source;
+    ? REGIONAL_ENCOUNTER_POOLS[region].filter(pool=>pool.locationId===locationId&&pool.method==='surf'&&inArea(pool)) : source;
   const result=Object.freeze(combineEncounterPeriods(bridge,period).map(pool=>Object.freeze({...pool,slots:Object.freeze(pool.slots)})));
   runtimePoolCache.set(key,result);return result;
 }
@@ -128,15 +130,21 @@ export function supplementalEncounterRules(region: EncounterRegion): Supplementa
   supplementalRuleCache.set(region, rules); return rules;
 }
 
+/** Rare rules for a place: on the surface by biome; inside a dungeon only on its anchor floor, whatever the floor's ground. */
+export function regionalSupplementalRules(region: EncounterRegion, worldLocationId: string, biome: string, badges: number, floor?: EncounterFloor): SupplementalEncounterRule[] {
+  if (floor && !floor.supplemental) return [];
+  return supplementalEncounterRules(region).filter(rule => rule.locationId === worldLocationId && (floor || rule.biome === biome) && rule.requiredBadges <= badges);
+}
+
 /** Every twentieth spawn advances through the authored missing-species pool; other spawns use original slot weights. */
-export function chooseRegionalEncounter(region: EncounterRegion, worldLocationId: string, period: EncounterPeriod, biome: string, badges: number, spawnSerial: number, random: () => number, fallbackLevel: { min: number; max: number }): RegionalEncounter {
-  const supplemental = supplementalEncounterRules(region).filter(rule => rule.locationId === worldLocationId && rule.biome === biome && rule.requiredBadges <= badges);
+export function chooseRegionalEncounter(region: EncounterRegion, worldLocationId: string, period: EncounterPeriod, biome: string, badges: number, spawnSerial: number, random: () => number, fallbackLevel: { min: number; max: number }, floor?: EncounterFloor): RegionalEncounter {
+  const supplemental = regionalSupplementalRules(region, worldLocationId, biome, badges, floor);
   if (supplemental.length && spawnSerial % 20 === 0) {
     const rule = supplemental[(Math.floor(spawnSerial / 20) - 1) % supplemental.length];
     const level = SPECIAL_LATE.has(rule.speciesId) ? Math.max(50, fallbackLevel.max) : Math.max(fallbackLevel.min, 5 + rule.requiredBadges * 5);
     return { speciesId: rule.speciesId, minLevel: level, maxLevel: Math.max(level, fallbackLevel.max), origin: 'supplemental' };
   }
-  const pools = regionalRuntimePools(region, worldLocationId, period, biome);
+  const pools = regionalRuntimePools(region, worldLocationId, period, biome, floor?.areas);
   const slots = pools.flatMap(pool => pool.slots.map(slot => ({ slot, pool })));
   if (!slots.length) {
     const speciesId = spawnSerial % 20 === 0 ? supplemental[(Math.floor(spawnSerial / 20) - 1) % supplemental.length]?.speciesId : undefined;

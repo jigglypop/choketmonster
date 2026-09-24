@@ -44,6 +44,9 @@ import './ui/fonts.css';
 import './ui/collection-layout.css';
 import './ui/hud-layout.css';
 import './ui/glass.css';
+import './ui/auth-glass.css';
+import { openMachineDialog } from './ui/machine-dialog';
+import { statusLabel } from './game/status-labels';
 import { mountInterfaceSettings } from './ui/settings';
 import { transformationPreference, transformationSettingsHtml } from './ui/transformation-settings';
 import { confirmAction } from './ui/confirm-action';
@@ -285,7 +288,7 @@ function renderBattle() {
   const trainer = battle.trainerId ? CAMPAIGN_TRAINERS.find(item => item.id === battle.trainerId) : undefined;
   const battleTitle = battle.kind === 'wild' ? '야생 포켓몬과 조우' : battle.kind === 'gym' ? '체육관 승부' : trainer ? `${trainer.name}과의 승부` : '챔피언 결정전';
   $('#screen').innerHTML = `<div class="battle-page page"><div class="battle-top"><div><span class="kicker">${battle.kind.toUpperCase()} BATTLE · TURN ${battle.turn}</span><h1>${escapeHtml(battleTitle)}</h1></div><div class="brain-controls"><label><input id="learning" type="checkbox" ${view.learning ? 'checked' : ''}> 기술 학습</label><label class="switch"><input id="auto" type="checkbox" ${autoBattle ? 'checked' : ''}><span></span> 커넥톰 자동 배틀</label><button id="brain-turn" class="primary">회로로 한 턴</button></div></div>
-    <section class="battle-stage panel"><div class="opponent combatant"><div class="battle-info"><span>Lv.${enemy.level} ${eDisplay.types.map(type => `<span class="type type-${type}">${typeLabel[type]}</span>`).join('')}</span><h2>${escapeHtml(eDisplay.name)}</h2><div class="hp"><i style="width:${eHp}%"></i></div><small>HP ${enemy.hp}/${eView.stats.hp}${enemy.status ? ` · ${enemy.status}` : ''}</small></div><img src="${eDisplay.sprite}" alt="${eDisplay.name}"></div><div class="battle-ground"></div><div class="player combatant"><img src="${pDisplay.form ? pDisplay.sprite : pSpecies.backSprite}" alt="${pDisplay.name}"><div class="battle-info"><span>Lv.${player.level} ${pDisplay.types.map(type => `<span class="type type-${type}">${typeLabel[type]}</span>`).join('')}</span><h2>${escapeHtml(pDisplay.name)}</h2><div class="hp"><i style="width:${pHp}%"></i></div><small>HP ${player.hp}/${pView.stats.hp}${player.status ? ` · ${player.status}` : ''}</small></div></div></section>
+    <section class="battle-stage panel"><div class="opponent combatant"><div class="battle-info"><span>Lv.${enemy.level} ${eDisplay.types.map(type => `<span class="type type-${type}">${typeLabel[type]}</span>`).join('')}</span><h2>${escapeHtml(eDisplay.name)}</h2><div class="hp"><i style="width:${eHp}%"></i></div><small>HP ${enemy.hp}/${eView.stats.hp}${statusLabel(enemy.status) ? ` · ${statusLabel(enemy.status)}` : ''}</small></div><img src="${eDisplay.sprite}" alt="${eDisplay.name}"></div><div class="battle-ground"></div><div class="player combatant"><img src="${pDisplay.form ? pDisplay.sprite : pSpecies.backSprite}" alt="${pDisplay.name}"><div class="battle-info"><span>Lv.${player.level} ${pDisplay.types.map(type => `<span class="type type-${type}">${typeLabel[type]}</span>`).join('')}</span><h2>${escapeHtml(pDisplay.name)}</h2><div class="hp"><i style="width:${pHp}%"></i></div><small>HP ${player.hp}/${pView.stats.hp}${statusLabel(player.status) ? ` · ${statusLabel(player.status)}` : ''}</small></div></div></section>
     <div class="battle-console"><section class="move-grid">${getMoveLayout({ ...player, moves: pView.moves }).map(slot => { const move = getMove(slot.moveId); return `<button data-battle-move="${slot.sourceIndex}" ${brainTurnPending || (pView.lockedMoveId !== undefined && pView.lockedMoveId !== slot.moveId) ? 'disabled' : ''}><span>${typeLabel[move.type]} · ${move.damageClass === 'status' ? '변화' : move.power}</span><strong>${move.name}</strong><small>명중 ${move.accuracy || '—'}</small></button>`; }).join('') || '<button data-battle-wait="1"><strong>기다리기</strong></button>'}${pView.lockedMoveId !== undefined && !pView.moves.some(slot => slot.moveId === pView.lockedMoveId) ? '<button data-battle-move="0"><strong>발버둥</strong></button>' : ''}</section>
       <aside class="battle-menu">${battleTransformationsHtml(game, brainTurnPending)}<div class="ball-row"><span class="infinite-ball">${ITEM_LABELS['poke-ball']} ∞</span><button id="catch" ${battle.kind !== 'wild' ? 'disabled' : ''}>잡기</button></div>${(['potion', 'super-potion'] as const).map(item => `<button data-battle-heal="${item}" ${!game!.inventory[item] || player.hp <= 0 || player.hp >= battleMonsterMaxHp(battle, player) ? 'disabled' : ''}>${ITEM_LABELS[item]} +${HEALING_ITEM_HP[item]} HP · ×${game!.inventory[item]}</button>`).join('')}<button id="switch-mon">포켓몬 교체</button><button id="run" ${!battle.canRun ? 'disabled' : ''}>도망치기</button><p><b>회로:</b> ${escapeHtml(lastDecision)}</p></aside></div>
     <section class="battle-log panel">${game.logs.slice(-5).reverse().map(log => `<p>${escapeHtml(log)}</p>`).join('')}</section></div>`;
@@ -373,17 +376,16 @@ function boxCollectionHtml() {
 }
 function moveLayoutHtml(monster: Monster) {
   const layout = getMoveLayout(monster), recoverable = recoverableAttackMoveIds(monster);
-  const disabled = !!game?.battle || !!game?.captureOffer;
-  const available = availableMonsterMoveIds(monster, game?.technicalMachines);
+  const available = availableMonsterMoveIds(monster, game?.technicalMachines), learned = new Set(availableMonsterMoveIds(monster));
   const editor = (index: number, currentId?: number) => {
     const options = available.filter(id => id === currentId || !monster.moves.some(slot => slot.moveId === id));
     if (currentId !== undefined && !options.includes(currentId)) options.unshift(currentId);
-    return `<div class="move-slot-editor"><select data-move-choice="${index}" aria-label="${index + 1}번 칸 기술 선택" ${disabled || !options.length ? 'disabled' : ''}>${currentId === undefined ? '<option value="" selected disabled>배치할 기술 선택</option>' : ''}${options.map(id => { const move = getMove(id); return `<option value="${id}" ${id === currentId ? 'selected' : ''}>${escapeHtml(move.name)} · ${move.damageClass === 'status' ? '변화' : '공격'}</option>`; }).join('')}</select><button data-replace-move="${index}" disabled>${currentId === undefined ? '배치' : '교체'}</button></div>`;
+    return `<div class="move-slot-editor"><select data-move-choice="${index}" aria-label="${index + 1}번 칸 기술 선택" ${options.length ? '' : 'disabled'}>${currentId === undefined ? '<option value="" selected disabled>배치할 기술 선택</option>' : ''}${options.map(id => { const move = getMove(id); return `<option value="${id}" ${id === currentId ? 'selected' : ''}>${escapeHtml(move.name)} · ${move.damageClass === 'status' ? '변화' : '공격'}${learned.has(id) ? '' : ' · 기술머신'}</option>`; }).join('')}</select><button data-replace-move="${index}" disabled>${currentId === undefined ? '배치' : '교체'}</button></div>`;
   };
   return `<div class="move-layout" aria-label="기술 배치">${layout.map((slot, index) => {
     const move = getMove(slot.moveId);
-    return `<div class="move-layout-entry" data-layout-move="${slot.moveId}"><b class="move-layout-number">${index + 1}</b><div class="move-layout-copy"><strong>${escapeHtml(move.name)}</strong><small>${move.damageClass === 'status' ? '변화' : '공격'} · ${typeLabel[move.type]} · 위력 ${move.power || '—'} · 우선도 ${move.priority}</small></div><div class="move-layout-controls"><button data-reorder-from="${index}" data-reorder-to="${index - 1}" aria-label="${escapeHtml(move.name)} 앞으로" ${disabled || index === 0 ? 'disabled' : ''}>▲</button><button data-reorder-from="${index}" data-reorder-to="${index + 1}" aria-label="${escapeHtml(move.name)} 뒤로" ${disabled || index === layout.length - 1 ? 'disabled' : ''}>▼</button></div>${editor(index, slot.moveId)}</div>`;
-  }).join('')}${layout.length < 4 ? `<div class="move-layout-entry empty-move-slot"><b class="move-layout-number">${layout.length + 1}</b><div class="move-layout-copy"><strong>빈 기술 칸</strong><small>배운 기술을 추가할 수 있습니다.</small></div>${editor(layout.length)}</div>` : ''}</div>${disabled ? '<p class="move-layout-help">배틀과 포획 선택을 마치면 배치를 바꿀 수 있습니다.</p>' : ''}${recoverable.length ? `<section class="attack-recovery"><p>현재 공격 기술이 없습니다. 자동 배틀에 사용할 공격 기술을 바로 배치할 수 있습니다.</p><label for="recover-attack">배치할 공격 기술</label><select id="recover-attack" ${disabled ? 'disabled' : ''}>${recoverable.map(id => `<option value="${id}">${escapeHtml(getMove(id).name)} · ${typeLabel[getMove(id).type]}</option>`).join('')}</select><button id="recover-attack-move" ${disabled ? 'disabled' : ''}>공격 기술 배치</button></section>` : ''}`;
+    return `<div class="move-layout-entry" data-layout-move="${slot.moveId}"><b class="move-layout-number">${index + 1}</b><div class="move-layout-copy"><strong>${escapeHtml(move.name)}</strong><small>${move.damageClass === 'status' ? '변화' : '공격'} · ${typeLabel[move.type]} · 위력 ${move.power || '—'} · 우선도 ${move.priority}</small></div><div class="move-layout-controls"><button data-reorder-from="${index}" data-reorder-to="${index - 1}" aria-label="${escapeHtml(move.name)} 앞으로" ${index === 0 ? 'disabled' : ''}>▲</button><button data-reorder-from="${index}" data-reorder-to="${index + 1}" aria-label="${escapeHtml(move.name)} 뒤로" ${index === layout.length - 1 ? 'disabled' : ''}>▼</button></div>${editor(index, slot.moveId)}</div>`;
+  }).join('')}${layout.length < 4 ? `<div class="move-layout-entry empty-move-slot"><b class="move-layout-number">${layout.length + 1}</b><div class="move-layout-copy"><strong>빈 기술 칸</strong><small>배운 기술을 추가할 수 있습니다.</small></div>${editor(layout.length)}</div>` : ''}</div>${recoverable.length ? `<section class="attack-recovery"><p>현재 공격 기술이 없습니다. 자동 배틀에 사용할 공격 기술을 바로 배치할 수 있습니다.</p><label for="recover-attack">배치할 공격 기술</label><select id="recover-attack">${recoverable.map(id => `<option value="${id}">${escapeHtml(getMove(id).name)} · ${typeLabel[getMove(id).type]}</option>`).join('')}</select><button id="recover-attack-move">공격 기술 배치</button></section>` : ''}`;
 }
 function modelMotionHtml(id: number) {
   const support = getPokemonMotionSupport(id);
@@ -458,7 +460,7 @@ function consumableItemsHtml(selected: Monster) {
 }
 function compactMoveManagementHtml(selected: Monster) {
   const species = getSpecies(selected.speciesId);
-  return `<section class="compact-moves"><div class="compact-move-summary">${getMoveLayout(selected).map(slot => `<span>${escapeHtml(getMove(slot.moveId).name)}</span>`).join('')}</div><details class="collection-fold" id="move-layout-fold"><summary>기술 배치 편집</summary>${moveLayoutHtml(selected)}<details class="next-moves"><summary>다음 습득 기술</summary><div class="move-list">${species.moves.filter(entry => entry.level > selected.level).slice(0, 3).map(entry => `<span><b>${getMove(entry.moveId).name}</b><small>Lv.${entry.level}</small></span>`).join('') || '<p class="empty">레벨업 기술을 모두 익혔습니다.</p>'}</div></details></details></section>`;
+  return `<section class="compact-moves"><div class="compact-move-summary">${getMoveLayout(selected).map(slot => `<span>${escapeHtml(getMove(slot.moveId).name)}</span>`).join('')}</div><details class="collection-fold" id="move-layout-fold"><summary>기술 배치 편집</summary>${Object.values(game?.technicalMachines ?? {}).some(count => count > 0) ? '<button type="button" class="open-machines" data-open-machines>기술머신</button>' : ''}${moveLayoutHtml(selected)}<details class="next-moves"><summary>다음 습득 기술</summary><div class="move-list">${species.moves.filter(entry => entry.level > selected.level).slice(0, 3).map(entry => `<span><b>${getMove(entry.moveId).name}</b><small>Lv.${entry.level}</small></span>`).join('') || '<p class="empty">레벨업 기술을 모두 익혔습니다.</p>'}</div></details></details></section>`;
 }
 function detailHtml(selected: Monster) {
   if (!game) return ''; const species = getSpecies(selected.speciesId), presentation = pokemonPresentation(selected, game.battle), candyMax = Math.max(0, Math.min(game.inventory['rare-candy'], regionalLevelCap(game, currentCollectionRegion()) - selected.level));
@@ -494,7 +496,7 @@ function renderSelectedDetail() {
   });
   detail.querySelectorAll<HTMLSelectElement>('[data-move-choice]').forEach(select => {
     const index = Number(select.dataset.moveChoice), currentId = getMoveLayout(selected)[index]?.moveId;
-    select.onchange = () => { detail.querySelector<HTMLButtonElement>(`[data-replace-move="${index}"]`)!.disabled = !select.value || Number(select.value) === currentId || !!game?.battle || !!game?.captureOffer; };
+    select.onchange = () => { detail.querySelector<HTMLButtonElement>(`[data-replace-move="${index}"]`)!.disabled = !select.value || Number(select.value) === currentId; };
   });
   detail.querySelectorAll<HTMLButtonElement>('[data-replace-move]').forEach(button => button.onclick = async () => {
     const editedGame = game!, index = Number(button.dataset.replaceMove);
@@ -504,11 +506,13 @@ function renderSelectedDetail() {
       captureWorld(); await writeSave(packSave(editedGame, controller.graph, view), 'backup-before-move-change');
       if (game !== editedGame) throw new Error('모험이 바뀌었습니다. 현재 포켓몬을 다시 선택해 주세요.');
       replaceMonsterMove(editedGame, selected.instanceId, index, moveId);
-      clearPendingLearning(selected);
+      clearPendingLearning(selected); worldPanel?.simulation.reconcileTeamChange();
       renderSelectedDetail(); await saveNow(false, true); notify('기술을 교체하고 저장했습니다.');
       detail.querySelector<HTMLSelectElement>(`[data-move-choice="${index}"]`)?.focus();
     } catch (error) { button.disabled = false; notify(error instanceof Error ? error.message : '기술을 교체하지 못했습니다.', true); }
   });
+  detail.querySelector<HTMLButtonElement>('[data-open-machines]')?.addEventListener('click', () => openMachineDialog({ game: game!, instanceId: selected.instanceId, notify,
+    applied: async monster => { clearPendingLearning(monster); worldPanel?.simulation.reconcileTeamChange(); if (tab === 'team') renderSelectedDetail(); await saveNow(false, true); } }));
   detail.querySelector<HTMLButtonElement>('#recover-attack-move')?.addEventListener('click', async () => {
     const editedGame = game!;
     const button = detail.querySelector<HTMLButtonElement>('#recover-attack-move')!;
@@ -517,7 +521,7 @@ function renderSelectedDetail() {
     try {
       captureWorld(); await writeSave(packSave(editedGame, controller.graph, view), 'backup-before-attack-recovery');
       if (game !== editedGame) throw new Error('모험이 바뀌었습니다. 현재 포켓몬을 다시 선택해 주세요.');
-      recoverAttackMove(editedGame, selected.instanceId, moveId);
+      recoverAttackMove(editedGame, selected.instanceId, moveId); worldPanel?.simulation.reconcileTeamChange();
       renderSelectedDetail(); await saveNow(false, true); notify('공격 기술을 배치했습니다.');
     } catch (error) { button.disabled = false; notify(error instanceof Error ? error.message : '공격 기술을 배치하지 못했습니다.', true); }
   });

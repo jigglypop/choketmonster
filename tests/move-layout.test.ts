@@ -67,7 +67,7 @@ describe('move presentation layout', () => {
     expect(monster.moveLearning).toEqual(learning);
   });
 
-  it('moves across attack/status boundaries and rejects invalid, battle-time and non-owned changes', () => {
+  it('moves across attack/status boundaries, allows battle-time changes and rejects invalid or non-owned ones', () => {
     const game = createGame(1, 'guards');
     const monster = game.player.team[0];
     monster.moves = [
@@ -83,8 +83,9 @@ describe('move presentation layout', () => {
 
     const enemy = createMonster(game, 4, 5);
     game.battle = { kind: 'wild', regionId: game.regionId, player: { team: game.player.team, activeIndex: 0 }, enemy: { team: [enemy], activeIndex: 0 }, turn: 1, canRun: true };
-    expect(() => reorderMonsterMoves(game, monster.instanceId, 0, 1)).toThrow(/전투 중/);
-    expect(() => reorderMonsterMoves(game, enemy.instanceId, 0, 1)).toThrow(/전투 중/);
+    reorderMonsterMoves(game, monster.instanceId, 0, 1);
+    expect(monster.moveOrder).toEqual([45, 22, 33, 73]);
+    expect(() => reorderMonsterMoves(game, enemy.instanceId, 0, 1)).toThrow(/보유하지 않은/);
   });
 
   it('offers level-legal moves and preserves unequipped PP across unrestricted slot changes', () => {
@@ -165,17 +166,23 @@ describe('move presentation layout', () => {
     expect(() => restoreGame(JSON.stringify(save))).toThrow(/전투 팀과 플레이어 팀/);
   });
 
-  it('blocks illegal, duplicate, battle-time and capture-time slot changes', () => {
+  it('blocks illegal and duplicate slot changes but allows them during battle and capture decisions', () => {
     const game = createGame(1, 'free-move-guards'), monster = createMonster(game, 54, 39);
     game.player.team = [monster];
     expect(() => replaceMonsterMove(game, monster.instanceId, -1, 401)).toThrow(/위치/);
     expect(() => replaceMonsterMove(game, monster.instanceId, 0, 999_999)).toThrow(/배울 수 없는/);
     expect(() => replaceMonsterMove(game, monster.instanceId, 0, monster.moves[1].moveId)).toThrow(/이미 배치/);
+    const spare = () => availableMonsterMoveIds(monster).find(id => !monster.moves.some(slot => slot.moveId === id))!;
     game.captureOffer = createMonster(game, 19, 3); game.captureOffer.hp = 0;
-    expect(() => replaceMonsterMove(game, monster.instanceId, 0, 401)).toThrow(/포획/);
+    let next = spare();
+    replaceMonsterMove(game, monster.instanceId, 0, next);
+    expect(getMoveLayout(monster)[0].moveId).toBe(next);
     game.captureOffer = undefined;
     game.battle = { kind: 'wild', regionId: game.regionId, player: { team: game.player.team, activeIndex: 0 }, enemy: { team: [createMonster(game, 4, 5)], activeIndex: 0 }, turn: 1, canRun: true };
-    expect(() => replaceMonsterMove(game, monster.instanceId, 0, 401)).toThrow(/전투/);
+    next = spare();
+    replaceMonsterMove(game, monster.instanceId, 1, next);
+    expect(getMoveLayout(monster)[1].moveId).toBe(next);
+    expect(monster.moves).toHaveLength(4);
   });
 
   it('keeps an engine-damaging move on generated sets that used to end with four status moves', () => {
@@ -245,20 +252,17 @@ describe('move presentation layout', () => {
     expect(getMoveLayout(monster)[0].moveId).toBe(401);
   });
 
-  it('blocks explicit attack recovery during battle or a capture decision', () => {
+  it('allows explicit attack recovery during battle or a capture decision', () => {
     const game = createGame(1, 'recover-guards');
     const monster = createMonster(game, 54, 39);
     monster.moves = [487, 244, 133, 472].map((moveId) => ({ moveId, pp: getMove(moveId).pp }));
     game.player.box.push(monster);
     game.captureOffer = createMonster(game, 19, 3);
     game.captureOffer.hp = 0;
-    expect(() => recoverAttackMove(game, monster.instanceId, 401)).toThrow(/포획 선택/);
-
-    game.captureOffer = undefined;
-    const enemy = createMonster(game, 4, 5);
-    game.battle = { kind: 'wild', regionId: game.regionId, player: { team: game.player.team, activeIndex: 0 }, enemy: { team: [enemy], activeIndex: 0 }, turn: 1, canRun: true };
-    expect(() => recoverAttackMove(game, monster.instanceId, 401)).toThrow(/전투/);
-    expect(() => recoverAttackMove(game, enemy.instanceId, 401)).toThrow(/보유하지 않은/);
+    game.battle = { kind: 'wild', regionId: game.regionId, player: { team: game.player.team, activeIndex: 0 }, enemy: { team: [createMonster(game, 4, 5)], activeIndex: 0 }, turn: 1, canRun: true };
+    recoverAttackMove(game, monster.instanceId, 401);
+    expect(getMoveLayout(monster)[0].moveId).toBe(401);
+    expect(() => recoverAttackMove(game, game.battle!.enemy.team[0].instanceId, 401)).toThrow(/보유하지 않은/);
   });
 
   it('preserves surviving custom order and appends newly learned moves without dropping the sole attack', () => {

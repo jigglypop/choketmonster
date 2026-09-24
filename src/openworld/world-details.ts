@@ -12,10 +12,11 @@ import { WORLD_SCALE } from './world-space';
  * the same sampler used by movement, but nothing here feeds collision, traversal,
  * spawning or simulation random state.
  */
-export type DetailKind = 'grass-clump' | 'flower-patch' | 'pebbles' | 'route-post';
-export const DETAIL_KINDS: readonly DetailKind[] = ['grass-clump', 'flower-patch', 'pebbles', 'route-post'];
+/** Grass itself is the streamed wind field (grass-field.ts); these are the static accents on top of it. */
+export type DetailKind = 'flower-patch' | 'pebbles' | 'route-post';
+export const DETAIL_KINDS: readonly DetailKind[] = ['flower-patch', 'pebbles', 'route-post'];
 
-export type TownPropKind = 'curb' | 'lamp' | 'bench' | 'planter' | 'mailbox' | 'pillar' | 'fountain' | 'statue' | 'tree-bed' | 'flower-bed';
+export type TownPropKind = 'curb' | 'lamp' | 'bench' | 'planter' | 'mailbox' | 'pillar' | 'fountain' | 'statue' | 'tree-bed' | 'flower-bed' | 'crop-plot';
 /** Town-local coordinates relative to the town group origin. */
 export type TownProp = { kind: TownPropKind; x: number; z: number; rotationY: number };
 export type TownLayout = { id: string; theme: ExplorationTheme; props: TownProp[] };
@@ -78,7 +79,7 @@ function onPaving(context: Context, x: number, z: number): boolean {
   return false;
 }
 
-const emptyGround = (): Record<DetailKind, SceneryPlacement[]> => ({ 'grass-clump': [], 'flower-patch': [], pebbles: [], 'route-post': [] });
+const emptyGround = (): Record<DetailKind, SceneryPlacement[]> => ({ 'flower-patch': [], pebbles: [], 'route-post': [] });
 
 function push(target: Partial<Record<SceneryAssetId, SceneryPlacement[]>>, id: SceneryAssetId, placement: SceneryPlacement) {
   (target[id] ??= []).push(placement);
@@ -200,8 +201,9 @@ function layoutTown(context: Context, town: KantoLocation, roads: Road[], framin
   lots.forEach(([x, z], index) => {
     // Tall features keep their whole footprint outside the road corridor.
     const roomy = pathDistance(x, z) >= SOLID_PATH_CLEARANCE + 2;
-    const preferred = index === 0 ? features[seed % features.length] : index === 1 ? 'tree-bed' : 'flower-bed';
-    const kind: TownPropKind = roomy || preferred === 'tree-bed' || preferred === 'flower-bed' ? preferred : 'flower-bed';
+    // Every other town grows a small pumpkin and carrot patch in its garden lot.
+    const preferred = index === 0 ? features[seed % features.length] : index === 1 ? 'tree-bed' : seed % 2 ? 'flower-bed' : 'crop-plot';
+    const kind: TownPropKind = roomy || preferred === 'tree-bed' || preferred === 'flower-bed' || preferred === 'crop-plot' ? preferred : 'flower-bed';
     props.push({ kind, x, z, rotationY: Math.atan2(-x, -z) });
     if (kind === 'tree-bed') {
       const point = world(x, z);
@@ -214,7 +216,7 @@ function layoutTown(context: Context, town: KantoLocation, roads: Road[], framin
       if (solid(bx, bz, -.4)) props.push({ kind: 'bench', x: bx, z: bz, rotationY: angle + Math.PI });
     }
     for (let flower = 0; flower < (kind === 'flower-bed' || kind === 'tree-bed' ? 5 : 3); flower++) {
-      const angle = flower / 5 * Math.PI * 2 + detailNoise(x, z, 70 + flower) * .6, radius = kind === 'fountain' ? 2.35 : kind === 'statue' ? 1.75 : .75;
+      const angle = flower / 5 * Math.PI * 2 + detailNoise(x, z, 70 + flower) * .6, radius = kind === 'fountain' ? 2.35 : kind === 'statue' || kind === 'crop-plot' ? 1.75 : .75;
       const point = world(x + Math.cos(angle) * radius, z + Math.sin(angle) * radius);
       ground['flower-patch'].push(placement(context, point.x, point.z, 80 + flower, .7, .95));
     }
@@ -236,15 +238,15 @@ function layoutTown(context: Context, town: KantoLocation, roads: Road[], framin
     }
   }
 
-  // Grass and flowers soften the paving edge; they are flat and may sit on walkable ground.
+  // Flowers dot the lawn past the paving edge; they are flat and may sit on walkable ground.
   const inner = Math.min(edge, 16.2), outer = ring + .9, clumps = Math.round(Math.PI * 2 * ring / 1.35);
   for (let index = 0; index < clumps; index++) {
     const angle = (index + detailNoise(index, seed % 101, 3) * .8) / clumps * Math.PI * 2;
     const radius = inner + detailNoise(index, seed % 89, 4) * (outer - inner), x = Math.cos(angle) * radius, z = Math.sin(angle) * radius;
-    if (isTownPaved(x, z) || onRoad(x, z, .5) || pathDistance(x, z) < 4.6) continue;
+    if (detailNoise(x, z, 5) < .7 || isTownPaved(x, z) || onRoad(x, z, .5) || pathDistance(x, z) < 4.6) continue;
     const point = world(x, z), terrain = sample(point.x, point.z);
     if (terrain.biome === 'lake' || onPaving(context, point.x, point.z) || nearAny(context.gates, point.x, point.z, 4)) continue;
-    ground[detailNoise(x, z, 5) < .7 ? 'grass-clump' : 'flower-patch'].push(placement(context, point.x, point.z, 6, .8, 1.25));
+    ground['flower-patch'].push(placement(context, point.x, point.z, 6, .8, 1.25));
   }
 
   // A loose tree line behind the boundary where the surrounding land is forest.
@@ -279,9 +281,8 @@ function dressRoute(context: Context, from: KantoLocation, to: KantoLocation, ha
     if (terrain.biome === 'lake' || onPaving(context, x, z) || (nearest < lateral - .05 && nearest < MAX_TRAIL_HALF_WIDTH + .2)
       || nearAny(context.sites, x, z, 2.6) || nearAny(context.gates, x, z, 4)) continue;
     const selector = detailNoise(x, z, salt + 2);
-    if (selector < .52) ground['grass-clump'].push(placement(context, x, z, 20, .75, 1.3));
-    else if (selector < .72) ground['flower-patch'].push(placement(context, x, z, 21, .7, 1.1));
-    else if (selector < .86) ground.pebbles.push(placement(context, x, z, 22, .7, 1.2));
+    if (selector >= .52 && selector < .72) ground['flower-patch'].push(placement(context, x, z, 21, .7, 1.1));
+    else if (selector >= .72 && selector < .86) ground.pebbles.push(placement(context, x, z, 22, .7, 1.2));
   }
   // Blocked shoulder just outside the corridor: shrubs in woodland, stones on rock.
   for (let along = start + 1.5; along <= end; along += 4.4) for (const side of [-1, 1]) {
@@ -296,7 +297,6 @@ function dressRoute(context: Context, from: KantoLocation, to: KantoLocation, ha
       if (selector < .45) ground.pebbles.push(placement(context, x, z, 30, 1, 1.6));
       else if (selector < .62) push(framing, 'rock-flat', placement(context, x, z, 31, .6, .9));
     } else if (selector < .58) push(framing, 'bush', placement(context, x, z, 32, .7, 1));
-    else if (selector < .8) ground['grass-clump'].push(placement(context, x, z, 33, 1, 1.45));
   }
   // One small marker post where a road leaves each town.
   for (const [town, sign] of [[from, 1], [to, -1]] as const) {

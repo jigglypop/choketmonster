@@ -17,7 +17,7 @@ export function townStyle(id: string) {
   let style = styles.get(id);
   if (!style) {
     const seed = scenerySeed(id);
-    style = { color: NAMED_COLORS[id] ?? `#${new Color().setHSL((seed % 360) / 360, .28, .58).getHexString()}`,
+    style = { color: NAMED_COLORS[id] ?? `#${new Color().setHSL((seed % 360) / 360, .34, .66).getHexString()}`,
       paving: seed % 3, height: .9 + (seed % 5) * .05 };
     styles.set(id, style);
   }

@@ -33,11 +33,27 @@ export type WorldCreature = WorldPoint & {
   /** A battle opponent to face without changing the simulation heading. */
   lookAt?: { x: number; z: number };
   inBattle?: boolean;
+  /** Move just used, shown above the nameplate; the key restarts its animation. */
+  cue?: { key: string; text: string; moveType: string };
+  /** Engine ailment id (poison, burn, sleep…). */
+  status?: string;
   /** Ephemeral same-region presence. Never participates in simulation selection or saves. */
   remotePlayer?: { name: string; activity: 'idle' | 'moving' | 'battle' };
 };
 
 export type WorldFood = WorldPoint & { id: string; kind?: string };
+
+/** One executed battle move drawn between two battlers; `start` is a performance.now() time. */
+export type WorldMoveEffect = {
+  key: string;
+  moveType: string;
+  style: 'physical' | 'special' | 'status';
+  /** The move connected (damage, ailment or buff), so the target reacts. */
+  hit: boolean;
+  from: WorldPoint & { height: number };
+  to: WorldPoint & { height: number };
+  start: number;
+};
 
 export type WorldFieldItemPickup = WorldPoint & {
   id: string;
@@ -75,6 +91,7 @@ export type OpenWorldRenderSnapshot = {
   portals?: readonly WorldPortal[];
   selectedWildId?: string | null;
   tick?: number;
+  effects?: readonly WorldMoveEffect[];
 };
 
 export type WorldSample = {

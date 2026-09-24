@@ -92,7 +92,7 @@ jobs:
             build=true
           elif ! git cat-file -e "${deployed}^{commit}" 2>/dev/null; then
             build=true
-          elif ! git diff --quiet "${deployed}" "${GITHUB_SHA}" -- rust-server src/data/trainer-battle-catalog.json src/data/field-items.json src/data/technical-machines.json; then
+          elif ! git diff --quiet "${deployed}" "${GITHUB_SHA}" -- rust-server src/data/trainer-battle-catalog.json src/data/field-items.json src/data/technical-machines.json src/data/dungeon-scenes.json src/data/pokemon-mega-models-manifest.json public/data/connectome.json; then
             build=true
           fi
           echo "build=${build}" >> "${GITHUB_OUTPUT}"

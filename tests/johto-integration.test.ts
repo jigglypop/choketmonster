@@ -1,18 +1,25 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { Graph } from '../src/core/brain';
-import { createGame } from '../src/game/engine';
+import { createGame, type GameState } from '../src/game/engine';
 import { getWorldAtlas } from '../src/openworld/atlas';
 import { PLAYABLE_WORLDS } from '../src/openworld/availability';
 import { GOLD_ENCOUNTER_LAYOUT, OpenWorldSimulation, regionalEncounters, restoreOpenWorld, serializeOpenWorld } from '../src/openworld/simulation';
 import { regionalRuntimePools, supplementalEncounterRules } from '../src/data/regional-encounters';
-import { regionalWildLevels } from '../src/game/campaign';
+import { campaignProgress, regionalWildLevels } from '../src/game/campaign';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
 
+/** Johto opens to a Kanto start once the Kanto league is cleared. */
+function clearKanto(game: GameState) {
+  game.player.badges = 8; game.defeatedGyms = [1, 2, 3, 4, 5, 6, 7, 8]; game.championDefeated = true;
+  game.campaign = { ...campaignProgress(game), kantoLeague: 5 };
+}
+
 describe('reconstructed Johto adventure', () => {
   it('changes collection version without changing region, spawns, RNG or any brain', () => {
-    const game = createGame(1, 'collection-only'), world = new OpenWorldSimulation(graph, game, 602);
+    const game = createGame(1, 'collection-only'); clearKanto(game);
+    const world = new OpenWorldSimulation(graph, game, 602);
     const before = world.snapshot();
     world.changeVersion('gold');
     expect(world.snapshot()).toEqual(before);
@@ -26,7 +33,8 @@ describe('reconstructed Johto adventure', () => {
   });
 
   it('persists the actual region, town visits, partner brain and fixed local encounters', () => {
-    const game = createGame(1, 'johto-persistence'), world = new OpenWorldSimulation(graph, game, 603);
+    const game = createGame(1, 'johto-persistence'); clearKanto(game);
+    const world = new OpenWorldSimulation(graph, game, 603);
     const partner = world.snapshot().entities.find(entity => entity.kind === 'companion')!;
     world.changeRegion('johto');
     world.setControlMode('manual'); world.setAutoHunt(false);
@@ -55,7 +63,7 @@ describe('reconstructed Johto adventure', () => {
     expect(restored.simulation.snapshot()).toEqual(before);
     expect(before.mapVersion).toBe('johto-v3');
     expect(before.visitedTownsByRegion).toMatchObject({ kanto: ['pallet'], johto: ['new-bark'] });
-    expect(game.player.badges).toBe(0);
+    expect(game.player.badges).toBe(8);
     expect(world.challengeLocalGym()).toBe(false);
   });
 

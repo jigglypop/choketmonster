@@ -56,6 +56,7 @@ export class PokemonScene {
   private notice = document.createElement('span');
   private sceneKey = '';
   private disposed = false;
+  private lost = false;
   private field?: FieldScene;
   private foodGroup = new THREE.Group();
   private foodKey = '';
@@ -101,12 +102,12 @@ export class PokemonScene {
     this.canvas.addEventListener('pointerup', event => this.pickField(event));
     this.observer = new ResizeObserver(() => this.resize());
     this.renderer.setAnimationLoop(now => this.frame(now));
-    this.canvas.addEventListener('webglcontextlost', event => { event.preventDefault(); this.error('3D 화면 연결이 끊겼어요. 페이지를 새로고침해 주세요.'); });
+    this.canvas.addEventListener('webglcontextlost', event => { event.preventDefault(); this.lost = true; this.error('3D 화면 연결이 끊겼어요. 페이지를 새로고침해 주세요.'); });
   }
 
   private attach(host: HTMLElement, mode: SceneMode, key: string) {
     if (this.host !== host) {
-      this.observer.disconnect(); this.host = host; this.observer.observe(host);
+      this.host?.classList.remove('webgl-ready'); this.observer.disconnect(); this.host = host; this.observer.observe(host);
       host.classList.add('has-webgl'); host.append(this.canvas, this.notice);
     }
     this.canvas.id = mode === 'map' ? 'map-canvas' : mode === 'battle' ? 'battle-canvas' : 'pokemon-canvas';
@@ -251,14 +252,18 @@ export class PokemonScene {
     if (width < 1 || height < 1) return;
     this.renderer.setSize(width, height, false); this.camera.aspect = width / height; this.camera.updateProjectionMatrix();
   }
+  /** A lost context never recovers here; the next caller gets a fresh scene. */
+  get contextLost() { return this.lost; }
   private ready() {
+    if (this.lost) return;
     const ready = this.pending.size === 0 && this.actors.size === this.desired.size && (this.mode !== 'map' || !!this.world);
     this.canvas.dataset.ready = String(ready); this.canvas.dataset.actorCount = String(this.actors.size);
     this.canvas.dataset.species = [...this.actors.values()].filter(a => a.id).map(a => a.id).join(',');
     this.canvas.dataset.modelUrls = [...this.actors.values()].filter(a => a.id).map(a => a.url).join(',');
     if (ready) this.notice.hidden = true;
+    this.host?.classList.toggle('webgl-ready', ready);
   }
-  private error(message: string) { this.notice.textContent = message; this.notice.hidden = false; this.canvas.dataset.ready = 'error'; }
+  private error(message: string) { this.notice.textContent = message; this.notice.hidden = false; this.canvas.dataset.ready = 'error'; this.host?.classList.remove('webgl-ready'); }
   private frame(now: number) {
     const delta = Math.min((now - this.then) / 1000 || 0, .05); this.then = now;
     if (!this.host?.isConnected || document.hidden || this.disposed || renderingSuspended()) return;
@@ -305,5 +310,8 @@ export class PokemonScene {
 }
 
 let singleton: PokemonScene | undefined;
-export function getPokemonScene() { return singleton ??= new PokemonScene(); }
+export function getPokemonScene() {
+  if (singleton?.contextLost) { singleton.detach(); singleton.dispose(); singleton = undefined; }
+  return singleton ??= new PokemonScene();
+}
 export function detachPokemonScene() { singleton?.detach(); }

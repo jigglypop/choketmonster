@@ -12,6 +12,7 @@ import { CAMPAIGN_REGIONS, CAMPAIGN_TRAINERS, campaignProgress, campaignTravelRe
 import { gymTeam } from './gym-teams';
 import { getTechnicalMachine, machineCompatible, TECHNICAL_MACHINE_STOCK_LIMIT, validateTechnicalMachineStock } from './technical-machines';
 import { duplicateMergeValue } from './growth';
+import { statusLabel } from './status-labels';
 import { EXTRA_EVOLUTION_ITEM_IDS, EXTRA_EVOLUTION_PRICES, EXTRA_EVOLUTION_LABELS, emptyExtraEvolutionInventory, ITEM_EVOLUTION_RULES, type ExtraEvolutionItem } from './evolution-items';
 import { initialEvolutionProgress, evolutionProgress, validateEvolutionProgress, validateEvolutionContext, type EvolutionProgress, type EvolutionContext } from './evolution-progress';
 import { evolutionFormSupported, feedEvolutionTreat, naturalEvolution, needsSpecialEvolution, sourceEvolutionItems, sourceEvolutionItemsForMonster, sourceEvolutionRules, specialEvolutionLevel } from './evolution-conditions';
@@ -411,7 +412,6 @@ export function grantTechnicalMachine(state: GameState, moveId: number, quantity
 
 /** Machines are kept after use. The move joins the learnable list and fills an empty slot when one is free. */
 export function teachTechnicalMachine(state: GameState, instanceId: string, moveId: number): { equipped: boolean } {
-  if (state.battle || state.captureOffer) throw new Error('전투와 포획 선택을 마친 뒤 기술머신을 쓸 수 있습니다.');
   const machine = getTechnicalMachine(moveId), stock = state.technicalMachines?.[String(moveId)] ?? 0;
   if (!machine || stock < 1) throw new Error('보유한 기술머신이 없습니다.');
   const monster = findOwned(state, instanceId);
@@ -1058,7 +1058,7 @@ function performMoveAction(state: GameState, battle: BattleState, attacker: Mons
     const types = effectiveTypes(battle, ailmentTarget);
     const immune = (move.ailment === 'poison' && (types.includes('poison') || types.includes('steel'))) || (move.ailment === 'burn' && types.includes('fire')) || (move.ailment === 'freeze' && types.includes('ice')) || (move.ailment === 'paralysis' && types.includes('electric'));
     if (immune) events.push(event(battle, `${ailmentTarget.nickname}에게는 상태이상이 통하지 않았다.`, 'status'));
-    else { ailmentTarget.status = move.ailment; ailmentTarget.statusTurns = move.ailment === 'sleep' ? 2 + Math.floor(random(state) * 3) : move.ailment === 'confusion' || move.ailment === 'trap' ? 2 + Math.floor(random(state) * 4) : undefined; ailmentApplied = true; events.push(event(battle, `${ailmentTarget.nickname}은(는) ${move.ailment} 상태가 되었다.`, 'status')); }
+    else { ailmentTarget.status = move.ailment; ailmentTarget.statusTurns = move.ailment === 'sleep' ? 2 + Math.floor(random(state) * 3) : move.ailment === 'confusion' || move.ailment === 'trap' ? 2 + Math.floor(random(state) * 4) : undefined; ailmentApplied = true; events.push(event(battle, `${ailmentTarget.nickname}은(는) ${statusLabel(move.ailment) ?? move.ailment} 상태가 되었다.`, 'status')); }
   }
   if (!damagingMove && !move.statChanges?.length && !move.healing && !move.ailment) events.push(event(battle, `${move.name}의 특수 효과는 이 로컬 규칙에서 축약되어 변화가 없었다.`));
   const failed = isOhko && attacker.level < defender.level;
@@ -1079,7 +1079,7 @@ function residual(battle: BattleState, monster: Monster, events: BattleLogEntry[
   if (['poison', 'burn', 'trap', 'leech-seed'].includes(monster.status ?? '')) {
     const damage = Math.max(1, Math.floor(battleMonsterMaxHp(battle, monster) / 8));
     monster.hp = Math.max(0, monster.hp - damage);
-    events.push(event(battle, `${monster.nickname}은(는) ${monster.status}으로 ${damage} 피해를 입었다.`, 'status'));
+    events.push(event(battle, `${monster.nickname}은(는) ${statusLabel(monster.status) ?? monster.status}(으)로 ${damage} 피해를 입었다.`, 'status'));
     if (monster.status === 'trap') {
       monster.statusTurns = Math.max(0, (monster.statusTurns ?? 1) - 1);
       if (monster.statusTurns === 0) { monster.status = undefined; monster.statusTurns = undefined; }
@@ -1770,7 +1770,6 @@ export function withdrawMonster(state: GameState, boxIndex: number): void {
 
 /** Reorder presentation slots while preserving engine/neural indexes. */
 export function reorderMonsterMoves(state: GameState, instanceId: string, from: number, to: number): void {
-  if (state.battle) throw new Error('전투 중에는 기술 배치를 바꿀 수 없습니다.');
   const monster = findOwned(state, instanceId);
   const layout = getMoveLayout(monster);
   if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to < 0 || from >= layout.length || to >= layout.length) throw new Error('기술 배치 위치가 올바르지 않습니다.');
@@ -1780,10 +1779,13 @@ export function reorderMonsterMoves(state: GameState, instanceId: string, from: 
   monster.moveOrder = layout.map((entry) => entry.moveId);
 }
 
-/** Equip a learned move while retaining legacy save fields and individual memory. */
+/**
+ * Equip a learned move while retaining legacy save fields and individual memory.
+ * Allowed mid-battle: slots keep their engine index, so a decision already made
+ * for this turn plays whichever move now fills that slot.
+ */
 export function replaceMonsterMove(state: GameState, instanceId: string, displayIndex: number, moveId: number): void {
   const monster = findOwned(state, instanceId);
-  if (state.battle || state.captureOffer) throw new Error('전투와 포획 선택을 마친 뒤 기술을 교체할 수 있습니다.');
   const layout = getMoveLayout(monster);
   if (!Number.isInteger(displayIndex) || displayIndex < 0 || displayIndex > layout.length || displayIndex >= 4) throw new Error('기술 교체 위치가 올바르지 않습니다.');
   if (!Number.isSafeInteger(moveId) || !availableMonsterMoveIds(monster, state.technicalMachines).includes(moveId)) throw new Error('현재 레벨에서 배울 수 없는 기술입니다.');
@@ -1811,7 +1813,6 @@ export function replaceMonsterMove(state: GameState, instanceId: string, display
 /** Explicitly replace the first displayed status slot with a legal damaging move. */
 export function recoverAttackMove(state: GameState, instanceId: string, moveId: number): void {
   const monster = findOwned(state, instanceId);
-  if (state.battle || state.captureOffer) throw new Error('전투와 포획 선택을 마친 뒤 공격 기술을 배치할 수 있습니다.');
   if (!Number.isSafeInteger(moveId) || !recoverableAttackMoveIds(monster).includes(moveId)) throw new Error('배치할 수 있는 공격 기술이 아닙니다.');
   const priorOrder = getMoveLayout(monster).map((entry) => entry.moveId);
   const replacement = { moveId, pp: takeStoredMovePp(monster, moveId) };

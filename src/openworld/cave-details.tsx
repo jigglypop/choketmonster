@@ -9,6 +9,8 @@ const variation = (index: number, seed: number) => { const n = Math.sin(index * 
 
 export function caveFormations(cave: CaveScene) {
   const ledges: Detail[] = [], stalactites: Detail[] = [], stalagmites: Detail[] = [], boulders: Detail[] = [], rubble: Detail[] = [], portalRocks: Detail[] = [];
+  // Exits and stairs keep a clear approach.
+  const doorways = [...cave.portals, ...cave.stairs].map(item => item.interior);
   for (let side = 0; side < cave.wallSegments.length; side++) {
     const wall = cave.wallSegments[side], tangentX = Math.cos(wall.rotationY), tangentZ = -Math.sin(wall.rotationY);
     const normalA = { x: -tangentZ, z: tangentX }, normalB = { x: tangentZ, z: -tangentX };
@@ -20,11 +22,11 @@ export function caveFormations(cave: CaveScene) {
       const x = wall.x + tangentX * along + inward.x * 1.25;
       const z = wall.z + tangentZ * along + inward.z * 1.25;
       // Keep all solid bases inside the already blocked outer wall ring.
-      if (cave.portals.some(portal => Math.hypot(portal.interior.x - x, portal.interior.z - z) < 4)) continue;
+      if (doorways.some(point => Math.hypot(point.x - x, point.z - z) < 4)) continue;
       const y = cave.sample(x, z).height;
       ledges.push({ x, z, y: y + .6 + v, sx: 2.1, sy: .65 + v * .5, sz: .8, rotationY: wall.rotationY });
       ledges.push({ x, z, y: 4 + v * .3, sx: 2, sy: .45, sz: 1, rotationY: wall.rotationY });
-      if (cave.relief.theme !== 'industrial') {
+      if (cave.relief.theme !== 'interior') {
         const height = .8 + v * 1.5;
         stalactites.push({ x, z, y: 4.05 - height / 2, sx: .28 + v * .32, sy: height, sz: .35 + v * .22, rotationY: wall.rotationY, upsideDown: true });
         if (index % 2 === 0) stalagmites.push({ x, z, y: y + height / 2, sx: .35 + v * .3, sy: height, sz: .4 + v * .3, rotationY: wall.rotationY });
@@ -33,11 +35,11 @@ export function caveFormations(cave: CaveScene) {
       }
     }
   }
-  if (cave.relief.theme !== 'industrial') for (let index = 0; index < 52; index++) {
+  if (cave.relief.theme !== 'interior') for (let index = 0; index < 52; index++) {
     const angle = variation(index, cave.relief.seed) * Math.PI * 2;
     const radius = 4 + variation(index + 71, cave.relief.seed) * Math.min(cave.legacyWidth, cave.legacyDepth) * .38;
     const x = Math.cos(angle) * radius, z = Math.sin(angle) * radius;
-    if (cave.sample(x, z).blocked || cave.portals.some(portal => Math.hypot(portal.interior.x - x, portal.interior.z - z) < 5)) continue;
+    if (cave.sample(x, z).blocked || doorways.some(point => Math.hypot(point.x - x, point.z - z) < 5)) continue;
     const v = variation(index + 149, cave.relief.seed), y = cave.sample(x, z).height;
     rubble.push({ x, z, y: y + .09 + v * .08, sx: .16 + v * .2, sy: .12 + v * .13, sz: .2 + variation(index + 211, cave.relief.seed) * .22, rotationY: angle });
   }

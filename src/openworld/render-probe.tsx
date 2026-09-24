@@ -1,6 +1,6 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useRef } from 'react';
-import { Color, InstancedMesh, Light, Mesh, type LightShadow, type MeshStandardMaterial, type Object3D, type Scene } from 'three';
+import { Color, InstancedBufferGeometry, InstancedMesh, Light, Mesh, type LightShadow, type MeshStandardMaterial, type Object3D, type Scene } from 'three';
 import { getOpenWorldRendererInfo } from './gpu-renderer';
 
 function renderableInventory(scene: Scene) {
@@ -115,6 +115,13 @@ export function RenderProbe() {
           const group = scene.getObjectByName(`nature:${id}.glb`);
           return { id, instances: group?.children.reduce((sum, mesh) => sum + Number('count' in mesh ? mesh.count : 0), 0) ?? 0 };
         }),
+        fieldGrass: (() => {
+          const group = scene.getObjectByName('field-grass');
+          if (!group) return null;
+          let drawnCells = 0, blades = 0;
+          group.traverse(object => { if (object instanceof Mesh && object.visible && object.geometry instanceof InstancedBufferGeometry) { drawnCells++; blades += object.geometry.instanceCount; } });
+          return { ...group.userData.fieldGrass, drawnCells, blades };
+        })(),
         daylightEnvironment: Boolean(scene.environment),
         shadowsEnabled: gl.shadowMap.enabled,
         water: scene.getObjectsByProperty('type', 'Mesh').flatMap(object => {

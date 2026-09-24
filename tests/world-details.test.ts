@@ -48,9 +48,10 @@ describe('town and roadside detail placement', () => {
       if (kind === 'route-post') expect(atlas.sample(item.x, item.z).blocked).toBe(true);
     }
     const narrowest = Math.min(...atlas.surfaceConnections.map(([from, to]) => trailHalfWidth(from, to)));
-    const onRoad = result.ground['grass-clump'].filter(item => atlas.distanceToPath(item.x, item.z) < narrowest - .05);
+    const onRoad = [...result.ground['flower-patch'], ...result.ground.pebbles].filter(item => atlas.distanceToPath(item.x, item.z) < narrowest - .05);
     expect(onRoad.length).toBe(0);
-    const paved = [...result.ground['grass-clump'], ...result.ground.pebbles].filter(item => towns.some(town => Math.hypot(town.x - item.x, town.z - item.z) < 18 && isTownPaved(item.x - town.x, item.z - town.z)));
+    // Posies may sit in plaza flower beds; loose pebbles never land on paving.
+    const paved = result.ground.pebbles.filter(item => towns.some(town => Math.hypot(town.x - item.x, town.z - item.z) < 18 && isTownPaved(item.x - town.x, item.z - town.z)));
     expect(paved.length).toBe(0);
     // Budget: the whole region stays within a few thousand small instances.
     const total = Object.values(result.ground).reduce((sum, list) => sum + list.length, 0) + Object.values(result.framing).reduce((sum, list) => sum + list!.length, 0);
@@ -64,6 +65,6 @@ describe('town and roadside detail placement', () => {
     const again = createWorldDetails((x, z) => atlas.sample(x, z), atlas, [], id => isRegionalLeagueLocation(atlas.id, id));
     expect(again).not.toBe(first);
     expect(again.towns.get('new-bark')!.props).toEqual(first.towns.get('new-bark')!.props);
-    expect(again.ground['grass-clump'].length).toBe(first.ground['grass-clump'].length);
+    expect(again.ground['flower-patch'].length).toBe(first.ground['flower-patch'].length);
   });
 });

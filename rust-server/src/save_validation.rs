@@ -1052,26 +1052,19 @@ fn is_legacy_expansion_map(region: Option<&str>, map_version: Option<&str>) -> b
     )
 }
 
-const KANTO_CAVES: [&str; 7] = [
-    "mt-moon",
-    "diglett-cave",
-    "rock-tunnel",
-    "seafoam-islands",
-    "victory-road",
-    "cerulean-cave",
-    "power-plant",
-];
-const JOHTO_CAVES: [&str; 9] = [
-    "tohjo-falls",
-    "union-cave",
-    "slowpoke-well",
-    "whirl-islands",
-    "mt-mortar",
-    "ice-path",
-    "dragons-den",
-    "dark-cave",
-    "mt-silver",
-];
+/// Every dungeon floor scene by region, generated from the client's dungeon plans.
+fn dungeon_scenes() -> &'static HashMap<String, HashSet<String>> {
+    static SCENES: OnceLock<HashMap<String, HashSet<String>>> = OnceLock::new();
+    SCENES.get_or_init(|| {
+        let parsed: HashMap<String, Vec<String>> =
+            serde_json::from_str(include_str!("../../src/data/dungeon-scenes.json"))
+                .expect("dungeon scene list");
+        parsed
+            .into_iter()
+            .map(|(region, ids)| (region, ids.into_iter().collect()))
+            .collect()
+    })
+}
 
 fn valid_world_scene(region: &str, scene: &str) -> bool {
     if scene == format!("surface:{region}") {
@@ -1088,11 +1081,9 @@ fn valid_world_scene(region: &str, scene: &str) -> bool {
     let Some(id) = scene.strip_prefix(&format!("cave:{region}:")) else {
         return false;
     };
-    match region {
-        "kanto" => KANTO_CAVES.contains(&id),
-        "johto" => JOHTO_CAVES.contains(&id),
-        _ => false,
-    }
+    dungeon_scenes()
+        .get(region)
+        .is_some_and(|ids| ids.contains(id))
 }
 
 fn validate_world_point(value: &Value) -> Result<(), &'static str> {
@@ -3481,6 +3472,37 @@ mod tests {
             assert!(validate_save(&save).is_err());
         }
         validate_save(&valid_save()).unwrap();
+    }
+
+    #[test]
+    fn accepts_every_dungeon_floor_including_the_older_single_chamber_caves() {
+        for (region, scene) in [
+            ("kanto", "cave:kanto:mt-moon"),
+            ("kanto", "cave:kanto:mt-moon-b2f"),
+            ("kanto", "cave:kanto:power-plant"),
+            ("kanto", "cave:kanto:pokemon-tower-7f"),
+            ("johto", "cave:johto:dark-cave"),
+            ("johto", "cave:johto:bell-tower-roof"),
+        ] {
+            let mut save = valid_save();
+            save["view"]["openWorld"] = serde_json::json!({"regionId":region, "mapVersion":format!("{region}-v3"), "sceneId":scene});
+            validate_save(&save).unwrap_or_else(|error| panic!("{scene}: {error}"));
+        }
+        for (region, scene) in [
+            ("kanto", "cave:kanto:mt-moon-b9f"),
+            ("kanto", "cave:johto:bell-tower-2f"),
+            ("johto", "cave:johto:pokemon-tower"),
+        ] {
+            let mut save = valid_save();
+            save["view"]["openWorld"] = serde_json::json!({"regionId":region, "mapVersion":format!("{region}-v3"), "sceneId":scene});
+            assert!(validate_save(&save).is_err(), "{scene}");
+        }
+        let mut later = valid_save();
+        later["view"]["openWorld"] = serde_json::json!({"regionId":"sinnoh", "mapVersion":"sinnoh-authored-v1",
+            "encounterLayout":"expansion-v1", "sceneId":"cave:sinnoh:mt-coronet-top"});
+        validate_save(&later).unwrap();
+        later["view"]["openWorld"]["sceneId"] = Value::String("cave:sinnoh:mt-moon".into());
+        assert!(validate_save(&later).is_err());
     }
 
     #[test]

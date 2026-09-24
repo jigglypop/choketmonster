@@ -1,0 +1,152 @@
+/* Account dialogs and the header account menu: the same lilac/blush glass as the
+   start screen (tokens in loading-screen.css). Loaded last, so it only repaints. */
+dialog:is(.account-dialog, .save-recovery-dialog) {
+  width: min(400px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 28px;
+  background: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  color: var(--pastel-ink);
+  font-family: var(--pastel-font);
+  letter-spacing: -.01em;
+}
+dialog:is(.account-dialog, .save-recovery-dialog)::backdrop {
+  background: linear-gradient(135deg, rgba(120, 110, 220, .28), rgba(255, 170, 205, .22));
+  -webkit-backdrop-filter: blur(10px) saturate(1.2);
+  backdrop-filter: blur(10px) saturate(1.2);
+}
+dialog:is(.account-dialog, .save-recovery-dialog) .account-dialog-card {
+  display: grid;
+  gap: 12px;
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  padding: 28px 24px 24px;
+  border: 1px solid var(--pastel-edge);
+  border-radius: 28px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, .62), rgba(255, 255, 255, .34));
+  box-shadow: var(--pastel-shadow);
+  -webkit-backdrop-filter: var(--pastel-blur);
+  backdrop-filter: var(--pastel-blur);
+  color: var(--pastel-ink);
+}
+dialog:is(.account-dialog, .save-recovery-dialog) .kicker {
+  justify-self: start;
+  padding: 4px 10px;
+  border-radius: 99px;
+  background: linear-gradient(135deg, rgba(189, 184, 255, .55), rgba(255, 202, 223, .55));
+  color: var(--pastel-ink);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: .06em;
+}
+dialog:is(.account-dialog, .save-recovery-dialog) h2 { margin: 0; font-size: 21px; font-weight: 700; letter-spacing: -.03em; }
+dialog:is(.account-dialog, .save-recovery-dialog) p { margin: 0; color: var(--pastel-muted); font-size: 13px; line-height: 1.6; }
+dialog.account-dialog .account-mode {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, .5);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .28);
+}
+dialog.account-dialog .account-mode button {
+  min-height: 40px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--pastel-muted);
+  font-weight: 600;
+}
+dialog.account-dialog .account-mode button[aria-pressed=true] { background: rgba(255, 255, 255, .82); color: var(--pastel-ink); box-shadow: 0 4px 14px rgba(84, 72, 170, .14); }
+dialog.account-dialog .account-dialog-card > label,
+dialog.account-dialog .account-confirm > label { margin-top: 2px; color: var(--pastel-muted); font-size: 12.5px; font-weight: 600; }
+dialog.account-dialog input,
+dialog.account-dialog .account-password-toggle {
+  min-height: 46px;
+  border: 1px solid var(--pastel-edge);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .5);
+  color: var(--pastel-ink);
+  font-size: 15px;
+}
+dialog.account-dialog input { padding: 10px 14px; transition: border-color .15s, box-shadow .15s, background .15s; }
+dialog.account-dialog input:focus { outline: none; background: rgba(255, 255, 255, .75); border-color: var(--pastel-lilac); box-shadow: 0 0 0 4px rgba(189, 184, 255, .38); }
+dialog.account-dialog input[aria-invalid=true] { border-color: #e38aa9; box-shadow: 0 0 0 4px rgba(255, 202, 223, .45); }
+dialog.account-dialog .account-password-toggle { min-width: 64px; font-size: 13px; font-weight: 600; }
+dialog.account-dialog .account-help { color: var(--pastel-muted); font-size: 12px; }
+dialog:is(.account-dialog, .save-recovery-dialog) :is(.account-field-error, .account-error) { color: #c2476a; font-size: 12.5px; font-weight: 600; }
+dialog:is(.account-dialog, .save-recovery-dialog) :is(.account-submit, .account-actions button) {
+  min-height: 48px;
+  border: 1px solid rgba(255, 255, 255, .7);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .5);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6);
+  color: var(--pastel-ink);
+  font-weight: 650;
+  transition: transform .15s, filter .15s, box-shadow .15s;
+}
+dialog:is(.account-dialog, .save-recovery-dialog) :is(.account-submit, .account-actions button.primary) {
+  background: linear-gradient(135deg, var(--pastel-lilac), var(--pastel-blush));
+  box-shadow: 0 10px 24px rgba(128, 112, 214, .26), inset 0 1px 0 rgba(255, 255, 255, .6);
+}
+dialog:is(.account-dialog, .save-recovery-dialog) :is(.account-submit, .account-actions button):hover:not(:disabled) { filter: brightness(1.04); }
+dialog:is(.account-dialog, .save-recovery-dialog) :is(.account-submit, .account-actions button):active:not(:disabled) { transform: scale(.985); }
+dialog.account-dialog .account-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(255, 255, 255, .6);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .4);
+  color: var(--pastel-muted);
+  font-size: 20px;
+  line-height: 1;
+}
+dialog.save-recovery-dialog .save-recovery-times { display: grid; gap: 8px; margin: 0; }
+dialog.save-recovery-dialog .save-recovery-times div { display: flex; justify-content: space-between; gap: 12px; padding: 10px 14px; border-radius: 14px; background: rgba(255, 255, 255, .42); }
+dialog.save-recovery-dialog .save-recovery-times :is(dt, dd) { margin: 0; font-size: 13px; }
+dialog.save-recovery-dialog .save-recovery-times dt { color: var(--pastel-muted); }
+
+/* Header account menu (save state, manual save, login/logout). */
+.topbar .account-menu > summary { border-color: rgba(255, 255, 255, .6); background: rgba(255, 255, 255, .45); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+.topbar .account-menu[open] > summary { background: rgba(255, 255, 255, .78); box-shadow: 0 0 0 3px rgba(189, 184, 255, .45); }
+.topbar .account-menu-panel {
+  gap: 10px;
+  min-width: 230px;
+  padding: 14px;
+  border: 1px solid var(--pastel-edge);
+  border-radius: 22px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, .72), rgba(255, 255, 255, .5));
+  box-shadow: var(--pastel-shadow);
+  -webkit-backdrop-filter: var(--pastel-blur);
+  backdrop-filter: var(--pastel-blur);
+  color: var(--pastel-ink);
+  font-family: var(--pastel-font);
+  letter-spacing: -.01em;
+}
+.topbar .account-menu-panel :is(#save-state, .account-name) { color: var(--pastel-ink); font-size: 13px; font-weight: 600; }
+.topbar .account-menu-panel :is(#save-now, .account-button, .logout-button),
+.topbar.map-overlay .account-menu-panel :is(#save-now, .account-button, .logout-button) {
+  min-height: 42px;
+  border: 1px solid rgba(255, 255, 255, .7);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .55);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6);
+  color: var(--pastel-ink);
+  font-weight: 600;
+}
+.topbar .account-menu-panel :is(#save-now, .account-button):not(:disabled):hover { background: rgba(255, 255, 255, .8); }
+.topbar .account-menu-panel .logout-button { background: linear-gradient(135deg, rgba(189, 184, 255, .7), rgba(255, 202, 223, .7)); }
+.topbar .account-menu-panel .logout-button:not(:disabled):hover { background: linear-gradient(135deg, var(--pastel-lilac), var(--pastel-blush)); }
+.topbar .account-menu-panel :is(#save-now, .account-button, .logout-button)[hidden] { display: none; }

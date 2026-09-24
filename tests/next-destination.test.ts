@@ -24,15 +24,24 @@ describe('campaign wayfinder', () => {
     expect(regionalItinerary(atlas, 'pallet', 'cinnabar', 0)).toEqual([]);
     expect(regionalItinerary(atlas, 'pallet', 'cinnabar', 6)).toContain('route-21');
   });
-  it('uses interior exit coordinates instead of surface coordinates in a cave', () => {
+  it('uses interior exit coordinates, and the stairs toward the exit floor, in a dungeon', () => {
     const game = createGame(152, 'wayfinder-cave'), atlas = getWorldAtlas('johto');
     game.campaign!.johtoBadges = [1];
     const cave = atlas.caves.find(item => item.id === 'union-cave')!;
     const guide = nextDestinationGuide(game, atlas, cave.sceneId, { x: 0, z: 0 });
     expect(guide.destinationId).toBe('azalea');
-    expect(guide.nextName).toContain('33번');
-    expect(guide.status).toBe('route');
+    // The Route 33 exit is on the deepest floor, so the guide first leads down the stairs.
+    expect(guide).toMatchObject({ nextName: '지하 1층', status: 'route', detail: '지하 1층 방향으로 이동하세요.' });
     expect(guide.points.every(point => !cave.sample(point.x, point.z).blocked)).toBe(true);
+    const stairs = cave.stairs[0];
+    expect(Math.hypot(guide.points.at(-1)!.x - stairs.interior.x, guide.points.at(-1)!.z - stairs.interior.z)).toBeLessThan(1.2);
+    const middle = atlas.caves.find(item => item.id === 'union-cave-b1f')!;
+    expect(nextDestinationGuide(game, atlas, middle.sceneId, { x: 0, z: 0 }).nextName).toBe('지하 2층');
+    const deepest = atlas.caves.find(item => item.id === 'union-cave-b2f')!;
+    const exit = nextDestinationGuide(game, atlas, deepest.sceneId, { x: 0, z: 0 });
+    expect(exit.nextName).toContain('33번');
+    expect(exit.status).toBe('route');
+    expect(exit.points.every(point => !deepest.sample(point.x, point.z).blocked)).toBe(true);
   });
   it('guides a tunnel crossing to its entrance when the endpoints have separate location IDs', () => {
     const game = createGame(1, 'wayfinder-diglett'), atlas = getWorldAtlas('kanto');

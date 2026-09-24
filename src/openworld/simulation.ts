@@ -5,9 +5,9 @@ import { Random, clamp } from '../core/random';
 import { POKEMON, getMove, getSpecies } from '../data/pokemon';
 import { getVersionSpeciesIds } from '../data/pokemon-versions';
 import { battleMonsterMaxHp, applyPreferredBattleTransformation, leaveWildBattle, replenishBalls, challengeCampaignGym, challengeCampaignTrainer, challengeFieldTrainer, claimRegionalStarter as claimStarter } from '../game/engine';
-import { CAMPAIGN_REGIONS, getRegionalBadges, getCampaignGyms, getNextCampaignTrainer, campaignTravelReason, regionalWildLevels, type CampaignRegion } from '../game/campaign';
+import { CAMPAIGN_REGIONS, getRegionalBadges, getCampaignGyms, getNextCampaignTrainer, campaignEntryReason, campaignTravelReason, regionalWildLevels, type CampaignRegion } from '../game/campaign';
 import { availableFieldTrainer, fieldTrainersAt, type FieldTrainer } from '../data/field-trainers';
-import { chooseRegionalEncounter, encounterPeriodAt, regionalRuntimePools, supplementalEncounterRules, type EncounterPeriod } from '../data/regional-encounters';
+import { chooseRegionalEncounter, encounterPeriodAt, regionalRuntimePools, regionalSupplementalRules, supplementalEncounterRules, type EncounterFloor, type EncounterPeriod } from '../data/regional-encounters';
 import { chooseExpansionEncounter, expansionEncounterSpecies, isExpansionRegion } from '../data/expansion-spawns';
 import { gameplayHabitat } from '../game/habitat';
 import { ConnectomeController, type NeuralMonster } from '../game/connectome';
@@ -17,8 +17,9 @@ import { activateBattleTransformation, actBattle, availableEvolutions, battleMon
 import { monsterRegionalUseReason, needsRegionalStarter } from '../game/regional-policy';
 import { KANTO_START, KANTO_MAP_VERSION } from './kanto';
 import { WORLD_MIN, WORLD_MAX, WORLD_SCALE, migrateSurfaceSnapshotCoordinates, surfaceSceneId } from './world-space';
-import { CAVE_SCENES, caveLocation, cavePortalAtInterior, cavePortalAtSurface, getCaveScene } from './caves';
+import { CAVE_SCENES, caveLocation, cavePortalAtInterior, cavePortalAtSurface, caveStairsAt, getCaveScene, nearestCaveWalkable } from './caves';
 import { getGymScene, gymSceneId, LEAGUE_LOCATION_IDS, leagueSceneId } from './gym-scenes';
+import { openDungeonExits, portalBadges } from './dungeon-gates';
 import { getWorldAtlas, getLegacyJohtoAtlas, getLegacyExpansionAtlas, migrateLegacyExpansionLocationId, type WorldAtlas, type WorldRegionId } from './atlas';
 import { getPlayableSpeciesIds, isPlayableAdventureVersion, isPlayableWorldRegion, playableWorldRegionForVersion } from './availability';
 import type { FieldPolicy } from '../game/field';
@@ -105,6 +106,8 @@ const BATTLE_ESCAPE_DISTANCE = 14;
 const AUTO_PICKUP_DETOUR = 18;
 /** How close the player must be to a gym door to walk in. */
 const GYM_DOOR_REACH = 6;
+/** Walking onto a dungeon entrance, exit or stairs within this distance uses it. */
+export const PORTAL_WALK_RADIUS = 1.1;
 const UNIQUE_SPECIES = new Set([144, 145, 146, 150, 151]);
 type RoadsideDrop = RoadsideItem & { quantity: 1 };
 const DIRECTIONS = [{ x: 0, z: -1 }, { x: 1, z: 0 }, { x: 0, z: 1 }, { x: -1, z: 0 }] as const;
@@ -278,6 +281,13 @@ export class OpenWorldSimulation {
     return caveLocation(this.sceneId) ?? this.atlas.locationAt(x, z);
   }
   isSafeTown(x: number, z: number): boolean { return !getCaveScene(this.sceneId) && this.locationAt(x, z).kind === 'town'; }
+  /** The dungeon floor's encounter areas and rare-slot anchor, or undefined outside dungeons. */
+  private get encounterFloor(): EncounterFloor | undefined {
+    const scene = getCaveScene(this.sceneId);
+    return scene && { areas: scene.encounterAreas, supplemental: scene.supplemental };
+  }
+  /** Floors such as the lower storeys of Pokémon Tower have no wild Pokémon; the roster waits for the next floor. */
+  get sceneHasWilds(): boolean { return getCaveScene(this.sceneId)?.wild ?? true; }
   /** Surface and gym halls use the atlas route gates; caves are closed rooms. */
   private get onSurfaceMap(): boolean { return !getCaveScene(this.sceneId) && !getGymScene(this.sceneId); }
   /** Headless simulations need no renderer; the playable panel opts into this gate. */
@@ -336,11 +346,13 @@ export class OpenWorldSimulation {
   }
   portalRenderData(radius = 60): Array<{ id: string; label: string; targetSceneId: string; x: number; z: number }> {
     const cave = getCaveScene(this.sceneId);
-    if (cave) return cave.portals.filter(portal => distance(portal.interior, this.player) <= radius)
-      .map(portal => ({ id: portal.id, label: `Exit to ${portal.surfaceLocationId}`, targetSceneId: portal.surfaceSceneId, ...portal.interior }));
+    if (cave) return [...cave.portals.filter(portal => distance(portal.interior, this.player) <= radius)
+      .map(portal => ({ id: portal.id, label: `Exit to ${portal.surfaceLocationId}`, targetSceneId: portal.surfaceSceneId, ...portal.interior })),
+    ...cave.stairs.filter(stairs => distance(stairs.interior, this.player) <= radius)
+      .map(stairs => ({ id: stairs.id, label: getCaveScene(stairs.targetSceneId)!.label, targetSceneId: stairs.targetSceneId, ...stairs.interior }))];
     return CAVE_SCENES.filter(scene => scene.regionId === this.regionId).flatMap(scene => scene.portals
       .filter(portal => distance(portal.surface, this.player) <= radius)
-      .map(portal => ({ id: portal.id, label: scene.label, targetSceneId: scene.sceneId, ...portal.surface })));
+      .map(portal => ({ id: portal.id, label: scene.dungeonLabel, targetSceneId: scene.sceneId, ...portal.surface })));
   }
 
   /** Resolve one matching battle frame before advancing it. Network timing never consumes simulation RNG. */
@@ -430,7 +442,7 @@ export class OpenWorldSimulation {
       this.migrateUnavailableWildSpecies(needsRedEncounterMigration(checkpoint, this.game.adventureVersion));
       // Older and interrupted checkpoints can be short of the current minimum.
       // Keep every validated saved individual and deterministically fill only the missing slots.
-      while (this.rosterStatus().total < 12) this.spawnWild();
+      this.fillRoster(12);
     }
     else {
       this.entities.push(this.makeCompanion());
@@ -499,11 +511,31 @@ export class OpenWorldSimulation {
     const count = this.rosterStatus().total;
     this.player = { ...arrival, heading: 0 }; Object.assign(companion, this.player);
     companion.target = undefined; this.selectWild(null); this.setControlMode('manual'); this.manualControlRemaining = 0;
-    for (const entity of this.wildEntities()) { this.brains.delete(entity.id); this.entities.splice(this.entities.indexOf(entity), 1); }
+    const departed = this.wildEntities(), pending = this.respawnQueue;
+    for (const entity of departed) { this.brains.delete(entity.id); this.entities.splice(this.entities.indexOf(entity), 1); }
     this.respawnQueue = []; this.foods = [];
-    while (this.wildEntities().length < count) this.spawnWild();
+    if (this.sceneHasWilds) while (this.wildEntities().length < count) this.spawnWild();
+    else this.respawnQueue = this.dormantRoster(count, arrival, [...departed.map(entity => ({ ...entity, id: `respawn:${entity.id}` })), ...pending]);
     while (this.foods.length < 24) this.spawnFood();
     this.spawnAnchor = { ...this.player }; this.recordTownVisit();
+  }
+
+  /** On a floor without wild Pokémon the roster waits as pending respawns until a floor with wild Pokémon. */
+  private dormantRoster(count: number, at: { x: number; z: number }, members: ReadonlyArray<{ id: string; speciesId: number; level: number }>): WorldRespawn[] {
+    const roster: WorldRespawn[] = [], used = new Set<string>();
+    for (const member of members) {
+      if (roster.length >= count || used.has(member.id)) continue;
+      used.add(member.id);
+      roster.push({ id: member.id, speciesId: member.speciesId, level: member.level, biome: biomeForSpecies(member.speciesId), originX: at.x, originZ: at.z, remainingSeconds: 6 });
+    }
+    return roster;
+  }
+
+  /** Tops up an interrupted roster; a floor without wild Pokémon holds the new members as pending. */
+  private fillRoster(minimum: number): void {
+    if (this.sceneHasWilds) { while (this.rosterStatus().total < minimum) this.spawnWild(); return; }
+    const lead = this.entities.find(entity => entity.kind === 'companion')!;
+    while (this.rosterStatus().total < minimum) this.respawnQueue.push(...this.dormantRoster(1, this.player, [{ id: `respawn:wild-${this.spawnSerial++}`, speciesId: lead.speciesId, level: lead.level }]));
   }
 
   selectWild(id: string | null, inspectOnly = false): void {
@@ -600,39 +632,66 @@ export class OpenWorldSimulation {
     this.serverTurn = undefined; this.pendingAction = undefined; this.pendingCapture = false; this.pendingBall = undefined;
   }
 
-  traverseCavePortal(): boolean {
-    if (this.game.battle || this.game.captureOffer) return false;
-    const interiorPortal = getCaveScene(this.sceneId) && cavePortalAtInterior(this.sceneId, this.player.x, this.player.z);
-    if (interiorPortal) {
-      this.sceneId = interiorPortal.surfaceSceneId; this.surfaceReturn = undefined;
-      this.resetScenePopulation(interiorPortal.surfaceArrival); return true;
+  /** A dungeon doorway to the surface opens only once the badges reach the ground on its far side. */
+  doorwayOpen(scene: { regionId: string; encounterLocationId: string }, portal: { surfaceLocationId: string }): boolean {
+    return portalBadges(scene, portal) <= this.regionalBadges;
+  }
+
+  /** An open dungeon entrance, exit or stairs under the player, within `radius`. */
+  portalUnderfoot(radius = PORTAL_WALK_RADIUS): boolean {
+    const { x, z } = this.player, cave = getCaveScene(this.sceneId);
+    if (cave) {
+      const exit = cavePortalAtInterior(this.sceneId, x, z, radius);
+      return exit ? this.doorwayOpen(cave, exit) : Boolean(caveStairsAt(this.sceneId, x, z, radius));
     }
-    const entrance = cavePortalAtSurface(this.regionId, this.player.x, this.player.z);
-    if (!entrance) return false;
+    const entrance = this.onSurfaceMap ? cavePortalAtSurface(this.regionId, x, z, radius) : undefined;
+    return Boolean(entrance && this.doorwayOpen(entrance.scene, entrance.portal));
+  }
+
+  /** Uses the entrance, exit or stairs within reach: default reach for buttons, a short one for walking onto it. */
+  traverseCavePortal(radius?: number): boolean {
+    if (this.game.battle || this.game.captureOffer) return false;
+    const cave = getCaveScene(this.sceneId);
+    if (cave) {
+      const exit = cavePortalAtInterior(this.sceneId, this.player.x, this.player.z, radius);
+      if (exit) {
+        if (!this.doorwayOpen(cave, exit)) return false;
+        this.sceneId = exit.surfaceSceneId; this.surfaceReturn = undefined;
+        this.resetScenePopulation(exit.surfaceArrival); return true;
+      }
+      const stairs = caveStairsAt(this.sceneId, this.player.x, this.player.z, radius), target = stairs && getCaveScene(stairs.targetSceneId);
+      const landing = target?.stairs.find(item => item.id === stairs!.targetStairsId);
+      if (!target || !landing) return false;
+      this.sceneId = target.sceneId;
+      this.resetScenePopulation(landing.interiorArrival); return true;
+    }
+    if (!this.onSurfaceMap) return false;
+    const entrance = cavePortalAtSurface(this.regionId, this.player.x, this.player.z, radius);
+    if (!entrance || !this.doorwayOpen(entrance.scene, entrance.portal)) return false;
     this.surfaceReturn = { sceneId: entrance.portal.surfaceSceneId, ...entrance.portal.surfaceArrival };
     this.sceneId = entrance.scene.sceneId;
     this.resetScenePopulation(entrance.portal.interiorArrival); return true;
   }
 
+  /** Every way out of the dungeon the badges open: exits on this floor first by distance, then those on nearer floors. */
   caveExits(): Array<{ id: string; label: string; surfaceLocationId: string; distance: number }> {
     const cave = getCaveScene(this.sceneId);
     if (!cave) return [];
-    return cave.portals.map(portal => ({
+    return openDungeonExits(cave.sceneId, this.regionalBadges).map(({ scene, portal }) => ({
       id: portal.id,
       label: this.atlas.locations.find(location => location.id === portal.surfaceLocationId)?.name ?? portal.surfaceLocationId,
       surfaceLocationId: portal.surfaceLocationId,
-      distance: distance(portal.interior, this.player),
+      distance: scene === cave ? distance(portal.interior, this.player) : 1e6 * Math.abs(scene.floorIndex - cave.floorIndex),
     })).sort((a, b) => a.distance - b.distance || a.id.localeCompare(b.id));
   }
 
-  /** Immediately leaves the current cave through a selected, or nearest, real portal. */
+  /** Immediately leaves the current dungeon through a selected, or the nearest, real exit. */
   exitCave(portalId?: string): boolean {
     if (this.game.battle || this.game.captureOffer) return false;
     const cave = getCaveScene(this.sceneId);
     if (!cave) return false;
-    const portal = portalId
-      ? cave.portals.find(candidate => candidate.id === portalId)
-      : [...cave.portals].sort((a, b) => distance(a.interior, this.player) - distance(b.interior, this.player))[0];
+    const exits = openDungeonExits(cave.sceneId, this.regionalBadges).map(item => item.portal);
+    const portal = exits.find(candidate => candidate.id === (portalId ?? this.caveExits()[0]?.id));
     if (!portal) return false;
     this.sceneId = portal.surfaceSceneId; this.surfaceReturn = undefined;
     this.resetScenePopulation(portal.surfaceArrival);
@@ -1063,13 +1122,15 @@ export class OpenWorldSimulation {
   }
 
   private encounterAt(position: { x: number; z: number }): { speciesId: number; level: number } {
-    const location = this.locationAt(position.x, position.z);
-    const levels = regionalWildLevels(this.game, this.regionId, location);
+    const location = this.locationAt(position.x, position.z), floor = this.encounterFloor;
+    const band = regionalWildLevels(this.game, this.regionId, location), shift = getCaveScene(this.sceneId)?.levelShift ?? 0;
+    // Deeper floors of a dungeon hold slightly stronger Pokémon.
+    const levels = { minLevel: Math.min(100, band.minLevel + shift), maxLevel: Math.min(100, band.maxLevel + shift) };
     const encounterRegion = this.regionId === 'johto' ? 'johto' : 'kanto';
     const biome = this.sampleWorld(position.x, position.z).biome;
     const encounter = isExpansionRegion(this.regionId)
-      ? chooseExpansionEncounter(this.regionId, location.id, this.dayPeriod, biome, this.regionalBadges, this.spawnSerial, () => this.rng.next(), { min: levels.minLevel, max: levels.maxLevel })
-      : chooseRegionalEncounter(encounterRegion, location.id, this.dayPeriod, biome, this.regionalBadges, this.spawnSerial, () => this.rng.next(), { min: levels.minLevel, max: levels.maxLevel });
+      ? chooseExpansionEncounter(this.regionId, location.id, this.dayPeriod, biome, this.regionalBadges, this.spawnSerial, () => this.rng.next(), { min: levels.minLevel, max: levels.maxLevel }, floor)
+      : chooseRegionalEncounter(encounterRegion, location.id, this.dayPeriod, biome, this.regionalBadges, this.spawnSerial, () => this.rng.next(), { min: levels.minLevel, max: levels.maxLevel }, floor);
     const min = Math.max(1, encounter.origin==='source'?levels.minLevel:encounter.minLevel), max = Math.max(min, encounter.origin==='source'?levels.maxLevel:encounter.maxLevel);
     return { speciesId: encounter.speciesId, level: min + this.rng.int(max - min + 1) };
   }
@@ -1077,11 +1138,12 @@ export class OpenWorldSimulation {
   private spawnPool(locationId: string, biome?: string): number[] {
     const version = this.game.adventureVersion ?? 'red';
     const caught = this.game.versionCaught?.[version] ?? this.game.dex.caught;
-    const encounterRegion = this.regionId === 'johto' ? 'johto' : 'kanto';
-    const candidates = isExpansionRegion(this.regionId) ? expansionEncounterSpecies(this.regionId, locationId, this.regionalBadges, this.dayPeriod, biome, this.spawnSerial)
+    const encounterRegion = this.regionId === 'johto' ? 'johto' : 'kanto', floor = this.encounterFloor;
+    if (!this.sceneHasWilds) return [];
+    const candidates = isExpansionRegion(this.regionId) ? expansionEncounterSpecies(this.regionId, locationId, this.regionalBadges, this.dayPeriod, biome, this.spawnSerial, floor)
       : biome === undefined ? regionalEncounters(locationId, this.regionalBadges, this.regionId)
-      : [...regionalRuntimePools(encounterRegion, locationId, this.dayPeriod, biome).flatMap(pool => pool.slots.map(slot => slot.speciesId)),
-        ...(this.spawnSerial % 20 === 0 ? supplementalEncounterRules(encounterRegion).filter(rule => rule.locationId === locationId && rule.biome === biome && rule.requiredBadges <= this.regionalBadges).map(rule => rule.speciesId) : [])];
+      : [...regionalRuntimePools(encounterRegion, locationId, this.dayPeriod, biome, floor?.areas).flatMap(pool => pool.slots.map(slot => slot.speciesId)),
+        ...(this.spawnSerial % 20 === 0 ? regionalSupplementalRules(encounterRegion, locationId, biome, this.regionalBadges, floor).map(rule => rule.speciesId) : [])];
     return [...new Set(candidates)].filter(speciesId => !UNIQUE_SPECIES.has(speciesId)
       || (!caught.includes(speciesId) && !this.entities.some(entity => entity.kind === 'wild' && entity.speciesId === speciesId) && !this.respawnQueue.some(pending => pending.speciesId === speciesId)));
   }
@@ -1098,7 +1160,7 @@ export class OpenWorldSimulation {
 
   changeRegion(regionId: WorldRegionId): void {
     if (!isPlayableWorldRegion(regionId)) throw new Error('실제 3D 지역 지도가 확보되지 않은 지역입니다.');
-    const reason = campaignTravelReason(this.game, regionId); if (reason) throw new Error(reason);
+    const reason = campaignEntryReason(this.game, regionId); if (reason) throw new Error(reason);
     this.changeRegionInternal(regionId, getWorldAtlas(regionId).defaultVersion);
   }
 
@@ -1146,6 +1208,8 @@ export class OpenWorldSimulation {
       const sample = this.sampleWorld(x, z);
       if (!sample.blocked && !this.isSafeTown(x, z) && location.minLevel <= current.maxLevel + 4 && this.spawnPool(location.id, sample.biome).length && !this.entities.some(entity => distance(entity, { x, z }) < 2)) return { x, z };
     }
+    // Surface locations are another coordinate space; a dungeon floor spawns only on itself.
+    if (getCaveScene(this.sceneId)) throw new Error(`No ${this.sceneId} spawn position`);
     for (const location of [...this.atlas.locations].sort((a, b) => distance(a, this.player) - distance(b, this.player))) {
       if (location.kind === 'town' || !this.spawnPool(location.id).length) continue;
       for (let radius = 0; radius <= 18; radius += 2) for (let step = 0; step < 16; step++) {
@@ -1176,6 +1240,7 @@ export class OpenWorldSimulation {
 
   private advanceRespawns(deltaSeconds: number): void {
     this.relocateTownWilds();
+    if (!this.sceneHasWilds) return;
     for (const pending of this.respawnQueue) pending.remainingSeconds = Math.max(0, pending.remainingSeconds - deltaSeconds);
     const ready = this.respawnQueue.filter(pending => pending.remainingSeconds === 0);
     this.respawnQueue = this.respawnQueue.filter(pending => pending.remainingSeconds > 0);
@@ -1385,7 +1450,7 @@ export class OpenWorldSimulation {
       if (regionalSpecies.has(entity.speciesId) && (!resetLayout || regionalEncounters(this.locationAt(entity.x, entity.z).id, this.regionalBadges, this.regionId).includes(entity.speciesId))) continue;
       Object.assign(entity, replacement(entity.x, entity.z, entity.level, entity.id)); changed = true;
     }
-    for (const pending of this.respawnQueue) {
+    for (const pending of this.sceneHasWilds ? this.respawnQueue : []) {
       if (regionalSpecies.has(pending.speciesId) && (!resetLayout || regionalEncounters(this.locationAt(pending.originX, pending.originZ).id, this.regionalBadges, this.regionId).includes(pending.speciesId))) continue;
       const next = replacement(pending.originX, pending.originZ, pending.level, pending.id);
       pending.originX = next.x; pending.originZ = next.z;
@@ -1476,6 +1541,21 @@ export class OpenWorldSimulation {
     this.game.logs.push('관동 지도로 이동했습니다. 파트너의 기억과 진행 상황을 보존했습니다.'); this.game.logs = this.game.logs.slice(-200);
   }
 
+  /** Dungeon floors can be laid out again (the Power Plant became a hall). Saved points on a new wall move to the nearest floor. */
+  private settleDungeonCheckpoint(checkpoint: OpenWorldSnapshot, scene: NonNullable<ReturnType<typeof getCaveScene>>): void {
+    const settle = (point: { x: number; z: number } | undefined | null) => {
+      if (!point || ![point.x, point.z].every(finite) || !scene.sample(point.x, point.z).blocked) return;
+      const next = nearestCaveWalkable(scene.sceneId, point.x, point.z); if (next) { point.x = next.x; point.z = next.z; }
+    };
+    settle(checkpoint.player); settle(checkpoint.spawnAnchor);
+    if (Array.isArray(checkpoint.entities)) for (const entity of checkpoint.entities) settle(entity);
+    if (Array.isArray(checkpoint.respawnQueue)) for (const pending of checkpoint.respawnQueue) {
+      if (!pending) continue;
+      const point = { x: pending.originX, z: pending.originZ }; settle(point); pending.originX = point.x; pending.originZ = point.z;
+    }
+    if (Array.isArray(checkpoint.foods)) checkpoint.foods = checkpoint.foods.filter(food => !food || !finite(food.x) || !finite(food.z) || !scene.sample(food.x, food.z).blocked);
+  }
+
   private restore(checkpoint: OpenWorldSnapshot): void {
     this.fieldItemPickupStates = validateFieldItemPickupStates(checkpoint?.fieldItemPickupStates);
     checkpoint = structuredClone(checkpoint);
@@ -1492,6 +1572,7 @@ export class OpenWorldSimulation {
     const cave = getCaveScene(this.sceneId), gymHall = getGymScene(this.sceneId);
     if (!cave && !gymHall && this.sceneId !== surfaceSceneId(this.regionId)) throw new Error('Unknown open-world scene');
     if ((cave ?? gymHall) && (cave ?? gymHall)!.regionId !== this.regionId) throw new Error('Scene region mismatch');
+    if (cave) this.settleDungeonCheckpoint(checkpoint, cave);
     if (this.regionId === 'kanto') {
       if (checkpoint.mapVersion !== undefined && !['kanto-v1', KANTO_MAP_VERSION].includes(checkpoint.mapVersion)) throw new Error('Unknown Kanto map version');
     } else if (checkpoint.mapVersion !== this.atlas.mapVersion) throw new Error(`Unknown ${this.regionId} map version`);

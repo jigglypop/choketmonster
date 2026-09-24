@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { Graph } from '../src/core/brain';
 import { actBattle, challengeCampaignGym, claimRegionalStarter, createGame, createMonster, depositMonster, evolve, releaseMonster, restoreGame, serializeGame, swapTeam, useItem, validateGame } from '../src/game/engine';
-import { getCampaignGyms } from '../src/game/campaign';
+import { campaignProgress, getCampaignGyms } from '../src/game/campaign';
 import { monsterRegionalUseReason, monsterRegionalUseTag, needsRegionalStarter, regionalLevelCap } from '../src/game/regional-policy';
 import { OpenWorldSimulation } from '../src/openworld/simulation';
 
@@ -71,7 +71,11 @@ describe('regional starter and usage policy', () => {
   });
 
   it('pauses a newly reached region until selection and then follows the eligible local starter', () => {
-    const game = createGame(1, 'regional-arrival'), world = new OpenWorldSimulation(graph, game, 411);
+    const game = createGame(1, 'regional-arrival');
+    // Johto opens to a Kanto start once the Kanto league is cleared.
+    game.player.badges = 8; game.defeatedGyms = [1, 2, 3, 4, 5, 6, 7, 8]; game.championDefeated = true;
+    game.campaign = { ...campaignProgress(game), kantoLeague: 5 };
+    const world = new OpenWorldSimulation(graph, game, 411);
     world.changeRegion('johto');
     expect(world.regionalStarterRequired).toBe(true);
     const before = structuredClone(world.player);

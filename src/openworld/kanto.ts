@@ -254,6 +254,7 @@ export function kantoGateHalfWidth(gate: KantoGate): number {
 export function evaluateKantoTraversal(from: { x: number; z: number }, to: { x: number; z: number }, badges: number): KantoTraversal {
   const location = locationAt(to.x, to.z);
   if (!Number.isFinite(badges) || badges < 0) return { allowed: false, location, reason: '배지 정보가 올바르지 않습니다.' };
+  if (badges < location.requiredBadges) return { allowed: false, location, reason: `${location.name}은(는) 배지 ${location.requiredBadges}개가 필요합니다.` };
   if (!isKantoPlayable(to.x, to.z)) return { allowed: false, location, reason: '길과 마을 경계를 벗어날 수 없습니다.' };
   for (const segment of gateSegments) {
     if (badges >= segment.gate.requiredBadges) continue;

@@ -3,18 +3,18 @@ import { getMove, getSpecies } from '../data/pokemon';
 import { fieldTrainersAt, getFieldTrainer } from '../data/field-trainers';
 import { pokemonModelUrl, pokemonSpriteUrl } from '../game/assets';
 import { getMoveLayout } from '../game/move-layout';
-import { availableMonsterMoveIds, battleMonsterMaxHp, battleMoveView, canLearnTechnicalMachine, teachTechnicalMachine, experienceAtLevel, FIELD_ITEMS, firstUsableRegionalTeamIndex, heal, HEALING_ITEM_HP, HELD_TOOL_DESCRIPTIONS, ITEM_LABELS, statsFor, type BattleTurnResult, type GameState, type HeldTool, type Monster } from '../game/engine';
-import { monsterRegionalUseReason, REGIONAL_STARTERS } from '../game/regional-policy';
-import { CAMPAIGN_TRAINERS, campaignTravelReason, getCampaignGyms, getNextCampaignTrainer, getRegionalBadges, type CampaignRegion } from '../game/campaign';
+import { battleMonsterMaxHp, battleMoveView, experienceAtLevel, FIELD_ITEMS, firstUsableRegionalTeamIndex, heal, HEALING_ITEM_HP, HELD_TOOL_DESCRIPTIONS, ITEM_LABELS, statsFor, type BattleTurnResult, type GameState, type HeldTool, type Monster } from '../game/engine';
+import { isCampaignRegion, monsterRegionalUseReason, REGIONAL_STARTERS } from '../game/regional-policy';
+import { CAMPAIGN_TRAINERS, campaignEntryReason, campaignTravelReason, getCampaignGyms, getNextCampaignTrainer, getRegionalBadges, type CampaignRegion } from '../game/campaign';
 import { getWorldAtlas } from './atlas';
 import { progressionRequirement } from './progression-gates';
 import { PLAYABLE_WORLDS } from './availability';
 import type { FieldPolicy } from '../game/field';
-import { movementSpeed, OpenWorldSimulation, type OpenWorldSnapshot } from './simulation';
+import { movementSpeed, OpenWorldSimulation, PORTAL_WALK_RADIUS, type OpenWorldSnapshot } from './simulation';
 import { lastServerDecision } from '../game/server-brain';
 import { mountOpenWorld } from './view';
 import { createWorldLoading, type LoadingScreen } from '../ui/loading-screen';
-import type { OpenWorldRenderSnapshot, OpenWorldView, WorldCreature, WorldHeading } from './types';
+import type { OpenWorldRenderSnapshot, OpenWorldView, WorldCreature, WorldHeading, WorldMoveEffect, WorldPoint } from './types';
 import './panel.css';
 import { atlasMapProjection, cachedAtlasTerrain, placeMapLabels, prepareAtlasTerrain } from './map-terrain';
 import { filterMapLocations, mapLocationDetails, mapLocationList, type MapFilter } from './map-explorer';
@@ -23,12 +23,14 @@ import './world-bag.css';
 import './trainer-battles.css';
 import './regional-starter.css';
 import { showGymVictory } from '../ui/gym-victory';
+import { openMachineDialog } from '../ui/machine-dialog';
+import { statusLabel } from '../game/status-labels';
 import { pokemonWorldDisplayHeight } from './visual-scale';
 import { MultiplayerSession } from './multiplayer';
 import { playGameSound } from '../audio';
 import { currentAccount } from '../game/account';
 import { WORLD_MIN, WORLD_MAX } from './world-space';
-import { getCaveScene, cavePortalAtSurface, cavePortalAtInterior } from './caves';
+import { getCaveScene, cavePortalAtSurface, cavePortalAtInterior, caveStairsAt, dungeonEntrance } from './caves';
 import { getGymScene, gymSceneId, LEAGUE_LOCATION_IDS, leagueSceneId, onGymCourt, type GymScene } from './gym-scenes';
 import { gymTeam } from '../game/gym-teams';
 import { technicalMachines } from '../game/technical-machines';
@@ -53,6 +55,11 @@ export class OpenWorldPanel {
   private loading?: LoadingScreen;
   private loadProgress = 0;
   private attacks = new Map<string, { start: number; end: number; type: string }>();
+  /** Move names above nameplates, target flinches and move effects, keyed by battler instance. */
+  private cues = new Map<string, { key: string; text: string; moveType: string; start: number; end: number }>();
+  private hurts = new Map<string, { start: number; end: number }>();
+  private effects: WorldMoveEffect[] = [];
+  private cueSerial = 0;
   private tickPending = false;
   private manualIdleSeconds = 0;
   private manualMovementActive = false;
@@ -90,9 +97,15 @@ export class OpenWorldPanel {
   private lastMapTap?: { id: string; at: number };
   /** A gym whose building was clicked; the player walks to the door and goes in on arrival. */
   private pendingGymEntry?: string;
+  /** A dungeon entrance whose building was clicked; the player walks to the door and goes in on arrival. */
+  private pendingDungeonEntry?: string;
+  /** Walking back onto the doorway just used waits until this time. */
+  private portalCooldownUntil = 0;
+  /** Set once the partner has stepped off every doorway, so arriving or loading on one never bounces straight through. */
+  private portalArmed = false;
+  /** A gym or league location without a hall; arriving there starts the battle on the field. */
+  private pendingFieldChallenge?: string;
   private bagTab: 'tools' | 'machines' = 'tools';
-  /** Technical machine whose team list is open in the bag. */
-  private bagMachine?: number;
   private previousBattle?: GameState['battle'];
   private guideCache?: { key: string; guide: DestinationGuide };
   private starterDialog?: HTMLDialogElement;
@@ -138,6 +151,7 @@ export class OpenWorldPanel {
       </div></details>
       <aside class="world-radar" data-size="${this.minimapSize}"><button id="world-map-open" aria-label="지역 전체 지도 열기"><span class="world-minimap-frame"><canvas id="world-minimap" width="180" height="180" aria-label="카메라 방향으로 회전하는 월드 지도"></canvas><b id="world-minimap-heading" aria-hidden="true">북</b></span></button><div class="world-minimap-controls" role="group" aria-label="미니맵 크기"><button id="world-minimap-smaller" type="button" aria-label="미니맵 축소" ${this.minimapSize === 'small' ? 'disabled' : ''}>−</button><span id="world-minimap-size">${this.minimapSize === 'small' ? '작게' : this.minimapSize === 'large' ? '크게' : '보통'}</span><button id="world-minimap-larger" type="button" aria-label="미니맵 확대" ${this.minimapSize === 'large' ? 'disabled' : ''}>＋</button></div><span id="world-position"></span><small id="world-map-caption">지역 지도 ↗</small><details class="world-bag" id="world-bag"><summary aria-label="도구 목록"><span>도구</span><b id="world-bag-count">0</b></summary><div class="world-bag-panel" id="world-bag-content"></div></details></aside>
       <button id="world-next-guide" class="world-next-guide" aria-label="다음 목적지 길안내" aria-expanded="false"></button>
+      <button id="world-gym-notice" class="world-gym-notice" hidden></button>
       <div id="world-cave-exits" class="world-cave-exits" hidden></div>
       <div class="world-lower-hud">
       <section class="world-multiplayer social-dock" aria-label="지역 채팅">
@@ -164,7 +178,7 @@ export class OpenWorldPanel {
       <div class="world-respawn" id="world-respawn"></div>
       <details class="world-method"><summary>회로와 게임 규칙</summary><p>브라우저 MaleCNS 실측 부분 회로 ${this.options.graph.nodes.length} 뉴런 · ${this.options.graph.edges.length.toLocaleString()} 연결. 전체 회로가 연결된 배틀은 서버에서 계산하고 반환된 개체 기억은 이 기기에 저장합니다. 감각 입력·행동 대응·학습 보상·월드 속도는 게임을 위해 설계했습니다. 자동 모드에서 추적 대상이 없으면 통행 가능한 탐험 목적지를 게임 규칙으로 정하고, 회로가 이동 방향을 선택합니다.</p></details>
     </section>`;
-    const layoutSizes: Array<[string, string, 'height' | 'width']> = [['.world-radar', '--world-radar-height', 'height'], ['.world-radar', '--world-radar-width', 'width'], ['#world-next-guide', '--world-guide-height', 'height'], ['.world-battle-hud', '--world-partner-height', 'height'], ['.world-explore-toggle', '--world-explore-toggle-height', 'height'], ['.social-dock', '--world-chat-height', 'height']];
+    const layoutSizes: Array<[string, string, 'height' | 'width']> = [['.world-radar', '--world-radar-height', 'height'], ['.world-radar', '--world-radar-width', 'width'], ['#world-next-guide', '--world-guide-height', 'height'], ['#world-gym-notice', '--world-gym-notice-height', 'height'], ['.world-battle-hud', '--world-partner-height', 'height'], ['.world-explore-toggle', '--world-explore-toggle-height', 'height'], ['.social-dock', '--world-chat-height', 'height']];
     this.layoutObserver = new ResizeObserver(entries => {
       for (const entry of entries) {
         for (const [, variable, dimension] of layoutSizes.filter(([selector]) => entry.target.matches(selector))) {
@@ -194,7 +208,7 @@ export class OpenWorldPanel {
         this.loading?.fail(`3D 월드를 준비하지 못했습니다. ${error instanceof Error ? error.message : String(error)}`);
       },
       onRendererLost: () => { this.ready = false; this.paused = true; this.simulation.requireReadyModels(); this.refresh(); },
-      onNavigationStart: () => { this.pendingGymEntry = undefined; return this.noteManualInput(); },
+      onNavigationStart: () => { this.pendingGymEntry = undefined; this.pendingFieldChallenge = undefined; this.pendingDungeonEntry = undefined; return this.noteManualInput(); },
       onMovementInput: () => this.noteManualInput(),
       onMovementEnd: () => {
         this.manualMovementActive = false;
@@ -207,7 +221,9 @@ export class OpenWorldPanel {
         // scene here duplicated that work on the input path and stalled movement.
         const now = performance.now();
         if (accepted && this.pendingGymEntry) this.enterPendingGym();
+        if (accepted && this.pendingFieldChallenge) this.arriveFieldChallenge();
         if (accepted) this.enterGymCourt();
+        if (accepted) this.walkThroughPortal();
         if (accepted && now - this.lastMovementRefresh >= 100) {
           this.lastMovementRefresh = now;
           this.html('#world-position', `${next.x.toFixed(0)}, ${next.z.toFixed(0)}`);
@@ -222,7 +238,7 @@ export class OpenWorldPanel {
         this.refreshRecovery();
         if (this.simulation.selectedWildId === id) this.refresh();
       },
-      onPortal: () => { if (this.simulation.traverseCavePortal()) { this.multiplayer?.join(this.presence()); this.options.changed(); this.refresh(); this.renderer?.update(); } },
+      onPortal: portalId => this.usePortal(portalId),
       onGymEnter: locationId => this.enterHallFromWorld(gymSceneId(this.simulation.regionId, locationId)),
       onLeagueEnter: locationId => this.enterHallFromWorld(leagueSceneId(this.simulation.regionId, locationId)),
       onGymExit: () => { if (this.simulation.exitGym()) this.afterSceneChange(); },
@@ -246,10 +262,10 @@ export class OpenWorldPanel {
     this.compactViewport.addEventListener('change', this.onViewportChange);
     this.button('#world-mode-auto').onclick = () => { this.changeMode('auto'); if (this.paused) void this.resume(); };
     this.button('#world-mode-manual').onclick = () => this.changeMode('manual');
+    this.button('#world-gym-notice').onclick = () => this.startNextChallenge();
     this.button('#world-edit-moves').onclick = () => {
       const game = this.options.game;
-      if (game.battle || game.captureOffer) return;
-      const lead = game.player.team[firstUsableRegionalTeamIndex(game, this.simulation.regionId)] ?? game.player.team[0];
+      const lead = game.battle?.player.team[game.battle.player.activeIndex] ?? game.player.team[firstUsableRegionalTeamIndex(game, this.simulation.regionId)] ?? game.player.team[0];
       this.options.editMoves?.(lead.instanceId);
     };
     this.button('#world-target-track').onclick = () => {
@@ -283,10 +299,9 @@ export class OpenWorldPanel {
     bag.addEventListener('toggle', () => this.renderBag());
     this.host.querySelector('#world-bag-content')!.addEventListener('click', event => {
       const target = event.target as Element;
-      const tab = target.closest<HTMLButtonElement>('[data-bag-tab]'), machine = target.closest<HTMLButtonElement>('[data-bag-machine]'), teach = target.closest<HTMLButtonElement>('[data-bag-teach]');
+      const tab = target.closest<HTMLButtonElement>('[data-bag-tab]'), machine = target.closest<HTMLButtonElement>('[data-bag-machine]');
       if (tab) { this.bagTab = tab.dataset.bagTab === 'machines' ? 'machines' : 'tools'; this.renderBag(); return; }
-      if (machine) { const moveId = Number(machine.dataset.bagMachine); this.bagMachine = this.bagMachine === moveId ? undefined : moveId; this.renderBag(); return; }
-      if (teach && !teach.disabled) { this.teachMachine(Number(teach.dataset.bagTeach), teach.dataset.bagTarget!); return; }
+      if (machine) { this.openMachines(Number(machine.dataset.bagMachine)); return; }
       const pickup = target.closest<HTMLButtonElement>('[data-bag-pickup]'), member = target.closest<HTMLButtonElement>('[data-bag-member]');
       if (pickup && !pickup.disabled) {
         const item = this.simulation.fieldPickups.find(row => row.id === pickup.dataset.bagPickup);
@@ -379,7 +394,7 @@ export class OpenWorldPanel {
     regionSelect.onchange = () => {
       try {
         const destination = getWorldAtlas(regionSelect.value).id;
-        const reason = campaignTravelReason(this.options.game, destination as CampaignRegion);
+        const reason = campaignEntryReason(this.options.game, destination as CampaignRegion);
         if (reason) throw new Error(reason);
         this.simulation.changeRegion(destination); this.multiplayer?.join(this.presence()); this.options.changed(); this.refresh(); this.drawRegionMap(); this.options.notify(`${this.simulation.atlas.name}에 도착했습니다.`);
       }
@@ -407,8 +422,61 @@ export class OpenWorldPanel {
     const world = this.simulation, game = this.options.game;
     if (game.battle || game.captureOffer || getCaveScene(world.sceneId) || getGymScene(world.sceneId)) return;
     const hall = getGymScene(sceneId); if (!hall) return;
+    const badges = getRegionalBadges(game, world.regionId), gym = hall.kind === 'gym' ? getCampaignGyms(game, world.regionId).find(item => item.locationId === hall.locationId) : undefined;
+    if (gym && gym.badge > badges + 1) { this.options.notify(`앞 체육관 ${gym.badge - badges - 1}곳 필요`, true); return; }
     if (Math.hypot(world.player.x - hall.door.x, world.player.z - hall.door.z) <= 2 && this.enterHall(hall)) return;
     if (this.renderer?.navigateTo(hall.door)) this.pendingGymEntry = sceneId;
+  }
+
+  /** The next gym, or the next league trainer once all eight badges are in. */
+  private nextChallenge() {
+    const game = this.options.game, world = this.simulation, region = world.regionId;
+    if (!isCampaignRegion(region) || campaignTravelReason(game, region)) return undefined;
+    const badges = getRegionalBadges(game, region), detail = `${world.atlas.name} 배지 ${badges}/8`;
+    if (badges >= 8) {
+      const trainer = getNextCampaignTrainer(game, region);
+      return trainer ? { kind: 'trainer' as const, locationId: trainer.locationId, title: `${trainer.name} · 도전`, speciesId: trainer.team.at(-1)?.[0], detail } : undefined;
+    }
+    const gym = getCampaignGyms(game, region).find(item => item.badge === badges + 1);
+    return gym ? { kind: 'gym' as const, locationId: gym.locationId, title: `${gym.name} · Lv.${gym.level} 도전`, speciesId: gym.speciesId, detail } : undefined;
+  }
+
+  /** The challenge notice: walk into the hall, or, where a region has no hall for it, fight on the field when you get there. */
+  private startNextChallenge(): void {
+    const next = this.nextChallenge(), world = this.simulation, game = this.options.game, region = world.regionId;
+    if (!next || game.battle || game.captureOffer || getCaveScene(world.sceneId) || getGymScene(world.sceneId)) return;
+    const hall = getGymScene(next.kind === 'gym' ? gymSceneId(region, next.locationId) : LEAGUE_LOCATION_IDS[region] === next.locationId ? leagueSceneId(region, next.locationId) : '');
+    if (hall) {
+      this.enterHallFromWorld(hall.sceneId);
+      if (!this.pendingGymEntry && !getGymScene(world.sceneId)) this.travelTowards(next.locationId, hall.door);
+      return;
+    }
+    if (this.fieldChallenge(next)) return;
+    const location = world.atlas.locations.find(item => item.id === next.locationId);
+    if (location && this.travelTowards(next.locationId, location)) this.pendingFieldChallenge = next.locationId;
+  }
+
+  /** Walk there when a route exists; otherwise fast-travel to a visited town first, or show the guide route. */
+  private travelTowards(locationId: string, point: { x: number; z: number }): boolean {
+    const world = this.simulation;
+    if (this.renderer?.navigateTo(point)) return true;
+    if (world.visitedTownIds.includes(locationId) && this.teleportFromMap(locationId)) return Boolean(this.renderer?.navigateTo(point));
+    this.button('#world-next-guide').click();
+    return false;
+  }
+
+  private fieldChallenge(next: NonNullable<ReturnType<OpenWorldPanel['nextChallenge']>>): boolean {
+    const world = this.simulation;
+    if (world.locationAt(world.player.x, world.player.z).id !== next.locationId) return false;
+    if (!(next.kind === 'gym' ? world.challengeLocalGym() : world.challengeLocalTrainer())) return false;
+    this.pendingFieldChallenge = undefined; this.paused = false; this.options.changed(); this.refresh();
+    return true;
+  }
+
+  private arriveFieldChallenge(): void {
+    const next = this.nextChallenge();
+    if (!next || next.locationId !== this.pendingFieldChallenge || getGymScene(this.simulation.sceneId)) { this.pendingFieldChallenge = undefined; return; }
+    this.fieldChallenge(next);
   }
 
   private enterPendingGym(): void {
@@ -418,6 +486,38 @@ export class OpenWorldPanel {
     if (Math.hypot(world.player.x - hall.door.x, world.player.z - hall.door.z) > 1.6) return;
     this.pendingGymEntry = undefined;
     this.enterHall(hall);
+  }
+
+  /** A doorway ring, label or building was clicked: use it when close, otherwise walk to it and go in on arrival. */
+  private usePortal(portalId: string): void {
+    const world = this.simulation, game = this.options.game;
+    if (game.battle || game.captureOffer || getGymScene(world.sceneId)) return;
+    const found = portalId === 'nearest' || getCaveScene(world.sceneId) ? undefined : dungeonEntrance(world.regionId, portalId);
+    // A door the badges have not opened is not worth the walk.
+    if (found && !world.doorwayOpen(found.scene, found.portal)) return;
+    const entrance = found?.portal;
+    if (!entrance || Math.hypot(world.player.x - entrance.surface.x, world.player.z - entrance.surface.z) <= 3.6) {
+      if (world.traverseCavePortal()) this.afterPortal();
+      return;
+    }
+    if (this.renderer?.navigateTo(entrance.surface)) this.pendingDungeonEntry = portalId;
+  }
+
+  /** Walking onto an entrance, exit or stairs uses it; automatic exploration never does. A short pause stops a bounce back. */
+  private walkThroughPortal(): void {
+    const world = this.simulation, pending = this.pendingDungeonEntry && dungeonEntrance(world.regionId, this.pendingDungeonEntry)?.portal;
+    if (pending && Math.hypot(world.player.x - pending.surface.x, world.player.z - pending.surface.z) <= 1.6) {
+      this.pendingDungeonEntry = undefined;
+      if (world.traverseCavePortal()) { this.afterPortal(); return; }
+    }
+    if (!world.portalUnderfoot()) { this.portalArmed = true; return; }
+    if (!this.portalArmed || performance.now() < this.portalCooldownUntil) return;
+    if (world.traverseCavePortal(PORTAL_WALK_RADIUS)) this.afterPortal();
+  }
+
+  private afterPortal(): void {
+    this.portalCooldownUntil = performance.now() + 1200; this.pendingDungeonEntry = undefined; this.portalArmed = false;
+    this.manualMovementActive = false; this.multiplayer?.join(this.presence()); this.options.changed(); this.refresh(); this.renderer?.update(); this.minimap();
   }
 
   /** Going into a gym starts the automatic leader battle; league trainers are challenged by hand, one at a time. */
@@ -543,6 +643,7 @@ export class OpenWorldPanel {
           this.pauseWithError(error, 'server');
         }).finally(() => { this.serverRequest = undefined; });
     }
+    const battlers = this.battlerPoints();
     const result = this.simulation.step({ deltaSeconds: .25, learning: this.options.learning() });
     this.simulation.syncPlayerToCompanion();
     for (const event of result.events) {
@@ -551,8 +652,15 @@ export class OpenWorldPanel {
         if (event.result.outcome === 'won') playGameSound('victory');
         else if (event.result.outcome === 'caught') playGameSound('capture');
         const now = performance.now(); this.attacks.clear();
+        this.effects = this.effects.filter(effect => now - effect.start < 2000);
         event.result.executedMoves.filter(move => move.executed).forEach((move, index) => {
-          this.attacks.set(move.actorInstanceId, { start: now + index * 300, end: now + index * 300 + 280, type: move.moveType });
+          const start = now + index * 300, key = String(++this.cueSerial), style = move.damageClass;
+          this.attacks.set(move.actorInstanceId, { start, end: start + 280, type: move.moveType });
+          this.cues.set(move.actorInstanceId, { key, text: move.moveId < 0 ? '발버둥' : getMove(move.moveId).name, moveType: move.moveType, start, end: start + 1600 });
+          const self = move.category === 'buff' || move.category === 'healing' || move.targetInstanceId === move.actorInstanceId;
+          const from = battlers.get(move.actorInstanceId), to = self ? from : battlers.get(move.targetInstanceId);
+          if (from && to) this.effects.push({ key, moveType: move.moveType, style, hit: move.hit && move.result !== 'immune' && move.result !== 'failed', from, to, start });
+          if (move.damage > 0 && !self) { const impact = start + (style === 'special' ? 420 : 200); this.hurts.set(move.targetInstanceId, { start: impact, end: impact + 320 }); }
         });
         if (event.result.battleEnded && !event.result.gymVictory) this.options.notify(event.result.outcome === 'won' ? '승리! 경험치와 보상을 받았습니다.' : event.result.outcome === 'caught' ? '포획 성공! 팀과 도감에 등록했습니다.' : event.result.outcome === 'lost' ? '파트너가 쓰러졌습니다. 회복한 뒤 다시 탐험하세요.' : '배틀에서 벗어났습니다.');
         await this.options.changed(true);
@@ -647,10 +755,25 @@ export class OpenWorldPanel {
     return this.guideCache.guide;
   }
 
+  /** Where each battler stands, captured before a turn can remove the wild entity. */
+  private battlerPoints(): Map<string, WorldPoint & { height: number }> {
+    const battle = this.options.game.battle, world = this.simulation, points = new Map<string, WorldPoint & { height: number }>();
+    if (!battle) return points;
+    const companion = world.entities.find(entity => entity.kind === 'companion');
+    const opponent = battle.kind === 'wild' ? world.entities.find(entity => entity.id === world.battleWildId) : { x: world.player.x, z: world.player.z + (getGymScene(world.sceneId) ? 6 : -3) };
+    const place = (team: readonly Monster[], point?: { x: number; z: number }) => {
+      if (point) for (const monster of team) points.set(monster.instanceId, { x: point.x, z: point.z, height: pokemonDisplayHeight(monster.speciesId) });
+    };
+    place(battle.player.team, companion); place(battle.enemy.team, opponent);
+    return points;
+  }
+
   private renderSnapshot(): OpenWorldRenderSnapshot {
     const game = this.options.game, battle = game.battle;
     const now = performance.now();
     const attacking = (id?: string) => { const attack = id ? this.attacks.get(id) : undefined; return attack && now >= attack.start && now < attack.end ? attack : undefined; };
+    const hurting = (id?: string) => { const hurt = id ? this.hurts.get(id) : undefined; return Boolean(hurt && now >= hurt.start && now < hurt.end); };
+    const cue = (id?: string) => { const shown = id ? this.cues.get(id) : undefined; return shown && now >= shown.start && now < shown.end ? { key: shown.key, text: shown.text, moveType: shown.moveType } : undefined; };
     const ally = battle ? battle.player.team[battle.player.activeIndex] : game.player.team[firstUsableRegionalTeamIndex(game, this.simulation.regionId)] ?? game.player.team[0];
     const enemy = battle?.enemy.team[battle.enemy.activeIndex];
     const hall = getGymScene(this.simulation.sceneId), hallGym = hall?.kind === 'gym' ? getCampaignGyms(game, this.simulation.regionId).find(gym => gym.locationId === hall.locationId) : undefined;
@@ -670,6 +793,7 @@ export class OpenWorldPanel {
       player: { ...this.simulation.player, heading: this.simulation.player.heading as WorldHeading }, tick: this.simulation.tick, selectedWildId: this.simulation.selectedWildId, badges: getRegionalBadges(game, this.simulation.regionId),
       fieldItems: this.simulation.fieldPickups,
       foods: this.simulation.foods.map(food => ({ ...food, id: String(food.id) })),
+      effects: this.effects.filter(effect => now < effect.start + 1800),
       entities: this.simulation.visibleEntities(18).map(entity => {
         const inBattle = Boolean(battle && (entity.kind === 'companion' || entity.id === this.simulation.battleWildId));
         const monster = entity.kind === 'companion' ? ally : entity.id === this.simulation.battleWildId ? enemy : undefined;
@@ -686,8 +810,9 @@ export class OpenWorldPanel {
           transformationKind: transformed?.kind === 'mega' ? transformed.kind : fieldMega ? 'mega' : undefined,
           x: entity.x, z: entity.z,
           heading: entity.heading as WorldHeading, inBattle,
-          action: monster?.hp === 0 ? 'fainted' : inBattle && attacking(monster?.instanceId) ? 'attack' : entity.action < 4 ? 'walk' : 'idle',
+          action: monster?.hp === 0 ? 'fainted' : inBattle && attacking(monster?.instanceId) ? 'attack' : inBattle && hurting(monster?.instanceId) ? 'hurt' : entity.action < 4 ? 'walk' : 'idle',
           moveType: attacking(monster?.instanceId)?.type,
+          cue: inBattle ? cue(monster?.instanceId) : undefined, status: monster?.status,
           lookAt: inBattle && entity.action >= 4 ? entity.kind === 'companion' && opponentPoint ? opponentPoint : (() => {
             const target = this.simulation.entities.find(other => entity.kind === 'companion' ? other.id === this.simulation.battleWildId : other.kind === 'companion');
             return target ? { x: target.x, z: target.z } : undefined;
@@ -695,7 +820,7 @@ export class OpenWorldPanel {
           movementSpeed: movementSpeed(speciesId, level),
           displayHeight: formModel ? pokemonWorldDisplayHeight(formModel.heightMeters) : pokemonDisplayHeight(speciesId),
         } as WorldCreature;
-      }).concat(battle && battle.kind !== 'wild' && enemy ? [{ id: this.simulation.battleWildId!, speciesId: enemy.speciesId, name: enemy.nickname, level: enemy.level, hp: enemy.hp, maxHp: enemy.stats.hp, ...opponentPoint!, heading: (hall ? 0 : 2) as WorldHeading, action: attacking(enemy.instanceId) ? 'attack' as const : 'idle' as const, moveType: attacking(enemy.instanceId)?.type, inBattle: true, lookAt: this.simulation.player, displayHeight: pokemonDisplayHeight(enemy.speciesId), movementSpeed: movementSpeed(enemy.speciesId, enemy.level) }] : [])
+      }).concat(battle && battle.kind !== 'wild' && enemy ? [{ id: this.simulation.battleWildId!, speciesId: enemy.speciesId, name: enemy.nickname, level: enemy.level, hp: enemy.hp, maxHp: enemy.stats.hp, ...opponentPoint!, heading: (hall ? 0 : 2) as WorldHeading, action: enemy.hp === 0 ? 'fainted' as const : attacking(enemy.instanceId) ? 'attack' as const : hurting(enemy.instanceId) ? 'hurt' as const : 'idle' as const, moveType: attacking(enemy.instanceId)?.type, cue: cue(enemy.instanceId), status: enemy.status, inBattle: true, lookAt: this.simulation.player, displayHeight: pokemonDisplayHeight(enemy.speciesId), movementSpeed: movementSpeed(enemy.speciesId, enemy.level) }] : [])
         .concat(hallLeader && !battle ? [{ id: `gym-leader:${hall!.locationId}`, speciesId: hallLeader.speciesId, name: getSpecies(hallLeader.speciesId).name, level: hallLeader.level, hp: 1, maxHp: 1, x: hall!.leader.x, z: hall!.leader.z - 3.2, heading: 0 as WorldHeading, action: 'idle' as const, displayHeight: pokemonDisplayHeight(hallLeader.speciesId), movementSpeed: 0 }] : [])
         .concat(this.multiplayer?.creatures(this.simulation.player, id => movementSpeed(id)) ?? []),
     };
@@ -964,12 +1089,12 @@ export class OpenWorldPanel {
     const xp = Math.min(100, Math.max(0, (lead.xp - xpStart) / Math.max(1, xpEnd - xpStart) * 100));
     const card = (mon: Monster, label: string) => {
       const info = pokemonPresentation(mon, battle);
-      return `<div class="world-combatant"><img src="${info.sprite}" alt="${escape(info.name)}"><div class="world-combatant-copy"><small>${label} · Lv.${mon.level}</small><strong>${escape(info.name)}</strong><div class="world-hp-row"><span>HP</span><b>${mon.hp} / ${info.stats.hp}</b>${mon.status ? `<em>${mon.status}</em>` : ''}</div><div class="world-hp" role="meter" aria-label="${escape(mon.nickname)} HP" aria-valuemin="0" aria-valuemax="${info.stats.hp}" aria-valuenow="${mon.hp}"><i style="width:${mon.hp / info.stats.hp * 100}%"></i></div><span class="world-combatant-meta">${info.types.map(type => types[type]).join(' · ')} · 스피드 ${info.stats.speed}</span></div></div>`;
+      return `<div class="world-combatant"><img src="${info.sprite}" alt="${escape(info.name)}"><div class="world-combatant-copy"><small>${label} · Lv.${mon.level}</small><strong>${escape(info.name)}</strong><div class="world-hp-row"><span>HP</span><b>${mon.hp} / ${info.stats.hp}</b>${statusLabel(mon.status) ? `<em>${statusLabel(mon.status)}</em>` : ''}</div><div class="world-hp" role="meter" aria-label="${escape(mon.nickname)} HP" aria-valuemin="0" aria-valuemax="${info.stats.hp}" aria-valuenow="${mon.hp}"><i style="width:${mon.hp / info.stats.hp * 100}%"></i></div><span class="world-combatant-meta">${info.types.map(type => types[type]).join(' · ')} · 스피드 ${info.stats.speed}</span></div></div>`;
     };
     const enemyParty = battle && battle.kind !== 'wild' ? `<ol class="world-enemy-party" aria-label="상대 포켓몬">${battle.enemy.team.map((monster, index) => `<li class="${monster.hp <= 0 ? 'fainted' : ''}${index === battle.enemy.activeIndex ? ' active' : ''}"><img src="${pokemonSpriteUrl(monster.speciesId)}" alt="${escape(monster.nickname)} Lv.${monster.level}" title="${escape(monster.nickname)} Lv.${monster.level}"></li>`).join('')}</ol>` : '';
     this.html('#world-combatants', `${card(lead, '파트너')}${enemy ? card(enemy, battle!.kind === 'wild' ? '야생' : campaignTrainer?.name ?? getCampaignGyms(game, battle!.campaignRegion ?? world.regionId).find(item => item.badge === battle!.gymBadge)?.name ?? '체육관') + enemyParty : `<div class="world-growth"><small>다음 레벨까지 ${Math.max(0, xpEnd - lead.xp)} EXP</small><div class="world-xp"><i style="width:${xp}%"></i></div><span>${species.moves.filter(move => move.level > lead.level).slice(0, 1).map(move => `Lv.${move.level} ${getMove(move.moveId).name} 습득`).join('') || '현재 레벨의 기술을 모두 익혔습니다.'}</span></div>`}`);
     const moveLayout = getMoveLayout({ ...lead, moves });
-    this.button('#world-edit-moves').disabled = !!battle || !!game.captureOffer || !this.options.editMoves;
+    this.button('#world-edit-moves').disabled = !this.options.editMoves;
     this.html('#world-transformations', battleTransformationsHtml(game, this.recovering));
     this.host.querySelectorAll<HTMLButtonElement>('[data-battle-transformation]').forEach(button => button.onclick = async () => {
       const paused = this.paused, currentBattle = game.battle;
@@ -991,14 +1116,13 @@ export class OpenWorldPanel {
     this.html('#world-emergency-action', battle && !battle.awaitingSwitch && (!moves.length || (battle.choiceLocks?.[lead.instanceId] !== undefined && !moves.some(slot => slot.moveId === battle.choiceLocks![lead.instanceId]))) ? '<button id="world-struggle">발버둥</button>' : '');
     const location = this.simulation.locationAt(world.player.x, world.player.z);
     const region = world.regionId as CampaignRegion;
-    const badges = getRegionalBadges(game, region);
     const switchPanel = this.host.querySelector<HTMLDetailsElement>('.world-switch')!;
     switchPanel.hidden = !battle;
     if (battle) {
       this.html('#world-switch-options', battle.player.team.map((monster, index) => {
         const current = index === battle.player.activeIndex;
         const reason = current ? '현재 출전' : monster.hp <= 0 ? '기절' : battle.policyRegion ? monsterRegionalUseReason(game, battle.policyRegion, monster) : undefined;
-        return `<button data-world-switch="${index}" ${reason ? `disabled title="${escape(reason)}"` : ''}><img src="${pokemonSpriteUrl(monster.speciesId)}" alt=""><span><strong>${escape(monster.nickname)} · Lv.${monster.level}</strong><small>HP ${monster.hp}/${battleMonsterMaxHp(game.battle, monster)}${monster.status ? ` · ${escape(monster.status)}` : ''}</small></span><b>${escape(reason ?? '교체')}</b></button>`;
+        return `<button data-world-switch="${index}" ${reason ? `disabled title="${escape(reason)}"` : ''}><img src="${pokemonSpriteUrl(monster.speciesId)}" alt=""><span><strong>${escape(monster.nickname)} · Lv.${monster.level}</strong><small>HP ${monster.hp}/${battleMonsterMaxHp(game.battle, monster)}${statusLabel(monster.status) ? ` · ${statusLabel(monster.status)}` : ''}</small></span><b>${escape(reason ?? '교체')}</b></button>`;
       }).join(''));
       if (battle.awaitingSwitch) switchPanel.open = true;
     }
@@ -1018,40 +1142,40 @@ export class OpenWorldPanel {
       this.button('#world-win-catch').onclick = () => this.catchVictory();
       this.button('#world-win-release').onclick = () => { world.releaseVictory(); this.options.changed(); this.refresh(); };
     }
-    const gym = getCampaignGyms(game, region).find(item => item.locationId === location.id);
-    const trainer = getNextCampaignTrainer(game, region);
-    const localTrainer = badges >= 8 && trainer?.locationId === location.id ? trainer : undefined;
-    const cave = getCaveScene(world.sceneId), portal = cave ? cavePortalAtInterior(world.sceneId, world.player.x, world.player.z) : cavePortalAtSurface(region, world.player.x, world.player.z);
+    const cave = getCaveScene(world.sceneId), hall = getGymScene(world.sceneId);
+    // Doorways behind a gate the badges have not opened stay shut.
+    const nearExit = cave ? cavePortalAtInterior(world.sceneId, world.player.x, world.player.z) : undefined;
+    const exitPortal = nearExit && world.doorwayOpen(cave!, nearExit) ? nearExit : undefined;
+    const stairs = cave && !exitPortal ? caveStairsAt(world.sceneId, world.player.x, world.player.z) : undefined;
+    const nearEntrance = !cave && !hall ? cavePortalAtSurface(region, world.player.x, world.player.z) : undefined;
+    const entrance = nearEntrance && world.doorwayOpen(nearEntrance.scene, nearEntrance.portal) ? nearEntrance : undefined;
+    const portal = exitPortal ?? stairs ?? entrance;
     const exits = world.caveExits(), exitHost = this.host.querySelector<HTMLElement>('#world-cave-exits')!;
-    const hall = getGymScene(world.sceneId);
     exitHost.hidden = !cave && !hall;
     if (hall) {
       this.html('#world-cave-exits', `<button id="world-gym-exit" ${battle || offer ? 'disabled' : ''}>${hall.kind === 'league' ? '나가기' : '체육관 나가기'}</button>`);
       this.button('#world-gym-exit').onclick = () => { if (world.exitGym()) this.afterSceneChange(); };
     }
     if (cave) {
-      this.html('#world-cave-exits', `<button id="world-cave-exit" ${battle || offer ? 'disabled' : ''}>동굴 밖으로 나가기</button>${exits.length > 1 ? `<select id="world-cave-exit-choice" aria-label="나갈 출구">${exits.map(exit => `<option value="${escape(exit.id)}">${escape(exit.label)}</option>`).join('')}</select>` : ''}`);
+      this.html('#world-cave-exits', `<button id="world-cave-exit" ${battle || offer ? 'disabled' : ''}>${cave.kind === 'cave' ? '동굴 밖으로 나가기' : '나가기'}</button>${exits.length > 1 ? `<select id="world-cave-exit-choice" aria-label="나갈 출구">${exits.map(exit => `<option value="${escape(exit.id)}">${escape(exit.label)}</option>`).join('')}</select>` : ''}`);
       this.button('#world-cave-exit').onclick = () => {
         const chosen = this.host?.querySelector<HTMLSelectElement>('#world-cave-exit-choice')?.value;
-        if (world.exitCave(chosen)) { world.setControlMode('manual'); this.manualMovementActive = false; this.multiplayer?.join(this.presence()); this.options.changed(); this.refresh(); this.options.notify('동굴 밖으로 나왔습니다.'); }
+        if (world.exitCave(chosen)) { world.setControlMode('manual'); this.afterPortal(); if (cave.kind === 'cave') this.options.notify('동굴 밖으로 나왔습니다.'); }
       };
     }
     // A completed gym and the league can share a location (Hisui's temple).
     // The next available final must take precedence over the completed trial.
-    const challenge = localTrainer
-      ? `<button id="world-trainer-challenge" ${battle || offer ? 'disabled' : ''}>${escape(localTrainer.name)} · 도전</button><small>${localTrainer.team.map(([id, level]) => `${getSpecies(id).name} Lv.${level}`).join(' · ')}</small>`
-      : gym ? `<button id="world-gym-challenge" ${battle || offer || gym.badge !== badges + 1 ? 'disabled' : ''}>${gym.name} · Lv.${gym.level} ${badges >= gym.badge ? '클리어 ✓' : '도전'}</button><small>${world.atlas.name} 배지 ${badges}/8${gym.badge > badges + 1 ? ' · 앞 체육관부터 도전하세요' : ''}</small>` : '';
-    this.html('#world-gym', challenge + (portal ? `<button id="world-cave-enter" ${battle || offer ? 'disabled' : ''}>${cave ? `${escape(cave.name)} · 밖으로 나가기` : '동굴 들어가기'}</button>` : ''));
-    // With a hall to go into, the buttons walk there; entering starts the battle.
-    const gymHall = !hall && gym ? getGymScene(gymSceneId(region, gym.locationId)) : undefined;
-    const leagueHall = !hall && localTrainer && LEAGUE_LOCATION_IDS[region] === localTrainer.locationId ? getGymScene(leagueSceneId(region, localTrainer.locationId)) : undefined;
-    if (gym && !localTrainer) this.button('#world-gym-challenge').onclick = () => { if (hall) this.challengeGymHall(); else if (gymHall) this.enterHallFromWorld(gymHall.sceneId); else if (world.challengeLocalGym()) { this.options.changed(); this.refresh(); } };
-    if (localTrainer) this.button('#world-trainer-challenge').onclick = () => { if (hall) this.challengeGymHall(); else if (leagueHall) this.enterHallFromWorld(leagueHall.sceneId); else if (world.challengeLocalTrainer()) { this.options.changed(); this.refresh(); } };
+    const next = !battle && !offer && !hall && !cave ? this.nextChallenge() : undefined, notice = this.button('#world-gym-notice');
+    if (notice.hidden !== !next) notice.hidden = !next;
+    if (next) this.html('#world-gym-notice', `${next.speciesId ? `<img src="${pokemonSpriteUrl(next.speciesId)}" alt="">` : ''}<span><strong>${escape(next.title)}</strong><small>${escape(next.detail)}</small></span>`);
+    const portalLabel = exitPortal ? `${escape(cave!.dungeonName)} · 밖으로 나가기` : stairs ? `${stairs.direction === 'up' ? '▲' : '▼'} ${escape(stairs.targetLabel)}`
+      : entrance?.scene.kind === 'cave' ? '동굴 들어가기' : `${escape(entrance?.scene.dungeonName ?? '')} 들어가기`;
+    this.html('#world-gym', (portal ? `<button id="world-cave-enter" ${battle || offer ? 'disabled' : ''}>${portalLabel}</button>` : ''));
     if (portal) {
-      this.button('#world-cave-enter').onclick = () => { if (world.traverseCavePortal()) { this.multiplayer?.join(this.presence()); this.options.changed(); this.refresh(); } };
+      this.button('#world-cave-enter').onclick = () => { if (world.traverseCavePortal()) this.afterPortal(); };
     }
     const respawns = world.respawnQueue;
-    this.html('#world-respawn', respawns.length ? `${respawns.length}마리 리젠 대기 · ${Math.ceil(Math.min(...respawns.map(spawn => spawn.remainingSeconds)))}초` : '');
+    this.html('#world-respawn', respawns.length && world.sceneHasWilds ? `${respawns.length}마리 리젠 대기 · ${Math.ceil(Math.min(...respawns.map(spawn => spawn.remainingSeconds)))}초` : '');
     this.button('#world-catch').disabled = !offer && battle?.kind !== 'wild';
     for (const item of ['potion', 'super-potion'] as const) {
       const button = this.button(`#world-${item}`);
@@ -1120,12 +1244,8 @@ export class OpenWorldPanel {
     const tabs = `<nav class="world-bag-tabs" role="tablist">${([['tools', '도구'], ['machines', '기술머신']] as const).map(([id, label]) => `<button type="button" role="tab" data-bag-tab="${id}" aria-selected="${this.bagTab === id}">${label}</button>`).join('')}</nav>`;
     if (this.bagTab === 'machines') {
       const machineRows = machines.map(machine => {
-        const move = getMove(machine.moveId), open = this.bagMachine === machine.moveId;
-        const members = open ? `<div class="bag-machine-team">${game.player.team.map(monster => {
-          const known = availableMonsterMoveIds(monster).includes(machine.moveId), able = !known && canLearnTechnicalMachine(monster, machine.moveId);
-          return `<button type="button" data-bag-teach="${machine.moveId}" data-bag-target="${escape(monster.instanceId)}" ${able && editing ? '' : 'disabled'}><img src="${pokemonSpriteUrl(monster.speciesId)}" alt=""><span>${escape(monster.nickname)}</span><small>${known ? '✓' : ''}</small></button>`;
-        }).join('')}</div>` : '';
-        return `<button type="button" class="bag-machine type-${move.type}" data-bag-machine="${machine.moveId}" aria-expanded="${open}"><span>${escape(machine.name)}</span><small>${types[move.type]}${move.power ? ` · ${move.power}` : ''}</small><b>×${game.technicalMachines![String(machine.moveId)]}</b></button>${members}`;
+        const move = getMove(machine.moveId);
+        return `<button type="button" class="bag-machine type-${move.type}" data-bag-machine="${machine.moveId}"><span>${escape(machine.name)}</span><small>${types[move.type]}${move.power ? ` · ${move.power}` : ''}</small><b>×${game.technicalMachines![String(machine.moveId)]}</b></button>`;
       }).join('');
       this.html('#world-bag-content', `${tabs}<section>${machineRows || '<p class="bag-empty">없음</p>'}</section>`);
       return;
@@ -1133,14 +1253,11 @@ export class OpenWorldPanel {
     this.html('#world-bag-content', `${tabs}<section><h3>주변</h3>${pickupRows || '<p class="bag-empty">없음</p>'}</section><section><h3>팀</h3>${teamRows}</section><section><h3>가방</h3>${ownedRows || '<p class="bag-empty">없음</p>'}</section>`);
   }
 
-  private teachMachine(moveId: number, instanceId: string): void {
+  private openMachines(moveId?: number): void {
     const game = this.options.game;
-    try {
-      const { equipped } = teachTechnicalMachine(game, instanceId, moveId);
-      this.options.notify(game.logs.at(-1) ?? '');
-      this.simulation.reconcileTeamChange(); this.options.changed(); this.renderBag();
-      if (!equipped) this.options.editMoves?.(instanceId);
-    } catch (error) { this.options.notify(error instanceof Error ? error.message : String(error), true); }
+    const lead = game.battle?.player.team[game.battle.player.activeIndex] ?? game.player.team[firstUsableRegionalTeamIndex(game, this.simulation.regionId)] ?? game.player.team[0];
+    openMachineDialog({ game, instanceId: lead?.instanceId, moveId, notify: this.options.notify,
+      applied: async () => { this.simulation.reconcileTeamChange(); await this.options.changed(true); this.renderBag(); this.refresh(); } });
   }
 
   private drawRegionMap(): void {
@@ -1155,7 +1272,7 @@ export class OpenWorldPanel {
       this.html('#world-campaign-guide', `<p><b>${escape(cave.name)}</b> · 출구까지 통로를 따라 이동하세요.</p>`);
       this.html('#world-travel', '');
       const extent = Math.max(cave.width, cave.depth) + 4, player = point(world.player.x, world.player.z);
-      this.html('#world-map-content', `<svg viewBox="0 0 240 240" data-map-width="240" data-map-height="240" data-map-mode="cave" data-map-extent="${extent}" role="img" aria-label="${escape(cave.name)} 내부 지도. 확대하거나 드래그하고 통행 가능한 곳을 선택해 이동하세요."><rect width="240" height="240" rx="8" fill="#a7b3a5"/><g transform="rotate(${rotation * 180 / Math.PI} 120 120)">${cave.wallSegments.map(wall => `<rect x="${this.mapCoordinate(wall.x - wall.width / 2)}" y="${this.mapCoordinate(wall.z - wall.depth / 2)}" width="${wall.width / extent * 240}" height="${wall.depth / extent * 240}" fill="#334a44" transform="rotate(${wall.rotationY * -180 / Math.PI} ${this.mapCoordinate(wall.x)} ${this.mapCoordinate(wall.z)})"/>`).join('')}</g>${cave.portals.map(portal => { const marker = point(portal.interior.x, portal.interior.z); return `<g class="world-map-point traversable" data-map-x="${portal.interior.x}" data-map-z="${portal.interior.z}" tabindex="0" role="button" aria-label="출구로 걸어가기"><circle cx="${marker.x}" cy="${marker.y}" r="5"/><text x="${marker.x + 6}" y="${marker.y - 5}">출구</text></g>`; }).join('')}<g id="world-map-peers">${this.mapPeers(point)}</g>${this.mapCompass(240)}<path class="world-map-player" transform="translate(${player.x} ${player.y}) rotate(${facing})" d="M0,-6 L4,5 L0,3 L-4,5 Z"/></svg>`);
+      this.html('#world-map-content', `<svg viewBox="0 0 240 240" data-map-width="240" data-map-height="240" data-map-mode="cave" data-map-extent="${extent}" role="img" aria-label="${escape(cave.name)} 내부 지도. 확대하거나 드래그하고 통행 가능한 곳을 선택해 이동하세요."><rect width="240" height="240" rx="8" fill="#a7b3a5"/><g transform="rotate(${rotation * 180 / Math.PI} 120 120)">${cave.wallSegments.map(wall => `<rect x="${this.mapCoordinate(wall.x - wall.width / 2)}" y="${this.mapCoordinate(wall.z - wall.depth / 2)}" width="${wall.width / extent * 240}" height="${wall.depth / extent * 240}" fill="#334a44" transform="rotate(${wall.rotationY * -180 / Math.PI} ${this.mapCoordinate(wall.x)} ${this.mapCoordinate(wall.z)})"/>`).join('')}</g>${cave.portals.map(portal => { const marker = point(portal.interior.x, portal.interior.z); return `<g class="world-map-point traversable" data-map-x="${portal.interior.x}" data-map-z="${portal.interior.z}" tabindex="0" role="button" aria-label="출구로 걸어가기"><circle cx="${marker.x}" cy="${marker.y}" r="5"/><text x="${marker.x + 6}" y="${marker.y - 5}">출구</text></g>`; }).join('')}${cave.stairs.map(stairs => { const marker = point(stairs.interior.x, stairs.interior.z), label = `${stairs.direction === 'up' ? '▲' : '▼'} ${escape(stairs.targetLabel)}`; return `<g class="world-map-point traversable" data-map-x="${stairs.interior.x}" data-map-z="${stairs.interior.z}" tabindex="0" role="button" aria-label="${label}"><rect x="${marker.x - 4.5}" y="${marker.y - 4.5}" width="9" height="9" rx="2"/><text x="${marker.x + 6}" y="${marker.y - 5}">${label}</text></g>`; }).join('')}<g id="world-map-peers">${this.mapPeers(point)}</g>${this.mapCompass(240)}<path class="world-map-player" transform="translate(${player.x} ${player.y}) rotate(${facing})" d="M0,-6 L4,5 L0,3 L-4,5 Z"/></svg>`);
       this.bindMapNavigation();
       return;
     }
@@ -1312,6 +1429,13 @@ export class OpenWorldPanel {
     ctx.save(); ctx.shadowColor = '#071f1a'; ctx.shadowBlur = 5 * unit; ctx.fillStyle = '#fff'; ctx.strokeStyle = '#173f39'; ctx.lineWidth = 2.5 * unit;
     ctx.beginPath(); ctx.moveTo(center.x, center.y - 9 * unit); ctx.lineTo(center.x + 7 * unit, center.y + 7 * unit); ctx.lineTo(center.x, center.y + 3 * unit); ctx.lineTo(center.x - 7 * unit, center.y + 7 * unit); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
     this.html('#world-minimap-heading', compassLabel(nearestMapOrientation(this.cameraHeading)));
+    // Floors of a dungeon share a footprint style; name the one on screen.
+    if (cave && cave.floorCount > 1) {
+      ctx.font = `600 ${Math.round(12 * unit)}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const width = ctx.measureText(cave.floorLabel).width + 12 * unit, y = size - 26 * unit;
+      ctx.fillStyle = '#10201cd9'; ctx.beginPath(); ctx.roundRect(half - width / 2, y - 9 * unit, width, 18 * unit, 9 * unit); ctx.fill();
+      ctx.fillStyle = '#fff6df'; ctx.fillText(cave.floorLabel, half, y);
+    }
   }
 
   private drawCaveMinimap(ctx: CanvasRenderingContext2D, size: number): void {
@@ -1321,6 +1445,7 @@ export class OpenWorldPanel {
       ctx.fillStyle = this.simulation.sampleWorld(x / size * extent - extent / 2, z / size * extent - extent / 2).blocked ? '#334a44' : '#a7b3a5'; ctx.fillRect(x, z, step, step);
     }
     for (const portal of cave.portals) { ctx.fillStyle = '#ffd189'; ctx.fillRect(this.mapCoordinate(portal.interior.x, size) - 3, this.mapCoordinate(portal.interior.z, size) - 3, 6, 6); }
+    for (const stairs of cave.stairs) { ctx.fillStyle = '#a9dcff'; ctx.fillRect(this.mapCoordinate(stairs.interior.x, size) - 3, this.mapCoordinate(stairs.interior.z, size) - 3, 6, 6); }
   }
   private mapCoordinate(value: number, size = 240): number {
     const cave = getCaveScene(this.simulation.sceneId), extent = cave ? Math.max(cave.width, cave.depth) + 4 : WORLD_MAX - WORLD_MIN;

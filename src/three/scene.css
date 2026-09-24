@@ -2,3 +2,5 @@
 @media(max-width:650px){.battle-stage.has-webgl{height:420px}.battle-stage.has-webgl .battle-info{min-width:155px;padding:10px;font-size:calc(12px * var(--ui-font-scale, 1))}.battle-stage.has-webgl .combatant.opponent{right:12px;top:12px}.battle-stage.has-webgl .combatant.player{left:12px;bottom:12px}.model-dialog .model-host{height:350px}.canvas-wrap.has-webgl{height:380px}.detail-portrait.has-webgl{height:250px}}
 .battle-stage.has-webgl .battle-ground,.battle-stage.has-webgl .combatant::after,.battle-stage.has-webgl .combatant::before{display:none}.map-status{z-index:2}
 body{font-family:'Noto Sans KR','Malgun Gothic',system-ui,sans-serif}
+
+.detail-portrait.has-webgl>img{display:block;position:absolute;inset:0;margin:auto;z-index:1;pointer-events:none}.detail-portrait.has-webgl.webgl-ready>img{display:none}.detail-portrait.has-webgl>span.scene-loading{top:auto;bottom:16px;left:16px;right:auto;z-index:4}

@@ -56,6 +56,18 @@ describe('RealtimeClient', () => {
     client.close();
   });
 
+  it('shares a room with peers on the same dungeon floor only', () => {
+    const socket = new FakeSocket(); const client = new RealtimeClient({ url: 'ws://test/api/realtime', ticket: 'test-ticket', createSocket: () => socket as unknown as WebSocket, visible: () => true });
+    let latest = client.snapshot(); client.subscribe(view => { latest = view; });
+    const floor: Presence = { ...base, sceneId: 'cave:kanto:mt-moon-b2f' };
+    client.join(floor); socket.open();
+    const peer = { ...floor, id: 'peer', name: '친구', updatedAt: 1 };
+    socket.message({ type: 'welcome', id: 'self', region: 'kanto', sceneId: floor.sceneId, tickRate: 10, players: [peer, { ...peer, id: 'bad', sceneId: 'cave:kanto:Mt_Moon' }], history: [] });
+    expect(latest.players.map(row => row.id)).toEqual(['peer']);
+    expect(latest.sceneId).toBe('cave:kanto:mt-moon-b2f');
+    client.close();
+  });
+
   it('accepts expansion-region rooms and rejects cross-region scenes or unsupported species', () => {
     const socket = new FakeSocket(); const client = new RealtimeClient({ url: 'ws://test/api/realtime', ticket: 'test-ticket', createSocket: () => socket as unknown as WebSocket, visible: () => true });
     let latest = client.snapshot(); client.subscribe(view => { latest = view; });

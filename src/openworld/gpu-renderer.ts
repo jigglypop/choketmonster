@@ -47,6 +47,14 @@ export async function createOpenWorldRenderer(
   const initializedAt = performance.now();
   rendererInfo.set(renderer, { backend, initializedAt });
   renderer.userData = { ...(renderer.userData ?? {}), openWorldBackend: backend, openWorldInitializedAt: initializedAt };
+  // R3F unmount only calls gl.forceContextLoss(). WebGPURenderer has none, so every
+  // visit to the map leaked a GPU device or WebGL2 context until the browser evicted
+  // the oldest one: the team portrait. three ignores a 'destroyed' device loss.
+  Object.assign(renderer, { forceContextLoss: () => {
+    const device = (renderer.backend as { device?: { destroy(): void } }).device;
+    renderer.dispose();
+    device?.destroy();
+  } });
   return renderer as unknown as WebGLRenderer;
 }
 

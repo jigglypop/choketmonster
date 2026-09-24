@@ -256,7 +256,7 @@ export const JOHTO_ATLAS = {
   surfaceConnections: JOHTO_SURFACE_CONNECTIONS,
   gates: JOHTO_GATES,
   gyms: JOHTO_GYMS,
-  palette: { ground: '#83a66a', water: '#5b9fc0', town: '#d8aa65' },
+  palette: { ground: '#8cc66c', water: '#5ab9d4', town: '#e3b574' },
   sample: sampleJohtoWorld,
   locationAt: johtoLocationAt,
   distanceToPath: distanceToJohtoPath,

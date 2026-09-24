@@ -19,8 +19,11 @@ function unlockedWorld(region: 'kanto'|'johto') {
   return new OpenWorldSimulation(graph,game,region==='kanto'?7701:7702,undefined,policy);
 }
 
+// A dungeon keeps its location's rare slots on one anchor floor.
+const anchorFloor=(region:string,locationId:string)=>CAVE_SCENES.find(scene=>scene.regionId===region&&scene.encounterLocationId===locationId&&scene.supplemental);
+
 function walkablePoint(world:OpenWorldSimulation,locationId:string,biome:string){
-  const cave=CAVE_SCENES.find(scene=>scene.regionId===world.regionId&&scene.encounterLocationId===locationId);
+  const cave=anchorFloor(world.regionId,locationId);
   if(cave){
     world.sceneId=cave.sceneId;
     for(let z=-cave.depth/2;z<=cave.depth/2;z+=.5)for(let x=-cave.width/2;x<=cave.width/2;x+=.5)if(!world.sampleWorld(x,z).blocked)return{x,z};
@@ -38,7 +41,7 @@ describe('actual open-world supplemental reachability',()=>{
   for(const region of ['kanto','johto'] as const) it(`spawns every ${region} dex species through a real walkable spawn coordinate`,()=>{
     const world=unlockedWorld(region),rules=supplementalEncounterRules(region),points=new Map<string,{x:number;z:number}>(),spawned=new Set<number>();
     for(const rule of rules){
-      world.sceneId=CAVE_SCENES.find(scene=>scene.regionId===region&&scene.encounterLocationId===rule.locationId)?.sceneId??`surface:${region}`;
+      world.sceneId=anchorFloor(region,rule.locationId)?.sceneId??`surface:${region}`;
       const key=`${rule.locationId}:${rule.biome}`,point=points.get(key)??walkablePoint(world,rule.locationId,rule.biome);points.set(key,point);
       world.worldClockSeconds=phaseSeconds[rule.period];
       const local=rules.filter(item=>item.locationId===rule.locationId&&item.biome===rule.biome&&item.requiredBadges<=8);

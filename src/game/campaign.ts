@@ -125,6 +125,27 @@ export function campaignTravelReason(game: GameState, region: string): string | 
   if (region === 'sinnoh' && (progress.expansion?.hoenn?.league ?? 0) < 5) return '호연 사천왕·챔피언 클리어 후 신오로 여행할 수 있습니다.';
   if (region === 'unova' && (progress.expansion?.sinnoh?.league ?? 0) < 5) return '신오 사천왕·챔피언 클리어 후 하나로 여행할 수 있습니다.';
 }
+/**
+ * Order for going somewhere new: a Kanto start clears Kanto, then Johto, then Hoenn onwards.
+ * Travel uses this. Save validation keeps campaignTravelReason, so a region that already
+ * has progress (or is where an older save stands) still loads and stays open.
+ */
+export function campaignEntryReason(game: GameState, region: string): string | undefined {
+  const reason = campaignTravelReason(game, region); if (reason) return reason;
+  const progress = campaignProgress(game);
+  if (progress.startRegion !== 'kanto') return undefined;
+  const hoenn = progress.expansion?.hoenn;
+  if (region === 'johto' && progress.kantoLeague < 5 && !progress.johtoBadges.length && !progress.johtoLeague)
+    return '관동 사천왕·챔피언 클리어 후 성도로 여행할 수 있습니다.';
+  if (region === 'hoenn' && progress.johtoLeague < 5 && !hoenn?.badges.length && !hoenn?.league)
+    return '성도 사천왕·챔피언 클리어 후 호연으로 여행할 수 있습니다.';
+}
+/** The region the campaign continues in after this one. */
+export function onwardCampaignRegion(game: GameState, region: string): CampaignRegion | undefined {
+  const order: readonly CampaignRegion[] = campaignProgress(game).startRegion === 'johto' ? CAMPAIGN_REGIONS : ['kanto', 'johto', ...CAMPAIGN_REGIONS.filter(item => item !== 'kanto' && item !== 'johto')];
+  const index = order.indexOf(region as CampaignRegion);
+  return index >= 0 ? order[index + 1] : undefined;
+}
 export function canChallengeRed(game: GameState): boolean {
   const progress = campaignProgress(game);
   return game.player.badges === 8 && progress.johtoBadges.length === 8 && progress.kantoLeague === 5 && progress.johtoLeague === 5;

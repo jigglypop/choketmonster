@@ -180,3 +180,54 @@
   .ow-camera-controls button { min-width: 2.15rem; min-height: 2.15rem; }
   .ow-camera-controls .ow-camera-reset { grid-column: span 2; }
 }
+
+/* Move used this turn floats above the nameplate; ailments sit beside the name. */
+.ow-creature-label { position: relative; contain: layout style; }
+.ow-move-cue {
+  --cue: #e8e2d2;
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  padding: .3rem .75rem;
+  border: 1px solid rgba(255, 255, 255, .85);
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--cue) 80%, white);
+  box-shadow: 0 .4rem 1rem rgba(24, 22, 48, .24);
+  color: #22223a;
+  font: 700 13px/1.2 var(--ui-font-family, system-ui, sans-serif);
+  letter-spacing: -.01em;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  animation: ow-move-cue 1.6s cubic-bezier(.2, .9, .2, 1) both;
+}
+@keyframes ow-move-cue {
+  0% { opacity: 0; transform: translate(-50%, 8px) scale(.8); }
+  12% { opacity: 1; transform: translate(-50%, 0) scale(1.08); }
+  22% { transform: translate(-50%, 0) scale(1); }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -10px); }
+}
+.ow-move-normal { --cue: #d8d2c0; } .ow-move-fire { --cue: #ffac80; } .ow-move-water { --cue: #93cdff; }
+.ow-move-electric { --cue: #ffe070; } .ow-move-grass { --cue: #a9dd90; } .ow-move-ice { --cue: #aeeaf3; }
+.ow-move-fighting { --cue: #f29d88; } .ow-move-poison { --cue: #d2a2e4; } .ow-move-ground { --cue: #e3c58e; }
+.ow-move-flying { --cue: #b8cff5; } .ow-move-psychic { --cue: #ffa3cf; } .ow-move-bug { --cue: #cadf8a; }
+.ow-move-rock { --cue: #d6c68e; } .ow-move-ghost { --cue: #b9a8ea; } .ow-move-dragon { --cue: #a9a1f5; }
+.ow-move-dark { --cue: #b3a5ba; } .ow-move-steel { --cue: #c9d2db; } .ow-move-fairy { --cue: #ffbde0; }
+.ow-status {
+  --status: #8a8a9a;
+  display: inline-block;
+  margin-left: .35rem;
+  padding: .05rem .42rem;
+  border-radius: 99px;
+  background: var(--status);
+  color: #fff;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1.35;
+  vertical-align: .08em;
+}
+.ow-status-poison { --status: #a35bc4; } .ow-status-burn { --status: #e0663c; } .ow-status-paralysis { --status: #c9a515; }
+.ow-status-sleep { --status: #7d8aa0; } .ow-status-freeze { --status: #4fb0d6; } .ow-status-confusion { --status: #d66fa3; }
+.ow-status-trap { --status: #8a7a5c; } .ow-status-leech-seed { --status: #5aa35a; } .ow-status-infatuation { --status: #f06f9f; }
+@media (prefers-reduced-motion: reduce) { .ow-move-cue { animation: none; } }

@@ -67,7 +67,8 @@ import { findWorldPath, headingForStep } from './navigation';
 import { onRenderSuspension, renderingSuspended } from '../three/render-budget';
 
 import { WORLD_MIN, WORLD_MAX, WORLD_SCALE, surfaceSceneId } from './world-space';
-import { getCaveScene } from './caves';
+import { getCaveScene, hasDungeonLandmark } from './caves';
+import { DUNGEON_LOOKS, DungeonEntrances, DungeonInterior } from './dungeon-interior';
 import { getGymScene } from './gym-scenes';
 import { GymInterior } from './gym-interior';
 import { LeagueInterior } from './league-interior';
@@ -75,12 +76,16 @@ import { CaveInterior, GymEntranceStatus, ProgressGate, RegionalLeagueLandmark, 
 import { DestinationPointer } from './destination-pointer';
 import { TargetRoute } from './target-route';
 import { FieldItemPickups } from './field-item-pickups';
+import { MoveEffects } from './move-effects';
+import { statusLabel } from '../game/status-labels';
 import { ExplorationLandmarks } from './exploration-landmarks';
 import { createOpenWorldRenderer } from './gpu-renderer';
 import { scenerySeed, townPavingCells, townStyle } from './town-style';
 import { DETAIL_KINDS, PAVING_CELL, detailNoise, isTownPaved, trailHalfWidth, type DetailKind } from './world-details';
 import { TownProps, createDetailGeometry, detailMaterial, regionalLandmarkGeometry, townPavingGeometry, useWorldDetails } from './town-details';
 import { THEME_BY_REGION } from './exploration-sites';
+import { FieldGrass } from './field-grass';
+import { picketFenceGeometry } from './picket-fence';
 const NATURE_DETAIL_RADIUS = 68;
 // Bound scenery streaming even though the view no longer uses fog.
 const NATURE_VISIBLE_RADIUS = 94;
@@ -160,8 +165,10 @@ export function sameRenderSnapshot(left: OpenWorldRenderSnapshot, right: OpenWor
       || a.level !== b.level || a.speciesId !== b.speciesId || a.action !== b.action || a.moveType !== b.moveType || a.inBattle !== b.inBattle
       || a.formIdentifier !== b.formIdentifier || a.formModelUrl !== b.formModelUrl || a.transformationKind !== b.transformationKind
       || a.displayHeight !== b.displayHeight || a.movementSpeed !== b.movementSpeed || a.lookAt?.x !== b.lookAt?.x || a.lookAt?.z !== b.lookAt?.z
-      || a.remotePlayer?.name !== b.remotePlayer?.name || a.remotePlayer?.activity !== b.remotePlayer?.activity) return false;
+      || a.remotePlayer?.name !== b.remotePlayer?.name || a.remotePlayer?.activity !== b.remotePlayer?.activity
+      || a.cue?.key !== b.cue?.key || a.status !== b.status) return false;
   }
+  if ((left.effects?.length ?? 0) !== (right.effects?.length ?? 0) || left.effects?.some((effect, index) => effect.key !== right.effects![index].key)) return false;
   const simple = <T extends WorldPoint & { id: string }>(a?: readonly T[], b?: readonly T[]) => {
     if (a === b) return true;
     if (!a || !b || a.length !== b.length) return false;
@@ -317,7 +324,7 @@ function Nature({ sampleWorld, player, atlas, isVisible, mobile = false }: { sam
   }, [layers, cellX, cellZ, isVisible, mobile]);
   return (
     <group userData={{ gaesupWorldObject: 'imported-nature-instances' }}>
-      {SCENERY_ASSETS.filter(asset => nearby[asset.id].length).map(asset => <InstancedAsset
+      {SCENERY_ASSETS.filter(asset => nearby[asset.id].length && asset.id !== 'fence').map(asset => <InstancedAsset
         key={asset.id}
         url={asset.url}
         placements={nearby[asset.id]}
@@ -327,6 +334,9 @@ function Nature({ sampleWorld, player, atlas, isVisible, mobile = false }: { sam
       {DETAIL_KINDS.filter(kind => nearby[kind].length).map(kind => <group key={kind} name={`route-detail:${kind}`}>
         <InstancedPart geometry={detailGeometries[kind]} material={detailMaterial()} sourceMatrix={IDENTITY_MATRIX} placements={nearby[kind]} shadows={false} />
       </group>)}
+      {nearby.fence.length > 0 && <group name="route-detail:picket-fence">
+        <InstancedPart geometry={picketFenceGeometry()} material={detailMaterial()} sourceMatrix={IDENTITY_MATRIX} placements={nearby.fence} shadows={!mobile} />
+      </group>}
     </group>
   );
 }
@@ -457,7 +467,7 @@ function TrailAndWater({ sampleWorld, player, badges, atlas, visible, gyms = atl
     const vertices: number[] = [], colors: number[] = [], indices: number[] = [];
     const towns = atlas.locations.filter(item => item.kind === 'town' && !isRegionalLeagueLocation(atlas.id, item.id));
     const paved = (x: number, z: number) => towns.some(town => Math.abs(x - town.x) < 18 && Math.abs(z - town.z) < 18 && isTownPaved(x - town.x, z - town.z));
-    const profile = [-1, -.72, .72, 1], shoulder = [.84, 1.03, 1.03, .84];
+    const profile = [-1, -.72, .72, 1], shoulder = [.9, 1.02, 1.02, .9];
     for (const [fromId, toId] of atlas.surfaceConnections) {
       const from = locations.get(fromId)!, to = locations.get(toId)!;
       const dx = to.x - from.x, dz = to.z - from.z, length = Math.hypot(dx, dz) || 1;
@@ -495,7 +505,7 @@ function TrailAndWater({ sampleWorld, player, badges, atlas, visible, gyms = atl
   return (
     <group name={`region-landmarks:${atlas.id}`} userData={{ gaesupWorldObject: 'region-landmarks' }}>
       <mesh geometry={trail} receiveShadow><SurfaceMaterial surface="path" color={regionTrailColor(atlas)} vertexColors /></mesh>
-      {atlas.id !== 'kanto' && atlas.locations.filter(item => item.kind === 'special' && !isRegionalLeagueLocation(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) < 70 && visible(item.x, 5, item.z, 10)).map(item => <RegionalLandmark key={item.id} region={atlas.id} x={item.x} y={terrainSurfaceHeight(sampleWorld, item.x, item.z)} z={item.z} />)}
+      {atlas.id !== 'kanto' && atlas.locations.filter(item => item.kind === 'special' && !isRegionalLeagueLocation(atlas.id, item.id) && !hasDungeonLandmark(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) < 70 && visible(item.x, 5, item.z, 10)).map(item => <RegionalLandmark key={item.id} region={atlas.id} x={item.x} y={terrainSurfaceHeight(sampleWorld, item.x, item.z)} z={item.z} />)}
       {atlas.locations.filter(item => isRegionalLeagueLocation(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) < 100)
         .map(item => <RegionalLeagueLandmark key={item.id} region={atlas.id} x={item.x} y={terrainSurfaceHeight(sampleWorld, item.x, item.z)} z={item.z} onEnter={onLeagueEnter && badges >= 8 ? () => onLeagueEnter(item.id) : undefined} />)}
       {atlas.locations.filter(item => item.kind === 'town' && !isRegionalLeagueLocation(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) <= 85 && visible(item.x, 3, item.z, 14 * WORLD_SCALE)).map(town => <group key={town.id} name={`town:${town.id}`} position={[town.x, terrainSurfaceHeight(sampleWorld, town.x, town.z) + .05, town.z]}>
@@ -510,7 +520,7 @@ function TrailAndWater({ sampleWorld, player, badges, atlas, visible, gyms = atl
           <mesh position={[.82, .35, 0]}><boxGeometry args={[.16, 1.1, .16]} /><meshStandardMaterial color="#6b4b2c" /></mesh>
         </group>
       </group>)}
-      {atlas.locations.filter(item => item.kind === 'cave' && !isRegionalLeagueLocation(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) <= 80 && visible(item.x, 3, item.z, 16)).map(cave => {
+      {atlas.locations.filter(item => item.kind === 'cave' && !isRegionalLeagueLocation(atlas.id, item.id) && !hasDungeonLandmark(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) <= 80 && visible(item.x, 3, item.z, 16)).map(cave => {
         // The location center is a walking/arrival point, so solid scenery belongs beyond the path.
         const candidates = [8, 12, 16, 22].flatMap(radius => [0, -.8, .8, -1.6, 1.6, Math.PI].map(angle => ({ x: cave.x + Math.sin(angle) * radius, z: cave.z - Math.cos(angle) * radius })));
         const point = candidates.find(point => [-3.8, 0, 3.8].every(dx => [-1.8, 0, 1.8].every(dz => sampleWorld(point.x + dx, point.z + dz).blocked)));
@@ -615,7 +625,8 @@ function PokemonModel({ creature, url, onStatus }: { creature: WorldCreature; ur
     root.current.position.y = 0;
     const pulse = creature.action === 'attack' ? 1 + Math.max(0, Math.sin(phase * 1.8)) * .12 : 1;
     root.current.scale.set(pulse, creature.action === 'hurt' ? .88 : 1, pulse);
-    root.current.rotation.z = creature.action === 'fainted' ? Math.PI / 2 : !gltf?.animations.length && creature.action === 'walk' ? Math.sin(phase) * .045 : 0;
+    root.current.rotation.z = creature.action === 'fainted' ? Math.PI / 2 : creature.action === 'hurt' ? Math.sin(clock.elapsedTime * 55) * .09
+      : !gltf?.animations.length && creature.action === 'walk' ? Math.sin(phase) * .045 : 0;
     if (!ground.current && normalized) ground.current = createGrounding(normalized.visual, root.current, normalized.grounding);
     const animated = !!gltf?.animations.length;
     // Grounding skins the support vertices on the CPU, so clip playback stays at
@@ -662,12 +673,12 @@ function PokemonModel({ creature, url, onStatus }: { creature: WorldCreature; ur
   useEffect(() => {
     if (!mixer.current || !gltf?.animations.length) return;
     const { clip, matched } = selectPokemonMotionClip(gltf.animations,
-      creature.action === 'attack' ? 'attack' : creature.action === 'walk' ? 'walk' : 'idle');
+      creature.action === 'attack' ? 'attack' : creature.action === 'hurt' ? 'damage' : creature.action === 'walk' ? 'walk' : 'idle');
     if (!clip) return;
     const next = mixer.current.clipAction(clip), previous = activeAction.current;
     if (next === previous && next.isRunning()) return;
     next.reset().setEffectiveWeight(1).setEffectiveTimeScale(1);
-    const playOnce = creature.action === 'attack' && matched;
+    const playOnce = (creature.action === 'attack' || creature.action === 'hurt') && matched;
     next.setLoop(playOnce ? LoopOnce : LoopRepeat, playOnce ? 1 : Infinity);
     next.clampWhenFinished = playOnce;
     next.play();
@@ -742,7 +753,8 @@ function CreatureBillboard({ creature, hp, distance, emphasized }: { creature: W
   return <group name="creature-nameplate" position={[0, (creature.displayHeight ?? 1.2) + .5, 0]}>
     <Html center zIndexRange={[2, 1]} style={{ pointerEvents: 'none' }}>
       <div className={`ow-creature-label${emphasized ? ' ow-creature-label-selected' : ''}`} data-creature-id={creature.id}>
-        <strong>{remote ? remote.name : `${creature.name} · Lv.${creature.level}`}</strong>
+        {creature.cue && <b key={creature.cue.key} className={`ow-move-cue ow-move-${creature.cue.moveType}`}>{creature.cue.text}</b>}
+        <strong>{remote ? remote.name : `${creature.name} · Lv.${creature.level}`}{statusLabel(creature.status) && <em className={`ow-status ow-status-${creature.status}`}>{statusLabel(creature.status)}</em>}</strong>
         {remote && <span>{remote.activity === 'battle' ? '배틀 중' : remote.activity === 'moving' ? '이동 중' : '대기'}</span>}
         {!remote && <div className="ow-hp-track"><i className="ow-hp-fill" style={{ width: `${Math.max(0, Math.min(1, hp)) * 100}%`, background: hp > .45 ? '#82d179' : hp > .2 ? '#e5ca55' : '#e56f59' }} /></div>}
       </div>
@@ -1047,7 +1059,7 @@ function Sunlight({ player, mobile }: { player: { x: number; z: number }; mobile
   });
   const x = Math.round(player.x / 4) * 4, z = Math.round(player.z / 4) * 4;
   useLayoutEffect(() => { target.position.set(x, 0, z); target.updateMatrixWorld(); }, [x, z, target]);
-  return <><primitive object={target} /><directionalLight ref={sun} target={target} position={[x + 28, 52, z + 22]} intensity={2.6} color="#fff0d5" castShadow
+  return <><primitive object={target} /><directionalLight ref={sun} target={target} position={[x + 28, 52, z + 22]} intensity={2.55} color="#fff3da" castShadow
     shadow-autoUpdate={false} shadow-mapSize={[mobile ? 256 : 512, mobile ? 256 : 512]}
     shadow-camera-near={1} shadow-camera-far={120} shadow-camera-left={-reach} shadow-camera-right={reach}
     shadow-camera-top={reach} shadow-camera-bottom={-reach} shadow-normalBias={.06} shadow-bias={-.0004} /></>;
@@ -1103,7 +1115,8 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
   const groundMaterial = waterMaterials.ground;
   // Fixed daytime presentation: never rebuild lighting or sky for a world clock tick.
   const daylight = 1;
-  const skyColor = useMemo(() => new Color(cave ? '#182326' : gymHall?.kind === 'league' ? '#2c2618' : gymHall ? '#2a2f33' : '#afcfc1'), [cave, gymHall]);
+  const look = cave ? DUNGEON_LOOKS[cave.style] : undefined;
+  const skyColor = useMemo(() => new Color(look ? look.sky : gymHall?.kind === 'league' ? '#2c2618' : gymHall ? '#2a2f33' : '#b2e1f4'), [look, gymHall]);
   const worldOptions = useMemo(() => ({ ...options, sampleWorld: sample }), [options, sample]);
   const windowState = useViewWindow();
   const chunks = useMemo(() => terrainChunks(snapshot.player, windowState.visible), [snapshot.player.x, snapshot.player.z, windowState.visible]);
@@ -1145,18 +1158,21 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
   });
   return (
     <>
-      <hemisphereLight color={cave ? '#b9cbd1' : '#d9eeed'} groundColor="#434f3f" intensity={cave ? .85 : gymHall ? 1.25 : 1.1} />
+      <hemisphereLight color={look ? look.light : indoor ? '#d9eeed' : '#eaf6ff'} groundColor={look ? look.ground : indoor ? '#434f3f' : '#6f8a57'} intensity={look ? look.intensity : gymHall ? 1.25 : 1.22} />
       <SkyLighting />
       {!indoor && <Sunlight player={snapshot.player} mobile={windowState.mobile} />}
-      {cave && <pointLight position={[snapshot.player.x, 5, snapshot.player.z]} color="#ffdda6" intensity={35} distance={28} decay={1.4} />}
+      {look && <pointLight position={[snapshot.player.x, 5, snapshot.player.z]} color={look.lamp} intensity={look.lampIntensity} distance={28} decay={1.4} />}
       <Physics gravity={[0, -18, 0]} timeStep="vary">
-        {cave ? <CaveInterior cave={cave} player={snapshot.player} mobile={windowState.mobile} onNavigate={onNavigate} />
+        {cave?.room ? <DungeonInterior scene={cave} onNavigate={onNavigate} />
+          : cave ? <CaveInterior cave={cave} player={snapshot.player} mobile={windowState.mobile} onNavigate={onNavigate} />
           : gymHall?.kind === 'league' ? <LeagueInterior hall={gymHall} trainer={snapshot.hallTrainer} busy={Boolean(snapshot.busy)} player={snapshot.player} spriteUrl={options.spriteUrl} modelUrl={options.modelUrl} onNavigate={onNavigate} onExit={() => options.onGymExit?.()} onChallenge={() => options.onGymChallenge?.()} />
           : gymHall ? <GymInterior hall={gymHall} gym={snapshot.gyms?.find(gym => gym.locationId === gymHall.locationId)} party={snapshot.gymParty ?? []} spriteUrl={options.spriteUrl} badges={snapshot.badges ?? 0} busy={Boolean(snapshot.busy)} player={snapshot.player} onNavigate={onNavigate} onExit={() => options.onGymExit?.()} onChallenge={() => options.onGymChallenge?.()} /> : <>
           <group key={`terrain:${sceneId}`}>{chunks.map(chunk => <Terrain key={`${chunk.key}:${chunk.segments}`} sampleWorld={sample} atlas={atlas} chunk={chunk} material={groundMaterial} waterMaterial={waterMaterials[chunk.distance <= (windowState.mobile ? 24 : 40) ? 'detailed' : 'simple']} onNavigate={onNavigate} />)}</group>
           <Nature key={`nature:${sceneId}`} sampleWorld={sample} player={snapshot.player} atlas={atlas} isVisible={windowState.visible} mobile={windowState.mobile} />
+          <FieldGrass key={`grass:${sceneId}`} atlas={atlas} sampleWorld={sample} player={snapshot.player} mobile={windowState.mobile} skipTown={leagueFilter(atlas.id)} />
           <ExplorationLandmarks atlas={atlas} sampleWorld={sample} player={snapshot.player} visibility={windowState.visible} onNavigate={onNavigate} badges={snapshot.badges ?? 0} />
           <TrailAndWater key={`water:${sceneId}`} sampleWorld={sample} player={snapshot.player} atlas={atlas} gyms={snapshot.gyms} visible={windowState.visible} badges={snapshot.badges ?? 0} onGymEnter={options.onGymEnter} onLeagueEnter={options.onLeagueEnter} />
+          <DungeonEntrances regionId={atlas.id} player={snapshot.player} sample={sample} onEnter={portalId => options.onPortal?.(portalId)} />
         </>}
         {options.terrainUrl && <StaticModel item={{
           id: 'openworld-terrain',
@@ -1174,9 +1190,10 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
       </Physics>
       {snapshot.guide && !gymHall && <DestinationPointer guide={snapshot.guide} sample={sample} />}
       <TargetRoute snapshot={snapshot} destination={destination} sample={sample} />
-      {!gymHall && <ScenePortals sceneId={sceneId} regionId={atlas.id} player={snapshot.player} sample={sample} onNavigate={onNavigate} onPortal={() => options.onPortal?.('nearest')} />}
+      {!gymHall && <ScenePortals sceneId={sceneId} regionId={atlas.id} player={snapshot.player} badges={snapshot.badges ?? 0} sample={sample} onNavigate={onNavigate} onPortal={() => options.onPortal?.('nearest')} />}
       {visible.map(({ creature, distance, model }) => <Creature key={creature.id} creature={creature} selected={creature.id === snapshot.selectedWildId} showLabels={labelIds.has(creature.id)} distance={distance} model={model} options={worldOptions} />)}
       <NameplateDeclutter order={labelOrder} />
+      <MoveEffects effects={snapshot.effects} sample={sample} />
       {destination && <group position={[destination.x, terrainSurfaceHeight(sample, destination.x, destination.z) + .08, destination.z]}>
         <mesh rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[.42, .62, 28]} /><meshBasicMaterial color="#ffe27a" transparent opacity={.9} /></mesh>
         <mesh position={[0, .08, 0]} rotation={[-Math.PI / 2, 0, 0]}><circleGeometry args={[.13, 20]} /><meshBasicMaterial color="#fff4b8" /></mesh>

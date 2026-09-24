@@ -7,6 +7,8 @@ import { useSurfaceTextures } from './materials';
 import type { WorldPoint, WorldSample } from './types';
 import { caveFloorShade, caveVertexHeight } from './cave-relief';
 import { CaveDetails } from './cave-details';
+import { DungeonStairs } from './dungeon-interior';
+import { portalBadges } from './dungeon-gates';
 import type { KantoGate, KantoGym, KantoLocation } from './kanto';
 import { LeagueStadium } from './league-stadium';
 
@@ -178,9 +180,9 @@ function createCaveWalls(cave: CaveScene): BufferGeometry {
 export function CaveInterior({ cave, player, mobile, onNavigate }: { cave: CaveScene; player: WorldPoint; mobile: boolean; onNavigate(point: WorldPoint): void }) {
   const textures = useSurfaceTextures('rock');
   const material = useMemo(() => {
-    const tint = { limestone: '#9a9485', water: '#697e78', ice: '#a8c5ca', volcanic: '#756861', industrial: '#737b7c' }[cave.relief.theme];
+    const tint = { limestone: '#9a9485', water: '#697e78', ice: '#a8c5ca', volcanic: '#756861', interior: '#737b7c' }[cave.relief.theme];
     const result = new MeshStandardMaterial({
-      name: 'cave-rock-pbr', color: tint, roughness: cave.relief.theme === 'water' ? .78 : .94, metalness: cave.relief.theme === 'industrial' ? .08 : 0,
+      name: 'cave-rock-pbr', color: tint, roughness: cave.relief.theme === 'water' ? .78 : .94, metalness: cave.relief.theme === 'interior' ? .08 : 0,
       map: textures.diffuse, normalMap: textures.normal, roughnessMap: textures.arm, aoMap: textures.arm,
     });
     result.userData.openWorldSurface = 'cave-rock-uv';
@@ -197,28 +199,31 @@ export function CaveInterior({ cave, player, mobile, onNavigate }: { cave: CaveS
     </mesh>
     <mesh name="cave-wall:outline" geometry={walls} material={material} receiveShadow castShadow />
     <CaveDetails cave={cave} material={material} player={player} mobile={mobile} onNavigate={onNavigate} />
+    <DungeonStairs scene={cave} />
   </group>;
 }
 
-export function ScenePortals({ sceneId, regionId, player, sample, onNavigate, onPortal }: {
-  sceneId: string; regionId: string; player: WorldPoint; sample(x: number, z: number): WorldSample;
+export function ScenePortals({ sceneId, regionId, player, badges = 8, sample, onNavigate, onPortal }: {
+  sceneId: string; regionId: string; player: WorldPoint; badges?: number; sample(x: number, z: number): WorldSample;
   onNavigate(point: WorldPoint): void; onPortal(): void;
 }) {
   const cave = getCaveScene(sceneId);
-  const entries = (cave ? [cave] : CAVE_SCENES.filter(item => item.regionId === regionId)).flatMap(item => item.portals.map(portal => ({
-    id: portal.id, point: cave ? portal.interior : portal.surface,
-    name: item.name, action: cave ? '밖으로 나가기' : '동굴 들어가기',
-    destination: cave ? portal.surfaceLocationId : item.encounterLocationId,
-  }))).filter(entry => Math.hypot(entry.point.x - player.x, entry.point.z - player.z) < 36);
+  // Inside: exits and the stairs to neighbouring floors. Outside: every dungeon entrance of the region.
+  const entries = (cave
+    ? [...cave.portals.filter(portal => portalBadges(cave, portal) <= badges).map(portal => ({ id: portal.id, point: portal.interior, name: cave.dungeonName, action: '밖으로 나가기', color: '#ffd98e' })),
+      ...cave.stairs.map(stairs => ({ id: stairs.id, point: stairs.interior, name: `${stairs.direction === 'up' ? '▲' : '▼'} ${stairs.targetLabel}`, action: '', color: '#c9e7ff' }))]
+    : CAVE_SCENES.filter(item => item.regionId === regionId).flatMap(item => item.portals.filter(portal => portalBadges(item, portal) <= badges).map(portal => ({
+      id: portal.id, point: portal.surface, name: item.dungeonName, action: item.kind === 'cave' ? '동굴 들어가기' : '들어가기', color: '#94e2e0',
+    })))).filter(entry => Math.hypot(entry.point.x - player.x, entry.point.z - player.z) < 36);
   return <group name="scene-portals">{entries.map(entry => {
     const distance = Math.hypot(entry.point.x - player.x, entry.point.z - player.z);
     const interact = () => { if (distance <= (cave ? 1.35 : 3.6)) onPortal(); else onNavigate(entry.point); };
     return <group key={entry.id} position={[entry.point.x, sample(entry.point.x, entry.point.z).height, entry.point.z]}>
       <mesh position={[0, .05, 0]} rotation={[-Math.PI / 2, 0, 0]} onClick={event => { event.stopPropagation(); interact(); }}>
-        <ringGeometry args={[.6, .85, 24]} /><meshBasicMaterial color={cave ? '#ffd98e' : '#94e2e0'} transparent opacity={.95} />
+        <ringGeometry args={[.6, .85, 24]} /><meshBasicMaterial color={entry.color} transparent opacity={.95} />
       </mesh>
       {distance <= 14 && <Html center calculatePosition={portalScreenPosition} position={[0, 2.8, 0]} zIndexRange={[12, 11]} style={{ pointerEvents: 'auto' }}>
-        <button className="world-portal-label" data-portal={entry.id} onClick={interact}><strong>{entry.name}</strong><span>{entry.action}{distance > 4 ? ` · ${Math.round(distance)}m` : ''}</span></button>
+        <button className="world-portal-label" data-portal={entry.id} onClick={interact}><strong>{entry.name}</strong><span>{entry.action}{distance > 4 ? `${entry.action ? ' · ' : ''}${Math.round(distance)}m` : ''}</span></button>
       </Html>}
     </group>;
   })}</group>;

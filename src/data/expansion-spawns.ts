@@ -1,7 +1,7 @@
 import { getSpecies } from './pokemon';
 import { expansionEncounterPoolOrigin, expansionEncounterPools, type ExpansionRegion } from './expansion-encounters';
 import { getWorldAtlas } from '../openworld/atlas';
-import type { EncounterPeriod, RegionalEncounter, SupplementalEncounterRule } from './regional-encounters';
+import type { EncounterFloor, EncounterPeriod, RegionalEncounter, SupplementalEncounterRule } from './regional-encounters';
 import { combineEncounterPeriods } from './encounter-runtime';
 
 export function isExpansionRegion(region: string): region is ExpansionRegion { return ['hoenn', 'sinnoh', 'unova', 'kalos', 'alola', 'galar', 'hisui', 'paldea'].includes(region); }
@@ -32,31 +32,37 @@ export function expansionSupplementalRules(region: ExpansionRegion): Supplementa
   cache.set(region, rules); return rules;
 }
 
-/** All source time tables combined with equal per-period mass. Towns never emit wild encounters. */
-export function expansionRuntimePools(region: ExpansionRegion, locationId: string, method: 'walk'|'surf', period: EncounterPeriod) {
+/** All source time tables combined with equal per-period mass. Towns never emit wild encounters. A dungeon floor passes its own source areas. */
+export function expansionRuntimePools(region: ExpansionRegion, locationId: string, method: 'walk'|'surf', period: EncounterPeriod, areas?: readonly string[]) {
   const atlas=getWorldAtlas(region),location=atlas.locations.find(item=>item.id===locationId);
   if (!location || location.kind==='town') return [];
-  return combineEncounterPeriods(expansionEncounterPools(region,locationId,method),period);
+  return combineEncounterPeriods(expansionEncounterPools(region,locationId,method).filter(pool=>!areas||areas.includes(pool.areaName)),period);
+}
+
+/** Rare rules for a place: on the surface by biome; inside a dungeon only on its anchor floor. */
+function expansionRules(region: ExpansionRegion, locationId: string, badges: number, biome: string | undefined, floor?: EncounterFloor) {
+  if (floor && !floor.supplemental) return [];
+  return expansionSupplementalRules(region).filter(rule => rule.locationId === locationId && rule.requiredBadges <= badges && (floor || !biome || rule.biome === biome));
 }
 
 /** Without serial this is the complete habitat catalog; spawning passes its exact rare-cycle serial. */
-export function expansionEncounterSpecies(region: ExpansionRegion, locationId: string, badges: number, period?: EncounterPeriod, biome?: string, serial?: number): number[] {
+export function expansionEncounterSpecies(region: ExpansionRegion, locationId: string, badges: number, period?: EncounterPeriod, biome?: string, serial?: number, floor?: EncounterFloor): number[] {
   const method = biome === undefined ? undefined : biome === 'lake' ? 'surf' : 'walk';
-  const source = method ? expansionRuntimePools(region, locationId, method, period ?? 'day').flatMap(pool => pool.slots.map(slot => slot.speciesId)) : ['walk','surf'].flatMap(value=>expansionRuntimePools(region,locationId,value as 'walk'|'surf',period??'day')).flatMap(pool=>pool.slots.map(slot=>slot.speciesId));
+  const source = method ? expansionRuntimePools(region, locationId, method, period ?? 'day', floor?.areas).flatMap(pool => pool.slots.map(slot => slot.speciesId)) : ['walk','surf'].flatMap(value=>expansionRuntimePools(region,locationId,value as 'walk'|'surf',period??'day',floor?.areas)).flatMap(pool=>pool.slots.map(slot=>slot.speciesId));
   const added = serial === undefined || serial % 20 === 0
-    ? expansionSupplementalRules(region).filter(rule => rule.locationId === locationId && rule.requiredBadges <= badges && (!biome || rule.biome === biome)).map(rule => rule.speciesId)
+    ? expansionRules(region, locationId, badges, biome, floor).map(rule => rule.speciesId)
     : [];
   return [...new Set([...source, ...added])].sort((a, b) => a - b);
 }
 
-export function chooseExpansionEncounter(region: ExpansionRegion, locationId: string, period: EncounterPeriod, biome: string, badges: number, serial: number, random: () => number, levels: { min: number; max: number }): RegionalEncounter {
-  const rules = expansionSupplementalRules(region).filter(rule => rule.locationId === locationId && rule.requiredBadges <= badges && rule.biome === biome);
+export function chooseExpansionEncounter(region: ExpansionRegion, locationId: string, period: EncounterPeriod, biome: string, badges: number, serial: number, random: () => number, levels: { min: number; max: number }, floor?: EncounterFloor): RegionalEncounter {
+  const rules = expansionRules(region, locationId, badges, biome, floor);
   if (rules.length && serial % 20 === 0) {
     const rule = rules[(Math.max(0, Math.floor(serial / 20) - 1)) % rules.length];
     const minLevel = Math.max(levels.min, rule.requiredBadges === 8 ? 50 : 5 + rule.requiredBadges * 4);
     return { speciesId: rule.speciesId, minLevel, maxLevel: Math.max(minLevel, levels.max), origin: 'supplemental' };
   }
-  const slots = expansionRuntimePools(region, locationId, biome === 'lake' ? 'surf' : 'walk', period).flatMap(pool => pool.slots.map(slot => ({ slot, pool })));
+  const slots = expansionRuntimePools(region, locationId, biome === 'lake' ? 'surf' : 'walk', period, floor?.areas).flatMap(pool => pool.slots.map(slot => ({ slot, pool })));
   if (!slots.length) throw new Error(`No ${period} encounter at ${region}:${locationId}:${biome}`);
   let roll = random() * slots.reduce((sum, { slot }) => sum + slot.weight, 0);
   const selected = slots.find(({ slot }) => (roll -= slot.weight) < 0) ?? slots.at(-1)!;

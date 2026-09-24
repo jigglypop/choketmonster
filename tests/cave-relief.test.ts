@@ -4,10 +4,13 @@ import { caveFloorHeight, caveFloorShade, caveVertexHeight } from '../src/openwo
 import { terrainSurfaceHeight } from '../src/openworld/grounding';
 import { caveFormations } from '../src/openworld/cave-details';
 
+// Towers, buildings and plants are flat rooms; the relief belongs to rock chambers.
+const CHAMBERS = CAVE_SCENES.filter(cave => cave.kind === 'cave');
+
 describe('authored cave relief', () => {
   it('keeps every portal path open with gentle slopes and exact rendered footing', () => {
-    for (const cave of CAVE_SCENES) {
-      for (const portal of cave.portals) {
+    for (const cave of CHAMBERS) {
+      for (const portal of [...cave.portals, ...cave.stairs]) {
         const start = portal.interiorArrival;
         for (let i = 0; i <= 100; i++) {
           const t = i / 100, x = start.x * (1 - t), z = start.z * (1 - t);
@@ -24,14 +27,15 @@ describe('authored cave relief', () => {
     }
   });
   it('matches the floor mesh triangle between vertices, and varies cave themes', () => {
-    expect(new Set(CAVE_SCENES.map(cave => cave.relief.theme)).size).toBe(5);
-    for (const cave of CAVE_SCENES) {
+    expect(new Set(CHAMBERS.map(cave => cave.relief.theme))).toEqual(new Set(['limestone', 'water', 'ice', 'volcanic']));
+    expect(CAVE_SCENES.filter(cave => cave.kind !== 'cave').every(cave => cave.relief.theme === 'interior' && caveFloorHeight(cave.relief, 3.3, -2.1) === 0)).toBe(true);
+    for (const cave of CHAMBERS) {
       const a = caveVertexHeight(cave.relief, 2, 3), b = caveVertexHeight(cave.relief, 2, 4), d = caveVertexHeight(cave.relief, 3, 3);
       expect(caveFloorHeight(cave.relief, 2.2, 3.3)).toBeCloseTo(a * .5 + b * .3 + d * .2, 10);
     }
   });
   it('bakes visible but restrained light variation from the exact relief field', () => {
-    for (const cave of CAVE_SCENES.filter(item => item.relief.theme !== 'industrial')) {
+    for (const cave of CHAMBERS) {
       const shades = Array.from({ length: 49 }, (_, index) => caveFloorShade(cave.relief, index % 7 * 2 - 6, Math.floor(index / 7) * 2 - 6));
       expect(Math.min(...shades)).toBeGreaterThanOrEqual(.62);
       expect(Math.max(...shades)).toBeLessThanOrEqual(1.04);
@@ -39,13 +43,13 @@ describe('authored cave relief', () => {
     }
   });
   it('adds dense edge strata and pointed formations without filling walkable chamber centers', () => {
-    for (const cave of CAVE_SCENES) {
+    for (const cave of CHAMBERS) {
       const formations = caveFormations(cave);
       expect(formations.ledges.length).toBeGreaterThan(20);
-      expect(formations.stalactites.length).toBe(cave.relief.theme === 'industrial' ? 0 : formations.ledges.length / 2);
-      if (cave.relief.theme === 'industrial') expect(formations.stalagmites).toHaveLength(0);
-      else {
-        expect(formations.stalagmites.length).toBeGreaterThanOrEqual(Math.floor(formations.stalactites.length / 2));
+      expect(formations.stalactites.length).toBe(formations.ledges.length / 2);
+      {
+        // Stairs clear their approach too, so a few alternate stalagmite slots can go.
+        expect(formations.stalagmites.length).toBeGreaterThanOrEqual(Math.floor(formations.stalactites.length * .45));
         expect(formations.boulders.length).toBeGreaterThan(8);
         expect(formations.rubble.length).toBeGreaterThan(8);
       }

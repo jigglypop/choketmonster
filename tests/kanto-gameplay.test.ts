@@ -162,6 +162,8 @@ describe('Kanto player flows', () => {
     expect(world.challengeLocalGym()).toBe(true);
     expect(world.requestCapture()).toBe(false); expect(world.requestAction({ type: 'run' })).toBe(false);
     const restored = restoreOpenWorld(graph, serializeOpenWorld(game, world), policy);
+    // Brock's party is two Pokémon now; keep this about the badge and the checkpoint, not a two-KO battle.
+    restored.game.battle!.enemy.team.splice(1);
     restored.game.battle!.enemy.team[0].hp = 1; restored.game.battle!.enemy.team[0].status = 'sleep'; restored.game.battle!.enemy.team[0].statusTurns = 3;
     restored.game.player.team[0].moves = [{ moveId: 33, pp: 35 }];
     restored.simulation.requestAction({ type: 'move', index: 0 });

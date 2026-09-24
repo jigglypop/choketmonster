@@ -1251,6 +1251,8 @@ mod tests {
     fn validates_region_scoped_surface_and_cave_scenes() {
         assert!(valid_scene(Region::Kanto, "surface:kanto"));
         assert!(valid_scene(Region::Johto, "cave:johto:dark-cave-1"));
+        assert!(valid_scene(Region::Kanto, "cave:kanto:mt-moon-b2f"));
+        assert!(valid_scene(Region::Johto, "cave:johto:bell-tower-roof"));
         assert!(valid_scene(Region::Hoenn, "surface:hoenn"));
         assert!(valid_scene(Region::Sinnoh, "surface:sinnoh"));
         assert!(valid_scene(Region::Unova, "surface:unova"));

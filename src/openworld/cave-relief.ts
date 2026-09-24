@@ -1,14 +1,15 @@
 export type CavePool = { x: number; z: number; radius: number; level: number };
 export type CaveRelief = {
-  theme: 'limestone' | 'water' | 'ice' | 'volcanic' | 'industrial';
+  /** `interior` is the flat floor of towers, buildings and plants. */
+  theme: 'limestone' | 'water' | 'ice' | 'volcanic' | 'interior';
   seed: number; pools: readonly CavePool[];
 };
 
-export function caveRelief(id: string, seed: number, width: number, depth: number): CaveRelief {
-  const theme = id === 'power-plant' ? 'industrial' : id === 'ice-path' ? 'ice'
-    : ['slowpoke-well', 'whirl-islands', 'seafoam-islands', 'dragons-den', 'tohjo-falls'].includes(id) ? 'water'
-    : ['mt-mortar', 'mt-silver', 'victory-road'].includes(id) ? 'volcanic' : 'limestone';
-  return { theme, seed, pools: theme === 'industrial' ? [] : [
+export function caveRelief(id: string, seed: number, width: number, depth: number, interior = false): CaveRelief {
+  const theme: CaveRelief['theme'] = interior ? 'interior' : ['ice-path', 'frost-cavern', 'mount-lanakila', 'glaseado-mountain'].includes(id) ? 'ice'
+    : ['slowpoke-well', 'whirl-islands', 'seafoam-islands', 'dragons-den', 'tohjo-falls', 'meteor-falls', 'wellspring-cave', 'reflection-cave'].includes(id) ? 'water'
+    : ['mt-mortar', 'mt-silver', 'fiery-path', 'wela-volcano-park', 'blush-mountain', 'mount-hokulani', 'twist-mountain'].includes(id) || id.endsWith('victory-road') ? 'volcanic' : 'limestone';
+  return { theme, seed, pools: theme === 'interior' ? [] : [
     { x: width * .2, z: depth * -.08, radius: Math.min(width, depth) * (theme === 'water' ? .14 : .09), level: -.08 },
     ...(theme === 'water' ? [{ x: width * -.13, z: depth * .22, radius: Math.min(width, depth) * .105, level: -.08 }] : []),
   ] };
@@ -17,7 +18,7 @@ export function caveRelief(id: string, seed: number, width: number, depth: numbe
 const ease = (value: number) => { const t = Math.max(0, Math.min(1, value)); return t * t * (3 - 2 * t); };
 /** Authored relief; no simulation RNG is consumed. Vertices are sampled on a 1m grid. */
 export function caveVertexHeight(relief: CaveRelief, x: number, z: number): number {
-  if (relief.theme === 'industrial') return 0;
+  if (relief.theme === 'interior') return 0;
   const phase = relief.seed * .13;
   // Several broad, crossing strata read as eroded stone without turning the
   // chamber into noisy ankle-height bumps. The simulation samples this exact
@@ -46,7 +47,7 @@ export function caveFloorHeight(relief: CaveRelief, x: number, z: number): numbe
 /** Baked floor modulation. It follows the same authored height field and adds
  * no runtime lights or geometry; low seams and steeper strata read darker. */
 export function caveFloorShade(relief: CaveRelief, x: number, z: number): number {
-  if (relief.theme === 'industrial') return .92;
+  if (relief.theme === 'interior') return .92;
   const height = caveVertexHeight(relief, x, z);
   const dx = caveVertexHeight(relief, x + .5, z) - caveVertexHeight(relief, x - .5, z);
   const dz = caveVertexHeight(relief, x, z + .5) - caveVertexHeight(relief, x, z - .5);

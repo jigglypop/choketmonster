@@ -14,7 +14,7 @@ type Tint = string | Color;
 const scratch = { position: new Vector3(), normal: new Vector3(), color: new Color(), axis: new Vector3() };
 
 /** Accumulates transformed primitives into one non-indexed, vertex-coloured geometry. */
-class MergedBuilder {
+export class MergedBuilder {
   readonly positions: number[] = [];
   readonly normals: number[] = [];
   readonly colors: number[] = [];
@@ -50,7 +50,7 @@ class MergedBuilder {
   }
 }
 
-function at(x: number, y: number, z: number, rotationY = 0, sx = 1, sy = sx, sz = sx, tiltX = 0, tiltZ = 0): Matrix4 {
+export function at(x: number, y: number, z: number, rotationY = 0, sx = 1, sy = sx, sz = sx, tiltX = 0, tiltZ = 0): Matrix4 {
   const rotation = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), rotationY);
   if (tiltX || tiltZ) rotation.multiply(new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), tiltX)).multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), tiltZ));
   return new Matrix4().compose(new Vector3(x, y, z), rotation, new Vector3(sx, sy, sz));
@@ -64,8 +64,9 @@ export function detailMaterial(): MeshStandardMaterial {
   return sharedMaterial ??= new MeshStandardMaterial({ vertexColors: true, roughness: .86, metalness: 0 });
 }
 
-const GRASS = ['#3f7a3a', '#9cc267'] as const;
-const FLOWERS = ['#f2d24b', '#f4efe2', '#e889b0', '#8f7fd6'] as const;
+const GRASS = ['#5aa64a', '#bde482'] as const;
+const LEAF = ['#62b152', '#74c35e'] as const;
+const FLOWERS = ['#ffe169', '#fff8ec', '#ff9fc6', '#b9a3f5', '#ff9f7a'] as const;
 
 function addBlades(builder: MergedBuilder, count: number, radius: number, salt: number, heightScale = 1) {
   for (let blade = 0; blade < count; blade++) {
@@ -79,17 +80,19 @@ function addBlades(builder: MergedBuilder, count: number, radius: number, salt: 
 }
 
 function addFlower(builder: MergedBuilder, base: Matrix4, color: Tint, height = .34, size = .09) {
-  builder.add(new ConeGeometry(.022, height, 3, 1, true), '#4d8a3f', base.clone().multiply(at(0, height / 2, 0)), { soft: .5 });
+  builder.add(new ConeGeometry(.022, height, 3, 1, true), '#5a9e48', base.clone().multiply(at(0, height / 2, 0)), { soft: .5 });
   builder.add(new IcosahedronGeometry(size, 0), color, base.clone().multiply(at(0, height + size * .3, 0, 0, 1, .62, 1)), { soft: .35 });
+  builder.add(new IcosahedronGeometry(size * .38, 0), '#ffd35a', base.clone().multiply(at(0, height + size * .62, 0, 0, 1, .6, 1)), { soft: .35 });
 }
 
 /** Procedural instanced detail kinds; route posts take the region palette. */
 export function createDetailGeometry(kind: DetailKind, theme: ExplorationTheme): BufferGeometry {
   const builder = new MergedBuilder(), colors = THEME_COLORS[theme];
-  if (kind === 'grass-clump') addBlades(builder, 7, .2, 1);
-  else if (kind === 'flower-patch') {
+  if (kind === 'flower-patch') {
+    // A little pastel posy: a leafy tuft with five blooms.
     addBlades(builder, 4, .18, 2, .8);
-    [[.12, .05], [-.1, .1], [.02, -.13]].forEach(([x, z], index) => addFlower(builder, at(x, 0, z), FLOWERS[index], .3 + index * .05));
+    builder.add(new SphereGeometry(.13, 7, 5), LEAF[0], at(0, .06, 0, 0, 1.3, .55, 1.3), { soft: .5 });
+    [[.14, .05], [-.12, .11], [.03, -.15], [-.15, -.08], [.12, .17]].forEach(([x, z], index) => addFlower(builder, at(x, 0, z), FLOWERS[index], .24 + (index % 3) * .05, .1));
   } else if (kind === 'pebbles') {
     [[0, 0, .22, '#8d8b80'], [.26, .12, .15, '#a19d8e'], [-.18, .2, .12, '#7b7a70']].forEach(([x, z, size, color]) =>
       builder.add(new IcosahedronGeometry(size as number, 0), color as string, at(x as number, (size as number) * .25, z as number, (x as number) * 9, 1, .55, 1)));
@@ -142,19 +145,46 @@ function addBench(builder: MergedBuilder, matrix: Matrix4, palette: Palette) {
 
 function addFlowerBed(builder: MergedBuilder, matrix: Matrix4, palette: Palette, radius: number, stretch: number, flowers: number) {
   const place = (x: number, y: number, z: number, sx = 1, sz = sx) => matrix.clone().multiply(at(x, y, z, 0, sx, 1, sz));
-  const stone = mixed(palette.stone, '#e0d8c4', .35);
+  const stone = mixed(palette.stone, '#ece6d6', .45);
   builder.add(new CylinderGeometry(radius, radius + .06, .3, 14, 1, true), stone, place(0, .1, 0, stretch, 1));
   builder.add(new CylinderGeometry(radius + .06, radius + .06, .05, 14), shade(stone, .95), place(0, .24, 0, stretch, 1));
-  builder.add(new CylinderGeometry(radius - .08, radius - .08, .06, 14), '#5b4332', place(0, .25, 0, stretch, 1));
-  // Low leafy mounds cover most of the soil so beds read as planted, not bare.
+  builder.add(new CylinderGeometry(radius - .08, radius - .08, .06, 14), '#80583a', place(0, .25, 0, stretch, 1));
+  // Round leafy bushes cover most of the soil so beds read as planted, not bare.
   for (let mound = 0; mound < 6; mound++) {
     const angle = mound * 1.047 + .3, reach = (radius - .45) * (mound % 2 ? .55 : .9);
-    builder.add(new IcosahedronGeometry(.36, 0), mound % 2 ? '#4f8b45' : '#5f9a4c', place(Math.cos(angle) * reach * stretch, .3, Math.sin(angle) * reach, 1.2, .55));
+    builder.add(new SphereGeometry(.36, 9, 6), LEAF[mound % 2], place(Math.cos(angle) * reach * stretch, .32, Math.sin(angle) * reach, 1.1, .8), { soft: .3 });
   }
   for (let flower = 0; flower < flowers; flower++) {
     const angle = flower * 2.39996, reach = (radius - .3) * Math.sqrt((flower + .5) / flowers);
     const x = Math.cos(angle) * reach * stretch, z = Math.sin(angle) * reach;
     addFlower(builder, matrix.clone().multiply(at(x, .27, z)), flower % 3 === 0 ? palette.accent : FLOWERS[flower % FLOWERS.length], .34 + (flower % 3) * .06, .14);
+  }
+}
+
+/** A raised garden bed: tilled rows with a line of pumpkins and a line of carrot tops. */
+function addCropPlot(builder: MergedBuilder, matrix: Matrix4, palette: Palette) {
+  const place = (x: number, y: number, z: number, rotationY = 0, sx = 1, sy = sx, sz = sx) => matrix.clone().multiply(at(x, y, z, rotationY, sx, sy, sz));
+  const wood = mixed(palette.wood, '#d2a36b', .55);
+  for (const side of [-1, 1]) {
+    builder.add(new BoxGeometry(2.64, .24, .12), wood, place(0, .12, side * .88));
+    builder.add(new BoxGeometry(.12, .24, 1.64), shade(wood, .94), place(side * 1.26, .12, 0));
+  }
+  builder.add(new BoxGeometry(2.4, .12, 1.64), '#7e5334', place(0, .12, 0));
+  for (const z of [-.42, .42]) builder.add(new BoxGeometry(2.3, .06, .34), '#8f6040', place(0, .2, z));
+  // Pumpkins along the back row.
+  [-.78, 0, .78].forEach((x, index) => {
+    const size = .24 + (index % 2) * .05;
+    builder.add(new SphereGeometry(size, 10, 7), index === 1 ? '#f7a64a' : '#f29238', place(x, .2 + size * .62, -.42, index * .7, 1, .72, 1), { soft: .15 });
+    builder.add(new CylinderGeometry(.025, .04, .12, 5), '#5b7a33', place(x, .2 + size * 1.3, -.42));
+    builder.add(new IcosahedronGeometry(.13, 0), LEAF[0], place(x + .22, .24, -.3, index, 1.2, .35, .9), { soft: .5 });
+  });
+  // Carrot tops fan out over little orange shoulders in the front row.
+  for (const x of [-.9, -.45, 0, .45, .9]) {
+    builder.add(new ConeGeometry(.065, .1, 6), '#ff8a3d', place(x, .25, .42));
+    for (let leaf = 0; leaf < 3; leaf++) {
+      const angle = leaf / 3 * Math.PI * 2 + x;
+      builder.add(new ConeGeometry(.045, .3, 4), LEAF[leaf % 2], place(x + Math.cos(angle) * .04, .42, .42 + Math.sin(angle) * .04).multiply(at(0, 0, 0, 0, 1, 1, 1, Math.sin(angle) * .3, -Math.cos(angle) * .3)), { soft: .5 });
+    }
   }
 }
 
@@ -169,8 +199,8 @@ function addTownProp(builder: MergedBuilder, prop: TownProp, theme: ExplorationT
     case 'bench': addBench(builder, matrix, palette); break;
     case 'planter': {
       builder.add(new BoxGeometry(.82, .4, .46), mixed(palette.town, stone, .55), place(0, .2, 0));
-      builder.add(new BoxGeometry(.72, .04, .36), '#5b4332', place(0, .41, 0));
-      builder.add(new IcosahedronGeometry(.24, 0), '#4f8b45', place(0, .52, 0, 0, 1.5, .7, .8));
+      builder.add(new BoxGeometry(.72, .04, .36), '#80583a', place(0, .41, 0));
+      builder.add(new SphereGeometry(.24, 8, 6), LEAF[0], place(0, .52, 0, 0, 1.5, .7, .8), { soft: .3 });
       [[-.22, palette.accent], [.02, FLOWERS[0]], [.24, FLOWERS[1]]].forEach(([x, color]) =>
         builder.add(new IcosahedronGeometry(.09, 0), color as string, place(x as number, .66, .04, 0, 1, .7, 1)));
       break;
@@ -211,6 +241,7 @@ function addTownProp(builder: MergedBuilder, prop: TownProp, theme: ExplorationT
     }
     case 'tree-bed': addFlowerBed(builder, matrix, palette, 1.35, 1, 5); break;
     case 'flower-bed': addFlowerBed(builder, matrix, palette, 1.25, 1.35, 11); break;
+    case 'crop-plot': addCropPlot(builder, matrix, palette); break;
   }
 }
 

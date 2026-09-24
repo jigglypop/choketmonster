@@ -24,6 +24,13 @@ describe('scene soundtrack', () => {
     expect(selectMusicCue({ started: true, location: { id: 'route-29', kind: 'route' } })).toBe('route1');
     expect(selectMusicCue({ started: true, location: { id: 'ilex-forest', kind: 'forest' } })).toBe('forest');
     expect(selectMusicCue({ started: true, location: { id: 'route-19', kind: 'sea' } })).toBe('surf');
+    // Every floor of a dungeon plays its kind's theme.
+    expect(selectMusicCue({ started: true, sceneId: 'cave:kanto:mt-moon-b2f' })).toBe('cave');
+    expect(selectMusicCue({ started: true, sceneId: 'cave:kanto:victory-road-2f' })).toBe('victory-road');
+    expect(selectMusicCue({ started: true, sceneId: 'cave:kanto:pokemon-tower-5f' })).toBe('tower');
+    expect(selectMusicCue({ started: true, sceneId: 'cave:johto:bell-tower-roof' })).toBe('tower');
+    expect(selectMusicCue({ started: true, sceneId: 'cave:kanto:pokemon-mansion-b1f' })).toBe('mansion');
+    expect(selectMusicCue({ started: true, sceneId: 'cave:kanto:power-plant' })).toBe('cave');
     expect(sceneMusicTrack(selectMusicCue({ started: false })).url).toBe('/audio/pokemon-rg/opening.mp3');
   });
 
