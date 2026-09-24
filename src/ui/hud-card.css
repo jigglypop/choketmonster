@@ -34,9 +34,27 @@
 }
 .adventure .world-hud-card > #world-next-guide { padding: 9px 10px; background: rgba(255, 255, 255, .07); }
 .adventure .world-hud-card > #world-next-guide:hover { background: rgba(255, 255, 255, .12); }
-.adventure .world-hud-card > .world-radar { padding: 2px 0; }
+.adventure .world-hud-card > .world-radar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas: "map controls" "map position" "map caption" "map bag";
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 3px;
+  padding: 2px 0;
+  text-align: left;
+}
+.adventure .world-hud-card > .world-radar > #world-map-open { grid-area: map; }
+.adventure .world-hud-card > .world-radar > .world-minimap-controls { grid-area: controls; justify-content: space-between; margin: 0; }
+.adventure .world-hud-card > .world-radar > #world-position { grid-area: position; margin: 0; }
+.adventure .world-hud-card > .world-radar > #world-map-caption { grid-area: caption; margin: 0; }
+.adventure .world-hud-card > .world-radar > .world-bag { grid-area: bag; margin: 2px 0 0; }
+.adventure .world-hud-card .world-radar[data-size=small] canvas { width: 96px; height: 96px; }
+.adventure .world-hud-card .world-radar[data-size=medium] canvas { width: 120px; height: 120px; }
+.adventure .world-hud-card .world-radar[data-size=large] canvas { width: 152px; height: 152px; }
 .adventure .world-hud-card > .world-explore-panel { overflow: visible; border-top: 1px solid var(--ui-hud-line); border-radius: 0; }
-.adventure .world-hud-card .world-explore-scroll { max-height: max(90px, calc(100dvh - var(--app-header-height) - var(--app-nav-height, 0px) - 460px)); overflow: auto; }
+/* Open settings stop above the chat dock and scroll inside. */
+.adventure .world-hud-card .world-explore-scroll { max-height: max(100px, calc(100dvh - var(--app-header-height) - var(--app-nav-height, 0px) - var(--world-chat-height, 240px) - 350px)); overflow: auto; }
 .adventure .world-hud-card .world-bag-panel { left: calc(100% + 18px); right: auto; }
 
 .adventure .world-heal {
@@ -80,10 +98,17 @@
     padding: 6px;
   }
   .adventure .world-hud-card > #world-next-guide { grid-column: 1; grid-row: 1; }
-  .adventure .world-hud-card > .world-radar { grid-column: 2; grid-row: 1 / span 2; }
+  .adventure .world-hud-card > .world-radar { grid-column: 2; grid-row: 1 / span 2; display: block; text-align: center; }
+  .adventure .world-hud-card > .world-radar > :is(#world-position, #world-map-caption) { display: none; }
+  .adventure .world-hud-card .world-radar[data-size] canvas { width: 86px; height: 86px; }
+  .adventure .world-hud-card .world-radar[data-size=large] canvas { width: 112px; height: 112px; }
   .adventure .world-hud-card > .world-explore-panel { grid-column: 1; grid-row: 2; }
   .adventure .world-hud-card .world-explore-scroll { max-height: max(70px, calc(100dvh - var(--app-header-height) - var(--app-nav-height) - 330px)); }
   .adventure .world-hud-card .world-bag-panel { left: auto; right: 0; }
   .adventure .world-heal { top: calc(var(--app-header-height) + 20px + var(--world-hud-card-height, 200px)); left: auto; right: 12px; }
   .adventure .world-gym-notice { top: calc(var(--app-header-height) + 20px + var(--world-hud-card-height, 200px)); left: 12px; translate: none; max-width: calc(100% - 140px); }
+}
+/* Phone: notices float above the partner and chat bars instead of covering them. */
+@media (max-width: 900px) {
+  body:has(.adventure) #toast { bottom: calc(var(--app-nav-height, 0px) + 124px); }
 }
