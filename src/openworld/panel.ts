@@ -123,7 +123,8 @@ export class OpenWorldPanel {
       else if (index === 0) this.host.querySelector<HTMLButtonElement>('#world-struggle')?.click();
     }
     if (event.code === 'KeyB') { event.preventDefault(); this.button('#world-catch').click(); }
-    if (event.code === 'Space') { event.preventDefault(); this.button('#world-pause').click(); }
+    // A focused button would also activate on keyup and toggle the pause straight back.
+    if (event.code === 'Space') { event.preventDefault(); (document.activeElement as HTMLElement | null)?.blur(); this.button('#world-pause').click(); }
   };
   paused = false;
 
@@ -742,7 +743,8 @@ export class OpenWorldPanel {
       : '탐험이 일시 정지되어 있습니다.'));
     const resume = this.button('#world-resume');
     resume.hidden = !this.paused && !this.recoveryError;
-    resume.disabled = this.recovering || blocked;
+    // The simulation itself waits for required models, so resuming never needs to.
+    resume.disabled = this.recovering;
     resume.textContent = this.recoveryError ? '다시 연결하고 재개' : '계속 탐험';
     const retry = this.button('#world-model-retry');
     retry.hidden = !failed; retry.disabled = this.recovering;
