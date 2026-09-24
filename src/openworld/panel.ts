@@ -143,15 +143,18 @@ export class OpenWorldPanel {
     host.innerHTML = `<section class="adventure" aria-label="오픈월드 모험">
       <div id="ow-host"></div>
       <section id="world-recovery" class="world-recovery" aria-label="탐험 상태" hidden><p id="world-recovery-message" aria-live="polite"></p><div><button id="world-resume">계속 탐험</button><button id="world-model-retry" hidden>모델 다시 불러오기</button></div></section>
-      <details class="world-explore-panel"><summary class="world-explore-toggle"><div><strong id="world-location-short">성도</strong><small id="world-explore-short">성도</small></div><i>⌄</i></summary><div class="world-explore-scroll">
-      <div class="world-tools"><button id="world-pause">Ⅱ 일시 정지</button><button id="world-heal">캠프 회복</button></div>
-      <button id="world-trainer-open" class="world-trainer-open">트레이너 배틀</button>
-      <fieldset class="world-automation"><legend>자동 설정</legend><label><input id="world-auto-catch" type="checkbox" checked><span>자동 포획</span></label><label title="건강한 팀원 모두 같은 경험치"><input id="world-exp-share" type="checkbox" checked><span>팀 경험치 공유</span></label><label><input id="world-learning" type="checkbox" checked><span id="world-learning-label">기술 학습</span></label></fieldset>
-      <div class="world-control-mode" role="group" aria-label="조작 모드"><div class="world-mode-buttons"><button id="world-mode-auto">자동</button><button id="world-mode-manual">수동</button></div><div class="world-control-copy"><strong id="world-control-title"></strong><small id="world-control-help"></small></div></div>
-      <div class="world-gym" id="world-gym"></div>
-      </div></details>
-      <aside class="world-radar" data-size="${this.minimapSize}"><button id="world-map-open" aria-label="지역 전체 지도 열기"><span class="world-minimap-frame"><canvas id="world-minimap" width="180" height="180" aria-label="카메라 방향으로 회전하는 월드 지도"></canvas><b id="world-minimap-heading" aria-hidden="true">북</b></span></button><div class="world-minimap-controls" role="group" aria-label="미니맵 크기"><button id="world-minimap-smaller" type="button" aria-label="미니맵 축소" ${this.minimapSize === 'small' ? 'disabled' : ''}>−</button><span id="world-minimap-size">${this.minimapSize === 'small' ? '작게' : this.minimapSize === 'large' ? '크게' : '보통'}</span><button id="world-minimap-larger" type="button" aria-label="미니맵 확대" ${this.minimapSize === 'large' ? 'disabled' : ''}>＋</button></div><span id="world-position"></span><small id="world-map-caption">지역 지도 ↗</small><details class="world-bag" id="world-bag"><summary aria-label="도구 목록"><span>도구</span><b id="world-bag-count">0</b></summary><div class="world-bag-panel" id="world-bag-content"></div></details></aside>
-      <button id="world-next-guide" class="world-next-guide" aria-label="다음 목적지 길안내" aria-expanded="false"></button>
+      <section class="world-hud-card" aria-label="탐험">
+        <button id="world-next-guide" class="world-next-guide" aria-label="다음 목적지 길안내" aria-expanded="false"></button>
+        <aside class="world-radar" data-size="${this.minimapSize}"><button id="world-map-open" aria-label="지역 전체 지도 열기"><span class="world-minimap-frame"><canvas id="world-minimap" width="180" height="180" aria-label="카메라 방향으로 회전하는 월드 지도"></canvas><b id="world-minimap-heading" aria-hidden="true">북</b></span></button><div class="world-minimap-controls" role="group" aria-label="미니맵 크기"><button id="world-minimap-smaller" type="button" aria-label="미니맵 축소" ${this.minimapSize === 'small' ? 'disabled' : ''}>−</button><span id="world-minimap-size">${this.minimapSize === 'small' ? '작게' : this.minimapSize === 'large' ? '크게' : '보통'}</span><button id="world-minimap-larger" type="button" aria-label="미니맵 확대" ${this.minimapSize === 'large' ? 'disabled' : ''}>＋</button></div><span id="world-position"></span><small id="world-map-caption">지역 지도 ↗</small><details class="world-bag" id="world-bag"><summary aria-label="도구 목록"><span>도구</span><b id="world-bag-count">0</b></summary><div class="world-bag-panel" id="world-bag-content"></div></details></aside>
+        <details class="world-explore-panel"><summary class="world-explore-toggle"><div><strong id="world-location-short">성도</strong><small id="world-explore-short">성도</small></div><i>⌄</i></summary><div class="world-explore-scroll">
+        <div class="world-tools"><button id="world-pause">Ⅱ 일시 정지</button></div>
+        <button id="world-trainer-open" class="world-trainer-open">트레이너 배틀</button>
+        <fieldset class="world-automation"><legend>자동 설정</legend><label><input id="world-auto-catch" type="checkbox" checked><span>자동 포획</span></label><label title="건강한 팀원 모두 같은 경험치"><input id="world-exp-share" type="checkbox" checked><span>팀 경험치 공유</span></label><label><input id="world-learning" type="checkbox" checked><span id="world-learning-label">기술 학습</span></label></fieldset>
+        <div class="world-control-mode" role="group" aria-label="조작 모드"><div class="world-mode-buttons"><button id="world-mode-auto">자동</button><button id="world-mode-manual">수동</button></div><div class="world-control-copy"><strong id="world-control-title"></strong><small id="world-control-help"></small></div></div>
+        <div class="world-gym" id="world-gym"></div>
+        </div></details>
+      </section>
+      <button id="world-heal" class="world-heal">캠프 회복</button>
       <button id="world-gym-notice" class="world-gym-notice" hidden></button>
       <div id="world-cave-exits" class="world-cave-exits" hidden></div>
       <div class="world-lower-hud">
@@ -177,9 +180,8 @@ export class OpenWorldPanel {
       <dialog class="world-trainer-dialog" id="world-trainer-dialog" aria-labelledby="world-trainer-title"><header><div><small>TRAINER BATTLE</small><h2 id="world-trainer-title">트레이너 배틀</h2></div><button id="world-trainer-close">닫기</button></header><p id="world-trainer-description"></p><div id="world-trainer-list"></div></dialog>
       <div class="world-feed" id="world-feed" aria-live="polite"></div>
       <div class="world-respawn" id="world-respawn"></div>
-      <details class="world-method"><summary>회로와 게임 규칙</summary><p>브라우저 MaleCNS 실측 부분 회로 ${this.options.graph.nodes.length} 뉴런 · ${this.options.graph.edges.length.toLocaleString()} 연결. 전체 회로가 연결된 배틀은 서버에서 계산하고 반환된 개체 기억은 이 기기에 저장합니다. 감각 입력·행동 대응·학습 보상·월드 속도는 게임을 위해 설계했습니다. 자동 모드에서 추적 대상이 없으면 통행 가능한 탐험 목적지를 게임 규칙으로 정하고, 회로가 이동 방향을 선택합니다.</p></details>
     </section>`;
-    const layoutSizes: Array<[string, string, 'height' | 'width']> = [['.world-radar', '--world-radar-height', 'height'], ['.world-radar', '--world-radar-width', 'width'], ['#world-next-guide', '--world-guide-height', 'height'], ['#world-gym-notice', '--world-gym-notice-height', 'height'], ['.world-battle-hud', '--world-partner-height', 'height'], ['.world-explore-toggle', '--world-explore-toggle-height', 'height'], ['.social-dock', '--world-chat-height', 'height']];
+    const layoutSizes: Array<[string, string, 'height' | 'width']> = [['.world-radar', '--world-radar-height', 'height'], ['.world-radar', '--world-radar-width', 'width'], ['#world-next-guide', '--world-guide-height', 'height'], ['#world-gym-notice', '--world-gym-notice-height', 'height'], ['.world-hud-card', '--world-hud-card-height', 'height'], ['.world-battle-hud', '--world-partner-height', 'height'], ['.world-explore-toggle', '--world-explore-toggle-height', 'height'], ['.social-dock', '--world-chat-height', 'height']];
     this.layoutObserver = new ResizeObserver(entries => {
       for (const entry of entries) {
         for (const [, variable, dimension] of layoutSizes.filter(([selector]) => entry.target.matches(selector))) {

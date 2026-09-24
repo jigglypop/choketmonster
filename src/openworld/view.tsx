@@ -1232,11 +1232,9 @@ function OpenWorldApp({ store, options, lifetime, commands }: { commands: ViewCo
     return query.has('renderProbe') && dpr >= .7 && dpr <= 1.5 ? dpr : undefined;
   }, []);
   const [renderDpr, setRenderDpr] = useState(() => fixedProbeDpr ?? Math.min(window.devicePixelRatio || 1, 1.5));
-  const [showLabels, setShowLabels] = useState(true);
   const [rendererGeneration, setRendererGeneration] = useState(0);
   const [rendererLost, setRendererLost] = useState(false);
   const rendererEpoch = useRef(0);
-  const toggleLabels = () => setShowLabels(previous => !previous);
   const [destination, setDestination] = useState<WorldPoint | null>(null);
   const createRenderer = useMemo(() => {
     let pending: ReturnType<typeof createOpenWorldRenderer> | undefined;
@@ -1296,13 +1294,10 @@ function OpenWorldApp({ store, options, lifetime, commands }: { commands: ViewCo
         <SaveRenderBudget />
         {new URLSearchParams(location.search).has('renderProbe') && <RenderProbe />}
         <group name="gaesup-world">
-          <Scene commands={commands} snapshot={snapshot} options={options} showLabels={showLabels} destination={destination} onNavigate={navigate} onDestination={setDestination} />
+          <Scene commands={commands} snapshot={snapshot} options={options} showLabels destination={destination} onNavigate={navigate} onDestination={setDestination} />
         </group>
         </ActiveWorld>
       </Canvas></WorldLoadBoundary>}
-      <div className="ow-camera-controls" aria-label="이름과 체력 표시">
-        <button type="button" id="world-nameplates" className="ow-camera-reset" aria-label="포켓몬 이름·HP 표시" aria-pressed={showLabels} onClick={toggleLabels}>이름·HP</button>
-      </div>
     </GaesupWorld>
   );
 }

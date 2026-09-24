@@ -1,0 +1,89 @@
+/* One exploration card at the top left: destination, minimap and the exploration settings.
+   Loaded after glass.css, so it replaces the three separate HUD surfaces. */
+.adventure .world-hud-card {
+  position: absolute;
+  z-index: 8;
+  top: calc(var(--app-header-height) + 16px);
+  left: 20px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  width: 300px;
+  padding: 8px;
+  color: var(--ui-hud-text);
+  background: var(--ui-hud);
+  border: 1px solid var(--glass-edge-dark);
+  border-radius: 18px;
+  box-shadow: 0 12px 32px rgba(6, 20, 15, .22), inset 0 1px 0 rgba(255, 255, 255, .08);
+  -webkit-backdrop-filter: var(--glass-blur-hud);
+  backdrop-filter: var(--glass-blur-hud);
+}
+.adventure .world-hud-card > :is(#world-next-guide, .world-radar, .world-explore-panel) {
+  position: static;
+  inset: auto;
+  transform: none;
+  width: auto;
+  max-width: none;
+  margin: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 12px;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.adventure .world-hud-card > #world-next-guide { padding: 9px 10px; background: rgba(255, 255, 255, .07); }
+.adventure .world-hud-card > #world-next-guide:hover { background: rgba(255, 255, 255, .12); }
+.adventure .world-hud-card > .world-radar { padding: 2px 0; }
+.adventure .world-hud-card > .world-explore-panel { overflow: visible; border-top: 1px solid var(--ui-hud-line); border-radius: 0; }
+.adventure .world-hud-card .world-explore-scroll { max-height: max(90px, calc(100dvh - var(--app-header-height) - var(--app-nav-height, 0px) - 460px)); overflow: auto; }
+.adventure .world-hud-card .world-bag-panel { left: calc(100% + 18px); right: auto; }
+
+.adventure .world-heal {
+  position: absolute;
+  z-index: 8;
+  top: calc(var(--app-header-height) + 16px);
+  right: 20px;
+  min-height: 40px;
+  padding: 8px 18px;
+  color: var(--ui-hud-text);
+  background: var(--ui-hud);
+  border: 1px solid var(--glass-edge-dark);
+  border-radius: 99px;
+  box-shadow: 0 8px 22px rgba(6, 20, 15, .2);
+  -webkit-backdrop-filter: var(--glass-blur-hud);
+  backdrop-filter: var(--glass-blur-hud);
+  font: inherit;
+  font-size: calc(13px * var(--ui-font-scale, 1));
+  font-weight: 650;
+  cursor: pointer;
+}
+.adventure .world-heal:disabled { opacity: .5; cursor: default; }
+.adventure .world-heal:hover:not(:disabled) { background: color-mix(in srgb, var(--ui-hud) 80%, white); }
+
+/* The minimap left the top right: camp recovery sits there, the challenge notice at the top centre. */
+.adventure .world-gym-notice { top: calc(var(--app-header-height) + 16px); left: 50%; translate: -50% 0; }
+
+@media (min-width: 901px) {
+  [data-battle-position=left] .adventure .world-hud-card { left: auto; right: 20px; }
+  [data-battle-position=left] .adventure .world-heal { left: 20px; right: auto; }
+  [data-battle-position=left] .adventure .world-hud-card .world-bag-panel { left: auto; right: calc(100% + 18px); }
+}
+@media (max-width: 900px) {
+  .adventure .world-hud-card {
+    top: calc(var(--app-header-height) + 12px);
+    left: 12px;
+    right: 12px;
+    width: auto;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    padding: 6px;
+  }
+  .adventure .world-hud-card > #world-next-guide { grid-column: 1; grid-row: 1; }
+  .adventure .world-hud-card > .world-radar { grid-column: 2; grid-row: 1 / span 2; }
+  .adventure .world-hud-card > .world-explore-panel { grid-column: 1; grid-row: 2; }
+  .adventure .world-hud-card .world-explore-scroll { max-height: max(70px, calc(100dvh - var(--app-header-height) - var(--app-nav-height) - 330px)); }
+  .adventure .world-hud-card .world-bag-panel { left: auto; right: 0; }
+  .adventure .world-heal { top: calc(var(--app-header-height) + 20px + var(--world-hud-card-height, 200px)); left: auto; right: 12px; }
+  .adventure .world-gym-notice { top: calc(var(--app-header-height) + 20px + var(--world-hud-card-height, 200px)); left: 12px; translate: none; max-width: calc(100% - 140px); }
+}
