@@ -4,7 +4,7 @@ import { captureItemChances, FIELD_ITEM_STOCK_LIMIT, fieldItemCatalogCounts, gra
 
 describe('species capture item rewards', () => {
   it('keeps every supported item and rewards only its specified species', () => {
-    expect(fieldItemCatalogCounts()).toEqual({ heldTools: 47, megaStones: 64 });
+    expect(fieldItemCatalogCounts()).toEqual({ heldTools: 47, megaStones: 65 });
     expect(rollCapturedSpeciesItem(() => 0, 143)?.id).toBe('leftovers');
     expect(rollCapturedSpeciesItem(() => 0, 129)).toBeUndefined();
     expect(rollCapturedSpeciesItem(() => 0, 94)?.id).toBe('mega-stone:gengar-mega');

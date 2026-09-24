@@ -502,12 +502,6 @@ export class OpenWorldSimulation {
     return Boolean(arrival) && this.jumpTo(arrival!, leaveWild);
   }
 
-  /** Jumps to walkable ground nearest a map point on the surface; the route gates for the current badges still apply. */
-  teleportToPoint(point: { x: number; z: number }, leaveWild = false): boolean {
-    const arrival = this.atlas.nearestWalkable(point.x, point.z, this.regionalBadges);
-    return Boolean(arrival) && this.jumpTo(arrival!, leaveWild);
-  }
-
   private jumpTo(arrival: { x: number; z: number }, leaveWild: boolean): boolean {
     const battle = this.game.battle;
     if ((battle && !(leaveWild && battle.kind === 'wild')) || this.game.captureOffer) return false;

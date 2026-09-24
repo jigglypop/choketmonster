@@ -51,25 +51,60 @@ const HOME_RIGGED_STATIC = new Set(HOME_RUNTIME_MODEL_IDS);
 
 export type PokemonMotionKind = 'idle' | 'walk' | 'attack' | 'damage';
 export const POKEMON_MOTION_KINDS: readonly PokemonMotionKind[] = ['idle', 'walk', 'attack', 'damage'];
-const MOTION_NAME = {
-  idle: /idle|idol|wait|stand|ba10/i,
-  walk: /walk|run|fly|turnmove/i,
-  attack: /attack|bite|skill|fight|punch|charge|rangeattack|ba2[01]|buturi|tokusyu/i,
-  damage: /damage|hit|hurt|faint|down/i,
-} satisfies Record<PokemonMotionKind, RegExp>;
-export const matchesPokemonMotionKind = (name: string, kind: PokemonMotionKind) => MOTION_NAME[kind].test(name);
+/** Name patterns per kind, best first; source order breaks ties within a tier. */
+const MOTION_TIERS = {
+  // Field loops before battle stances, then one-shot idles (defaultidle01) and plain names.
+  idle: [/defaultwait\d*_loop/i, /wait\d*_loop|idle\d*_loop/i, /idle|idol|wait|stand|ba10/i],
+  // Creatures cross several body heights per second, so a running loop leads when both exist.
+  walk: [/run/i, /walk/i, /fly/i],
+  attack: [/attack|bite|skill|fight|punch|charge|rangeattack|ba2[01]|buturi|tokusyu/i],
+  // A flinch before a knockout; "jumpdown" and "down01" lie outside the kind.
+  damage: [/damage|hit|hurt/i, /faint/i],
+} satisfies Record<PokemonMotionKind, readonly RegExp[]>;
+/**
+ * Transitions never loop as a kind: walk01_start, sleep01_end, turnmove01_r090 (a quarter turn),
+ * jumpdown01_start, land02, ba01_landA01 (the landing after a send-out).
+ */
+const TRANSITION = /(?:^|[^a-z])(?:start|end|stop)(?:[^a-z]|$)|turn|jump|land(?:ing|[a-z]?\d|[^a-z]|$)|takeoff/i;
+/** One-shot emotes and rest poses that must not stand in for an idle: roar01, glad01, sleep01_loop, down01_loop. */
+const EMOTE = /roar|appeal|glad|hate|notice|refresh|happy|eat\d|sleep|down\d|stun|rest\d/i;
+const matchesTier = (name: string, kind: PokemonMotionKind) => MOTION_TIERS[kind].some(pattern => pattern.test(name));
+export const matchesPokemonMotionKind = (name: string, kind: PokemonMotionKind) => !TRANSITION.test(name) && matchesTier(name, kind);
+/** A clip named for no kind ("Take 001", "ArmatureAction") serves as the idle fallback. */
+export const isGenericMotionName = (name: string) => !TRANSITION.test(name) && !EMOTE.test(name) && POKEMON_MOTION_KINDS.every(kind => !matchesTier(name, kind));
 
 /** Set by the rig preparation on source clips whose keys never leave the bind pose. */
 export const STATIC_MOTION_CLIP = 'choketmonStaticMotion';
+/** Set by the rig preparation on loops whose root motion it removed: travel in model heights per second. */
+export const CLIP_GROUND_SPEED = 'choketmonGroundSpeed';
 type MotionClip = { name: string; userData?: Record<string, unknown> };
 const isStaticMotionClip = (clip: MotionClip) => clip.userData?.[STATIC_MOTION_CLIP] === true;
+/** Ground speed recorded by root-motion removal, in model heights per second. */
+export const clipGroundSpeed = (clip: MotionClip): number | undefined => {
+  const value = clip.userData?.[CLIP_GROUND_SPEED];
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
+};
 
-export function selectPokemonMotionClip<T extends MotionClip>(clips: readonly T[], kind: PokemonMotionKind) {
+/** Clips of one kind in selection order: best tier first, source order within a tier. */
+export function pokemonMotionCandidates<T extends MotionClip>(clips: readonly T[], kind: PokemonMotionKind): T[] {
+  const loops = clips.filter(clip => !TRANSITION.test(clip.name));
+  return [...new Set(MOTION_TIERS[kind].flatMap(pattern => loops.filter(clip => pattern.test(clip.name))))];
+}
+
+/**
+ * `pace` is the creature's ground speed in display heights per second. Among walk clips with a
+ * measured ground speed, the one closest to that pace is chosen, so its feet slide least.
+ */
+export function selectPokemonMotionClip<T extends MotionClip>(clips: readonly T[], kind: PokemonMotionKind, pace?: number): { clip: T | undefined; matched: boolean } {
   // A frozen source clip must not shadow an authored clip of the same kind.
   const playable = clips.filter(clip => !isStaticMotionClip(clip)), pool = playable.length ? playable : clips;
-  const matched = pool.find(clip => MOTION_NAME[kind].test(clip.name));
-  const generic = () => pool.find(clip => POKEMON_MOTION_KINDS.every(other => !MOTION_NAME[other].test(clip.name)));
-  return { clip: matched ?? pool.find(clip => MOTION_NAME.idle.test(clip.name)) ?? generic() ?? pool[0], matched: !!matched };
+  const candidates = pokemonMotionCandidates(pool, kind);
+  const measured = kind === 'walk' && pace !== undefined && Number.isFinite(pace) && pace > 0 ? candidates.filter(clip => clipGroundSpeed(clip)) : [];
+  const mismatch = (clip: T) => Math.abs(Math.log(pace! / clipGroundSpeed(clip)!));
+  const matched = measured.length ? measured.reduce((best, clip) => mismatch(clip) < mismatch(best) ? clip : best) : candidates[0];
+  if (matched) return { clip: matched, matched: true };
+  const idle = kind === 'idle' ? undefined : pokemonMotionCandidates(pool, 'idle')[0];
+  return { clip: idle ?? pool.find(clip => isGenericMotionName(clip.name)) ?? pool[0], matched: false };
 }
 
 export function getPokemonMotionSupport(speciesId: number): PokemonMotionSupport {

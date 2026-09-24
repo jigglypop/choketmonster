@@ -1,17 +1,25 @@
 import { AnimationMixer, Box3, Group, Mesh, Object3D, SkinnedMesh, Vector3, type AnimationClip, type BufferGeometry } from 'three';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
-import { selectPokemonMotionClip } from '../data/model-motion';
+import { CLIP_GROUND_SPEED, STATIC_MOTION_CLIP, pokemonMotionCandidates, selectPokemonMotionClip } from '../data/model-motion';
 import { normalizePokemonMaterials, type PokemonMaterialContext } from './pokemon-materials';
 
 export type NormalizedPokemonModel = {
   visual: Group;
   animatedRoot: Object3D;
+  /** Largest extent over the sampled idle, walk and attack poses, in source units. */
   sourceSize: Vector3;
+  /** Largest extent over the idle loop, in source units. */
+  idleSize: Vector3;
   scale: number;
   grounding: ReadonlyMap<BufferGeometry, readonly number[]>;
 };
 
-type ModelProfile = { size: Vector3; origin: Vector3; grounding: ReadonlyMap<BufferGeometry, readonly number[]> };
+/** The idle stands at the display height; walk and attack poses may reach this much further before the model shrinks. */
+export const POSE_ALLOWANCE = 1.5;
+/** Footprint diagonal, in display heights, beyond which long and wide bodies shrink. */
+export const FOOTPRINT_LIMIT = 2.2;
+
+type ModelProfile = { size: Vector3; idleSize: Vector3; origin: Vector3; grounding: ReadonlyMap<BufferGeometry, readonly number[]> };
 const profiles = new WeakMap<Object3D, ModelProfile>();
 // Lowest vertices kept from each of the 25 sampled poses for per-frame grounding.
 const SUPPORT_PER_POSE = 64;
@@ -77,18 +85,26 @@ export function normalizePokemonModel(
     profiles.set(source, profile);
   }
   model.position.sub(profile.origin);
-  const height = Math.max(.05, displayHeight), size = profile.size;
-  const scale = Math.min(height / Math.max(size.y, .001), height * 1.8 / Math.max(Math.hypot(size.x, size.z), .001));
+  const height = Math.max(.05, displayHeight), { size, idleSize } = profile;
+  const footprint = (extent: Vector3) => Math.max(Math.hypot(extent.x, extent.z), .001);
+  // Real heights describe the standing pose, so the idle sets the size. Rearing, leaping or
+  // uncoiling poses may exceed it by the allowance; beyond that the whole model shrinks.
+  const scale = Math.min(
+    height / Math.max(idleSize.y, .001), height * FOOTPRINT_LIMIT / footprint(idleSize),
+    height * POSE_ALLOWANCE / Math.max(size.y, .001), height * FOOTPRINT_LIMIT * POSE_ALLOWANCE / footprint(size),
+  );
   const visual = new Group();
   visual.scale.setScalar(scale);
   visual.add(model);
   visual.updateMatrixWorld(true);
-  return { visual, animatedRoot: model, sourceSize: size.clone(), scale, grounding: profile.grounding };
+  return { visual, animatedRoot: model, sourceSize: size.clone(), idleSize: idleSize.clone(), scale, grounding: profile.grounding };
 }
 
 function* measureModel(model: Object3D, animations: readonly AnimationClip[]): Generator<void, ModelProfile> {
   const idle = selectPokemonMotionClip(animations, 'idle').clip;
-  const clips = [...new Set([idle, selectPokemonMotionClip(animations, 'walk').clip, selectPokemonMotionClip(animations, 'attack').clip].filter((clip): clip is AnimationClip => !!clip))];
+  // Walk loops with a measured ground speed may be picked by pace at runtime, so all of them count.
+  const paced = pokemonMotionCandidates(animations.filter(clip => clip.userData[STATIC_MOTION_CLIP] !== true), 'walk').filter(clip => clip.userData[CLIP_GROUND_SPEED]);
+  const clips = [...new Set([idle, selectPokemonMotionClip(animations, 'walk').clip, ...paced, selectPokemonMotionClip(animations, 'attack').clip].filter((clip): clip is AnimationClip => !!clip))];
   const skins: SkinnedMesh[] = [];
   model.traverse(object => { if (object instanceof SkinnedMesh) skins.push(object); });
   const meshes: Mesh[] = [];
@@ -96,7 +112,7 @@ function* measureModel(model: Object3D, animations: readonly AnimationClip[]): G
   const support = new Map<BufferGeometry, Set<number>>();
   const heights = meshes.map(mesh => new Float64Array(mesh.geometry.getAttribute('position').count));
   const vertex = new Vector3();
-  const bounds = new Box3(), size = new Vector3(), poseSize = new Vector3();
+  const bounds = new Box3(), size = new Vector3(), idleSize = new Vector3(), poseSize = new Vector3();
   const measure = () => {
     model.updateMatrixWorld(true);
     for (const skin of skins) skin.skeleton.update();
@@ -124,19 +140,24 @@ function* measureModel(model: Object3D, animations: readonly AnimationClip[]): G
   };
   const poseMixer = new AnimationMixer(model);
   // Coiled snakes and folded wings can expand several times beyond the idle bounds.
-  // Size the display against all three gameplay clips, with skin matrices actually updated.
+  // Measure every gameplay clip, with skin matrices actually updated.
   for (const clip of clips) {
     poseMixer.stopAllAction();
     poseMixer.clipAction(clip).play();
-    for (let frame = 0; frame < 8; frame++) { poseMixer.setTime(clip.duration * frame / 8); measure(); yield; }
+    for (let frame = 0; frame < 8; frame++) {
+      poseMixer.setTime(clip.duration * frame / 8); measure();
+      if (clip === idle) idleSize.max(poseSize);
+      yield;
+    }
   }
   poseMixer.stopAllAction();
   if (idle) { poseMixer.clipAction(idle).play(); poseMixer.setTime(0); }
   measure();
+  idleSize.max(poseSize);
   const center = bounds.getCenter(new Vector3()), floor = bounds.min.y;
   poseMixer.stopAllAction();
   poseMixer.uncacheRoot(model);
-  if (![size.x, size.y, size.z].every(Number.isFinite) || size.lengthSq() <= 0) throw new Error('Pokemon model bounds are invalid');
+  if (![size.x, size.y, size.z].every(Number.isFinite) || size.lengthSq() <= 0 || idleSize.lengthSq() <= 0) throw new Error('Pokemon model bounds are invalid');
 
-  return { size, origin: new Vector3(center.x, floor, center.z), grounding: new Map([...support].map(([geometry, indices]) => [geometry, [...indices]])) };
+  return { size, idleSize, origin: new Vector3(center.x, floor, center.z), grounding: new Map([...support].map(([geometry, indices]) => [geometry, [...indices]])) };
 }

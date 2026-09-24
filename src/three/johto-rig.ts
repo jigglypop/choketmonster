@@ -1,34 +1,40 @@
 import {
-  AnimationClip, Bone, Box3, BufferAttribute, BufferGeometry, DataTexture, Mesh, MeshStandardMaterial,
+  AnimationClip, Bone, Box3, BufferAttribute, BufferGeometry, DataTexture, Group, Matrix3, Mesh, MeshStandardMaterial,
   NearestFilter, Object3D, PropertyBinding, Quaternion, QuaternionKeyframeTrack, RGBAFormat, Skeleton, SkinnedMesh,
   SRGBColorSpace, Vector3, VectorKeyframeTrack, type KeyframeTrack,
 } from 'three';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
+import { isSteppingPlan, pokemonBodyPlan, type BodyPlan } from '../data/body-plans';
+import { pokemonBodyShape } from '../data/pokemon-body-shapes';
 import { HOME_AUTHORED_PALETTES } from '../data/pokemon-home-authored-palettes';
-import { POKEMON_MOTION_KINDS, STATIC_MOTION_CLIP, selectPokemonMotionClip, type PokemonMotionKind } from '../data/model-motion';
+import { CLIP_GROUND_SPEED, POKEMON_MOTION_KINDS, STATIC_MOTION_CLIP, pokemonMotionCandidates, selectPokemonMotionClip, type PokemonMotionKind } from '../data/model-motion';
 import { isMovingClipMotion, missingMotionKinds, summarizeClipMotion, type KeyframeSample } from './clip-motion';
 
 /** Authored articulation, separate from the immutable source models and their clips.
- * v5: source clips are measured; frozen ones are flagged and every missing motion kind is authored. */
-export const REGIONAL_RIG_VERSION = 'regional-authored-v5';
+ * v5: source clips are measured; frozen ones are flagged and every missing motion kind is authored.
+ * v6: looping walks and idles lose their root motion and keep its speed for playback matching.
+ * v7: body plans come from the Pokédex body shapes; stepping walks plant the stance foot, lift the swing foot,
+ *     trot on four legs and record their ground speed; serpents and fish ripple, flyers and floaters do not step. */
+export const REGIONAL_RIG_VERSION = 'regional-authored-v7';
 export const JOHTO_RIG_VERSION = REGIONAL_RIG_VERSION;
 // Deoxys' source GLB contains one ArmatureAction whose 402 tracks repeat their bind-pose values.
 // Preserve that source clip for provenance, and append authored motion so the runtime can animate it.
 export const STATIC_NATIVE_CLIP_SPECIES: ReadonlySet<number> = new Set([68,122,386,794,796,798,802,805,914]);
 type Shape = 'biped' | 'quadruped' | 'bird' | 'winged' | 'fish' | 'plant' | 'floatingPlant' | 'glyph' | 'serpent' | 'soft';
 type Joint = { bone: Bone; start: Vector3; end: Vector3; role: string; side: number; phase: number };
-const groups: Record<Exclude<Shape, 'biped'>, number[]> = {
-  quadruped: [152,153,154,155,156,157,162,179,196,197,203,213,220,221,222,228,229,231,232,234,243,244,245,261,262,263,264,273,274,287,288,289,293,294,295,300,301,304,305,306,309,310,322,323,352,359,371,372,373,377,378,379,387,388,389,399,400,403,404,405,408,409,410,417,427,428,431,432,434,435,443,444,445,446,447,448,449,450,459,460,461,464,465,466,467,470,471,473,495,496,497,498,499,500,504,505,506,507,508,509,510,522,523,524,525,526,529,530,551,552,553,554,555,559,560,585,586,613,614,626,631,632,633,634,638,639,640,643,644,645],
-  bird: [163,164,177,178,198,225,227,250,276,277,333,334,396,397,398,441,519,520,521,561,580,581,627,628,629,630],
-  winged: [165,166,167,168,169,176,188,189,193,207,214,249,267,269,278,279,283,284,290,291,313,314,329,330,414,415,416,455,469,472,527,528,566,567,587,588,595,596,616,617,636,637],
-  fish: [170,171,211,223,224,226,230,318,319,320,321,339,340,349,366,367,368,369,370,382,418,419,456,457,458,484,489,490,535,536,537,550,564,565,592,593,594,602,603,604],
-  plant: [185,191,192,252,253,254,273,274,275,285,286,315,331,332,345,346,357,406,407,420,421,455,459,460,465,470,492,511,512,513,514,515,516,546,547,548,549,556,557,558,590,591,597,598,640],
-  floatingPlant: [187],
-  glyph: [201],
-  serpent: [206,208,336,350,384,487,545,621,635],
-  soft: [200,204,205,218,219,292,302,316,317,325,326,351,353,354,355,356,358,360,361,362,363,364,365,380,381,385,386,422,423,425,426,429,433,442,477,478,479,480,481,482,488,491,493,517,518,562,563,577,578,579,582,583,584,605,606,607,608,609,610],
+const SPECIAL_SHAPES: Readonly<Record<number, Shape>> = { 187: 'floatingPlant', 201: 'glyph' };
+/** Legless plant bodies keep leaves for arms: Sunkern, Lileep, Cherubi, Carnivine, Cottonee, Petilil, Maractus, Foongus, Ferroseed. */
+const LEAFY_FLOATERS: ReadonlySet<number> = new Set([191, 345, 346, 420, 455, 546, 548, 549, 556, 590, 591, 597, 598]);
+/** The skeleton authored for a static model, from its body plan (the Pokédex body shape unless its pose differs). */
+export const johtoRigShape = (id: number): Shape => {
+  const special = SPECIAL_SHAPES[id]; if (special) return special;
+  const plan = pokemonBodyPlan(id);
+  if (plan === 'quadruped' || plan === 'multileg') return 'quadruped';
+  if (plan === 'serpent' || plan === 'fish') return plan;
+  if (plan === 'flyer') return pokemonBodyShape(id) === 'bug-wings' ? 'winged' : 'bird';
+  if (plan === 'floater') return LEAFY_FLOATERS.has(id) ? 'plant' : 'soft';
+  return 'biped';
 };
-export const johtoRigShape = (id: number): Shape => (Object.entries(groups).find(([, ids]) => ids.includes(id))?.[0] ?? 'biped') as Shape;
 
 function applyHomeAuthoredAppearance(model: Object3D, id: number): void {
   const palette = HOME_AUTHORED_PALETTES[id];
@@ -298,7 +304,7 @@ export function boneSide(name: string): number {
   return sided(/left/i, 'L') ? -1 : sided(/right/i, 'R') ? 1 : 0;
 }
 
-const LEG_SEGMENT = /thigh|upleg|crotch|leg|knee|calf|shin|foot|ankle/;
+const LEG_SEGMENT = /thigh|upleg|crotch|leg|knee|calf|shin|foot|ankle|toe/;
 // Gen 8/9 rigs pair each joint with a constant "tr" translation parent (trleft_leg_01 -> left_leg_01).
 const TRANSLATION_HELPER = /^tr(?:left|right|center|spine|neck|head|hips|arm|leg|foot|shoulder|crotch)/;
 
@@ -320,7 +326,7 @@ export function boneMotionRole(name: string, ancestors: readonly string[]): stri
     }
     return chain === 0 ? 'leg' : chain === 1 ? 'foot' : 'legTip';
   }
-  const role = /hand|forearm|arm_02|lowerarm/.test(lower) ? 'armTip' : /arm|shoulder/.test(lower) ? 'arm'
+  const role = /hand|forearm|arm_02(?!\d)|lowerarm/.test(lower) ? 'armTip' : /arm|shoulder/.test(lower) ? 'arm'
     : /head/.test(lower) ? 'head' : /neck/.test(lower) ? 'neck' : /spine|chest|body|^waist/.test(lower) ? 'spine' : /hips|pelvis/.test(lower) ? 'hips' : 'other';
   if (role !== 'other') return role;
   const depth = ancestors.length;
@@ -336,7 +342,7 @@ function existingJoints(model: Object3D): Joint[] {
     const role = boneMotionRole(bone.name, ancestors);
     let endpoint = bone.children.find(child => child instanceof Bone) as Bone | undefined;
     if (role === 'arm') {
-      bone.traverse(child => { if (child !== bone && child instanceof Bone && /forearm|arm_02|lowerarm/i.test(child.name) && !endpoint?.name.match(/forearm|arm_02|lowerarm/i)) endpoint = child; });
+      bone.traverse(child => { if (child !== bone && child instanceof Bone && /forearm|arm_02(?!\d)|lowerarm/i.test(child.name) && !endpoint?.name.match(/forearm|arm_02(?!\d)|lowerarm/i)) endpoint = child; });
     }
     return { bone, start: bone.getWorldPosition(new Vector3()), end: endpoint?.getWorldPosition(new Vector3()) ?? bone.getWorldPosition(new Vector3()).add(new Vector3(0, .1, 0)), role, side, phase: /tail[2-9]/.test(name) ? .5 : 0 };
   });
@@ -363,22 +369,64 @@ function motionSamples(clip: AnimationClip): KeyframeSample[] {
 }
 
 /** Whether each source clip visibly moves: rotation, scale, morph weights, or translation relative to model height. */
-function measureSourceClips(root: Object3D, clips: readonly AnimationClip[]): Array<{ clip: AnimationClip; name: string; moving: boolean }> {
-  let height: number | undefined;
+function measureSourceClips(root: Object3D, clips: readonly AnimationClip[], modelHeight: () => number): Array<{ clip: AnimationClip; name: string; moving: boolean }> {
   const scales = new Map<string, number>();
   const translationScale = (trackName: string) => {
     const nodeName = PropertyBinding.parseTrackName(trackName).nodeName;
     let scale = scales.get(nodeName);
     if (scale === undefined) {
-      if (height === undefined) { root.updateMatrixWorld(true); height = Math.max(new Box3().setFromObject(root, true).getSize(new Vector3()).y, 1e-6); }
       const parent = (PropertyBinding.findNode(root, nodeName) as Object3D | undefined)?.parent;
       const world = parent ? parent.getWorldScale(new Vector3()) : new Vector3(1, 1, 1);
-      scale = Math.max(Math.abs(world.x), Math.abs(world.y), Math.abs(world.z)) / height;
+      scale = Math.max(Math.abs(world.x), Math.abs(world.y), Math.abs(world.z)) / modelHeight();
       scales.set(nodeName, scale);
     }
     return scale;
   };
   return clips.map(clip => ({ clip, name: clip.name, moving: isMovingClipMotion(summarizeClipMotion(motionSamples(clip), translationScale)) }));
+}
+
+/** Travel per loop, as a share of model height, above which a looping clip carries root motion. */
+export const ROOT_MOTION_FLOOR = .05;
+
+/**
+ * Source walk and run loops often carry root motion: the body strides ahead of its origin and snaps
+ * back every cycle, while the world already moves the creature. Removes the per-loop travel of the
+ * topmost translating nodes (bob and sway stay) and records the travel speed in model heights per
+ * second, so playback can match the creature's ground speed. Returns that speed, or 0.
+ */
+export function removeRootMotion(root: Object3D, clip: AnimationClip, modelHeight: number): number {
+  root.updateMatrixWorld(true);
+  const drifting: Array<{ track: KeyframeTrack; node: Object3D; local: Vector3; world: Vector3 }> = [];
+  for (const track of clip.tracks) {
+    const { nodeName, propertyName, propertyIndex } = PropertyBinding.parseTrackName(track.name);
+    if (propertyName !== 'position' || propertyIndex !== undefined || track.times.length < 2) continue;
+    const node = PropertyBinding.findNode(root, nodeName) as Object3D | undefined, { stride, offset, step } = keyframeValues(track);
+    if (!node || stride !== 3) continue;
+    const first = offset, last = (track.times.length - 1) * step + offset, values = track.values;
+    const local = new Vector3(values[last] - values[first], values[last + 1] - values[first + 1], values[last + 2] - values[first + 2]);
+    const world = node.parent ? local.clone().applyMatrix3(new Matrix3().setFromMatrix4(node.parent.matrixWorld)) : local.clone();
+    if (world.length() >= ROOT_MOTION_FLOOR * modelHeight) drifting.push({ track, node, local, world });
+  }
+  const nodes = new Set(drifting.map(entry => entry.node));
+  const topmost = drifting.filter(({ node }) => { for (let parent = node.parent; parent; parent = parent.parent) if (nodes.has(parent)) return false; return true; });
+  let speed = 0;
+  for (const { track, local, world } of topmost) {
+    const { stride, offset, step } = keyframeValues(track), times = track.times, span = times[times.length - 1] - times[0];
+    if (!(span > 0)) continue;
+    // Copy first: GLTFLoader may share one accessor array between tracks.
+    const values = track.values = track.values.slice(), slope = local.clone().divideScalar(span).toArray();
+    for (let key = 0; key < times.length; key++) {
+      const elapsed = times[key] - times[0];
+      for (let c = 0; c < 3; c++) {
+        values[key * step + offset + c] -= slope[c] * elapsed;
+        // Cubic-spline tangents are per-second derivatives; the removed travel is a constant slope.
+        if (offset) { values[key * step + c] -= slope[c]; values[key * step + 2 * stride + c] -= slope[c]; }
+      }
+    }
+    speed = Math.max(speed, Math.hypot(world.x, world.z) / Math.max(clip.duration, span) / modelHeight);
+  }
+  if (speed > 0) clip.userData[CLIP_GROUND_SPEED] = speed;
+  return speed;
 }
 
 /** The first keyframe of a source clip: the pose its authored companions start from. */
@@ -405,15 +453,77 @@ function applyPose(root: Object3D, pose: readonly PoseValue[]): () => void {
   return () => { restore.reverse().forEach(reset => reset()); root.updateMatrixWorld(true); };
 }
 
+/**
+ * Stepping gait per plan. `swing`: hip angle either side of vertical for hips at 35% of body height (shorter legs swing
+ * wider); `knee`: peak swing-phase flex, radians. `duty`: share of the cycle a foot stays planted. Past half, the stance
+ * phases of alternating feet overlap, so a planted foot always carries the body.
+ */
+const STEPS: Readonly<Record<'biped' | 'quadruped' | 'multileg', { swing: number; knee: number; duty: number }>> = {
+  biped: { swing: .42, knee: .8, duty: .6 }, quadruped: { swing: .38, knee: .7, duty: .56 }, multileg: { swing: .3, knee: .5, duty: .56 },
+};
+const WALK_SECONDS = .9;
+/** `reach`: the leg root's height above the ground, as a share of body height. */
+type Limb = { phase: number; depth: number; reach: number };
+
+/**
+ * Leg chains of a stepping body and their cycle offsets, in cycles: bipeds alternate, four-footed bodies trot (each
+ * foreleg with the opposite hind leg), many-legged bodies step in alternating tripods. Four-footed sources often name
+ * their forelegs arms: on a quadruped every arm chain is a leg, and a biped whose hands reach the ground walks on all
+ * fours. Also returns hip height as a share of model height.
+ */
+function steppingLimbs(model: Object3D, joints: readonly Joint[], plan: BodyPlan): { limbs: Map<Joint, Limb>; hip: number } {
+  const bounds = new Box3().setFromObject(model, true), height = Math.max(bounds.max.y - bounds.min.y, 1e-6), center = bounds.getCenter(new Vector3());
+  const width = Math.max(bounds.max.x - bounds.min.x, 1e-6);
+  const byBone = new Map(joints.map(joint => [joint.bone, joint]));
+  /** Lowest point of a joint's chain: the joint and every joint below it. */
+  const reach = (joint: Joint) => { let low = Math.min(joint.start.y, joint.end.y); joint.bone.traverse(bone => { const below = byBone.get(bone as Bone); if (below) low = Math.min(low, below.start.y, below.end.y); }); return low - bounds.min.y; };
+  const armChain = (joint: Joint) => joint.role === 'arm' || joint.role === 'armTip';
+  const fourFooted = plan !== 'biped' || joints.some(joint => joint.role === 'arm' && reach(joint) < .2 * height);
+  const isLeg = (joint: Joint) => /^(leg|foot|legTip)$/.test(joint.role) || (fourFooted && armChain(joint));
+  const legAncestor = (joint: Joint) => { for (let bone = joint.bone.parent; bone; bone = bone.parent) { const parent = byBone.get(bone as Bone); if (parent && isLeg(parent)) return parent; } return undefined; };
+  const roots = joints.filter(joint => isLeg(joint) && !legAncestor(joint));
+  const sideOf = (joint: Joint) => joint.side || (Math.abs(joint.start.x - center.x) > .03 * width ? Math.sign(joint.start.x - center.x) : 0);
+  const limbs = new Map<Joint, Limb>();
+  for (const root of roots) {
+    const side = sideOf(root), front = armChain(root) || root.start.z > center.z;
+    let phase = side > 0 ? .5 : 0;
+    if (plan === 'multileg') phase += roots.filter(other => sideOf(other) === side && other.start.z > root.start.z).length % 2 * .5;
+    else if (fourFooted && !front) phase += .5;
+    limbs.set(root, { phase: phase % 1, depth: 0, reach: Math.max(.05, (root.start.y - bounds.min.y) / height) });
+  }
+  for (const joint of joints) {
+    if (limbs.has(joint) || !isLeg(joint)) continue;
+    let depth = 0, root: Joint | undefined = joint;
+    while (root && !limbs.has(root)) { root = legAncestor(root); depth++; }
+    if (root) limbs.set(joint, { ...limbs.get(root)!, depth });
+  }
+  // Hind legs set the stride; forelegs named as arms start at the shoulder, well above the ground.
+  const hips = roots.filter(root => !armChain(root)).map(root => (root.start.y - bounds.min.y) / height).sort((a, b) => a - b);
+  return { limbs, hip: Math.max(.08, Math.min(.7, hips[Math.floor(hips.length / 2)] ?? .35)) };
+}
+
 function authoredClips(model: Object3D, joints: Joint[], id: number, kinds: readonly PokemonMotionKind[] = POKEMON_MOTION_KINDS, basePose: readonly PoseValue[] = []): AnimationClip[] {
-  const shape = johtoRigShape(id), size = new Box3().setFromObject(model, true).getSize(new Vector3());
-  const roles = new Set(['hips', 'spine', 'neck', 'head', 'tail', 'leg', 'foot', 'arm', 'armTip', 'wing', 'wingTip', 'shell', 'shellTip', 'antenna', 'fin', 'finTip', 'leaf', 'leafTip']);
+  const shape = johtoRigShape(id), plan = pokemonBodyPlan(id, model.userData.pokemonFormIdentifier as string | undefined), size = new Box3().setFromObject(model, true).getSize(new Vector3());
+  const roles = new Set(['hips', 'spine', 'neck', 'head', 'tail', 'leg', 'foot', 'legTip', 'arm', 'armTip', 'wing', 'wingTip', 'shell', 'shellTip', 'antenna', 'fin', 'finTip', 'leaf', 'leafTip']);
   const animated = joints.filter(joint => roles.has(joint.role));
   if (animated.length < 2) throw new Error(`Source skeleton ${id} needs an explicit motion mapping`);
+  const stepping = isSteppingPlan(plan) ? steppingLimbs(model, animated, plan) : undefined;
+  const step = isSteppingPlan(plan) ? STEPS[plan as keyof typeof STEPS] : undefined;
+  // A skeleton authored for a static mesh has coarse skin weights that tear under deep flexes.
+  const authoredSkeleton = animated.some(joint => joint.bone.name.startsWith(`CM_${id}_`));
+  const swing = step && stepping ? Math.max(step.swing * .8, Math.min(authoredSkeleton ? .65 : .75, step.swing * Math.sqrt(.35 / stepping.hip))) : undefined;
+  const knee = step ? step.knee * (authoredSkeleton ? .6 : 1) : 0;
+  // Serpents and fish ripple along their body chain: each bone lags the one before it.
+  const chainDepth = new Map<Joint, number>();
+  if (plan === 'serpent' || plan === 'fish') for (const joint of animated) { let depth = 0; for (let bone = joint.bone.parent; bone instanceof Bone; bone = bone.parent) depth++; chainDepth.set(joint, depth); }
   return kinds.map(kind => {
-    const duration = kind === 'idle' ? 2.4 : kind === 'walk' ? .9 : .65;
+    const duration = kind === 'idle' ? 2.4 : kind === 'walk' ? WALK_SECONDS : .65;
     const times = Array.from({ length: 25 }, (_, i) => i * duration / 24), tracks: Array<QuaternionKeyframeTrack | VectorKeyframeTrack> = [];
-    for (const { bone, start, end, role, side, phase } of animated) {
+    for (const joint of animated) {
+      const { bone, start, end, side, phase } = joint, limb = stepping?.limbs.get(joint);
+      // A foreleg named as an arm steps as a leg; the rest of the body keeps its own role.
+      const role = limb ? (limb.depth === 0 ? 'leg' : limb.depth === 1 ? 'foot' : 'legTip') : joint.role;
+      const body = (plan === 'serpent' || plan === 'fish') && /^(spine|neck|tail|head)$/.test(role);
       const base = bone.quaternion.clone(), world = bone.getWorldQuaternion(new Quaternion());
       const upperArm = role === 'arm' && !/shoulder/i.test(bone.name);
       // Upper arms in many static source rigs are authored in a horizontal bind pose. Rotate
@@ -424,8 +534,10 @@ function authoredClips(model: Object3D, joints: Joint[], id: number, kinds: read
       const loweringAxis = bindDirection.clone().cross(down);
       if (loweringAxis.lengthSq() < 1e-8) loweringAxis.set(0, 0, 1);
       else loweringAxis.normalize();
-      const worldAxis = upperArm ? loweringAxis
-        : new Vector3(role.startsWith('wing') || role.startsWith('fin') || role.startsWith('leaf') ? 0 : 1, role === 'tail' ? 1 : 0, role.startsWith('wing') || role.startsWith('fin') || role.startsWith('leaf') ? 1 : 0).normalize();
+      // A rippling body bends sideways: about the vertical, or about the forward axis where the chain stands upright.
+      const ripple = body && kind === 'walk' ? (Math.abs(bindDirection.y) > .7 ? new Vector3(0, 0, 1) : new Vector3(0, 1, 0)) : undefined;
+      const worldAxis = upperArm ? loweringAxis : ripple
+        ?? new Vector3(role.startsWith('wing') || role.startsWith('fin') || role.startsWith('leaf') ? 0 : 1, role === 'tail' ? 1 : 0, role.startsWith('wing') || role.startsWith('fin') || role.startsWith('leaf') ? 1 : 0).normalize();
       const axis = worldAxis.applyQuaternion(world.clone().invert());
       // Rotate toward world-down from the actual bind segment. This also handles arms whose
       // source bind direction points mainly forward instead of along model X.
@@ -435,8 +547,24 @@ function authoredClips(model: Object3D, joints: Joint[], id: number, kinds: read
         const p = time / duration, loop = Math.sin(p * Math.PI * 2), gait = Math.sin(p * Math.PI * 2 + (side === 1 ? Math.PI : 0) + phase);
         let angle = 0;
         if (kind === 'idle') angle = upperArm ? armRestAngle + loop * .025 : ['head', 'neck'].includes(role) ? loop * .025 : role === 'spine' ? loop * .012 : role === 'tail' ? Math.sin(p * Math.PI * 2 + phase) * .065 : /wing|fin|leaf/.test(role) ? loop * .045 * (side || 1) : 0;
-        if (kind === 'walk') angle = upperArm ? armRestAngle * .92 + gait * .09 : role === 'leg' ? gait * .27 : role === 'foot' ? Math.max(0, gait) * -.22 : /wing/.test(role) ? loop * .32 * side : /fin|leaf/.test(role) ? loop * .15 * side : /arm/.test(role) ? gait * -.16 : role === 'tail' ? Math.sin(p * Math.PI * 2 + phase) * .13 : role === 'spine' ? loop * .035 : role === 'head' ? -loop * .025 : 0;
-        if (kind === 'attack') angle = Math.sin(p * Math.PI) * (role === 'spine' ? .17 : /arm|wing|fin/.test(role) ? -.35 : role === 'head' ? .14 : role === 'tail' ? .18 : 0);
+        if (kind === 'walk') {
+          const cycle = p * Math.PI * 2;
+          if (limb && step && swing) {
+            // Positive hip angle carries the foot backward. A planted foot sweeps back at a constant rate; the swing
+            // brings it forward with the knee lifted, so no foot ever slides forward over the ground.
+            const u = ((p + limb.phase) % 1 + 1) % 1, stance = u < step.duty, s = stance ? 0 : (u - step.duty) / (1 - step.duty);
+            // Every foot covers the hind feet's stride: a longer leg (a foreleg from the shoulder) swings through less angle.
+            const reach = Math.asin(Math.min(.95, stepping!.hip * Math.sin(swing) / limb.reach));
+            const hipAngle = stance ? reach * (2 * u / step.duty - 1) : reach * (1 - 2 * s * s * (3 - 2 * s)), lift = stance ? 0 : Math.sin(Math.PI * s);
+            // Lower segments fold whichever way raises their tip: back for a shin that hangs down, up for a toe that points ahead.
+            const raise = bindDirection.z > .05 ? -1 : 1;
+            angle = limb.depth === 0 ? hipAngle : (limb.depth === 1 ? knee : knee * .5) * lift * raise;
+          } else if (body) angle = (role === 'head' ? -.05 : role === 'neck' ? .04 : role === 'tail' ? .15 : .07) * Math.sin(cycle - (chainDepth.get(joint) ?? 0) * .8);
+          // Flyers, floaters and fish do not step: whatever legs they have trail.
+          else if (/^(leg|foot|legTip)$/.test(role)) angle = Math.sin(cycle + phase) * .06;
+          else angle = upperArm ? armRestAngle * .92 + gait * .09 : /wing/.test(role) ? loop * .32 * side : /fin|leaf/.test(role) ? loop * .15 * side : /arm/.test(role) ? gait * -.16 : role === 'tail' ? Math.sin(cycle + phase) * .13 : role === 'spine' ? loop * .035 : role === 'head' ? -loop * .025 : 0;
+        }
+        if (kind === 'attack') angle = Math.sin(p * Math.PI) * (role === 'spine' ? .17 : /arm|wing|fin/.test(role) ? (authoredSkeleton ? -.18 : -.35) : role === 'head' ? .14 : role === 'tail' ? .18 : 0);
         if (kind === 'damage') angle = Math.sin(p * Math.PI) * (role === 'spine' ? -.12 : role === 'head' ? -.1 : /arm|wing/.test(role) ? .16 : /leg|foot|tail/.test(role) ? .07 * (side || 1) : 0);
         // Its coarse, connected shoulder mesh folds under large arm rotations.
         if (id === 195 && /arm/.test(role)) angle *= .18;
@@ -447,7 +575,7 @@ function authoredClips(model: Object3D, joints: Joint[], id: number, kinds: read
       tracks.push(new QuaternionKeyframeTrack(`${bone.name}.quaternion`, times, values));
     }
     const hips = animated.find(joint => joint.role === 'hips');
-    if (hips && ['bird', 'winged', 'fish', 'soft', 'floatingPlant', 'glyph'].includes(shape)) {
+    if (hips && (plan === 'flyer' || plan === 'floater' || plan === 'fish' || shape === 'floatingPlant' || shape === 'glyph')) {
       const values: number[] = [], up = new Vector3(0, Math.max(size.y, .001) * .018, 0);
       // Translation tracks use the bone parent's local frame, including its scale.
       if (hips.bone.parent) up.applyMatrix4(hips.bone.parent.matrixWorld.clone().invert()).sub(new Vector3().applyMatrix4(hips.bone.parent.matrixWorld.clone().invert()));
@@ -469,8 +597,57 @@ function authoredClips(model: Object3D, joints: Joint[], id: number, kinds: read
     }
     const clip = new AnimationClip(`CM_${kind}`, duration, tracks);
     clip.userData.choketmonAuthored = REGIONAL_RIG_VERSION;
+    // A planted foot travels 2 · hip · sin(swing) while it is down. Recording that speed lets playback step at the
+    // rate that keeps it still under the moving body.
+    if (kind === 'walk' && step && swing && stepping?.limbs.size) clip.userData[CLIP_GROUND_SPEED] = 2 * stepping.hip * Math.sin(swing) / (step.duty * duration);
     return clip;
   });
+}
+
+/**
+ * Models face +Z standing on +Y. These sources were exported facing sideways or lying down (seen in
+ * the model audit), keyed by form identifier or species id. Radians: pitch about X, then yaw about Y.
+ */
+export const SOURCE_ORIENTATION_FIXES: Readonly<Record<string, { pitch?: number; yaw?: number }>> = {
+  503: { yaw: Math.PI / 2 }, // Samurott faced -X
+  539: { yaw: -Math.PI / 2 }, // Sawk faced +X
+  550: { yaw: -Math.PI / 2 }, // Basculin faced +X
+  1007: { yaw: Math.PI / 2 }, // Koraidon faced -X
+  1008: { yaw: Math.PI / 2 }, // Miraidon faced -X
+  914: { pitch: Math.PI / 2 }, // Quaquaval lay flat, head toward -Z
+};
+
+/**
+ * Game rips keep every swappable part as a `CusAnimVis_*` mesh (eye expressions A–F, folded and spread wings, shell
+ * states) that the game shows one at a time; left visible together they overlap. Of each set only its A variants stay;
+ * a set without an A (left and right parts) stays whole, and lone swaps that are effects or blink lids go.
+ */
+export function removeAlternateStates(scene: Object3D): string[] {
+  const parts: Array<{ object: Object3D; base: string; variant: string; token: string }> = [];
+  scene.traverse(object => {
+    if (!(object instanceof Mesh)) return;
+    const token = /CusAnimVis_(?:pm\d+_\d+_\d+_)?(\w+?)Skin/.exec(`${object.name} ${object.geometry.name}`)?.[1];
+    if (!token) return;
+    const split = /^(.*?[a-z])([A-Z])(\d*(?:_\d+)*)$/.exec(token);
+    parts.push({ object, token, base: split ? split[1] : token, variant: split ? split[2] : '' });
+  });
+  const removed = parts.filter(part => {
+    const set = parts.filter(other => other.base === part.base);
+    if (set.some(other => other.variant === 'A')) return part.variant !== 'A';
+    return !part.variant && /^(?:Effect|Lid|Eyelid|Fire)$/.test(part.token);
+  });
+  for (const { object } of removed) object.removeFromParent();
+  return removed.map(part => part.token);
+}
+
+/** Turns the source content under the template root, so rigging, clips and bounds all see the fixed frame. */
+function orientSource(scene: Object3D, { pitch = 0, yaw = 0 }: { pitch?: number; yaw?: number }): void {
+  const turn = new Group(); turn.name = 'CM_orientation';
+  turn.rotation.set(pitch, yaw, 0, 'YXZ');
+  for (const child of [...scene.children]) turn.add(child);
+  scene.add(turn);
+  scene.updateMatrixWorld(true);
+  scene.userData.orientationFix = { version: REGIONAL_RIG_VERSION, pitch, yaw };
 }
 
 /** Called once on a loaded template, before per-creature skeleton cloning. No simulation RNG. */
@@ -482,11 +659,20 @@ export function prepareRegionalRig(gltf: Pick<GLTF, 'scene' | 'animations'>, id:
   // as a tiny silhouette above a vertical chain. Keep the immutable source GLB intact and
   // omit only these named effect meshes from the runtime character template.
   if(id===911||id===914){const effects:Object3D[]=[];gltf.scene.traverse(object=>{const geometryName=object instanceof Mesh?object.geometry.name:'';if(id===914?/_gel_mesh(?:_shape)?(?:_lod\d+)?$/i.test(geometryName||object.name):/^(Object_210|Object_212)$/.test(object.name))effects.push(object);});for(const effect of effects)effect.removeFromParent();gltf.scene.userData.authoredModelCleanup={version:REGIONAL_RIG_VERSION,removedEffectNodes:effects.map(effect=>({node:effect.name,geometry:effect instanceof Mesh?effect.geometry.name:''})),reason:id===914?'battle-only-gel-effect-distorts-character-bounds':'duplicate-expanded-bird-effects-distort-character-silhouette'};}
+  const alternates = removeAlternateStates(gltf.scene);
+  if (alternates.length) gltf.scene.userData.alternateStatesRemoved = { version: REGIONAL_RIG_VERSION, parts: alternates };
+  const orientation = SOURCE_ORIENTATION_FIXES[String(gltf.scene.userData.pokemonFormIdentifier ?? id)];
+  if (orientation) orientSource(gltf.scene, orientation);
   let skinned = false; gltf.scene.traverse(object => { if (object instanceof SkinnedMesh) skinned = true; });
   const sourceClips = [...gltf.animations];
+  let height: number | undefined;
+  const modelHeight = () => height ??= (gltf.scene.updateMatrixWorld(true), Math.max(new Box3().setFromObject(gltf.scene, true).getSize(new Vector3()).y, 1e-6));
+  // Looping walks and idles play in place; the world moves the creature.
+  const loops = new Set([...pokemonMotionCandidates(sourceClips, 'walk'), ...pokemonMotionCandidates(sourceClips, 'idle')]);
+  for (const clip of loops) if (clip.tracks.some(track => track.name.endsWith('.position'))) removeRootMotion(gltf.scene, clip, modelHeight());
   // Source clips stay in place for provenance. Frozen ones (bind-pose repeats) are flagged so
   // clip selection never lets them shadow an authored clip of the same kind.
-  const measured = measureSourceClips(gltf.scene, sourceClips);
+  const measured = measureSourceClips(gltf.scene, sourceClips, modelHeight);
   const freeze = (all: boolean) => { for (const { clip, moving } of measured) if (all || !moving) clip.userData[STATIC_MOTION_CLIP] = true; };
   const frozenCount = () => sourceClips.filter(clip => clip.userData[STATIC_MOTION_CLIP] === true).length;
   const nativeMotion = measured.some(clip => clip.moving);

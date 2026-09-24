@@ -1,5 +1,6 @@
 import type { WorldAtlas } from './atlas';
 import type { WorldSample } from './types';
+import { caveMouths, insideCaveMouth, type CaveMouth } from './caves';
 import { buildExplorationSites, buildRouteEdgeMarkers } from './exploration-sites';
 import { terrainSurfaceHeight } from './grounding';
 import { isTownPaved, trailHalfWidth } from './world-details';
@@ -39,6 +40,20 @@ export const TALL_GRASS_BUDGETS: Readonly<Record<'desktop' | 'mobile', GrassBudg
   mobile: { radius: 38, density: 36, maxBlades: 9_000, near: 16, far: 42, strength: 1.2 },
 };
 
+/** Blade joints by camera distance to a cell (its nearest point), nearest tier first; the last tier has no limit. */
+export type GrassSegmentTier = { segments: number; within: number };
+export const GRASS_SEGMENT_TIERS: Readonly<Record<'desktop' | 'mobile', readonly GrassSegmentTier[]>> = {
+  desktop: [{ segments: 5, within: 18 }, { segments: 3, within: 36 }, { segments: 2, within: Infinity }],
+  mobile: [{ segments: 3, within: 14 }, { segments: 2, within: 28 }, { segments: 1, within: Infinity }],
+};
+/** Tall grass keeps its detail this much farther out; it stands taller and reads from farther away. */
+export const TALL_GRASS_TIER_REACH = 6;
+export const grassSegmentTier = (tiers: readonly GrassSegmentTier[], distance: number) => {
+  let index = 0;
+  while (index < tiers.length - 1 && distance >= tiers[index].within) index++;
+  return index;
+};
+
 /**
  * `offsets` holds x, y, z and w = woodland tint step + draw rank in [0, 1) per blade, in a spatially uniform order.
  * `shapes` holds the clumped blade profile: lean x, lean z (radians toward the bend), height, facing yaw + 8 × tone step.
@@ -55,6 +70,8 @@ export type GrassField = {
   towns: ReadonlyArray<{ x: number; z: number }>;
   routes: readonly Route[];
   keepOut: readonly KeepOut[];
+  /** Cave mouth blocks on this map; no blade grows under their rock or in their arch. */
+  mouths: readonly CaveMouth[];
   cells: Map<number, GrassCell | null>;
 };
 
@@ -144,6 +161,7 @@ export function grassField(sample: (x: number, z: number) => WorldSample, atlas:
       minX: Math.min(from.x, to.x) - TALL_GRASS_REACH, maxX: Math.max(from.x, to.x) + TALL_GRASS_REACH, minZ: Math.min(from.z, to.z) - TALL_GRASS_REACH, maxZ: Math.max(from.z, to.z) + TALL_GRASS_REACH });
   }
   const towns = atlas.locations.filter(item => item.kind === 'town' && !skipTown(item.id)).map(item => ({ x: item.x, z: item.z }));
+  const mouths = caveMouths(atlas.id);
   // Tall grass leaves room around towns, cave mouths, landmarks, gatehouses, rest spots and road markers.
   const keepOut: KeepOut[] = [
     ...atlas.locations.filter(item => item.kind === 'town').map(item => ({ x: item.x, z: item.z, radius: TALL_GRASS_TOWN_CLEAR })),
@@ -154,8 +172,9 @@ export function grassField(sample: (x: number, z: number) => WorldSample, atlas:
     }),
     ...buildExplorationSites(atlas, sample, 99).map(site => ({ x: site.x, z: site.z, radius: 4.2 })),
     ...buildRouteEdgeMarkers(atlas, sample, 99).map(marker => ({ x: marker.x, z: marker.z, radius: 1.3 })),
+    ...mouths.map(mouth => ({ x: mouth.x, z: mouth.z, radius: Math.hypot(mouth.width, mouth.depth) / 2 + 2 })),
   ];
-  field = { sample, segments, towns, routes, keepOut, cells: new Map() };
+  field = { sample, segments, towns, routes, keepOut, mouths, cells: new Map() };
   byAtlas.set(atlas.mapVersion, field);
   return field;
 }
@@ -316,6 +335,7 @@ export function buildGrassCell(field: GrassField, ix: number, iz: number): Grass
   const lattice = coverage(field, x0, z0), { weight, forest, hard } = lattice;
   const segments = field.segments.filter(item => item.maxX >= x0 && item.minX <= x0 + GRASS_CELL && item.maxZ >= z0 && item.minZ <= z0 + GRASS_CELL);
   const towns = field.towns.filter(town => Math.abs(town.x - x0 - GRASS_CELL / 2) < 18 + GRASS_CELL / 2 && Math.abs(town.z - z0 - GRASS_CELL / 2) < 18 + GRASS_CELL / 2);
+  const mouths = field.mouths.filter(mouth => Math.abs(mouth.x - x0 - GRASS_CELL / 2) < 5 + GRASS_CELL / 2 && Math.abs(mouth.z - z0 - GRASS_CELL / 2) < 5 + GRASS_CELL / 2);
   // Height corners repeat for every blade in the cell; memoize them for this build only.
   const corners = new Map<number, WorldSample>();
   const cornerSample = (x: number, z: number) => {
@@ -341,6 +361,7 @@ export function buildGrassCell(field: GrassField, ix: number, iz: number): Grass
     const x = x0 + u * GRASS_CELL, z = z0 + v * GRASS_CELL, trail = segments.length ? onTrail(segments, x, z) : 1;
     if (roll >= w * trail) continue;
     if (towns.some(town => Math.abs(x - town.x) < 18 && Math.abs(z - town.z) < 18 && isTownPaved(x - town.x, z - town.z))) continue;
+    if (mouths.length && mouths.some(mouth => insideCaveMouth(mouth, x, z, .15))) continue;
     const y = height(x, z), c = nearestClump(x, z), spread = Math.min(1, c.distance / .95);
     const r1 = hash(x * 1.7 + 3.1, z * 2.3), r2 = hash(z * 3.1, x * .9 - 1.7), r3 = hash(x - z * 5.1, z + x * .3);
     const direction = Math.atan2(z - c.z, x - c.x) + (r1 - .5) * 1.2;

@@ -5,6 +5,7 @@ import { scaleWorldDistance, surfaceSceneId, type ScenePoint } from './world-spa
 import { caveRelief, caveFloorHeight, type CaveRelief } from './cave-relief';
 import { DUNGEON_PLANS, dungeonEntryFloor, dungeonFloorAsciiLabel, dungeonFloorSceneLocalId, type DungeonKind, type DungeonPlan, type DungeonSilhouette, type DungeonStyle } from './dungeons';
 import { roomBlocked, roomLayout, type DungeonRoom } from './dungeon-rooms';
+import { parkLayout, parkSample, type ParkLayout } from './park-layout';
 import { regionalRuntimePools } from '../data/regional-encounters';
 import { expansionEncounterPools, type ExpansionRegion } from '../data/expansion-encounters';
 import { HOENN_LOCATIONS, sampleHoennWorld } from './hoenn';
@@ -17,7 +18,7 @@ import { HISUI_LOCATIONS, sampleHisuiWorld } from './hisui';
 import { PALDEA_LOCATIONS, samplePaldeaWorld } from './paldea';
 
 export type CaveRegionId = string;
-export type CaveSilhouette = DungeonSilhouette | 'room';
+export type CaveSilhouette = DungeonSilhouette | 'room' | 'park';
 export type CaveWallSegment = ScenePoint & { width: number; depth: number; height: number; rotationY: number };
 /** A way out to the surface. */
 export type CavePortal = {
@@ -89,6 +90,8 @@ export type CaveScene = {
   relief: CaveRelief;
   /** Rectangular rooms of towers, buildings and plants. */
   room?: DungeonRoom;
+  /** Open-air park grounds: meadow, ponds, paths, trees and gates. Parks keep the flat interior relief; their ground is here. */
+  park?: ParkLayout;
   sample: (x: number, z: number) => WorldSample;
 };
 
@@ -275,7 +278,7 @@ function buildDungeon(plan: DungeonPlan): CaveScene[] {
     const links = floorLinks(plan, index);
     const encounter = encounterFor(index);
     let width: number, depth: number, legacyWidth: number, legacyDepth: number, silhouette: CaveSilhouette, outline: ScenePoint[];
-    let points: ScenePoint[], relief: CaveRelief, wallSegments: CaveWallSegment[], room: DungeonRoom | undefined, sample: (x: number, z: number) => WorldSample;
+    let points: ScenePoint[], relief: CaveRelief, wallSegments: CaveWallSegment[], room: DungeonRoom | undefined, park: ParkLayout | undefined, sample: (x: number, z: number) => WorldSample;
     if (plan.kind === 'cave') {
       const tilesWide = legacy ? plan.width : Math.max(15, Math.round(plan.width * (.8 + variation(seed, 1) * .4))) | 1;
       const tilesDeep = legacy ? plan.depth : Math.max(13, Math.round(plan.depth * (.8 + variation(seed, 2) * .4))) | 1;
@@ -304,6 +307,26 @@ function buildDungeon(plan: DungeonPlan): CaveScene[] {
         if (![x, z].every(Number.isFinite)) return { height: 0, biome: 'rock', blocked: true };
         return { height: caveFloorHeight(relief, x, z), exactHeight: true, biome: 'rock', blocked: !caveContains(chamber, x, z, 2.8) };
       };
+    } else if (plan.kind === 'park') {
+      // An open-air zone: a meadow inside a hedge and tree line, each gate on the rim side facing the zone it opens onto.
+      const sides = floor.gates ?? [];
+      if (sides.length !== links.length) throw new Error(`${plan.regionId}:${plan.id}:${floor.key}: every park doorway needs a gate side`);
+      const grounds = park = parkLayout(sceneIds[index], plan.park ?? 'safari', seed,
+        plan.width * TILE_SIZE / 2 * (1 + variation(seed, 1) * .1), plan.depth * TILE_SIZE / 2 * (1 + variation(seed, 2) * .1), sides);
+      width = legacyWidth = grounds.width; depth = legacyDepth = grounds.depth; silhouette = 'park';
+      outline = [{ x: -width / 2, z: -depth / 2 }, { x: width / 2, z: -depth / 2 }, { x: width / 2, z: depth / 2 }, { x: -width / 2, z: depth / 2 }];
+      relief = caveRelief(plan.id, seed, width, depth, true);
+      points = grounds.gates.map(gate => gate.interior);
+      // Map walls: the hedge just outside the walkable rim, then every tree, bush, boulder and post in the meadow.
+      const hedge = grounds.rim.map(point => { const reach = Math.hypot(point.x, point.z) || 1; return { x: point.x * (reach + TILE_SIZE / 2) / reach, z: point.z * (reach + TILE_SIZE / 2) / reach }; });
+      wallSegments = [
+        ...hedge.map((point, wallIndex) => {
+          const next = hedge[(wallIndex + 1) % hedge.length], dx = next.x - point.x, dz = next.z - point.z;
+          return { x: (point.x + next.x) / 2, z: (point.z + next.z) / 2, width: Math.hypot(dx, dz), depth: TILE_SIZE, height: 1.6, rotationY: Math.atan2(-dz, dx) };
+        }),
+        ...grounds.obstacles.map(item => ({ x: item.x, z: item.z, width: item.radius * 2, depth: item.radius * 2, height: 2, rotationY: 0 })),
+      ];
+      sample = (x, z) => parkSample(grounds, x, z);
     } else {
       // Pagoda floors narrow toward the top.
       const taper = (plan.style === 'pagoda' || plan.style === 'bell') && count > 1 ? 1 - .18 * index / (count - 1) : 1;
@@ -347,7 +370,7 @@ function buildDungeon(plan: DungeonPlan): CaveScene[] {
       levelShift: farthest <= 4 ? distance : Math.round(distance * 4 / farthest), encounters: encounter.encounters,
       ...(floor.areas ? { encounterAreas: floor.areas } : {}), wild: wild[index], supplemental: index === anchor && wild[index],
       ...(index === lairFloor && plan.legendary?.length ? { legendary: plan.legendary, altar: farthestOpenPoint(sample, points, width, depth) } : {}),
-      width, depth, legacyWidth, legacyDepth, tileSize: TILE_SIZE, silhouette, outline, portals, stairs, wallSegments, relief, ...(room ? { room } : {}), sample,
+      width, depth, legacyWidth, legacyDepth, tileSize: TILE_SIZE, silhouette, outline, portals, stairs, wallSegments, relief, ...(room ? { room } : {}), ...(park ? { park } : {}), sample,
     };
   });
 }
@@ -374,6 +397,37 @@ export const dungeonEntrance = (regionId: string, portalId: string): { scene: Ca
   for (const scene of CAVE_SCENES) if (scene.regionId === regionId) for (const portal of scene.portals) if (portal.id === portalId) return { scene, portal };
   return undefined;
 };
+/** A cave dungeon's mouth on the surface: a rock mound whose doorway opens onto one portal, facing the way back out. */
+export type CaveMouth = ScenePoint & { id: string; rotationY: number; width: number; height: number; depth: number };
+/** Block size in metres; the arch's front stands `lip` past the portal, so the doorway ring sits inside the mouth. */
+const CAVE_MOUTH = { width: 7.8, height: 6.6, depth: 4.3, maxDepth: 7.5, lip: .6 };
+/** Per-entrance proportions within one dungeon, so blocks meeting back to back never share a face. */
+const MOUTH_SHAPES = [{ width: 1, height: 1 }, { width: 1.08, height: 1.13 }, { width: .94, height: .92 }, { width: 1.04, height: 1.06 }] as const;
+const mouthsByRegion = new Map<string, readonly CaveMouth[]>();
+export function caveMouths(regionId: string): readonly CaveMouth[] {
+  const cached = mouthsByRegion.get(regionId); if (cached) return cached;
+  const dungeons = new Map<string, CavePortal[]>();
+  for (const scene of CAVE_SCENES) if (scene.regionId === regionId && scene.kind === 'cave') dungeons.set(scene.dungeonId, [...dungeons.get(scene.dungeonId) ?? [], ...scene.portals]);
+  const mouths = [...dungeons.values()].flatMap(portals => {
+    const centerX = portals.reduce((sum, portal) => sum + portal.surface.x, 0) / portals.length, centerZ = portals.reduce((sum, portal) => sum + portal.surface.z, 0) / portals.length;
+    return portals.map((portal, index): CaveMouth => {
+      const dx = portal.surfaceArrival.x - portal.surface.x, dz = portal.surfaceArrival.z - portal.surface.z, length = Math.hypot(dx, dz) || 1;
+      const outX = dx / length, outZ = dz / length, frontX = portal.surface.x + outX * CAVE_MOUTH.lip, frontZ = portal.surface.z + outZ * CAVE_MOUTH.lip;
+      // A dungeon's blocks reach a metre past the middle of its entrances, so a through cave reads as one hill.
+      const depth = Math.max(CAVE_MOUTH.depth, Math.min(CAVE_MOUTH.maxDepth, (frontX - centerX) * outX + (frontZ - centerZ) * outZ + 1));
+      const shape = MOUTH_SHAPES[index % MOUTH_SHAPES.length];
+      return { id: portal.id, x: frontX - outX * depth / 2, z: frontZ - outZ * depth / 2, rotationY: Math.atan2(-outX, -outZ),
+        width: CAVE_MOUTH.width * shape.width, height: CAVE_MOUTH.height * shape.height, depth };
+    });
+  });
+  mouthsByRegion.set(regionId, mouths);
+  return mouths;
+}
+/** Whether (x, z) lies within `margin` of a mouth's footprint. */
+export function insideCaveMouth(mouth: CaveMouth, x: number, z: number, margin = 0): boolean {
+  const dx = x - mouth.x, dz = z - mouth.z, cos = Math.cos(mouth.rotationY), sin = Math.sin(mouth.rotationY);
+  return Math.abs(dx * cos - dz * sin) <= mouth.width / 2 + margin && Math.abs(dx * sin + dz * cos) <= mouth.depth / 2 + margin;
+}
 const landmarkLocations = new Set(CAVE_SCENES.flatMap(scene => scene.portals.filter(portal => portal.landmark).map(portal => `${scene.regionId}:${portal.surfaceLocationId}`)));
 /** A tower, building or plant stands at this surface location, so the generic landmark and cave arch give way. */
 export const hasDungeonLandmark = (regionId: string, locationId: string): boolean => landmarkLocations.has(`${regionId}:${locationId}`);

@@ -1,28 +1,36 @@
+import { useThree } from '@react-three/fiber';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
-  BoxGeometry, BufferGeometry, CylinderGeometry, DataTexture, DoubleSide, Euler, IcosahedronGeometry, InstancedMesh, Matrix4, MeshStandardMaterial,
-  PlaneGeometry, Quaternion, RGBAFormat, RepeatWrapping, SRGBColorSpace, Vector3, type Material,
+  BoxGeometry, BufferGeometry, Color, CylinderGeometry, DoubleSide, Euler, Float32BufferAttribute, IcosahedronGeometry, InstancedMesh, Matrix4, MeshStandardMaterial,
+  PlaneGeometry, Quaternion, Vector3, type Material,
 } from 'three';
 import { CAVE_SCENES, type CavePortal, type CaveScene, type CaveStairs } from './caves';
 import type { DungeonPropKind, DungeonProp } from './dungeon-rooms';
 import type { DungeonStyle } from './dungeons';
 import type { WorldPoint, WorldSample } from './types';
 import { terrainSurfaceHeight } from './grounding';
+import { interiorSurface, type InteriorPattern, type SurfaceSet } from './interior-textures';
+import { LairChamber } from './lair-chamber';
+import { RoomDressing } from './temple-dressing';
+import { DETAILED_PROPS, ROOM_WALL_HEIGHT } from './temple-geometry';
 
-/** Sky, fill light and the lamp carried with the partner for each dungeon look. */
+/**
+ * Sky colour, hemisphere fill and the lamp carried with the partner for each dungeon look. The fill and lamp
+ * stay low (the lamp decays with the square of distance) so the angled key light's shadows read indoors.
+ */
 export const DUNGEON_LOOKS: Record<DungeonStyle, { sky: string; light: string; ground: string; intensity: number; lamp: string; lampIntensity: number }> = {
-  rock: { sky: '#182326', light: '#b9cbd1', ground: '#434f3f', intensity: .85, lamp: '#ffdda6', lampIntensity: 35 },
-  ghost: { sky: '#17111f', light: '#b4a2d6', ground: '#2c2238', intensity: .72, lamp: '#c7a6ff', lampIntensity: 30 },
-  pagoda: { sky: '#281d14', light: '#f1d7b0', ground: '#4a3b2b', intensity: 1, lamp: '#ffd08a', lampIntensity: 28 },
-  bell: { sky: '#2a1a10', light: '#ffe0a8', ground: '#5a4128', intensity: 1.05, lamp: '#ffc870', lampIntensity: 30 },
-  charred: { sky: '#180f0c', light: '#dcae8e', ground: '#2e2019', intensity: .74, lamp: '#ff9a5a', lampIntensity: 34 },
-  lighthouse: { sky: '#26313a', light: '#eef3f5', ground: '#6d7479', intensity: 1.2, lamp: '#fff3d6', lampIntensity: 24 },
-  mansion: { sky: '#1d1a18', light: '#d8ccb6', ground: '#3f3830', intensity: .85, lamp: '#ffd9a0', lampIntensity: 32 },
-  industrial: { sky: '#141a1e', light: '#c6e0ea', ground: '#39444a', intensity: .95, lamp: '#bfe8ff', lampIntensity: 32 },
-  ruins: { sky: '#201c16', light: '#e2d3b4', ground: '#4a4234', intensity: .9, lamp: '#ffe0a0', lampIntensity: 30 },
-  stone: { sky: '#1c1f23', light: '#d4d8dc', ground: '#45484c', intensity: .95, lamp: '#e8eeff', lampIntensity: 30 },
-  sand: { sky: '#2a2014', light: '#f3dcae', ground: '#5c4a2e', intensity: 1, lamp: '#ffd48a', lampIntensity: 30 },
-  warehouse: { sky: '#182025', light: '#d0e4ee', ground: '#3e4a50', intensity: 1, lamp: '#dff4ff', lampIntensity: 30 },
+  rock: { sky: '#182326', light: '#b9cbd1', ground: '#434f3f', intensity: .44, lamp: '#ffdda6', lampIntensity: 15 },
+  ghost: { sky: '#17111f', light: '#b4a2d6', ground: '#2c2238', intensity: .4, lamp: '#c7a6ff', lampIntensity: 13 },
+  pagoda: { sky: '#281d14', light: '#f1d7b0', ground: '#4a3b2b', intensity: .52, lamp: '#ffd08a', lampIntensity: 12 },
+  bell: { sky: '#2a1a10', light: '#ffe0a8', ground: '#5a4128', intensity: .55, lamp: '#ffc870', lampIntensity: 12 },
+  charred: { sky: '#180f0c', light: '#dcae8e', ground: '#2e2019', intensity: .4, lamp: '#ff9a5a', lampIntensity: 14 },
+  lighthouse: { sky: '#26313a', light: '#eef3f5', ground: '#6d7479', intensity: .62, lamp: '#fff3d6', lampIntensity: 10 },
+  mansion: { sky: '#1d1a18', light: '#d8ccb6', ground: '#3f3830', intensity: .45, lamp: '#ffd9a0', lampIntensity: 13 },
+  industrial: { sky: '#141a1e', light: '#c6e0ea', ground: '#39444a', intensity: .5, lamp: '#bfe8ff', lampIntensity: 13 },
+  ruins: { sky: '#201c16', light: '#e2d3b4', ground: '#4a4234', intensity: .48, lamp: '#ffe0a0', lampIntensity: 12 },
+  stone: { sky: '#1c1f23', light: '#d4d8dc', ground: '#45484c', intensity: .5, lamp: '#e8eeff', lampIntensity: 12 },
+  sand: { sky: '#2a2014', light: '#f3dcae', ground: '#5c4a2e', intensity: .52, lamp: '#ffd48a', lampIntensity: 12 },
+  warehouse: { sky: '#182025', light: '#d0e4ee', ground: '#3e4a50', intensity: .52, lamp: '#dff4ff', lampIntensity: 12 },
 };
 
 type Pattern = 'planks' | 'tiles' | 'stone' | 'metal' | 'checker';
@@ -47,28 +55,10 @@ const PROP_DEFAULTS: Record<DungeonPropKind, string> = {
   lantern: '#ffc76a', tablet: '#b3a47f', block: '#8f8268', column: '#a3a09a', rug: '#6b3a3a', sand: '#d9bd84',
 };
 const GLOWING = new Set<DungeonPropKind>(['candle', 'lantern']);
-
-const patterns = new Map<Pattern, DataTexture>();
-/** Small tiling albedo textures; the style colour tints them. */
-function patternTexture(pattern: Pattern): DataTexture {
-  const cached = patterns.get(pattern); if (cached) return cached;
-  const size = 64, pixels = new Uint8Array(size * size * 4);
-  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    const n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453, grain = n - Math.floor(n);
-    let value = .86 + grain * .1;
-    if (pattern === 'planks') { const board = Math.floor(y / 16); value = .8 + ((board * 37) % 7) / 40 + .06 * Math.sin(x * .45 + board * 3) + grain * .05; if (y % 16 === 0 || (x + board * 23) % 64 === 0) value = .52; }
-    else if (pattern === 'tiles') { if (x % 32 === 0 || y % 32 === 0) value = .66; }
-    else if (pattern === 'checker') { value = (Math.floor(x / 32) + Math.floor(y / 32)) % 2 ? .74 + grain * .08 : .95 + grain * .05; if (x % 32 === 0 || y % 32 === 0) value = .6; }
-    else if (pattern === 'stone') { const row = Math.floor(y / 21), offset = row % 2 ? 16 : 0; if (y % 21 === 0 || (x + offset) % 32 === 0) value = .58; else value = .8 + grain * .16; }
-    else if (pattern === 'metal') { if (x % 32 === 0 || y % 32 === 0) value = .6; else if ((x % 32 === 4 || x % 32 === 28) && (y % 32 === 4 || y % 32 === 28)) value = .5; else value = .88 + grain * .04; }
-    const index = (y * size + x) * 4, byte = Math.round(Math.min(1, value) * 255);
-    pixels[index] = pixels[index + 1] = pixels[index + 2] = byte; pixels[index + 3] = 255;
-  }
-  const texture = new DataTexture(pixels, size, size, RGBAFormat);
-  texture.wrapS = texture.wrapT = RepeatWrapping; texture.colorSpace = SRGBColorSpace; texture.needsUpdate = true;
-  patterns.set(pattern, texture);
-  return texture;
-}
+/** Floors lay flagstones where the old look said stone; walls lay coursed ashlar. */
+const FLOOR_SURFACE: Record<Pattern, InteriorPattern> = { planks: 'planks', tiles: 'tiles', stone: 'flagstone', metal: 'metal', checker: 'checker' };
+const WALL_SURFACE: Record<Pattern, InteriorPattern> = { planks: 'planks', tiles: 'tiles', stone: 'ashlar', metal: 'metal', checker: 'ashlar' };
+const surfaceMaps = (set: SurfaceSet) => ({ map: set.map, normalMap: set.normalMap, roughnessMap: set.ormMap, aoMap: set.ormMap });
 
 function PropBatch({ kind, props, color }: { kind: DungeonPropKind; props: readonly DungeonProp[]; color: string }) {
   const ref = useRef<InstancedMesh>(null);
@@ -90,7 +80,7 @@ function PropBatch({ kind, props, color }: { kind: DungeonPropKind; props: reado
   return <instancedMesh ref={ref} name={`dungeon-props:${kind}`} args={[geometry, material, Math.max(1, props.length)]} castShadow={!GLOWING.has(kind) && kind !== 'rug' && kind !== 'hole'} receiveShadow dispose={null} />;
 }
 
-/** Stairs up rise against the wall; stairs down open into a dark well. Caves use ladders. */
+/** Stairs up rise against the wall between stone cheeks; stairs down open into a dark well with a kerb. Caves use ladders. */
 export function DungeonStairs({ scene }: { scene: CaveScene }) {
   const look = ROOM_LOOKS[scene.style], cave = scene.kind === 'cave';
   const materials = useMemo(() => ({
@@ -105,61 +95,92 @@ export function DungeonStairs({ scene }: { scene: CaveScene }) {
     return <group key={stairs.id} name={`stairs:${stairs.direction}:${stairs.targetSceneId}`} position={[stairs.interior.x, y, stairs.interior.z]} rotation={[0, rotationY, 0]}>
       {stairs.direction === 'up'
         ? cave
-          ? <>{[-.55, .55].map(side => <mesh key={side} position={[side, 1.5, .55]} rotation={[-.28, 0, 0]} material={materials.step} castShadow><boxGeometry args={[.14, 3.2, .14]} /></mesh>)}
-            {[.4, 1, 1.6, 2.2, 2.8].map(height => <mesh key={height} position={[0, height, .55 + (height - 1.5) * .29]} material={materials.tread}><boxGeometry args={[1.1, .09, .09]} /></mesh>)}</>
-          : [0, 1, 2, 3, 4].map(step => <mesh key={step} position={[0, (step + 1) * .22 / 2, .2 + step * .45]} material={step % 2 ? materials.tread : materials.step} castShadow receiveShadow>
-            <boxGeometry args={[2.3, (step + 1) * .22, .45]} /></mesh>)
+          ? <>{[-.55, .55].map(side => <mesh key={side} position={[side, 1.5, .55]} rotation={[-.28, 0, 0]} material={materials.step} castShadow receiveShadow><boxGeometry args={[.14, 3.2, .14]} /></mesh>)}
+            {[.4, 1, 1.6, 2.2, 2.8].map(height => <mesh key={height} position={[0, height, .55 + (height - 1.5) * .29]} material={materials.tread} castShadow receiveShadow><boxGeometry args={[1.1, .09, .09]} /></mesh>)}</>
+          : <>{[0, 1, 2, 3, 4].map(step => <mesh key={step} position={[0, (step + 1) * .22 / 2, .2 + step * .45]} material={step % 2 ? materials.tread : materials.step} castShadow receiveShadow>
+            <boxGeometry args={[2.3, (step + 1) * .22, .45]} /></mesh>)}
+            {[-1.3, 1.3].map(side => <mesh key={side} position={[side, .62, 1.1]} material={materials.step} castShadow receiveShadow><boxGeometry args={[.3, 1.24, 2.3]} /></mesh>)}</>
         : <>
-          <mesh position={[0, .03, .35]} rotation={[-Math.PI / 2, 0, 0]} material={materials.dark}><planeGeometry args={[cave ? 1.6 : 2.2, cave ? 1.6 : 2.1]} /></mesh>
-          {(cave ? [-.62, .62] : [-1.18, 1.18]).map(side => <mesh key={side} position={[side, .12, .35]} material={materials.step} castShadow><boxGeometry args={[.16, .24, cave ? 1.7 : 2.2]} /></mesh>)}
-          <mesh position={[0, .12, cave ? 1.25 : 1.5]} material={materials.step}><boxGeometry args={[cave ? 1.4 : 2.5, .24, .16]} /></mesh>
-          {cave && [-.3, .3].map(side => <mesh key={side} position={[side, .45, .6]} material={materials.tread}><boxGeometry args={[.1, .9, .1]} /></mesh>)}
+          <mesh position={[0, .03, .35]} rotation={[-Math.PI / 2, 0, 0]} material={materials.dark} receiveShadow><planeGeometry args={[cave ? 1.6 : 2.2, cave ? 1.6 : 2.1]} /></mesh>
+          {(cave ? [-.62, .62] : [-1.18, 1.18]).map(side => <mesh key={side} position={[side, .12, .35]} material={materials.step} castShadow receiveShadow><boxGeometry args={[.16, .24, cave ? 1.7 : 2.2]} /></mesh>)}
+          <mesh position={[0, .12, cave ? 1.25 : 1.5]} material={materials.step} castShadow receiveShadow><boxGeometry args={[cave ? 1.4 : 2.5, .24, .16]} /></mesh>
+          {cave && [-.3, .3].map(side => <mesh key={side} position={[side, .45, .6]} material={materials.tread} castShadow receiveShadow><boxGeometry args={[.1, .9, .1]} /></mesh>)}
         </>}
     </group>;
   })}</group>;
 }
 
-/** Rectangular floor of a tower, building, plant or ruin: patterned floor, inward-facing walls and its furniture. */
+/** Floor with its texture laid at `tile` metres and a baked darkening where it meets the walls. */
+function roomFloorGeometry(halfWidth: number, halfDepth: number, tile: number): BufferGeometry {
+  const geometry = new PlaneGeometry(halfWidth * 2, halfDepth * 2, Math.ceil(halfWidth * 2), Math.ceil(halfDepth * 2)).rotateX(-Math.PI / 2);
+  const position = geometry.getAttribute('position'), uv = geometry.getAttribute('uv'), colors: number[] = [];
+  for (let index = 0; index < position.count; index++) {
+    const x = position.getX(index), z = position.getZ(index);
+    uv.setXY(index, x / tile, -z / tile);
+    const edge = Math.min(halfWidth - Math.abs(x), halfDepth - Math.abs(z)), corner = Math.max(0, 2.2 - Math.hypot(halfWidth - Math.abs(x), halfDepth - Math.abs(z))) / 2.2;
+    const shade = 1 - .34 * Math.exp(-edge / 1.1) - .1 * corner;
+    colors.push(shade, shade, shade);
+  }
+  geometry.setAttribute('color', new Float32BufferAttribute(colors, 3));
+  return geometry;
+}
+
+/** One inward-facing wall, textured at `tile` metres, darker along its foot and toward the corners. */
+function roomWallGeometry(length: number, tile: number): BufferGeometry {
+  const geometry = new PlaneGeometry(length, ROOM_WALL_HEIGHT, Math.max(1, Math.ceil(length / 2)), 4);
+  const position = geometry.getAttribute('position'), uv = geometry.getAttribute('uv'), colors: number[] = [];
+  for (let index = 0; index < position.count; index++) {
+    const x = position.getX(index), y = position.getY(index) + ROOM_WALL_HEIGHT / 2;
+    uv.setXY(index, x / tile, y / tile);
+    const shade = (.66 + .34 * Math.min(1, y / 1.4)) * (1 - .12 * Math.max(0, 1 - (length / 2 - Math.abs(x)) / 1.6));
+    colors.push(shade, shade, shade);
+  }
+  geometry.setAttribute('color', new Float32BufferAttribute(colors, 3));
+  return geometry;
+}
+
+/** Rectangular floor of a tower, building, plant or ruin: textured floor and walls, architecture, furniture, and at a lair the shrine. */
 export function DungeonInterior({ scene, onNavigate }: { scene: CaveScene; onNavigate(point: WorldPoint): void }) {
   const look = ROOM_LOOKS[scene.style], room = scene.room!;
-  const width = room.halfWidth * 2, depth = room.halfDepth * 2, wallHeight = 4.2;
+  // Same phone threshold as the view: phones keep fewer point lights.
+  const mobile = useThree(state => state.size.width <= 720);
+  const floorSet = interiorSurface(FLOOR_SURFACE[look.floorPattern]), wallSet = interiorSurface(WALL_SURFACE[look.wallPattern]);
   const materials = useMemo(() => {
-    const floorMap = patternTexture(look.floorPattern).clone(), wallMap = patternTexture(look.wallPattern).clone();
-    floorMap.repeat.set(width / 4, depth / 4); floorMap.needsUpdate = true;
-    wallMap.repeat.set(1, wallHeight / 4); wallMap.needsUpdate = true;
+    const metalFloor = look.floorPattern === 'metal', metalWall = look.wallPattern === 'metal';
     return {
-      floor: new MeshStandardMaterial({ name: 'dungeon-floor', color: look.floor, map: floorMap, roughness: look.floorPattern === 'metal' ? .55 : .82, metalness: look.floorPattern === 'metal' ? .25 : 0 }),
-      wall: new MeshStandardMaterial({ name: 'dungeon-wall', color: look.wall, map: wallMap, roughness: .9 }),
-      trim: new MeshStandardMaterial({ name: 'dungeon-trim', color: look.trim, roughness: .7 }),
+      floor: new MeshStandardMaterial({ name: 'dungeon-floor', color: look.floor, vertexColors: true, ...surfaceMaps(floorSet), roughness: 1, metalness: metalFloor ? .3 : 0 }),
+      wall: new MeshStandardMaterial({ name: 'dungeon-wall', color: look.wall, vertexColors: true, ...surfaceMaps(wallSet), roughness: 1, metalness: metalWall ? .2 : 0 }),
+      dressing: new MeshStandardMaterial({ name: 'dungeon-wall-dressing', vertexColors: true, ...surfaceMaps(wallSet), roughness: 1, metalness: metalWall ? .2 : 0 }),
     };
-  }, [look, width, depth]);
-  useEffect(() => () => { for (const material of Object.values(materials)) { material.map?.dispose(); material.dispose(); } }, [materials]);
+  }, [look, floorSet, wallSet]);
+  // The texture sets are shared by every room; only the materials belong to this floor.
+  useEffect(() => () => { for (const material of Object.values(materials)) material.dispose(); }, [materials]);
+  const floor = useMemo(() => roomFloorGeometry(room.halfWidth, room.halfDepth, floorSet.tile), [room, floorSet]);
   const walls = useMemo(() => [
-    { x: 0, z: -room.halfDepth, length: width, rotationY: 0 }, { x: room.halfWidth, z: 0, length: depth, rotationY: -Math.PI / 2 },
-    { x: 0, z: room.halfDepth, length: width, rotationY: Math.PI }, { x: -room.halfWidth, z: 0, length: depth, rotationY: Math.PI / 2 },
-  ], [room, width, depth]);
-  const wallGeometries = useMemo(() => walls.map(wall => {
-    const geometry = new PlaneGeometry(wall.length, wallHeight), uv = geometry.getAttribute('uv');
-    for (let index = 0; index < uv.count; index++) uv.setX(index, uv.getX(index) * wall.length / 4);
-    return geometry;
-  }), [walls]);
-  useEffect(() => () => wallGeometries.forEach(geometry => geometry.dispose()), [wallGeometries]);
+    { x: 0, z: -room.halfDepth, length: room.halfWidth * 2, rotationY: 0 }, { x: room.halfWidth, z: 0, length: room.halfDepth * 2, rotationY: -Math.PI / 2 },
+    { x: 0, z: room.halfDepth, length: room.halfWidth * 2, rotationY: Math.PI }, { x: -room.halfWidth, z: 0, length: room.halfDepth * 2, rotationY: Math.PI / 2 },
+  ], [room]);
+  const wallGeometries = useMemo(() => walls.map(wall => roomWallGeometry(wall.length, wallSet.tile)), [walls, wallSet]);
+  useEffect(() => () => { floor.dispose(); wallGeometries.forEach(geometry => geometry.dispose()); }, [floor, wallGeometries]);
   const groups = useMemo(() => {
     const byKind = new Map<string, DungeonProp[]>();
-    for (const prop of room.props) { const key = `${prop.kind}:${prop.round ? 'round' : 'box'}`; byKind.set(key, [...byKind.get(key) ?? [], prop]); }
+    for (const prop of room.props) {
+      if (DETAILED_PROPS.has(prop.kind)) continue;
+      const key = `${prop.kind}:${prop.round ? 'round' : 'box'}`; byKind.set(key, [...byKind.get(key) ?? [], prop]);
+    }
     return [...byKind.entries()].map(([key, props]) => ({ key, kind: props[0].kind, props }));
   }, [room]);
+  const stone = useMemo(() => `#${new Color(look.wall).lerp(new Color(look.floor), .35).getHexString()}`, [look]);
   return <group name={`dungeon-interior:${scene.id}`} dispose={null}>
-    <mesh name="dungeon-floor" rotation={[-Math.PI / 2, 0, 0]} material={materials.floor} receiveShadow
-      onClick={event => { event.stopPropagation(); if (event.button === 0 && event.delta <= 5) onNavigate({ x: event.point.x, z: event.point.z }); }}>
-      <planeGeometry args={[width, depth]} />
-    </mesh>
+    <mesh name="dungeon-floor" geometry={floor} material={materials.floor} receiveShadow
+      onClick={event => { event.stopPropagation(); if (event.button === 0 && event.delta <= 5) onNavigate({ x: event.point.x, z: event.point.z }); }} />
     {walls.map((wall, index) => <group key={index} position={[wall.x, 0, wall.z]} rotation={[0, wall.rotationY, 0]}>
-      {/* Single-sided walls face into the room, so the orbit camera sees through them from outside. */}
-      <mesh position={[0, wallHeight / 2, 0]} geometry={wallGeometries[index]} material={materials.wall} receiveShadow />
-      <mesh position={[0, .18, .06]} material={materials.trim}><boxGeometry args={[wall.length, .36, .12]} /></mesh>
+      {/* Single-sided walls face into the room, so the orbit camera sees through them from outside. They still shade the floor. */}
+      <mesh position={[0, ROOM_WALL_HEIGHT / 2, 0]} geometry={wallGeometries[index]} material={materials.wall} castShadow receiveShadow />
     </group>)}
+    <RoomDressing scene={scene} palette={look} dressingMaterial={materials.dressing} wallTile={wallSet.tile} mobile={mobile} lit={!scene.legendary} />
     {groups.map(group => <PropBatch key={group.key} kind={group.kind} props={group.props} color={look.props[group.kind] ?? PROP_DEFAULTS[group.kind]} />)}
+    {scene.legendary && <LairChamber scene={scene} stone={stone} trim={look.trim} mobile={mobile} />}
     <DungeonStairs scene={scene} />
   </group>;
 }

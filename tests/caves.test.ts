@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { getWorldAtlas, getWorldScene } from '../src/openworld/atlas';
 import {
-  CAVE_SCENES, cavePortalAtInterior, cavePortalAtSurface, caveStairsAt, dungeonExits, dungeonFloors, getCaveScene, hasDungeonLandmark, nearestCaveWalkable, stairsToward, type CaveScene,
+  CAVE_SCENES, caveMouths, cavePortalAtInterior, cavePortalAtSurface, caveStairsAt, dungeonExits, dungeonFloors, getCaveScene, hasDungeonLandmark, insideCaveMouth, nearestCaveWalkable, stairsToward, type CaveScene,
 } from '../src/openworld/caves';
 import { DUNGEON_PLANS, dungeonPlanForScene, dungeonSceneIdsByRegion } from '../src/openworld/dungeons';
 import { findWorldPath } from '../src/openworld/navigation';
@@ -137,7 +137,7 @@ describe('multi-floor dungeons', () => {
     expect(floorLabels('kanto', 'pokemon-tower')).toEqual(['1층', '2층', '3층', '4층', '5층', '6층', '7층']);
     expect(floorLabels('kanto', 'pokemon-mansion')).toEqual(['3층', '2층', '1층', '지하 1층']);
     expect(floorLabels('kanto', 'power-plant')).toHaveLength(1);
-    expect(floorLabels('kanto', 'diglett-cave')).toHaveLength(1);
+    expect(floorLabels('kanto', 'diglett-cave')).toHaveLength(2);
     expect(floorLabels('johto', 'union-cave')).toEqual(['1층', '지하 1층', '지하 2층']);
     expect(floorLabels('johto', 'slowpoke-well')).toEqual(['지하 1층', '지하 2층']);
     expect(floorLabels('johto', 'whirl-islands')).toEqual(['1층', '지하 1층', '지하 2층', '지하 3층']);
@@ -151,7 +151,7 @@ describe('multi-floor dungeons', () => {
     expect(floorLabels('johto', 'bell-tower')).toEqual(['1층', '2층', '3층', '4층', '5층', '6층', '7층', '8층', '9층', '옥상']);
     expect(floorLabels('johto', 'lighthouse')).toEqual(['1층', '2층', '3층', '4층', '5층', '6층']);
     for (const scene of CAVE_SCENES) expect(scene.name).toBe(scene.floorCount > 1 ? `${scene.dungeonName} ${scene.floorLabel}` : scene.dungeonName);
-    expect(new Set(CAVE_SCENES.map(scene => scene.kind))).toEqual(new Set(['cave', 'tower', 'building', 'plant', 'ruins']));
+    expect(new Set(CAVE_SCENES.map(scene => scene.kind))).toEqual(new Set(['cave', 'tower', 'building', 'plant', 'ruins', 'park']));
   });
 
   it('opens a through dungeon on its first floor and leaves from its last; towers are entered at 1F', () => {
@@ -216,6 +216,21 @@ describe('multi-floor dungeons', () => {
       expect(lairs, plan.id).toHaveLength(1);
       expect(lairs[0].wild, plan.id).toBe(true);
       for (const speciesId of plan.legendary!) expect(isLegendarySpecies(speciesId), `${plan.id}:${speciesId}`).toBe(true);
+    }
+  });
+});
+
+describe('cave mouths', () => {
+  it('open every cave entrance around its doorway ring, facing the way back out', () => {
+    for (const scene of CAVE_SCENES.filter(item => item.kind === 'cave')) for (const portal of scene.portals) {
+      const mouth = caveMouths(scene.regionId).find(item => item.id === portal.id)!;
+      expect(mouth, portal.id).toBeDefined();
+      const outX = -Math.sin(mouth.rotationY), outZ = -Math.cos(mouth.rotationY);
+      const arrival = Math.hypot(portal.surfaceArrival.x - portal.surface.x, portal.surfaceArrival.z - portal.surface.z);
+      expect(((portal.surfaceArrival.x - portal.surface.x) * outX + (portal.surfaceArrival.z - portal.surface.z) * outZ) / arrival, portal.id).toBeCloseTo(1, 5);
+      // The ring stands inside the arch; the player steps out beyond the rock.
+      expect(insideCaveMouth(mouth, portal.surface.x, portal.surface.z), portal.id).toBe(true);
+      expect(insideCaveMouth(mouth, portal.surfaceArrival.x, portal.surfaceArrival.z, .5), portal.id).toBe(false);
     }
   });
 });

@@ -4,8 +4,13 @@
  * made inside the older single-chamber caves still resolve to a real floor.
  * Pure data: rendering, simulation and the save validator share it.
  */
-export type DungeonKind = 'cave' | 'tower' | 'building' | 'plant' | 'ruins';
+export type DungeonKind = 'cave' | 'tower' | 'building' | 'plant' | 'ruins' | 'park';
+/** Looks of enclosed floors and of the buildings standing at their surface doors; dungeon-interior.tsx keys its looks by these. */
 export type DungeonStyle = 'rock' | 'ghost' | 'pagoda' | 'bell' | 'charred' | 'lighthouse' | 'mansion' | 'industrial' | 'ruins' | 'stone' | 'sand' | 'warehouse';
+/** Open-air park grounds: the Safari Zone's wild savanna or the National Park's tended garden. */
+export type ParkStyle = 'safari' | 'garden';
+/** Rim side of a park gate; north is -z, as on the surface maps. */
+export type ParkSide = 'north' | 'east' | 'south' | 'west';
 export type DungeonSilhouette = 'rounded' | 'oval' | 'long' | 'hall' | 'bend';
 export type DungeonFloorPlan = {
   /** Scene id suffix for every floor except the entry floor. */
@@ -17,12 +22,16 @@ export type DungeonFloorPlan = {
   areas?: readonly string[];
   /** Encounter location for this floor when it differs from the dungeon's (Dark Cave's two entrances). */
   locationId?: string;
+  /** Park zones: the rim side of each doorway in link order, the way back first. A gate faces the zone it leads to. */
+  gates?: readonly ParkSide[];
 };
 export type DungeonPlan = {
   regionId: string; id: string; name: string;
   /** Stable ASCII text for labels even when localized fonts are unavailable. */
   label: string;
   kind: DungeonKind; style: DungeonStyle; seed: number;
+  /** Parks: the look of the open-air grounds. Their `style` is the gatehouse on the surface. */
+  park?: ParkStyle;
   /** Floor footprint in 2 m tiles. */
   width: number; depth: number;
   silhouette?: DungeonSilhouette;
@@ -46,6 +55,7 @@ export type DungeonPlan = {
 
 const KEY_LEVEL = /^(b)?(\d+)f/;
 const ASCII_ROOFS: Record<string, string> = { roof: 'Roof', top: 'Top' };
+const ASCII_ZONES: Record<string, string> = { center: 'Center', east: 'East', north: 'North', west: 'West' };
 /** Floor from a key such as `1f`, `b2f` or `roof`; `label` and `level` override the defaults. */
 function floor(key: string, areas?: readonly string[], extra: Partial<DungeonFloorPlan> = {}): DungeonFloorPlan {
   const match = KEY_LEVEL.exec(key), number = match ? Number(match[2]) : 0;
@@ -63,11 +73,17 @@ const tower = (count: number, wild: readonly string[]) => Array.from({ length: c
 type Base = Omit<DungeonPlan, 'kind' | 'style' | 'floors'>;
 const cave = (base: Base, floorPlans: readonly DungeonFloorPlan[], style: DungeonStyle = 'rock'): DungeonPlan => ({ ...base, kind: 'cave', style, floors: floorPlans });
 const room = (kind: Exclude<DungeonKind, 'cave'>, style: DungeonStyle, base: Base, floorPlans: readonly DungeonFloorPlan[]): DungeonPlan => ({ ...base, kind, style, floors: floorPlans });
+/** Open-air grounds entered through a gatehouse, which takes the house look on the surface. */
+const park = (grounds: ParkStyle, base: Base, zones: readonly DungeonFloorPlan[]): DungeonPlan => ({ ...base, kind: 'park', style: 'mansion', park: grounds, floors: zones });
+/** One park zone; `level` orders the gates between zones as floors order stairs. */
+const zone = (key: string, label: string, level: number, areas: readonly string[] | undefined, gates: readonly ParkSide[]): DungeonFloorPlan =>
+  ({ ...floor(key, areas, { label, level }), gates });
 
 export const DUNGEON_PLANS: readonly DungeonPlan[] = [
   // Kanto. FireRed floors; the PokeAPI calls Rock Tunnel's 1F/B1F "b1f"/"b2f".
   cave({ regionId: 'kanto', id: 'mt-moon', name: '달맞이산 동굴', label: 'Mt. Moon', seed: 11, width: 23, depth: 17, silhouette: 'rounded', surfaceLocations: ['route-3', 'route-4'], legacy: true }, floors('1f', 'b1f', 'b2f')),
-  cave({ regionId: 'kanto', id: 'diglett-cave', name: '디그다의 굴', label: "Diglett's Cave", seed: 23, width: 29, depth: 11, silhouette: 'long', surfaceLocations: ['diglett-cave-east', 'diglett-cave-west'], legacy: true }, [floor('1f')]),
+  // Its mouths lie 171 m apart under half the map: a second floor makes the tunnel a walk, not a jump to the far side.
+  cave({ regionId: 'kanto', id: 'diglett-cave', name: '디그다의 굴', label: "Diglett's Cave", seed: 23, width: 29, depth: 11, silhouette: 'long', surfaceLocations: ['diglett-cave-east', 'diglett-cave-west'], legacy: true }, [floor('1f'), floor('b1f')]),
   cave({ regionId: 'kanto', id: 'rock-tunnel', name: '돌산터널', label: 'Rock Tunnel', seed: 37, width: 21, depth: 21, silhouette: 'bend', surfaceLocations: ['route-10-south', 'route-10-north'], legacy: true }, [floor('1f', ['b1f']), floor('b1f', ['b2f'])]),
   cave({ regionId: 'kanto', id: 'seafoam-islands', name: '쌍둥이섬 동굴', label: 'Seafoam Islands', seed: 41, width: 25, depth: 19, silhouette: 'oval', surfaceLocations: ['route-20-east', 'route-20-west'], legacy: true, legendary: [144] }, floors('1f', 'b1f', 'b2f', 'b3f', 'b4f')),
   cave({ regionId: 'kanto', id: 'victory-road', name: '챔피언로드', label: 'Victory Road', seed: 53, width: 27, depth: 21, silhouette: 'hall', surfaceLocations: ['route-23', 'indigo-plateau'], legacy: true, anchor: 1, legendary: [146] }, floors('1f', '2f', '3f')),
@@ -192,13 +208,21 @@ export const DUNGEON_PLANS: readonly DungeonPlan[] = [
   cave({ regionId: 'hoenn', id: 'island-cave', name: '섬의동굴', label: 'Island Cave', seed: 523, width: 17, depth: 13, silhouette: 'rounded', surfaceLocations: ['island-cave'], legendary: [378], levels: [40, 50] }, [floor('1f', undefined, { locationId: 'granite-cave' })]),
   room('ruins', 'stone', { regionId: 'hoenn', id: 'ancient-tomb', name: '고대무덤', label: 'Ancient Tomb', seed: 541, width: 13, depth: 11, surfaceLocations: ['ancient-tomb'], legendary: [379], levels: [40, 50] }, [floor('1f', undefined, { locationId: 'hoenn-route-120' })]),
   room('ruins', 'stone', { regionId: 'hoenn', id: 'southern-island', name: '남쪽외딴섬', label: 'Southern Island', seed: 547, width: 13, depth: 11, surfaceLocations: ['southern-island'], legendary: [380, 381, 385], levels: [45, 55] }, [floor('1f', undefined, { locationId: 'hoenn-route-121' })]),
+  // Parks. The Safari Zone's FireRed areas are zones walked Center, East, North, West; each gate faces the zone it opens onto,
+  // and the North zone sits highest, so a gate toward it climbs.
+  park('safari', { regionId: 'kanto', id: 'safari-zone', name: '사파리존', label: 'Safari Zone', seed: 821, width: 45, depth: 37, surfaceLocations: ['safari-zone'] }, [
+    zone('center', '중앙 구역', 0, ['middle'], ['south', 'east']), zone('east', '동쪽 구역', 1, ['area-1-east'], ['west', 'north']),
+    zone('north', '북쪽 구역', 2, ['area-2-north'], ['east', 'west']), zone('west', '서쪽 구역', 1, ['area-3-west'], ['north']),
+  ]),
+  park('garden', { regionId: 'johto', id: 'national-park', name: '자연공원', label: 'National Park', seed: 827, width: 53, depth: 43, surfaceLocations: ['national-park'] },
+    [zone('park', '자연공원', 0, undefined, ['west'])]),
 ];
 
 /** Floor the first surface entrance opens onto. */
 export const dungeonEntryFloor = (plan: DungeonPlan): number => plan.surfaceFloors?.[0] ?? plan.entry ?? 0;
 export const dungeonFloorSceneLocalId = (plan: DungeonPlan, index: number): string =>
   index === dungeonEntryFloor(plan) ? plan.id : `${plan.id}-${plan.floors[index].key}`;
-export const dungeonFloorAsciiLabel = (key: string): string => ASCII_ROOFS[key] ?? key.toUpperCase();
+export const dungeonFloorAsciiLabel = (key: string): string => ASCII_ROOFS[key] ?? ASCII_ZONES[key] ?? key.toUpperCase();
 
 const planByScene = new Map<string, { plan: DungeonPlan; index: number }>();
 for (const plan of DUNGEON_PLANS) plan.floors.forEach((_, index) => planByScene.set(`cave:${plan.regionId}:${dungeonFloorSceneLocalId(plan, index)}`, { plan, index }));

@@ -2556,14 +2556,14 @@ mod tests {
         };
         let mega_stones = ids_of("mega-stone");
         let held_tools = ids_of("held-tool");
-        assert_eq!(mega_stones.len(), 64);
+        assert_eq!(mega_stones.len(), 65);
         assert_eq!(held_tools.len(), 47);
         for item in mega_stones.iter().chain(&held_tools) {
             complete["game"]["inventory"][item.as_str()] = Value::from(0);
         }
         // 12 required, 48 legacy optional (the six original held tools included),
-        // 41 catalog-only held tools and 64 Mega stones.
-        assert_eq!(complete["game"]["inventory"].as_object().unwrap().len(), 165);
+        // 41 catalog-only held tools and 65 Mega stones.
+        assert_eq!(complete["game"]["inventory"].as_object().unwrap().len(), 166);
         validate_save(&complete).unwrap();
     }
 

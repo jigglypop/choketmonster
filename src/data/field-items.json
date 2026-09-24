@@ -756,6 +756,13 @@
     "speciesId": 670
   },
   {
+    "id": "mega-stone:malamar-mega",
+    "name": "메가칼라마네로 진화석",
+    "kind": "mega-stone",
+    "formIdentifier": "malamar-mega",
+    "speciesId": 687
+  },
+  {
     "id": "mega-stone:zygarde-mega",
     "name": "메가지가르데 진화석",
     "kind": "mega-stone",

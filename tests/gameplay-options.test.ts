@@ -192,7 +192,7 @@ describe('held tools', () => {
 describe('unavailable Mega models', () => {
   it('hides and rejects every Mega form without verified 3D geometry', () => {
     const missing = COMBAT_FORMS.filter(form => form.kind === 'mega' && !getPokemonFormModelSource(form.identifier));
-    expect(missing).toHaveLength(33);
+    expect(missing).toHaveLength(32);
     for (const form of missing) {
       const game = createGame(4, form.identifier), monster = createMonster(game, form.speciesId, 50);
       game.player.team = [monster];

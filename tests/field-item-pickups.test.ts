@@ -9,8 +9,8 @@ import { OpenWorldSimulation, regionalEncounters, restoreOpenWorld, serializeOpe
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
 describe('roadside equipment and documented acquisition', () => {
-  it('gives all 111 items real playable roadside locations and matching capture sources', () => {
-    const sources = allFieldItemSources(); expect(sources).toHaveLength(111);
+  it('gives all 112 items real playable roadside locations and matching capture sources', () => {
+    const sources = allFieldItemSources(); expect(sources).toHaveLength(112);
     for (const source of sources) {
       expect(source.roadside.length, source.item.id).toBeGreaterThan(0);
       for (const capture of source.captures) {

@@ -22,10 +22,10 @@ import {
 
 describe('Mega stone inventory and equipment', () => {
   it('derives all equippable items from the shared field catalog and keeps them out of NPC shops', () => {
-    expect(FIELD_ITEMS).toHaveLength(111);
+    expect(FIELD_ITEMS).toHaveLength(112);
     expect(HELD_TOOLS).toHaveLength(47);
-    expect(MEGA_STONES).toHaveLength(64);
-    expect(EQUIPPABLE_ITEMS).toHaveLength(111);
+    expect(MEGA_STONES).toHaveLength(65);
+    expect(EQUIPPABLE_ITEMS).toHaveLength(112);
     expect(SHOP_ITEMS).not.toEqual(expect.arrayContaining([...HELD_TOOLS, ...MEGA_STONES.map(item => item.id)]));
     const game = createGame(4, 'stone-catalog');
     for (const stone of MEGA_STONES) expect(game.inventory[stone.id]).toBe(0);

@@ -948,14 +948,17 @@ export class OpenWorldPanel {
     return { x: (unrotated.x - 120) / scale + centerX, z: (unrotated.y - 120) / scale + centerZ };
   }
 
-  /** Any unlocked map place is a fast-travel target, also from the middle of a wild battle; visited towns land at their safe entrance. */
+  /**
+   * Only towns the player has walked into are fast-travel targets, also from the middle of a wild battle; they land at
+   * the town's safe entrance. An opened gate never makes an unvisited place reachable without walking there first.
+   */
   private teleportFromMap(locationId: string): boolean {
     const world = this.simulation, inBattle = !!this.options.game.battle, place = world.atlas.locations.find(item => item.id === locationId);
-    if (!place || place.kind === 'sea') return false;
+    if (!place || place.kind !== 'town' || !world.visitedTownIds.includes(place.id)) return false;
     if (place.requiredBadges > world.regionalBadges) { this.options.notify(progressionRequirement(place.requiredBadges, world.regionalBadges, world.atlas.gyms, world.regionId === 'hisui' ? '조사증' : '배지'), true); return false; }
-    if (!(place.kind === 'town' && world.teleportToTown(place.id, true)) && !world.teleportToPoint(place, true)) return false;
+    if (!world.teleportToTown(place.id, true)) return false;
     this.host!.querySelector<HTMLDialogElement>('#world-map-dialog')!.close();
-    this.options.notify(place.kind === 'town' && world.visitedTownIds.includes(place.id) ? '안전한 마을 입구로 이동했습니다.' : `${place.name}으로 순간이동했습니다.`);
+    this.options.notify('안전한 마을 입구로 이동했습니다.');
     // An immediate save reports its own failure; a battle that just ended must not replay on reload.
     void Promise.resolve(this.options.changed(inBattle)).catch(() => undefined); this.refresh(); this.renderer?.update();
     return true;

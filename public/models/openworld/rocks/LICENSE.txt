@@ -1,3 +1,6 @@
 Kenney Nature Kit 2.1, CC0 1.0 Universal
 https://kenney.nl/assets/nature-kit
 https://creativecommons.org/publicdomain/zero/1.0/
+
+cave-mouth.glb: LowPoly Cave Entrance by zisongbr (OpenGameArt), CC0 1.0 Universal.
+https://opengameart.org/content/lowpoly-cave-entrance

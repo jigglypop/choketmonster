@@ -966,6 +966,21 @@
       "animations": 45,
       "textures": 2,
       "heightMeters": 1.5
+    },
+    {
+      "identifier": "malamar-mega",
+      "speciesId": 687,
+      "source": "pokemon-3d-api",
+      "sourcePath": "models/opt/za/687.glb",
+      "url": "https://raw.githubusercontent.com/Pokemon-3D-api/assets/429de1288cea0d43f5b4f56305d2276e94239d65/models/opt/za/687.glb",
+      "sha256": "53c52fb1214f890a594502097c9cb452df1a2fdbe654b15c44c1f1425dcd0b8d",
+      "gitBlobSha1": "c094ad571fa8c97f88ef9aad0627a700a1731bfa",
+      "bytes": 4036356,
+      "meshes": 11,
+      "skins": 1,
+      "animations": 39,
+      "textures": 4,
+      "heightMeters": 2.9
     }
   ]
 }

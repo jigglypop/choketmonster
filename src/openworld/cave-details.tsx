@@ -1,8 +1,15 @@
-import { useLayoutEffect, useMemo, useRef } from 'react';
-import { BufferGeometry, ConeGeometry, DataTexture, DoubleSide, Euler, Float32BufferAttribute, IcosahedronGeometry, InstancedMesh, LinearFilter, Matrix4, MeshBasicMaterial, Quaternion, RGBAFormat, Vector3, type Material, type MeshStandardMaterial } from 'three';
+import { useFrame } from '@react-three/fiber';
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import {
+  BufferGeometry, Color, ConeGeometry, CylinderGeometry, DataTexture, DoubleSide, Euler, Float32BufferAttribute, IcosahedronGeometry, InstancedMesh, LinearFilter, Matrix4,
+  MeshBasicMaterial, MeshStandardMaterial, Quaternion, RGBAFormat, Vector3, type Material, type PointLight,
+} from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { WaterMaterial } from './materials';
 import type { CaveScene } from './caves';
 import type { WorldPoint } from './types';
+import { contactShadowTexture, jitter, stainGeometry } from './interior-kit';
+import { LAIR_DAIS_RADIUS, caveCrystals, cavePuddles, sceneDoorways, type CrystalCluster } from './interior-layout';
 
 type Detail = { x: number; y: number; z: number; sx: number; sy: number; sz: number; rotationY?: number; upsideDown?: boolean };
 const variation = (index: number, seed: number) => { const n = Math.sin(index * 127.1 + seed * 311.7) * 43758.5453; return n - Math.floor(n); };
@@ -40,6 +47,8 @@ export function caveFormations(cave: CaveScene) {
     const radius = 4 + variation(index + 71, cave.relief.seed) * Math.min(cave.legacyWidth, cave.legacyDepth) * .38;
     const x = Math.cos(angle) * radius, z = Math.sin(angle) * radius;
     if (cave.sample(x, z).blocked || doorways.some(point => Math.hypot(point.x - x, point.z - z) < 5)) continue;
+    // The lair's dais stays clear.
+    if (cave.altar && Math.hypot(cave.altar.x - x, cave.altar.z - z) < LAIR_DAIS_RADIUS + 1.2) continue;
     const v = variation(index + 149, cave.relief.seed), y = cave.sample(x, z).height;
     rubble.push({ x, z, y: y + .09 + v * .08, sx: .16 + v * .2, sy: .12 + v * .13, sz: .2 + variation(index + 211, cave.relief.seed) * .22, rotationY: angle });
   }
@@ -111,6 +120,87 @@ function ContactShadows({ cave, entries }: { cave: CaveScene; entries: Detail[] 
   return <mesh name="cave-contact-shadows" geometry={geometry} material={material} dispose={null} renderOrder={1} />;
 }
 
+/** Crystal colour and glow per cave theme. */
+const CRYSTAL_TONES: Record<CaveScene['relief']['theme'], { color: string; glow: string }> = {
+  limestone: { color: '#cdb8ff', glow: '#7e52f0' }, water: { color: '#a6f4e8', glow: '#22b3a2' }, ice: { color: '#dcf7ff', glow: '#4fc0ec' },
+  volcanic: { color: '#ffb884', glow: '#ff5418' }, interior: { color: '#d3dbe2', glow: '#8aa0b0' },
+};
+
+let crystalShape: BufferGeometry | undefined;
+/** Unit crystal: a hexagonal prism with a pointed tip, standing on y = 0, one unit tall and one unit in radius. */
+function crystalGeometry(): BufferGeometry {
+  if (crystalShape) return crystalShape;
+  const body = new CylinderGeometry(1, .92, .74, 6).translate(0, .37, 0), tip = new ConeGeometry(1, .3, 6).translate(0, .89, 0);
+  crystalShape = mergeGeometries([body, tip])!;
+  body.dispose(); tip.dispose();
+  return crystalShape;
+}
+
+/** Instances for every crystal of every cluster: the largest in the middle, the rest splayed away from the wall. */
+export function crystalInstances(clusters: readonly CrystalCluster[]): Matrix4[] {
+  const matrices: Matrix4[] = [], axis = new Vector3(), rotation = new Quaternion(), spin = new Quaternion(), up = new Vector3(0, 1, 0);
+  for (const cluster of clusters) for (let index = 0; index < cluster.count; index++) {
+    const v = (salt: number) => jitter(index + cluster.seed * 3, salt);
+    // Kept short and near-upright enough that no tip reaches over walkable ground.
+    const offsetAngle = v(1) * Math.PI * 2, offset = index ? .12 + v(2) * .18 : 0;
+    const height = cluster.size * (index ? .42 + v(3) * .5 : 1), radius = cluster.size * (index ? .07 + v(4) * .06 : .13);
+    const leanX = cluster.lean.x + (v(5) - .5) * .9, leanZ = cluster.lean.z + (v(6) - .5) * .9, tilt = (index ? .18 : .06) + v(7) * .2;
+    axis.set(leanZ, 0, -leanX).normalize();
+    rotation.setFromAxisAngle(axis, tilt).multiply(spin.setFromAxisAngle(up, v(8) * Math.PI));
+    matrices.push(new Matrix4().compose(new Vector3(cluster.x + Math.cos(offsetAngle) * offset, cluster.y - .08, cluster.z + Math.sin(offsetAngle) * offset), rotation.clone(), new Vector3(radius, height, radius)));
+  }
+  return matrices;
+}
+
+/** Glowing crystal clusters at the foot of the walls, with a light at one or two of them. */
+function Crystals({ cave, mobile }: { cave: CaveScene; mobile: boolean }) {
+  const clusters = useMemo(() => caveCrystals(cave), [cave]);
+  const matrices = useMemo(() => crystalInstances(clusters), [clusters]);
+  const tone = CRYSTAL_TONES[cave.relief.theme];
+  const material = useMemo(() => new MeshStandardMaterial({ name: 'cave-crystals', color: tone.color, emissive: tone.glow, emissiveIntensity: .75, roughness: .16, metalness: .05, flatShading: true }), [tone]);
+  useEffect(() => () => material.dispose(), [material]);
+  const ref = useRef<InstancedMesh>(null);
+  useLayoutEffect(() => {
+    const mesh = ref.current; if (!mesh) return;
+    const color = new Color();
+    matrices.forEach((matrix, index) => { mesh.setMatrixAt(index, matrix); mesh.setColorAt(index, color.setScalar(.78 + jitter(index, 9) * .3)); });
+    mesh.count = matrices.length; mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    mesh.computeBoundingSphere();
+  }, [matrices]);
+  // A fixed number of lights per floor: the cluster nearest the way in, then the largest. The lair's own lights replace them.
+  const lit = useMemo(() => {
+    if (cave.legendary || !clusters.length) return [];
+    const entry = sceneDoorways(cave)[0], near = [...clusters].sort((a, b) => Math.hypot(a.x - entry.x, a.z - entry.z) - Math.hypot(b.x - entry.x, b.z - entry.z))[0];
+    const largest = clusters.filter(cluster => cluster !== near).sort((a, b) => b.size - a.size)[0];
+    return [near, largest].filter(Boolean).slice(0, mobile ? 1 : 2);
+  }, [cave, clusters, mobile]);
+  const lights = useRef<Array<PointLight | null>>([]);
+  useFrame(({ clock }) => lights.current.forEach((light, index) => { if (light) light.intensity = 6 * (1 + Math.sin(clock.elapsedTime * 1.1 + index * 2.3) * .1); }));
+  if (!matrices.length) return null;
+  return <>
+    <instancedMesh ref={ref} name="cave-crystals" args={[crystalGeometry(), material, matrices.length]} castShadow receiveShadow dispose={null} />
+    {lit.map((cluster, index) => <pointLight key={index} ref={light => { lights.current[index] = light; }} name="cave-crystal-light"
+      position={[cluster.x + cluster.lean.x * .6, cluster.y + 1.1, cluster.z + cluster.lean.z * .6]} color={tone.glow} intensity={6} distance={9} decay={2} />)}
+  </>;
+}
+
+/** Still, dark water in the floor's hollows: glossy enough to catch the lamp and key light. */
+function Puddles({ cave }: { cave: CaveScene }) {
+  const geometry = useMemo(() => {
+    const puddles = cavePuddles(cave);
+    return puddles.length ? stainGeometry(puddles.map(puddle => ({ x: puddle.x, z: puddle.z, radiusX: puddle.radius, radiusZ: puddle.radius * .78, color: '#ffffff', rotation: puddle.seed, wobble: puddle.seed })),
+      (x, z) => cave.sample(x, z).height, .025) : undefined;
+  }, [cave]);
+  const material = useMemo(() => {
+    const result = new MeshStandardMaterial({ name: 'cave-puddles', color: '#1a2427', roughness: .05, metalness: 0, map: contactShadowTexture(), transparent: true, opacity: .9, depthWrite: false,
+      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    result.forceSinglePass = true;
+    return result;
+  }, []);
+  useEffect(() => () => { geometry?.dispose(); material.dispose(); }, [geometry, material]);
+  return geometry ? <mesh name="cave-puddles" geometry={geometry} material={material} receiveShadow renderOrder={1} dispose={null} /> : null;
+}
+
 export function CaveDetails({ cave, material, player, mobile, onNavigate }: {
   cave: CaveScene; material: MeshStandardMaterial; player: WorldPoint; mobile: boolean; onNavigate(point: WorldPoint): void;
 }) {
@@ -129,6 +219,8 @@ export function CaveDetails({ cave, material, player, mobile, onNavigate }: {
     <Batch name="cave-stalagmites" entries={close.stalagmites} material={material} pointed />
     <Batch name="cave-rock-features" entries={rockFeatures} material={material} />
     <ContactShadows cave={cave} entries={shadowCasters} />
+    <Crystals cave={cave} mobile={mobile} />
+    <Puddles cave={cave} />
     {cave.relief.pools.map((pool, index) => <mesh key={index} name={`cave-water:${index}`} position={[pool.x, pool.level, pool.z]} rotation={[-Math.PI / 2, 0, 0]}
       onClick={event => { event.stopPropagation(); if (event.button === 0 && event.delta <= 5) onNavigate({ x: event.point.x, z: event.point.z }); }}>
       <circleGeometry args={[pool.radius, mobile ? 24 : 40]} />

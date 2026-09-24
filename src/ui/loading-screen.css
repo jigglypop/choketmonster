@@ -19,15 +19,28 @@
   --pastel-font: 'Choket Sans', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
 }
 
+/* BM DoHyeon (Google Fonts "Do Hyeon", OFL), cut to the title's five glyphs by scripts/subset-title-font.py. */
+@font-face {
+  font-family: 'Choket Title';
+  src: url('/fonts/ChoketTitle.woff2') format('woff2');
+  font-display: block;
+}
+
+/* One centred column over the full-bleed art: the title, then the glass card. */
 .adventure-loading {
   position: fixed;
   inset: 0;
   z-index: 200;
-  display: grid;
-  grid-template-rows: 1fr auto;
-  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(20px, 4.5vh, 44px);
+  box-sizing: border-box;
+  padding: max(24px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+  overflow: hidden auto;
   isolation: isolate;
-  background: #3b3f86 url('data:image/webp;base64,UklGRhIBAABXRUJQVlA4IAYBAAAQBgCdASogABIAPrVMnkmnJCKhMAgA4BaJbACdMoMYPaGg3ipmBABDqN/7/moTTG3UfDYWLEdkDjgA/olIdy1RvvsyvDmTDTc33iFP2t8N7AEg8hz9G6hywhQhZXLcuNwuiGTbSL+Gh0SmwPMJOkZRor9YHYWpmgm/PF+jWakiJqBd2OVZ/kdXB1FcTsBi3+F9WWWv99yRdifw1PAtebDZq7SMvxnGvUeFvjW2wz8h63ygQj8qtSqZKlRQFRyIWyrXQhV/E7iKxXVv+v+sZvAOdFzoLx1mQ+xHlJMSHXLfjY12AlNfAkbUuchDpyQLV4fM5cVBK3xVnnvmJyLbIwzPimD3MKAA') 43% 40% / cover;
+  background: #3b3f86 url('data:image/webp;base64,UklGRlwBAABXRUJQVlA4IFABAACQBgCdASogABIAPrVInUmnJCKhMAgA4BaJbACdMoR2fxm4EgwinAj4XdEbi3oPg5W9zIenc4MSl4qoteOAAP5NOKrFRCtEgvJTCvTDfBAul+/LAEUmcmWgPlepRXHbqqBsg4JE6HUtCe96e++pF4qxooeh+8C3ysiMlo5dsk+MEZ5XwE+Vgg3liTQzVbREeCiJkDtDQOibrUwiSCcvHVIFQSfYsbCcceOlZp9i2DCxKGZe/tfz5zkVz8MB1cOM43VR8HC+c18EY+KvCNPB6ozHxIXMzA+wgX2H0ucmqyaaSeF4H9QEpiVQMd14iHGk8+LPoNSO5q/yQ+2HOe/LIn55+6VzYgig5pOMwmBbyMiwQUxhSjXoQA6kAvNJ40vEy0aI6vFNwaAoEuo0/bhA4+ipafkd4tS1/KR/P9gmqJWZefFLjZIhOGHFbSW3GJ0QAAA=') 46% 42% / cover;
   color: var(--pastel-ink);
   font: 500 15px/1.5 var(--pastel-font);
   letter-spacing: -.01em;
@@ -49,16 +62,19 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: 43% 38%;
-  transform-origin: 44% 34%;
+  object-position: 46% 42%;
+  transform-origin: 50% 45%;
   animation: adventure-drift 30s ease-in-out infinite alternate;
 }
+/* A soft pool of dusk behind the centre column keeps the title and card legible over the bright sky. */
 .adventure-loading__scene::after {
   content: '';
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(180deg, transparent 62%, rgba(46, 38, 96, .22));
+  background:
+    radial-gradient(ellipse 58% 62% at 50% 52%, rgba(34, 28, 92, .34), rgba(34, 28, 92, .12) 58%, transparent 78%),
+    linear-gradient(180deg, rgba(26, 24, 82, .18), transparent 30%, transparent 70%, rgba(46, 38, 96, .3));
 }
 .adventure-loading__sparkles {
   position: absolute;
@@ -74,10 +90,8 @@
 }
 
 .adventure-loading__card {
-  grid-row: 2;
-  justify-self: end;
-  width: min(360px, calc(100% - 32px));
-  margin: 0 clamp(16px, 4.5vw, 64px) clamp(16px, 6vh, 64px);
+  flex: none;
+  width: min(380px, 100%);
 }
 .adventure-loading__body {
   display: flex;
@@ -94,13 +108,19 @@
   backdrop-filter: var(--pastel-blur);
   animation: adventure-rise .7s cubic-bezier(.2, .8, .2, 1) both;
 }
+/* The title: large DoHyeon letters in translucent white, no outline, lifted by a soft shadow. */
 .adventure-loading__title {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
+  flex: none;
+  margin: 0;
+  font-family: 'Choket Title', var(--pastel-font);
+  font-weight: 400;
+  font-size: clamp(80px, 15vw, 220px);
+  line-height: 1;
+  letter-spacing: .02em;
   white-space: nowrap;
+  color: rgba(255, 255, 255, .86);
+  text-shadow: 0 .03em .16em rgba(44, 38, 104, .3);
+  animation: adventure-title-in .9s cubic-bezier(.2, .8, .2, 1) both, adventure-title-float 7s ease-in-out .9s infinite alternate;
 }
 
 .adventure-loading__stage { display: grid; gap: 8px; }
@@ -206,27 +226,32 @@ button.startup-auth__submit:active:not(:disabled) { transform: scale(.985); }
 @keyframes adventure-rise {
   from { opacity: 0; transform: translateY(14px); }
 }
+@keyframes adventure-title-in {
+  from { opacity: 0; transform: translateY(-.12em) scale(.94); }
+}
+@keyframes adventure-title-float {
+  to { transform: translateY(-.045em); }
+}
 
 @media (orientation: portrait), (max-width: 700px) {
-  .adventure-loading__art {
-    height: min(100%, calc(100vw / .9));
-    bottom: auto;
-    object-position: 43% 36%;
-    -webkit-mask-image: linear-gradient(180deg, #000 72%, transparent);
-    mask-image: linear-gradient(180deg, #000 72%, transparent);
-  }
-  .adventure-loading__card { justify-self: stretch; width: auto; margin: 0 16px max(16px, env(safe-area-inset-bottom)); }
+  .adventure-loading { justify-content: flex-start; padding-top: max(10vh, env(safe-area-inset-top)); }
+  /* A narrow screen shows the moon and the flying bee above the card instead of an empty strip of sky. */
+  .adventure-loading__art { object-position: 86% 50%; }
+  .adventure-loading__title { font-size: clamp(60px, 18.5vw, 128px); }
+  .adventure-loading__card { width: min(400px, 100%); margin-top: auto; }
   .adventure-loading__body { padding: 20px; gap: 13px; border-radius: 24px; }
   .adventure-loading__detail { min-height: 0; }
 }
 @media (orientation: landscape) and (max-height: 520px) {
-  .adventure-loading__card { width: min(340px, calc(100% - 32px)); margin: 0 16px 12px; }
-  .adventure-loading__body { padding: 14px 16px; gap: 10px; max-height: calc(100svh - 24px); }
+  .adventure-loading { gap: 12px; padding-block: 12px; }
+  .adventure-loading__title { font-size: clamp(48px, 11vw, 110px); }
+  .adventure-loading__card { width: min(340px, 100%); }
+  .adventure-loading__body { padding: 14px 16px; gap: 10px; max-height: none; }
   .startup-auth { gap: 9px; }
   .startup-auth input { min-height: 42px; }
   button.startup-auth__submit, .adventure-loading__retry { min-height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .adventure-loading__art, .adventure-loading__sparkles, .adventure-loading__body { animation: none; }
+  .adventure-loading__art, .adventure-loading__sparkles, .adventure-loading__body, .adventure-loading__title { animation: none; }
   .adventure-loading progress::-webkit-progress-value { transition: none; }
 }

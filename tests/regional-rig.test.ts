@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  AnimationClip, Bone, BoxGeometry, BufferAttribute, Group, Mesh, MeshStandardMaterial, Object3D, Quaternion,
+  AnimationClip, Bone, Box3, BoxGeometry, BufferAttribute, Group, Mesh, MeshStandardMaterial, Object3D, Quaternion,
   QuaternionKeyframeTrack, Skeleton, SkinnedMesh, Vector3, VectorKeyframeTrack,
 } from 'three';
-import { STATIC_MOTION_CLIP, selectPokemonMotionClip } from '../src/data/model-motion';
+import { STATIC_MOTION_CLIP, clipGroundSpeed, selectPokemonMotionClip } from '../src/data/model-motion';
 import { CLIP_MOTION_THRESHOLDS, isMovingClipMotion, missingMotionKinds, summarizeClipMotion } from '../src/three/clip-motion';
 import { REGIONAL_RIG_VERSION, boneMotionRole, boneSide, prepareRegionalRig } from '../src/three/johto-rig';
 
@@ -145,6 +145,45 @@ describe('regional rig v5', () => {
     expect(piece.parent).toBe(arm);
     expect(scene.userData.nativeMotion).toMatchObject({ reason: 'native-transform-motion' });
     expect(selectPokemonMotionClip(gltf.animations, 'walk').clip?.name).toBe('Walking');
+  });
+
+  it('plays walk loops in place and keeps their root travel as ground speed', () => {
+    const { scene } = skinnedModel();
+    const times = [0, .25, .5, .75, 1];
+    // Hips stride 0.9 forward per loop with a bob; the thigh below them carries the same drift.
+    const stride = (bone: string, y: number) => new VectorKeyframeTrack(`${bone}.position`, times, times.flatMap((t, i) => [0, y + (i % 2) * .05, t * .9]));
+    const swing = new QuaternionKeyframeTrack('LThigh.quaternion', times, [0, 25, 0, -25, 0].flatMap(degrees => turn(degrees)));
+    const walk = clip('walk01_loop', stride('Hips', .9), stride('LThigh', 0), swing);
+    const idle = clip('defaultwait01_loop', rotation('Spine', 0, 6, 0));
+    const lunge = clip('attack01', new VectorKeyframeTrack('Hips.position', [0, 1], [0, .9, 0, 0, .9, .6]), rotation('Spine', 0, 20));
+    const gltf = { scene, animations: [idle, walk, lunge] };
+    prepareRegionalRig(gltf, 25);
+    const hips = walk.tracks.find(track => track.name === 'Hips.position')!, thigh = walk.tracks.find(track => track.name === 'LThigh.position')!;
+    // The loop now ends where it starts; the bob stays and the nested thigh is untouched.
+    expect(hips.values[14]).toBeCloseTo(hips.values[2], 6);
+    expect(hips.values[4] - hips.values[1]).toBeCloseTo(.05, 6);
+    expect(thigh.values[14]).toBeCloseTo(.9, 6);
+    // 0.9 per second over a 1.8 tall model.
+    expect(clipGroundSpeed(walk)).toBeCloseTo(.5, 2);
+    expect(clipGroundSpeed(idle)).toBeUndefined();
+    // Attacks are one-shots; their lunge stays.
+    expect(lunge.tracks[0].values[5]).toBeCloseTo(.6, 6);
+    expect(selectPokemonMotionClip(gltf.animations, 'walk', .5).clip).toBe(walk);
+  });
+
+  it('turns a sideways source to face +Z before rigging', () => {
+    // Basculin's source swims along +X: its head end is the wider +X half.
+    const scene = new Group(), body = new Mesh(new BoxGeometry(2, .5, .5).translate(0, .25, 0), new MeshStandardMaterial());
+    const head = new Mesh(new BoxGeometry(.3, .6, .6).translate(.9, .3, 0), new MeshStandardMaterial());
+    scene.add(body, head);
+    const gltf = { scene, animations: [] as AnimationClip[] };
+    prepareRegionalRig(gltf, 550);
+    scene.updateMatrixWorld(true);
+    const bounds = new Box3().setFromObject(scene, true), size = bounds.getSize(new Vector3());
+    expect(size.z).toBeCloseTo(2.05, 5); expect(size.x).toBeCloseTo(.6, 5);
+    expect(bounds.max.z).toBeCloseTo(1.05, 5); // the head now leads along +Z
+    expect(scene.userData.orientationFix).toMatchObject({ yaw: -Math.PI / 2 });
+    expect(gltf.animations.map(value => value.name)).toEqual(['CM_idle', 'CM_walk', 'CM_attack', 'CM_damage']);
   });
 
   it('skins a static source and authors all four kinds', () => {

@@ -100,16 +100,21 @@ describe('cave simulation scenes', () => {
 
   it('keeps surface gates closed underground: an exit opens only with the badges that reach its side', () => {
     const game = createGame(1, 'dungeon-gates'), world = new OpenWorldSimulation(graph, game, 7188, undefined, policy);
-    const diglett = getCaveScene('cave:kanto:diglett-cave')!, [east, west] = diglett.portals;
+    // The tunnel's east mouth opens onto 1F, its west mouth onto B1F.
+    const [upper, lower] = dungeonFloors(getCaveScene('cave:kanto:diglett-cave')!), east = upper.portals[0], west = lower.portals[0];
     world.player = { ...west.surface, heading: 0 };
     expect(world.traverseCavePortal()).toBe(true);
+    expect(world.sceneId).toBe(lower.sceneId);
     // Without the Cascade Badge the tunnel's east end stays shut, as does the gate it bypasses.
     expect(world.caveExits().map(exit => exit.surfaceLocationId)).toEqual(['diglett-cave-west']);
     expect(world.exitCave(east.id)).toBe(false);
+    world.player = { ...lower.stairs[0].interior, heading: 0 };
+    expect(world.traverseCavePortal()).toBe(true);
+    expect(world.sceneId).toBe(upper.sceneId);
     world.player = { ...east.interior, heading: 0 };
     expect(world.portalUnderfoot()).toBe(false);
     expect(world.traverseCavePortal()).toBe(false);
-    expect(world.sceneId).toBe(diglett.sceneId);
+    expect(world.sceneId).toBe(upper.sceneId);
     game.defeatedGyms = [1, 2]; game.player.badges = 2;
     expect(world.caveExits().map(exit => exit.surfaceLocationId).sort()).toEqual(['diglett-cave-east', 'diglett-cave-west']);
     expect(world.traverseCavePortal()).toBe(true);

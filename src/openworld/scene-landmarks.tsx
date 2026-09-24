@@ -1,18 +1,18 @@
 import { Html } from '@react-three/drei';
-import { RigidBody } from '@react-three/rapier';
+import { CuboidCollider, RigidBody } from '@react-three/rapier';
 import { useEffect, useMemo, useState } from 'react';
-import { BufferGeometry, Float32BufferAttribute, MeshStandardMaterial, Vector3, type Camera, type Object3D } from 'three';
+import { BufferGeometry, Color, Float32BufferAttribute, MeshStandardMaterial, Vector3, type Camera, type Object3D } from 'three';
 import { CAVE_SCENES, caveContains, getCaveScene, type CaveScene } from './caves';
-import { useSurfaceTextures } from './materials';
+import { interiorSurface } from './interior-textures';
 import type { WorldPoint, WorldSample } from './types';
 import { caveFloorShade, caveVertexHeight } from './cave-relief';
 import { CaveDetails } from './cave-details';
 import { DungeonStairs } from './dungeon-interior';
 import { portalBadges } from './dungeon-gates';
+import { LairChamber } from './lair-chamber';
 import type { KantoGate, KantoGym, KantoLocation } from './kanto';
 import { LeagueStadium } from './league-stadium';
 
-const CAVE_TEXTURE_TILE = 2.5;
 const portalProjection = new Vector3();
 
 export function gateVisualState(requiredBadges: number, badges: number) {
@@ -40,37 +40,57 @@ export function GymEntranceStatus({ gym, badges, showLabel }: { gym: KantoGym; b
   </group>;
 }
 
+/** Red and white bands along a toll barrier arm, from its pivot outward. */
+function BarrierArm({ length }: { length: number }) {
+  const bands = Math.max(3, Math.round(length / .6)), band = length / bands;
+  return <>{Array.from({ length: bands }, (_, index) => <mesh key={index} position={[-(index + .5) * band, 0, 0]} castShadow>
+    <boxGeometry args={[band, .16, .12]} /><meshStandardMaterial color={index % 2 ? '#f6f3ec' : '#d8402f'} roughness={.6} />
+  </mesh>)}</>;
+}
+
+/**
+ * A toll-gate checkpoint: a booth beside the road and a striped barrier arm across it. Locked, the arm is down and the
+ * booth light red; open, the arm stands up and the light turns green. Badge slots sit on the booth's road-side sign.
+ */
 export function ProgressGate({ gate, from, to, y, halfWidth, badges, showLabel }: {
   gate: KantoGate; from: KantoLocation; to: KantoLocation; y: number; halfWidth: number; badges: number; showLabel: boolean;
 }) {
   const x = gate.position?.x ?? (from.x + to.x) / 2, z = gate.position?.z ?? (from.z + to.z) / 2;
   const rotationY = Math.atan2(to.x - from.x, to.z - from.z);
   const state = gateVisualState(gate.requiredBadges, badges);
-  const width = Math.max(2.4, halfWidth * 2);
+  const width = Math.max(2.4, halfWidth * 2), edge = width / 2;
+  const booth = { x: edge + 1.35, width: 1.7, depth: 2, height: 2.3 }, pivot = { x: edge + .35, y: 1.05 };
+  const sign = { width: Math.max(1.2, state.required * .34 + .3), y: booth.height + .55 };
   return <group name={`progress-gate:${gate.id}:${state.locked ? 'locked' : 'open'}`} position={[x, y, z]} rotation={[0, rotationY, 0]}>
-    {[-halfWidth, halfWidth].map(side => <group key={side} position={[side, 0, 0]}>
-      <mesh position={[0, 1.45, 0]} castShadow><cylinderGeometry args={[.38, .52, 2.9, 8]} /><meshStandardMaterial color="#665640" roughness={.92} /></mesh>
-      <mesh position={[0, 3.05, 0]} castShadow><dodecahedronGeometry args={[.58, 0]} /><meshStandardMaterial color="#d8bd62" roughness={.7} /></mesh>
-    </group>)}
-    <mesh position={[0, 2.8, 0]} castShadow><boxGeometry args={[width + .55, .38, .42]} /><meshStandardMaterial color="#705b3d" roughness={.9} /></mesh>
-    {Array.from({ length: state.required }, (_, index) => {
-      const offset = state.required <= 1 ? 0 : (index / (state.required - 1) - .5) * Math.min(width - 1, 6.4);
-      return <mesh key={index} position={[offset, 2.8, -.24]} rotation={[Math.PI / 2, 0, 0]}>
-        <cylinderGeometry args={[.16, .16, .08, 12]} />
-        <meshStandardMaterial color={index < state.earned ? '#f4d65c' : '#4a4036'} emissive={index < state.earned ? '#5b4608' : '#000000'} emissiveIntensity={.35} />
-      </mesh>;
-    })}
-    {state.locked && <>
-      {gate.terrainBoundary
-        ? <mesh position={[0, .82, 0]} castShadow><boxGeometry args={[width, 1.35, .32]} /><meshStandardMaterial color="#c54628" roughness={.88} /></mesh>
-        : <RigidBody type="fixed" colliders="cuboid" position={[0, .82, 0]}>
-          <mesh castShadow><boxGeometry args={[width, 1.35, .32]} /><meshStandardMaterial color="#c54628" roughness={.88} /></mesh>
-        </RigidBody>}
-      {[-.33, 0, .33].map((ratio, index) => <mesh key={index} position={[ratio * width, .82, -.2]} rotation={[0, 0, index % 2 ? -.22 : .22]} castShadow>
-        <boxGeometry args={[.3, 1.7, .46]} /><meshStandardMaterial color="#ffe375" emissive="#806015" emissiveIntensity={.25} roughness={.62} />
-      </mesh>)}
-    </>}
-    {showLabel && <Html center calculatePosition={gateScreenPosition} position={[0, 3.65, 0]} zIndexRange={[10, 9]} style={{ pointerEvents: 'none' }}>
+    <group name="toll-booth" position={[booth.x, 0, 0]}>
+      <mesh position={[0, .08, 0]} receiveShadow><boxGeometry args={[booth.width + .7, .16, booth.depth + .9]} /><meshStandardMaterial color="#c9c3b5" roughness={.95} /></mesh>
+      <mesh position={[0, booth.height / 2 + .16, 0]} castShadow receiveShadow><boxGeometry args={[booth.width, booth.height, booth.depth]} /><meshStandardMaterial color="#f3efe5" roughness={.8} /></mesh>
+      {/* A glass band on every side, darker than the walls. */}
+      <mesh position={[0, booth.height * .62 + .16, 0]}><boxGeometry args={[booth.width + .02, .75, booth.depth + .02]} /><meshStandardMaterial color="#35505c" roughness={.2} metalness={.1} /></mesh>
+      <mesh position={[0, booth.height + .28, 0]} castShadow><boxGeometry args={[booth.width + .5, .24, booth.depth + .5]} /><meshStandardMaterial color="#2f8f86" roughness={.7} /></mesh>
+      <mesh position={[-booth.width / 2 - .02, booth.height * .95, booth.depth / 2 - .3]}><sphereGeometry args={[.13, 12, 8]} />
+        <meshStandardMaterial color={state.locked ? '#ff4a3a' : '#46e07a'} emissive={state.locked ? '#c01d10' : '#1c9c4a'} emissiveIntensity={1.4} /></mesh>
+      {state.required > 0 && <group position={[-booth.width / 2 - .06, 0, 0]} rotation={[0, -Math.PI / 2, 0]}>
+        <mesh position={[0, sign.y, 0]} castShadow><boxGeometry args={[sign.width, .5, .08]} /><meshStandardMaterial color="#1f5f8f" roughness={.7} /></mesh>
+        <mesh position={[0, sign.y - .45, 0]}><boxGeometry args={[.08, .4, .08]} /><meshStandardMaterial color="#8b9196" /></mesh>
+        {Array.from({ length: state.required }, (_, index) => {
+          const offset = state.required <= 1 ? 0 : (index / (state.required - 1) - .5) * (sign.width - .34);
+          return [-1, 1].map(face => <mesh key={`${index}:${face}`} position={[offset, sign.y, face * .05]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[.13, .13, .04, 12]} />
+            <meshStandardMaterial color={index < state.earned ? '#f4d65c' : '#4a4036'} emissive={index < state.earned ? '#5b4608' : '#000000'} emissiveIntensity={.35} />
+          </mesh>);
+        })}
+      </group>}
+    </group>
+    <group name="toll-barrier" position={[pivot.x, 0, 0]}>
+      <mesh position={[0, pivot.y / 2, 0]} castShadow><boxGeometry args={[.36, pivot.y, .36]} /><meshStandardMaterial color="#f1c33c" roughness={.6} /></mesh>
+      <group position={[0, pivot.y, 0]} rotation={[0, 0, state.locked ? 0 : -1.35]}>
+        <mesh position={[.3, 0, 0]} castShadow><boxGeometry args={[.4, .26, .2]} /><meshStandardMaterial color="#5c6268" roughness={.6} /></mesh>
+        <BarrierArm length={width + .2} />
+      </group>
+    </group>
+    {state.locked && !gate.terrainBoundary && <RigidBody type="fixed" colliders={false} position={[0, .82, 0]}><CuboidCollider args={[edge, .7, .2]} /></RigidBody>}
+    {showLabel && <Html center calculatePosition={gateScreenPosition} position={[0, 3.3, 0]} zIndexRange={[10, 9]} style={{ pointerEvents: 'none' }}>
       <div className={`world-portal-label world-gate-label ${state.locked ? 'locked' : 'open'}`} data-gate-id={gate.id} data-gate-state={state.locked ? 'locked' : 'open'}>
         <strong>{state.locked ? `🔒 통행 잠김 · ${gate.badgeLabel ?? '배지'} ${state.earned}/${state.required}` : '✓ 관문 개방'}</strong>
         {state.locked && <span>{gate.reason}</span>}
@@ -116,7 +136,8 @@ function gateScreenPosition(object: Object3D, camera: Camera, size: { width: num
   return [Math.max(marginX, Math.min(size.width - marginX, x)), Math.max(top, Math.min(size.height - 220, y))];
 }
 
-function createCaveFloor(cave: CaveScene): BufferGeometry {
+/** `tile`: metres one texture repeat covers. */
+function createCaveFloor(cave: CaveScene, tile: number): BufferGeometry {
   const positions: number[] = [], colors: number[] = [], uvs: number[] = [], indices: number[] = [];
   const vertices = new Map<string, number>();
   const vertex = (x: number, z: number) => {
@@ -127,7 +148,7 @@ function createCaveFloor(cave: CaveScene): BufferGeometry {
     const edge = caveContains(cave.outline, x, z, 4.6) ? 1 : .76;
     const shade = caveFloorShade(cave.relief, x, z) * edge;
     colors.push(shade * .94, shade * .98, shade);
-    uvs.push(x / CAVE_TEXTURE_TILE, z / CAVE_TEXTURE_TILE);
+    uvs.push(x / tile, z / tile);
     vertices.set(key, index);
     return index;
   };
@@ -146,59 +167,96 @@ function createCaveFloor(cave: CaveScene): BufferGeometry {
   return geometry;
 }
 
-function createCaveWalls(cave: CaveScene): BufferGeometry {
-  const positions: number[] = [], uvs: number[] = [], indices: number[] = [];
-  let distance = 0;
-  cave.wallSegments.forEach((wall, wallIndex) => {
-    const tangent = { x: Math.cos(wall.rotationY), z: -Math.sin(wall.rotationY) };
-    const normalA = { x: -tangent.z, z: tangent.x }, normalB = { x: tangent.z, z: -tangent.x };
-    const inward = normalA.x * -wall.x + normalA.z * -wall.z > normalB.x * -wall.x + normalB.z * -wall.z ? normalA : normalB;
-    const ends = [-1, 1], levels = [-.55, 1.05, 2.7, 4.45];
-    const base = positions.length / 3;
-    for (let level = 0; level < levels.length; level++) for (const end of ends) {
-      const vertexIndex = (wallIndex + (end > 0 ? 1 : 0)) % cave.wallSegments.length;
-      const wave = Math.sin(vertexIndex * 1.73 + level * 2.11 + cave.relief.seed * .17) * .18;
-      const inset = [0, .18, .52, .88][level] + wave;
-      const topJitter = level === levels.length - 1 ? .32 * Math.sin(vertexIndex * .91 + cave.relief.seed) : 0;
-      positions.push(wall.x + tangent.x * wall.width / 2 * end + inward.x * inset,
-        levels[level] + topJitter, wall.z + tangent.z * wall.width / 2 * end + inward.z * inset);
-      uvs.push((distance + (end + 1) * wall.width / 2) / CAVE_TEXTURE_TILE, levels[level] / CAVE_TEXTURE_TILE);
-    }
-    for (let level = 0; level < levels.length - 1; level++) {
-      const a = base + level * 2, b = a + 1, d = a + 2, c = a + 3;
-      indices.push(a, b, d, b, c, d);
-    }
-    distance += wall.width;
+/** Smooth value noise along the wall that wraps exactly once around the chamber. */
+function perimeterNoise(distance: number, perimeter: number, wavelength: number, seed: number): number {
+  const period = Math.max(3, Math.round(perimeter / wavelength)), t = distance / perimeter * period, cell = Math.floor(t), f = t - cell;
+  const at = (index: number) => { const n = Math.sin(((index % period) + period) % period * 127.1 + seed * 311.7) * 43758.5453; return n - Math.floor(n); };
+  const eased = f * f * (3 - 2 * f);
+  return at(cell) * (1 - eased) + at(cell + 1) * eased;
+}
+
+// Wall rows: height above the floor and how far the rock leans in there.
+const WALL_ROWS = [
+  { y: -.6, lean: 0 }, { y: .3, lean: .16 }, { y: 1.1, lean: .38 }, { y: 1.9, lean: .6 }, { y: 2.7, lean: .76 },
+  { y: 3.5, lean: .9 }, { y: 4.3, lean: 1.02 }, { y: 4.95, lean: 1.12 },
+] as const;
+
+/**
+ * One continuous rock skin around the chamber outline: bulging overhangs, horizontal strata ridges, a ragged
+ * crest, and baked banding and occlusion in the vertex colours. It faces only inward, so the orbit camera still
+ * sees in from outside, and it stays inside the outline's closed rim, so walkable ground is untouched.
+ */
+function createCaveWalls(cave: CaveScene, tile: number): BufferGeometry {
+  const outline = cave.outline, seed = cave.relief.seed;
+  const columns: Array<{ x: number; z: number; distance: number }> = [];
+  let perimeter = 0;
+  outline.forEach((point, index) => {
+    const next = outline[(index + 1) % outline.length], length = Math.hypot(next.x - point.x, next.z - point.z), steps = Math.max(1, Math.round(length / 1.1));
+    for (let step = 0; step < steps; step++) columns.push({ x: point.x + (next.x - point.x) * step / steps, z: point.z + (next.z - point.z) * step / steps, distance: perimeter + length * step / steps });
+    perimeter += length;
   });
+  const count = columns.length, positions: number[] = [], colors: number[] = [], uvs: number[] = [], indices: number[] = [];
+  // One extra column closes the loop with continuous texture coordinates.
+  for (let column = 0; column <= count; column++) {
+    const here = columns[column % count], previous = columns[(column - 1 + count) % count], next = columns[(column + 1) % count];
+    const distance = column === count ? perimeter : here.distance;
+    let nx = -(next.z - previous.z), nz = next.x - previous.x;
+    const length = Math.hypot(nx, nz) || 1; nx /= length; nz /= length;
+    if (nx * -here.x + nz * -here.z < 0) { nx = -nx; nz = -nz; }
+    const buttress = perimeterNoise(distance, perimeter, 7, seed) - .5, grain = perimeterNoise(distance, perimeter, 2.2, seed + 3) - .5;
+    const crest = perimeterNoise(distance, perimeter, 4.5, seed + 7) - .5;
+    WALL_ROWS.forEach((row, level) => {
+      const top = level === WALL_ROWS.length - 1;
+      const y = row.y + (top ? crest * 1.4 : 0);
+      const mid = Math.sin(Math.PI * Math.max(0, Math.min(1, row.y / 4.6)));
+      const strata = level > 0 && !top ? Math.sin(row.y * 3.3 + buttress * 4) * .1 : 0;
+      const inset = row.lean + (level > 0 ? buttress * .7 * mid + grain * .3 * mid + strata : 0);
+      positions.push(here.x + nx * inset, y, here.z + nz * inset);
+      uvs.push(distance / tile, (y + inset * .6) / tile);
+      const band = .86 + .1 * Math.sin(y * 2.6 + buttress * 5 + grain * 3), foot = .6 + .4 * Math.min(1, Math.max(0, (y + .4) / 1.8));
+      const shade = band * foot * (1 - Math.max(0, -buttress) * .25) * (top ? .88 : 1);
+      colors.push(shade * .97, shade * .98, shade);
+    });
+  }
+  const rows = WALL_ROWS.length;
+  for (let column = 0; column < count; column++) for (let level = 0; level < rows - 1; level++) {
+    const a = column * rows + level, b = a + 1, c = a + rows, d = c + 1;
+    indices.push(a, c, b, b, c, d);
+  }
   const geometry = new BufferGeometry();
   geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new Float32BufferAttribute(colors, 3));
   geometry.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
   geometry.setIndex(indices); geometry.computeVertexNormals();
   return geometry;
 }
 
+const CAVE_TINTS: Record<CaveScene['relief']['theme'], string> = { limestone: '#a39d8e', water: '#7a8d87', ice: '#b2cdd2', volcanic: '#807470', interior: '#7d8586' };
+
 export function CaveInterior({ cave, player, mobile, onNavigate }: { cave: CaveScene; player: WorldPoint; mobile: boolean; onNavigate(point: WorldPoint): void }) {
-  const textures = useSurfaceTextures('rock');
-  const material = useMemo(() => {
-    const tint = { limestone: '#9a9485', water: '#697e78', ice: '#a8c5ca', volcanic: '#756861', interior: '#737b7c' }[cave.relief.theme];
-    const result = new MeshStandardMaterial({
-      name: 'cave-rock-pbr', color: tint, roughness: cave.relief.theme === 'water' ? .78 : .94, metalness: cave.relief.theme === 'interior' ? .08 : 0,
-      map: textures.diffuse, normalMap: textures.normal, roughnessMap: textures.arm, aoMap: textures.arm,
-    });
-    result.userData.openWorldSurface = 'cave-rock-uv';
-    return result;
-  }, [cave.relief.theme, textures]);
-  const floorMaterial = useMemo(() => {
-    const result = material.clone(); result.name = 'cave-floor-pbr'; result.vertexColors = true; return result;
-  }, [material]);
-  const floor = useMemo(() => createCaveFloor(cave), [cave]);
-  const walls = useMemo(() => createCaveWalls(cave), [cave]);
-  useEffect(() => () => { floorMaterial.dispose(); material.dispose(); floor.dispose(); walls.dispose(); }, [floor, floorMaterial, material, walls]);
+  // Clean baked surfaces: banded rock on the walls, packed earth underfoot. The vertex colours add the depth.
+  const [floorMaterial, wallMaterial, formationMaterial] = useMemo(() => {
+    const tint = CAVE_TINTS[cave.relief.theme], roughness = cave.relief.theme === 'water' ? .78 : .92, metalness = cave.relief.theme === 'interior' ? .08 : 0;
+    const surface = (name: string, pattern: 'strata' | 'earth') => {
+      const set = interiorSurface(pattern);
+      const result = new MeshStandardMaterial({ name, color: tint, roughness, metalness, vertexColors: true, map: set.map, normalMap: set.normalMap, roughnessMap: set.ormMap, aoMap: set.ormMap, aoMapIntensity: .6 });
+      result.userData.openWorldSurface = 'cave-rock-uv';
+      return result;
+    };
+    // Ledges, spikes and boulders are faceted solids in the same rock colour; no texture is stretched over them.
+    const formations = new MeshStandardMaterial({ name: 'cave-formations', color: new Color(tint).multiplyScalar(.9), roughness, metalness, flatShading: true });
+    return [surface('cave-floor-pbr', 'earth'), surface('cave-wall-pbr', 'strata'), formations];
+  }, [cave.relief.theme]);
+  const floor = useMemo(() => createCaveFloor(cave, interiorSurface('earth').tile), [cave]);
+  const walls = useMemo(() => createCaveWalls(cave, interiorSurface('strata').tile), [cave]);
+  useEffect(() => () => { floorMaterial.dispose(); wallMaterial.dispose(); formationMaterial.dispose(); }, [floorMaterial, formationMaterial, wallMaterial]);
+  useEffect(() => () => { floor.dispose(); walls.dispose(); }, [floor, walls]);
   return <group name={`cave-interior:${cave.id}`} dispose={null}>
     <mesh name="cave-floor" geometry={floor} material={floorMaterial} receiveShadow onClick={event => { event.stopPropagation(); if (event.button === 0 && event.delta <= 5) onNavigate({ x: event.point.x, z: event.point.z }); }}>
     </mesh>
-    <mesh name="cave-wall:outline" geometry={walls} material={material} receiveShadow castShadow />
-    <CaveDetails cave={cave} material={material} player={player} mobile={mobile} onNavigate={onNavigate} />
+    <mesh name="cave-wall:outline" geometry={walls} material={wallMaterial} receiveShadow castShadow />
+    <CaveDetails cave={cave} material={formationMaterial} player={player} mobile={mobile} onNavigate={onNavigate} />
+    {cave.legendary && <LairChamber scene={cave} stone="#a8a294" trim="#6f6a60" mobile={mobile} />}
     <DungeonStairs scene={cave} />
   </group>;
 }

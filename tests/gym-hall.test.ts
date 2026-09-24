@@ -6,6 +6,8 @@ import { createGame } from '../src/game/engine';
 import { gymTeam } from '../src/game/gym-teams';
 import { getGymScene, gymSceneId, HALL_BATTLE_GAP, leagueSceneId, onGymCourt } from '../src/openworld/gym-scenes';
 import { OpenWorldSimulation } from '../src/openworld/simulation';
+import { getWorldAtlas } from '../src/openworld/atlas';
+import { findWorldPath } from '../src/openworld/navigation';
 
 const graph = JSON.parse(readFileSync('public/data/connectome.json', 'utf8')) as Graph;
 const policy = JSON.parse(readFileSync('public/data/openworld-policy.json', 'utf8')) as FieldPolicy;
@@ -93,5 +95,19 @@ describe('gym hall', () => {
     world.player = { ...hall.door, heading: 0 };
     Object.assign(world.entities.find(entity => entity.kind === 'companion')!, world.player);
     expect(world.enterLeague()).toBe(false);
+  });
+});
+
+describe('gyms away from towns', () => {
+  it('give every trial site, arena and mountain gym a hall whose door is walked to from its place', () => {
+    for (const region of ['alola', 'hisui', 'paldea']) {
+      const atlas = getWorldAtlas(region);
+      for (const gym of atlas.gyms) {
+        const place = atlas.locations.find(item => item.id === gym.locationId)!, hall = getGymScene(gymSceneId(region, gym.locationId));
+        expect(hall, `${region}:${gym.locationId}`).toBeDefined();
+        expect(atlas.sample(hall!.door.x, hall!.door.z).blocked, gym.locationId).toBe(false);
+        if (place.kind !== 'town') expect(findWorldPath(atlas.nearestWalkable(place.x, place.z, 8)!, hall!.door, atlas.sample).length, gym.locationId).toBeGreaterThan(0);
+      }
+    }
   });
 });

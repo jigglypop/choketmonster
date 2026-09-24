@@ -17,7 +17,6 @@ import {
   CanvasTexture,
   Color,
   DirectionalLight,
-  DoubleSide,
   Float32BufferAttribute,
   Frustum,
   Sphere,
@@ -50,10 +49,10 @@ import { cachedSceneryPlacements, SCENERY_ASSETS, type SceneryAssetId, type Scen
 import { createGrounding, terrainSurfaceHeight } from './grounding';
 import { getWorldAtlas, type WorldAtlas } from './atlas';
 import { hasPokemonModel } from '../game/assets';
-import { selectPokemonMotionClip } from '../data/model-motion';
+import { clipGroundSpeed, selectPokemonMotionClip } from '../data/model-motion';
 import { acquireModel, modelCacheStats, retryFailedModels } from '../three/model-cache';
 import { creatureLods, terrainChunks, TERRAIN_CHUNK_SIZE, type TerrainChunk, type VisibilityTest } from './lod';
-import { initialYaw, movementYaw, turnTowards } from './motion';
+import { initialYaw, movementYaw, turnTowards, walkCycleRate } from './motion';
 import { normalizePokemonModel } from './model-normalization';
 import { disposeNormalizedPokemonMaterials } from './pokemon-materials';
 import { createTerrainSurface } from './terrain-surface';
@@ -69,7 +68,8 @@ import { onRenderSuspension, renderingSuspended } from '../three/render-budget';
 import { WORLD_MIN, WORLD_MAX, WORLD_SCALE, surfaceSceneId } from './world-space';
 import { getCaveScene, hasDungeonLandmark } from './caves';
 import { DUNGEON_LOOKS, DungeonEntrances, DungeonInterior } from './dungeon-interior';
-import { getGymScene } from './gym-scenes';
+import { IndoorLighting } from './interior-lighting';
+import { getGymScene, gymBuildingPoint } from './gym-scenes';
 import { GymInterior } from './gym-interior';
 import { LeagueInterior } from './league-interior';
 import { CaveInterior, GymEntranceStatus, ProgressGate, RegionalLeagueLandmark, ScenePortals, isRegionalLeagueLocation } from './scene-landmarks';
@@ -85,6 +85,8 @@ import { DETAIL_KINDS, PAVING_CELL, detailNoise, isTownPaved, trailHalfWidth, ty
 import { TownProps, createDetailGeometry, detailMaterial, regionalLandmarkGeometry, townPavingGeometry, useWorldDetails } from './town-details';
 import { THEME_BY_REGION } from './exploration-sites';
 import { FieldGrass } from './field-grass';
+import { CaveMouths } from './cave-mouths';
+import { ParkInterior } from './park-interior';
 import { picketFenceGeometry } from './picket-fence';
 const NATURE_DETAIL_RADIUS = 68;
 // Bound scenery streaming even though the view no longer uses fog.
@@ -550,20 +552,15 @@ function TrailAndWater({ sampleWorld, player, badges, atlas, visible, gyms = atl
           <mesh position={[.82, .35, 0]}><boxGeometry args={[.16, 1.1, .16]} /><meshStandardMaterial color="#6b4b2c" /></mesh>
         </group>
       </group>)}
-      {atlas.locations.filter(item => item.kind === 'cave' && !isRegionalLeagueLocation(atlas.id, item.id) && !hasDungeonLandmark(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) <= 80 && visible(item.x, 3, item.z, 16)).map(cave => {
-        // The location center is a walking/arrival point, so solid scenery belongs beyond the path.
-        const candidates = [8, 12, 16, 22].flatMap(radius => [0, -.8, .8, -1.6, 1.6, Math.PI].map(angle => ({ x: cave.x + Math.sin(angle) * radius, z: cave.z - Math.cos(angle) * radius })));
-        const point = candidates.find(point => [-3.8, 0, 3.8].every(dx => [-1.8, 0, 1.8].every(dz => sampleWorld(point.x + dx, point.z + dz).blocked)));
-        if (!point) return null;
-        return <group key={cave.id} name={`cave-entrance:${cave.id}`} position={[point.x, terrainSurfaceHeight(sampleWorld, point.x, point.z), point.z]}>
-          {[-1, 1].map(side => <group key={side} position={[side * 2.65, 0, 0]}>
-            <mesh position={[0, 1.35, 0]} scale={[1.1, 1.6, .9]} rotation={[.1, side * .2, side * .15]} castShadow receiveShadow><dodecahedronGeometry args={[1.35, 1]} /><SurfaceMaterial surface="rock" color="#74766b" /></mesh>
-            <mesh position={[-side * .9, 3.05, -.2]} scale={[1.35, .75, .95]} rotation={[0, 0, side * -.3]} castShadow receiveShadow><dodecahedronGeometry args={[1.45, 1]} /><SurfaceMaterial surface="rock" color="#686b61" /></mesh>
-          </group>)}
-          <mesh position={[0, 3.6, -.35]} scale={[1.3, .6, 1]} castShadow receiveShadow><dodecahedronGeometry args={[1.4, 1]} /><SurfaceMaterial surface="rock" color="#7b7c70" /></mesh>
-          <mesh position={[0, 1.5, -1.2]}><circleGeometry args={[1.7, 24]} /><meshBasicMaterial color="#171b1c" side={DoubleSide} /></mesh>
+      {/* Gyms away from towns (trial sites, arenas) stand at their place's edge and open the same hall. */}
+      {gyms.filter(gym => locations.get(gym.locationId)?.kind !== 'town').map(gym => {
+        const point = gymBuildingPoint(atlas.id, gym.locationId);
+        if (!point || Math.hypot(point.x - player.x, point.z - player.z) > 85 || !visible(point.x, 3, point.z, 8)) return null;
+        return <group key={gym.locationId} name={`field-gym:${gym.locationId}`} position={[point.x, terrainSurfaceHeight(sampleWorld, point.x, point.z), point.z]} scale={WORLD_SCALE}>
+          <TownBuilding townId={gym.locationId} townColor={townStyle(gym.locationId).color} index={2} gym={gym} badges={badges} showGymLabel={Math.hypot(point.x - player.x, point.z - player.z) <= 14 * WORLD_SCALE} onGymEnter={onGymEnter} />
         </group>;
       })}
+      <CaveMouths atlas={atlas} sampleWorld={sampleWorld} player={player} visible={visible} />
       {atlas.gates.filter(gate => gate.visible !== false).map(gate => {
         const from = locations.get(gate.from)!, to = locations.get(gate.to)!;
         const x = gate.position?.x ?? (from.x + to.x) / 2, z = gate.position?.z ?? (from.z + to.z) / 2;
@@ -648,7 +645,7 @@ function PokemonModel({ creature, url, onStatus }: { creature: WorldCreature; ur
     return () => { active = false; clearTimeout(deadline); restore.forEach(reset => reset()); };
   }, [gltf, normalized]);
   useFrame(({ clock, camera }, delta) => {
-    mixer.current?.update(Math.min(delta, .05) * (creature.action === 'walk' ? MathUtils.clamp((creature.movementSpeed ?? 2.4) / 2.4, .65, 1.8) : 1));
+    mixer.current?.update(Math.min(delta, .05) * (creature.action === 'walk' ? walkCycleRate(creature.movementSpeed, creature.displayHeight, activeAction.current && clipGroundSpeed(activeAction.current.getClip())) : 1));
     if (!root.current) return;
     const gait = MathUtils.clamp(creature.movementSpeed ?? 2.4, 1.2, 5.2);
     const phase = clock.elapsedTime * (creature.action === 'walk' ? gait * 2.7 : 2.4) + creature.speciesId;
@@ -702,8 +699,10 @@ function PokemonModel({ creature, url, onStatus }: { creature: WorldCreature; ur
 
   useEffect(() => {
     if (!mixer.current || !gltf?.animations.length) return;
+    // Pace in display heights per second picks the walk loop whose stride fits the ground speed.
+    const pace = (creature.movementSpeed ?? 2.4) / Math.max(.3, creature.displayHeight ?? 1.2);
     const { clip, matched } = selectPokemonMotionClip(gltf.animations,
-      creature.action === 'attack' ? 'attack' : creature.action === 'hurt' ? 'damage' : creature.action === 'walk' ? 'walk' : 'idle');
+      creature.action === 'attack' ? 'attack' : creature.action === 'hurt' ? 'damage' : creature.action === 'walk' ? 'walk' : 'idle', pace);
     if (!clip) return;
     const next = mixer.current.clipAction(clip), previous = activeAction.current;
     if (next === previous && next.isRunning()) return;
@@ -714,7 +713,7 @@ function PokemonModel({ creature, url, onStatus }: { creature: WorldCreature; ur
     next.play();
     if (previous && previous !== next) next.crossFadeFrom(previous, .2, false);
     activeAction.current = next;
-  }, [creature.action, gltf, normalized]);
+  }, [creature.action, creature.displayHeight, creature.movementSpeed, gltf, normalized]);
 
   if (!normalized || renderFailed) return <ModelStatus name={status === 'failed' ? '모델 오류' : ''} />;
   return <group ref={root} name={`pokemon-model:${creature.speciesId}`} userData={{ formIdentifier: creature.formIdentifier, sourceUrl: url }} dispose={null}>
@@ -1076,14 +1075,14 @@ function PlayerCamera({ snapshot, options, destination, onDestination, commands 
 }
 
 /**
- * The one shadow-casting light, following the player. Outdoors it is the sun; indoors (caves, dungeon rooms,
- * halls) it hangs almost overhead like the ceiling lamps, dimmer and tinted, so floors still take shadows.
+ * The sun: the one shadow-casting light outdoors, following the player. Caves, dungeon floors and halls use
+ * IndoorLighting's angled key light instead.
  */
-function Sunlight({ player, mobile, indoor = false, color = '#fff3da', intensity = 2.55 }: { player: { x: number; z: number }; mobile: boolean; indoor?: boolean; color?: string; intensity?: number }) {
+function Sunlight({ player, mobile, color = '#fff3da', intensity = 2.55 }: { player: { x: number; z: number }; mobile: boolean; color?: string; intensity?: number }) {
   const sun = useRef<DirectionalLight>(null);
   const target = useMemo(() => new Object3D(), []);
   const elapsed = useRef(1);
-  const reach = mobile ? 16 : 24, [offsetX, height, offsetZ] = indoor ? [5, 30, 4] : [28, 52, 22];
+  const reach = mobile ? 16 : 24, [offsetX, height, offsetZ] = [28, 52, 22];
   useFrame((_, delta) => {
     elapsed.current += delta;
     if (sun.current && elapsed.current >= 1 / (mobile ? 10 : 15)) {
@@ -1143,13 +1142,14 @@ function useViewWindow() {
 function Scene({ snapshot, options, showLabels, destination, onNavigate, onDestination, commands }: { commands: ViewCommands; snapshot: OpenWorldRenderSnapshot; options: OpenWorldViewOptions; showLabels: boolean; destination: WorldPoint | null; onNavigate: (point: WorldPoint) => void; onDestination: (point: WorldPoint | null) => void }) {
   const atlas = getWorldAtlas(snapshot.regionId ?? 'kanto');
   const sceneId = snapshot.sceneId ?? surfaceSceneId(atlas.id), cave = getCaveScene(sceneId), gymHall = cave ? undefined : getGymScene(sceneId);
-  const indoor = Boolean(cave || gymHall);
+  // Parks are open air: the outdoor sun, sky and ground lighting, no dungeon look.
+  const indoor = Boolean((cave && !cave.park) || gymHall);
   const sample = cave?.sample ?? gymHall?.sample ?? atlas.sample;
   const waterMaterials = useTerrainMaterials(atlas.palette.water, indoor ? undefined : atlas.sample);
   const groundMaterial = waterMaterials.ground;
   // Fixed daytime presentation: never rebuild lighting or sky for a world clock tick.
   const daylight = 1;
-  const look = cave ? DUNGEON_LOOKS[cave.style] : undefined;
+  const look = cave && indoor ? DUNGEON_LOOKS[cave.style] : undefined;
   const skyColor = useMemo(() => new Color(look ? look.sky : gymHall?.kind === 'league' ? '#2c2618' : gymHall ? '#2a2f33' : '#b2e1f4'), [look, gymHall]);
   const worldOptions = useMemo(() => ({ ...options, sampleWorld: sample }), [options, sample]);
   const windowState = useViewWindow();
@@ -1192,13 +1192,12 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
   });
   return (
     <>
-      <hemisphereLight color={look ? look.light : indoor ? '#d9eeed' : '#eaf6ff'} groundColor={look ? look.ground : indoor ? '#434f3f' : '#6f8a57'} intensity={look ? look.intensity : gymHall ? 1.25 : 1.22} />
+      {indoor ? <IndoorLighting scene={cave} hall={gymHall?.kind} player={snapshot.player} mobile={windowState.mobile} sample={sample} creatures={visible} />
+        : <><hemisphereLight color="#eaf6ff" groundColor="#6f8a57" intensity={1.22} /><Sunlight player={snapshot.player} mobile={windowState.mobile} /></>}
       <SkyLighting />
-      {indoor ? <Sunlight player={snapshot.player} mobile={windowState.mobile} indoor color={look?.lamp ?? '#fff6e8'} intensity={look ? 1.1 : 1.3} />
-        : <Sunlight player={snapshot.player} mobile={windowState.mobile} />}
-      {look && <pointLight position={[snapshot.player.x, 5, snapshot.player.z]} color={look.lamp} intensity={look.lampIntensity} distance={28} decay={1.4} />}
       <Physics gravity={[0, -18, 0]} timeStep="vary">
-        {cave?.room ? <DungeonInterior scene={cave} onNavigate={onNavigate} />
+        {cave?.park ? <ParkInterior key={cave.sceneId} scene={cave} atlas={atlas} player={snapshot.player} mobile={windowState.mobile} onNavigate={onNavigate} />
+          : cave?.room ? <DungeonInterior scene={cave} onNavigate={onNavigate} />
           : cave ? <CaveInterior cave={cave} player={snapshot.player} mobile={windowState.mobile} onNavigate={onNavigate} />
           : gymHall?.kind === 'league' ? <LeagueInterior hall={gymHall} trainer={snapshot.hallTrainer} busy={Boolean(snapshot.busy)} player={snapshot.player} spriteUrl={options.spriteUrl} modelUrl={options.modelUrl} onNavigate={onNavigate} onExit={() => options.onGymExit?.()} onChallenge={() => options.onGymChallenge?.()} />
           : gymHall ? <GymInterior hall={gymHall} gym={snapshot.gyms?.find(gym => gym.locationId === gymHall.locationId)} party={snapshot.gymParty ?? []} spriteUrl={options.spriteUrl} badges={snapshot.badges ?? 0} busy={Boolean(snapshot.busy)} player={snapshot.player} onNavigate={onNavigate} onExit={() => options.onGymExit?.()} onChallenge={() => options.onGymChallenge?.()} /> : <>

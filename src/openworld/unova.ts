@@ -30,7 +30,8 @@ export const UNOVA_LOCATIONS: readonly KantoLocation[] = [
   l('unova-route-16','16번도로',49,-58,'route',[22,36],3),l('lostlorn-forest','미혹의숲',64,-51,'forest',[24,39],3),l('unova-route-15','15번도로',76,-37,'route',[30,46],8),
   l('unova-route-14','14번도로',76,-19,'route',[31,47],8),l('undella-town','물결마을',76,-1,'town',[32,48],8),l('unova-route-13','13번도로',76,17,'route',[33,50],8),
   l('lacunosa-town','보배마을',66,26,'town',[34,51],8),l('unova-route-12','12번도로',58,32,'route',[34,52],8),l('village-bridge','빌리지브리지',48,28,'route',[35,53],7),
-  l('unova-route-11','11번도로',40,34,'route',[35,53],8),
+  // Opelucid's gym door stands on Route 11's ground, so the road opens with the town, one badge before Drayden.
+  l('unova-route-11','11번도로',40,34,'route',[35,53],7),
   // Legendary lairs open after the eighth badge.
   l('giant-chasm','자이언트홀',87,20,'cave',[50,60],8),l('abundant-shrine','풍요의사당',87,-19,'special',[45,55],8),l('mistralton-cave','궐수동굴',-23,-5,'cave',[45,55],8),
 ];

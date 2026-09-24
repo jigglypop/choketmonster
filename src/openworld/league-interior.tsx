@@ -74,22 +74,22 @@ function Pedestal({ material, trim }: { material: MeshStandardMaterial; trim: Me
 
 function Column({ materials }: { materials: ReturnType<typeof useLeagueMaterials> }) {
   return <group>
-    <mesh position={[0, .25, 0]} material={materials.gold} castShadow><cylinderGeometry args={[.78, .86, .5, 20]} /></mesh>
+    <mesh position={[0, .25, 0]} material={materials.gold} castShadow receiveShadow><cylinderGeometry args={[.78, .86, .5, 20]} /></mesh>
     <mesh position={[0, 3.9, 0]} material={materials.marble} castShadow receiveShadow><cylinderGeometry args={[.52, .58, 6.8, 16]} /></mesh>
-    {Array.from({ length: 8 }, (_, index) => <mesh key={index} position={[Math.cos(index / 8 * Math.PI * 2) * .56, 3.9, Math.sin(index / 8 * Math.PI * 2) * .56]} material={materials.paleGold}>
+    {Array.from({ length: 8 }, (_, index) => <mesh key={index} position={[Math.cos(index / 8 * Math.PI * 2) * .56, 3.9, Math.sin(index / 8 * Math.PI * 2) * .56]} material={materials.paleGold} receiveShadow>
       <boxGeometry args={[.07, 6.6, .07]} />
     </mesh>)}
-    <mesh position={[0, 7.5, 0]} material={materials.gold} castShadow><cylinderGeometry args={[.9, .6, .6, 20]} /></mesh>
-    <mesh position={[0, 7.95, 0]} material={materials.gold}><boxGeometry args={[1.9, .3, 1.9]} /></mesh>
+    <mesh position={[0, 7.5, 0]} material={materials.gold} castShadow receiveShadow><cylinderGeometry args={[.9, .6, .6, 20]} /></mesh>
+    <mesh position={[0, 7.95, 0]} material={materials.gold} castShadow receiveShadow><boxGeometry args={[1.9, .3, 1.9]} /></mesh>
   </group>;
 }
 
 function Brazier({ materials }: { materials: ReturnType<typeof useLeagueMaterials> }) {
   return <group>
-    <mesh position={[0, .8, 0]} material={materials.gold} castShadow><cylinderGeometry args={[.14, .3, 1.6, 12]} /></mesh>
-    <mesh position={[0, 1.7, 0]} material={materials.gold} castShadow><cylinderGeometry args={[.62, .3, .45, 18]} /></mesh>
+    <mesh position={[0, .8, 0]} material={materials.gold} castShadow receiveShadow><cylinderGeometry args={[.14, .3, 1.6, 12]} /></mesh>
+    <mesh position={[0, 1.7, 0]} material={materials.gold} castShadow receiveShadow><cylinderGeometry args={[.62, .3, .45, 18]} /></mesh>
     <mesh position={[0, 2.12, 0]} material={materials.flame}><coneGeometry args={[.4, .9, 12]} /></mesh>
-    <pointLight position={[0, 2.6, 0]} color="#ffc27a" intensity={14} distance={9} decay={1.6} />
+    <pointLight position={[0, 2.6, 0]} color="#ffc27a" intensity={7} distance={9} decay={2} />
   </group>;
 }
 
@@ -115,42 +115,43 @@ export function LeagueInterior({ hall, trainer, busy, player, spriteUrl, modelUr
   };
 
   return <group name={`league-interior:${hall.locationId}`} dispose={null}>
-    <pointLight position={[cx, y + 7, courtZ]} color="#fff0cf" intensity={90} distance={36} decay={1.3} />
-    <pointLight position={[cx, y + 6, galleryStart + 4]} color="#ffe6b8" intensity={55} distance={28} decay={1.4} />
+    {/* Warm accents over the arena and gallery; the angled indoor key light casts the shadows, so these stay soft. */}
+    <pointLight position={[cx, y + 7, courtZ]} color="#fff0cf" intensity={30} distance={30} decay={2} />
+    <pointLight position={[cx, y + 6, galleryStart + 4]} color="#ffe6b8" intensity={20} distance={24} decay={2} />
 
     {/* Marble floor with gold inlay and a carpet running from the door to the arena. */}
     <mesh name="league-floor" position={[cx, y - .05, cz]} material={materials.marble} receiveShadow onClick={navigate}><boxGeometry args={[width, .1, depth]} /></mesh>
-    {[-1, 1].map(side => <mesh key={`inlay:${side}`} position={[cx + side * 3.4, y + .004, cz]} rotation={[-Math.PI / 2, 0, 0]} material={materials.gold}><planeGeometry args={[.18, depth - 2]} /></mesh>)}
+    {[-1, 1].map(side => <mesh key={`inlay:${side}`} position={[cx + side * 3.4, y + .004, cz]} rotation={[-Math.PI / 2, 0, 0]} material={materials.gold} receiveShadow><planeGeometry args={[.18, depth - 2]} /></mesh>)}
     <mesh name="league-carpet" position={[cx, y + .01, (hall.minZ + hall.court.minZ) / 2]} rotation={[-Math.PI / 2, 0, 0]} material={materials.carpet} receiveShadow onClick={navigate}>
       <planeGeometry args={[4.2, hall.court.minZ - hall.minZ]} />
     </mesh>
-    {[-1, 1].map(side => <mesh key={`carpet-trim:${side}`} position={[cx + side * 2.2, y + .014, (hall.minZ + hall.court.minZ) / 2]} rotation={[-Math.PI / 2, 0, 0]} material={materials.gold}>
+    {[-1, 1].map(side => <mesh key={`carpet-trim:${side}`} position={[cx + side * 2.2, y + .014, (hall.minZ + hall.court.minZ) / 2]} rotation={[-Math.PI / 2, 0, 0]} material={materials.gold} receiveShadow>
       <planeGeometry args={[.22, hall.court.minZ - hall.minZ]} />
     </mesh>)}
 
     {/* Ringed arena with a gold Poké Ball emblem. */}
     <mesh name="league-court" position={[cx, y + .012, courtZ]} rotation={[-Math.PI / 2, 0, 0]} material={materials.court} receiveShadow onClick={navigate}><circleGeometry args={[courtRadius, 64]} /></mesh>
-    <mesh position={[cx, y + .018, courtZ]} rotation={[-Math.PI / 2, 0, 0]} material={materials.gold}><ringGeometry args={[courtRadius - .35, courtRadius, 64]} /></mesh>
-    <mesh position={[cx, y + .018, courtZ]} rotation={[-Math.PI / 2, 0, 0]} material={materials.gold}><ringGeometry args={[courtRadius * .55 - .12, courtRadius * .55, 48]} /></mesh>
-    <mesh position={[cx, y + .02, courtZ]} rotation={[-Math.PI / 2, 0, 0]} material={materials.darkMarble}><ringGeometry args={[.9, 1.6, 40]} /></mesh>
-    <mesh position={[cx, y + .02, courtZ]} rotation={[-Math.PI / 2, 0, 0]} material={materials.gold}><circleGeometry args={[.9, 32]} /></mesh>
-    <mesh position={[cx, y + .022, courtZ]} rotation={[-Math.PI / 2, 0, 0]} material={materials.darkMarble}><planeGeometry args={[courtRadius * 2 - .7, .22]} /></mesh>
+    <mesh position={[cx, y + .018, courtZ]} rotation={[-Math.PI / 2, 0, 0]} material={materials.gold} receiveShadow><ringGeometry args={[courtRadius - .35, courtRadius, 64]} /></mesh>
+    <mesh position={[cx, y + .018, courtZ]} rotation={[-Math.PI / 2, 0, 0]} material={materials.gold} receiveShadow><ringGeometry args={[courtRadius * .55 - .12, courtRadius * .55, 48]} /></mesh>
+    <mesh position={[cx, y + .02, courtZ]} rotation={[-Math.PI / 2, 0, 0]} material={materials.darkMarble} receiveShadow><ringGeometry args={[.9, 1.6, 40]} /></mesh>
+    <mesh position={[cx, y + .02, courtZ]} rotation={[-Math.PI / 2, 0, 0]} material={materials.gold} receiveShadow><circleGeometry args={[.9, 32]} /></mesh>
+    <mesh position={[cx, y + .022, courtZ]} rotation={[-Math.PI / 2, 0, 0]} material={materials.darkMarble} receiveShadow><planeGeometry args={[courtRadius * 2 - .7, .22]} /></mesh>
 
     {/* Walls: tall gold-banded sides and back; the front stays low so the camera sees in. */}
     <mesh position={[cx, y + WALL_HEIGHT / 2, hall.maxZ]} material={materials.wall} receiveShadow><boxGeometry args={[width + WALL_THICKNESS, WALL_HEIGHT, WALL_THICKNESS]} /></mesh>
     {[-1, 1].map(side => <mesh key={`side:${side}`} position={[cx + side * width / 2, y + WALL_HEIGHT / 2, cz]} material={materials.wall} receiveShadow><boxGeometry args={[WALL_THICKNESS, WALL_HEIGHT, depth]} /></mesh>)}
     {[-1, 1].map(side => <group key={`band:${side}`}>
-      <mesh position={[cx + side * (width / 2 - WALL_THICKNESS / 2 - .03), y + 1.2, cz]} material={materials.gold}><boxGeometry args={[.08, .35, depth - 1]} /></mesh>
-      <mesh position={[cx + side * (width / 2 - WALL_THICKNESS / 2 - .03), y + WALL_HEIGHT - .6, cz]} material={materials.gold}><boxGeometry args={[.12, .5, depth - 1]} /></mesh>
+      <mesh position={[cx + side * (width / 2 - WALL_THICKNESS / 2 - .03), y + 1.2, cz]} material={materials.gold} receiveShadow><boxGeometry args={[.08, .35, depth - 1]} /></mesh>
+      <mesh position={[cx + side * (width / 2 - WALL_THICKNESS / 2 - .03), y + WALL_HEIGHT - .6, cz]} material={materials.gold} receiveShadow><boxGeometry args={[.12, .5, depth - 1]} /></mesh>
     </group>)}
-    <mesh position={[cx, y + WALL_HEIGHT - .6, hall.maxZ - WALL_THICKNESS / 2 - .03]} material={materials.gold}><boxGeometry args={[width - 1, .5, .12]} /></mesh>
+    <mesh position={[cx, y + WALL_HEIGHT - .6, hall.maxZ - WALL_THICKNESS / 2 - .03]} material={materials.gold} receiveShadow><boxGeometry args={[width - 1, .5, .12]} /></mesh>
     {[-1, 1].map(side => <group key={`front:${side}`} position={[cx + side * (DOOR_WIDTH / 2 + sideWall / 2), y, hall.minZ]}>
-      <mesh position={[0, FRONT_HEIGHT / 2, 0]} material={materials.wall} receiveShadow><boxGeometry args={[sideWall, FRONT_HEIGHT, WALL_THICKNESS]} /></mesh>
-      <mesh position={[0, FRONT_HEIGHT + .08, 0]} material={materials.gold}><boxGeometry args={[sideWall, .16, WALL_THICKNESS + .08]} /></mesh>
+      <mesh position={[0, FRONT_HEIGHT / 2, 0]} material={materials.wall} castShadow receiveShadow><boxGeometry args={[sideWall, FRONT_HEIGHT, WALL_THICKNESS]} /></mesh>
+      <mesh position={[0, FRONT_HEIGHT + .08, 0]} material={materials.gold} castShadow receiveShadow><boxGeometry args={[sideWall, .16, WALL_THICKNESS + .08]} /></mesh>
     </group>)}
     {[-1, 1].map(side => <group key={`door:${side}`} position={[cx + side * (DOOR_WIDTH / 2 + .35), y, hall.minZ]}>
-      <mesh position={[0, 2.2, 0]} material={materials.marble} castShadow><boxGeometry args={[.7, 4.4, WALL_THICKNESS + .2]} /></mesh>
-      <mesh position={[0, 4.55, 0]} material={materials.gold}><boxGeometry args={[.9, .3, WALL_THICKNESS + .3]} /></mesh>
+      <mesh position={[0, 2.2, 0]} material={materials.marble} castShadow receiveShadow><boxGeometry args={[.7, 4.4, WALL_THICKNESS + .2]} /></mesh>
+      <mesh position={[0, 4.55, 0]} material={materials.gold} castShadow receiveShadow><boxGeometry args={[.9, .3, WALL_THICKNESS + .3]} /></mesh>
     </group>)}
 
     {columns.map((column, index) => <group key={index} position={[column.x, y, column.z]}><Column materials={materials} /></group>)}
@@ -167,8 +168,8 @@ export function LeagueInterior({ hall, trainer, busy, player, spriteUrl, modelUr
     <group position={[cx, y, hall.leader.z]}>
       <mesh position={[0, .18, .6]} material={materials.darkMarble} receiveShadow castShadow><boxGeometry args={[10, .36, 5.4]} /></mesh>
       <mesh position={[0, .46, 1.2]} material={materials.marble} receiveShadow castShadow><boxGeometry args={[7.4, .22, 3.6]} /></mesh>
-      <mesh position={[0, .38, -2.15]} material={materials.gold}><boxGeometry args={[10.2, .06, .12]} /></mesh>
-      <mesh position={[0, .6, 1.2]} rotation={[0, 0, 0]} material={materials.gold}><torusGeometry args={[4.2, .22, 10, 40, Math.PI]} /></mesh>
+      <mesh position={[0, .38, -2.15]} material={materials.gold} receiveShadow><boxGeometry args={[10.2, .06, .12]} /></mesh>
+      <mesh position={[0, .6, 1.2]} rotation={[0, 0, 0]} material={materials.gold} castShadow receiveShadow><torusGeometry args={[4.2, .22, 10, 40, Math.PI]} /></mesh>
       {[-1, 1].map(side => <mesh key={side} position={[side * 4.2, .6, 1.2]} material={materials.gold} castShadow><cylinderGeometry args={[.28, .32, 1.2, 12]} /></mesh>)}
       {trainer && !busy && <Html center position={[0, 5.4, -1]} zIndexRange={[12, 11]} style={{ pointerEvents: 'auto' }}>
         <button className="world-portal-label gym-leader-label league-leader-label" data-league-trainer={hall.locationId} data-gym-state="available" onClick={onChallenge}>
@@ -182,13 +183,13 @@ export function LeagueInterior({ hall, trainer, busy, player, spriteUrl, modelUr
         </button>
       </Html>}
     </group>
-    {[-1, 0, 1].map(offset => <mesh key={offset} position={[cx + offset * 5.2, y + 4.6, hall.maxZ - WALL_THICKNESS / 2 - .05]} material={offset ? materials.banner : materials.gold}>
+    {[-1, 0, 1].map(offset => <mesh key={offset} position={[cx + offset * 5.2, y + 4.6, hall.maxZ - WALL_THICKNESS / 2 - .05]} material={offset ? materials.banner : materials.gold} receiveShadow>
       <planeGeometry args={[offset ? 2 : 2.8, offset ? 5.4 : 6.2]} />
     </mesh>)}
 
     {/* Exit mat just inside the door. */}
     <group position={[hall.exit.x, y, hall.exit.z]}>
-      <mesh position={[0, .03, 0]} rotation={[-Math.PI / 2, 0, 0]} material={materials.carpet} onClick={event => { event.stopPropagation(); if (exitDistance <= 2.4) onExit(); else onNavigate(hall.exit); }}>
+      <mesh position={[0, .03, 0]} rotation={[-Math.PI / 2, 0, 0]} material={materials.carpet} receiveShadow onClick={event => { event.stopPropagation(); if (exitDistance <= 2.4) onExit(); else onNavigate(hall.exit); }}>
         <planeGeometry args={[DOOR_WIDTH - .6, 1.6]} />
       </mesh>
     </group>

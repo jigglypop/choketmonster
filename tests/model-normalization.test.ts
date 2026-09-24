@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AnimationClip, Box3, BoxGeometry, Group, Mesh, MeshStandardMaterial, VectorKeyframeTrack } from 'three';
-import { normalizePokemonModel, preparePokemonModel } from '../src/openworld/model-normalization';
+import { POSE_ALLOWANCE, normalizePokemonModel, preparePokemonModel } from '../src/openworld/model-normalization';
 import { createGrounding } from '../src/openworld/grounding';
 
 describe('prepared animated model bounds', () => {
@@ -17,6 +17,26 @@ describe('prepared animated model bounds', () => {
       expect(() => normalizePokemonModel(source, [], 1)).toThrow('no visible geometry');
     }
   });
+  it('stands the idle at the display height and lets other poses reach only the allowance beyond it', async () => {
+    const sized = async (attackStretch: number) => {
+      const source = new Group(), mesh = new Mesh(new BoxGeometry(1, 2, 1), new MeshStandardMaterial());
+      mesh.name = 'body'; source.add(mesh);
+      const clips = [
+        new AnimationClip('idle', 1, [new VectorKeyframeTrack('body.scale', [0, 1], [1, 1, 1, 1, 1, 1])]),
+        new AnimationClip('attack', 1, [new VectorKeyframeTrack('body.scale', [0, .5, 1], [1, 1, 1, 1, attackStretch, 1, 1, 1, 1])]),
+      ];
+      await preparePokemonModel(source, clips);
+      const model = normalizePokemonModel(source.clone(true), clips, 2, {}, source);
+      return { idleHeight: model.idleSize.y * model.scale, reach: model.sourceSize.y * model.scale };
+    };
+    // A 20% rear-up keeps the idle at full height.
+    expect(await sized(1.2)).toEqual({ idleHeight: expect.closeTo(2, 5), reach: expect.closeTo(2.4, 5) });
+    // Uncoiling to three times the idle height is held to the allowance.
+    const coiled = await sized(3);
+    expect(coiled.reach).toBeCloseTo(2 * POSE_ALLOWANCE, 5);
+    expect(coiled.idleHeight).toBeCloseTo(2 * POSE_ALLOWANCE / 3, 5);
+  });
+
   it('reuses prepared dimensions while keeping instance transforms and grounding independent', async () => {
     const source = new Group(), mesh = new Mesh(new BoxGeometry(1, 2, 1), new MeshStandardMaterial());
     mesh.name = 'body'; source.add(mesh);

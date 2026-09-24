@@ -1,4 +1,5 @@
 import { getWorldAtlas } from './atlas';
+import { caveMouths, insideCaveMouth } from './caves';
 import type { WorldSample } from './types';
 import { WORLD_SCALE, type ScenePoint } from './world-space';
 
@@ -54,10 +55,38 @@ export const isGymSceneId = (sceneId: string | undefined): boolean => Boolean(sc
 
 /** The gym building is the town's third building; towns without it use a spot behind the square. */
 export function gymBuildingPoint(regionId: string, locationId: string): ScenePoint | undefined {
-  const atlas = getWorldAtlas(regionId), town = atlas.locations.find(item => item.id === locationId && item.kind === 'town');
-  if (!town) return undefined;
-  const offset = atlas.buildingOffsets(town)[2] ?? [0, 5 * WORLD_SCALE];
-  return { x: town.x + offset[0], z: town.z + offset[1] };
+  const atlas = getWorldAtlas(regionId), place = atlas.locations.find(item => item.id === locationId);
+  if (!place) return undefined;
+  if (place.kind !== 'town') return fieldGymPoint(regionId, place);
+  const offset = atlas.buildingOffsets(place)[2] ?? [0, 5 * WORLD_SCALE];
+  return { x: place.x + offset[0], z: place.z + offset[1] };
+}
+
+/** Building centre to the walkable ground before its door (-z): the front wall, then the step out. */
+const DOOR_REACH = 3.3 * WORLD_SCALE;
+const fieldGyms = new Map<string, ScenePoint | undefined>();
+/**
+ * A gym away from any town (Alola trial sites, Hisui arenas, Paldea's mountain gym) stands where its place's
+ * clearing meets rock or woods north of it, so its door faces the clearing like a town gym's. It keeps clear of
+ * cave mouths and of the league stadium; open ground with no edge in reach takes the nearest walkable door.
+ */
+function fieldGymPoint(regionId: string, place: { id: string; x: number; z: number }): ScenePoint | undefined {
+  const key = `${regionId}:${place.id}`;
+  if (fieldGyms.has(key)) return fieldGyms.get(key);
+  const atlas = getWorldAtlas(regionId), blocked = (x: number, z: number) => atlas.sample(x, z).blocked, mouths = caveMouths(regionId);
+  const league = atlas.locations.find(item => item.id === LEAGUE_LOCATION_IDS[regionId]);
+  const usable = (building: ScenePoint) => {
+    const door = { x: building.x, z: building.z - DOOR_REACH };
+    if (blocked(door.x, door.z) || blocked(door.x, door.z + 1.5)) return false;
+    if (league && Math.hypot(building.x - league.x, building.z - league.z) < 18) return false;
+    return !mouths.some(mouth => insideCaveMouth(mouth, door.x, door.z, 2) || insideCaveMouth(mouth, building.x, building.z, 4));
+  };
+  const walled = (building: ScenePoint) => [[0, 0], [-2.8, 0], [2.8, 0], [-2.8, 2.4], [2.8, 2.4], [0, 2.4]].every(([dx, dz]) => blocked(building.x + dx, building.z + dz));
+  const candidates: ScenePoint[] = [];
+  for (let reach = 4; reach <= 30; reach++) for (const offset of [0, -2, 2, -4, 4, -6, 6, -8, 8]) candidates.push({ x: place.x + offset, z: place.z + reach });
+  const point = candidates.find(building => usable(building) && walled(building)) ?? candidates.find(usable);
+  fieldGyms.set(key, point);
+  return point;
 }
 
 export const onGymCourt = (scene: GymScene, x: number, z: number): boolean =>

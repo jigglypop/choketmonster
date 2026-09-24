@@ -1,17 +1,20 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { GrassDriver, useGrassManager } from 'gaesup-world/building';
 import { Fragment, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Box3, BufferGeometry, Color, DoubleSide, Float32BufferAttribute, Group, InstancedBufferAttribute, InstancedBufferGeometry, Mesh, Sphere, Vector3, type Camera } from 'three';
-import { MeshStandardNodeMaterial, type Node } from 'three/webgpu';
+import {
+  Box3, BufferGeometry, Color, DataTexture, DoubleSide, Float32BufferAttribute, Group, InstancedBufferAttribute, InstancedBufferGeometry, LinearFilter, Mesh, NoColorSpace,
+  RGBAFormat, RepeatWrapping, Sphere, Vector3, type Camera,
+} from 'three';
+import { MeshStandardNodeMaterial } from 'three/webgpu';
 import {
   abs, attribute, cameraPosition, cameraViewMatrix, clamp, cos, cross, dot, faceDirection, float, floor, fract, length, max, mix, normalize, positionGeometry, pow,
-  select, sign, sin, smoothstep, uniform, uv, varying, vec2, vec3, vec4,
+  sign, sin, smoothstep, texture, uniform, uv, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import type { WorldAtlas } from './atlas';
 import type { WorldSample } from './types';
 import {
-  GRASS_BUDGETS, GRASS_CELL, GRASS_DENSITY, GRASS_FOREST_STEPS, TALL_GRASS_BUDGETS, TALL_GRASS_DENSITY, buildGrassCell, grassBudgetScale, grassCellsNear, grassField,
-  grassLodWeight, type GrassBudget, type GrassCell, type GrassLayer,
+  GRASS_BUDGETS, GRASS_CELL, GRASS_DENSITY, GRASS_FOREST_STEPS, GRASS_SEGMENT_TIERS, TALL_GRASS_BUDGETS, TALL_GRASS_DENSITY, TALL_GRASS_TIER_REACH, buildGrassCell,
+  grassBudgetScale, grassCellsNear, grassField, grassLodWeight, grassSegmentTier, type GrassBudget, type GrassCell, type GrassLayer, type GrassSegmentTier,
 } from './grass-field';
 import { fieldGrassColors } from './materials';
 
@@ -37,24 +40,37 @@ const LOOKS: Record<GrassProfile, Look> = {
     base: [.22, .38, .28], body: [.46, .72, .48], tip: [.9, 1.08, .66], fresh: [.72, 1.02, .78] },
 };
 
-/** 2D simplex noise (Ashima/Gustavson), the same field gaesup's NodeGrassMaterial samples for wind. */
-function simplex(v: Node<'vec2'>): Node<'float'> {
-  const i0 = floor(v.add(v.x.add(v.y).mul(.366025403784439)));
-  const x0 = v.sub(i0).add(i0.x.add(i0.y).mul(.211324865405187));
-  const i1 = select(x0.x.greaterThan(x0.y), vec2(1, 0), vec2(0, 1));
-  const x1 = x0.add(.211324865405187).sub(i1), x2 = x0.sub(.577350269189626);
-  const i = i0.sub(floor(i0.mul(1 / 289)).mul(289));
-  const permute = (x: Node<'vec3'>) => { const t = x.mul(34).add(1).mul(x); return t.sub(floor(t.mul(1 / 289)).mul(289)); };
-  const p = permute(permute(vec3(0, i1.y, 1).add(i.y)).add(vec3(0, i1.x, 1)).add(i.x));
-  const falloff = max(vec3(.5).sub(vec3(dot(x0, x0), dot(x1, x1), dot(x2, x2))), 0);
-  const x = fract(p.mul(.024390243902439)).mul(2).sub(1), h = abs(x).sub(.5), a0 = x.sub(floor(x.add(.5)));
-  const m = falloff.mul(falloff).mul(falloff).mul(falloff).mul(float(1.79284291400159).sub(a0.mul(a0).add(h.mul(h)).mul(.85373472095314)));
-  return dot(m, vec3(a0.x.mul(x0.x).add(h.x.mul(x0.y)), a0.y.mul(x1.x).add(h.y.mul(x1.y)), a0.z.mul(x2.x).add(h.z.mul(x2.y)))).mul(130);
+/** Lattice cells per repeat of the baked gust noise; one cell spans one unit of the gust field. */
+const GUST_PERIOD = 8;
+let gustNoise: DataTexture | undefined;
+/**
+ * Periodic gradient noise in [0, 1], baked once. Every blade vertex used to evaluate 2D simplex noise for the
+ * gust fronts; one filtered texel fetch gives the same rolling field for a fraction of the vertex work.
+ */
+function gustTexture(): DataTexture {
+  if (gustNoise) return gustNoise;
+  const size = 128, scale = GUST_PERIOD / size, pixels = new Uint8Array(size * size * 4);
+  const gradient = (ix: number, iz: number) => {
+    const n = Math.sin((((ix % GUST_PERIOD) + GUST_PERIOD) % GUST_PERIOD) * 127.1 + (((iz % GUST_PERIOD) + GUST_PERIOD) % GUST_PERIOD) * 311.7) * 43758.5453, angle = (n - Math.floor(n)) * TAU;
+    return [Math.cos(angle), Math.sin(angle)] as const;
+  };
+  const fade = (t: number) => t * t * t * (t * (t * 6 - 15) + 10);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const u = x * scale, v = y * scale, ix = Math.floor(u), iz = Math.floor(v), fx = u - ix, fz = v - iz;
+    const corner = (cx: number, cz: number) => { const [gx, gz] = gradient(ix + cx, iz + cz); return gx * (fx - cx) + gz * (fz - cz); };
+    const sx = fade(fx), sz = fade(fz), top = corner(0, 0) + (corner(1, 0) - corner(0, 0)) * sx, bottom = corner(0, 1) + (corner(1, 1) - corner(0, 1)) * sx;
+    const value = Math.max(0, Math.min(1, (top + (bottom - top) * sz) * .72 + .5)), index = (y * size + x) * 4;
+    pixels[index] = pixels[index + 1] = pixels[index + 2] = Math.round(value * 255); pixels[index + 3] = 255;
+  }
+  gustNoise = new DataTexture(pixels, size, size, RGBAFormat);
+  gustNoise.wrapS = gustNoise.wrapT = RepeatWrapping; gustNoise.minFilter = gustNoise.magFilter = LinearFilter;
+  gustNoise.generateMipmaps = false; gustNoise.colorSpace = NoColorSpace; gustNoise.needsUpdate = true;
+  return gustNoise;
 }
 
 /**
  * Stylized blades in the spirit of gaesup-world's NodeGrassMaterial and Ghost of Tsushima-style grass:
- * clumped profiles from the CPU, a constant-length arc bend driven by rolling simplex gust fronts plus
+ * clumped profiles from the CPU, a constant-length arc bend driven by rolling gradient-noise gust fronts plus
  * per-blade flutter, player trample, edge-on blades thickened in screen space, rounded normals biased
  * toward the sky, and a root-to-tip gradient with base occlusion. Each blade also fades along its draw
  * rank with camera distance, matching the CPU draw count, so density thins smoothly instead of per tile.
@@ -83,7 +99,7 @@ export function createFieldGrassMaterial(colors: { lawn: Color; forest: Color },
 
   const clock = time.mul(4), downwind = root.x.mul(WIND.x).add(root.z.mul(WIND.z)), crosswind = root.z.mul(WIND.x).sub(root.x.mul(WIND.z));
   // Broad gust fronts roll downwind; a quicker ripple and per-blade flutter keep the field alive between them.
-  const front = simplex(vec2(downwind.sub(clock.mul(3.2)).div(10), crosswind.div(17))).mul(.5).add(.5);
+  const front = texture(gustTexture(), vec2(downwind.sub(clock.mul(3.2)).div(10), crosswind.div(17)).div(GUST_PERIOD)).r;
   const ripple = sin(downwind.mul(.8).sub(clock.mul(4.1)).add(sin(crosswind.mul(.35)).mul(1.7))).mul(.5).add(.5);
   const gust = smoothstep(.2, .95, front.mul(.8).add(ripple.mul(.2)));
   const flutter = sin(clock.mul(mix(float(2.2), float(3.4), seed)).add(seed.mul(TAU)).add(downwind.mul(.9))).mul(look.flutter).mul(gust.add(.35));
@@ -144,27 +160,34 @@ function createBladeGeometry(segments: number, profile: GrassProfile): BufferGeo
   return geometry;
 }
 
-/** Each layer owns copies of the tiny blade buffers, so disposing one cell never drops another's GPU data. */
-function layerGeometry(cell: GrassCell, layer: GrassLayer, profile: GrassProfile, top: number, segments: number): InstancedBufferGeometry {
-  const blade = createBladeGeometry(segments, profile), geometry = new InstancedBufferGeometry();
-  geometry.setIndex(blade.index!.clone());
-  for (const name of ['position', 'normal', 'uv']) geometry.setAttribute(name, blade.getAttribute(name).clone());
-  geometry.setAttribute('offset', new InstancedBufferAttribute(layer.offsets, 4));
-  geometry.setAttribute('shape', new InstancedBufferAttribute(layer.shapes, 4));
-  geometry.instanceCount = 0;
-  geometry.boundingBox = new Box3(new Vector3(cell.x - GRASS_CELL / 2 - 1, layer.minY - .1, cell.z - GRASS_CELL / 2 - 1), new Vector3(cell.x + GRASS_CELL / 2 + 1, top, cell.z + GRASS_CELL / 2 + 1));
-  geometry.boundingSphere = geometry.boundingBox.getBoundingSphere(new Sphere());
-  return geometry;
+/**
+ * One geometry per blade detail tier. Each owns copies of the tiny blade buffers, so disposing one cell never drops
+ * another's GPU data; the tiers of a layer share its instance buffers, which upload once.
+ */
+function layerGeometries(cell: GrassCell, layer: GrassLayer, profile: GrassProfile, top: number, tiers: readonly GrassSegmentTier[]): InstancedBufferGeometry[] {
+  const offset = new InstancedBufferAttribute(layer.offsets, 4), shape = new InstancedBufferAttribute(layer.shapes, 4);
+  const box = new Box3(new Vector3(cell.x - GRASS_CELL / 2 - 1, layer.minY - .1, cell.z - GRASS_CELL / 2 - 1), new Vector3(cell.x + GRASS_CELL / 2 + 1, top, cell.z + GRASS_CELL / 2 + 1));
+  const sphere = box.getBoundingSphere(new Sphere());
+  return tiers.map(tier => {
+    const blade = createBladeGeometry(tier.segments, profile), geometry = new InstancedBufferGeometry();
+    geometry.setIndex(blade.index!.clone());
+    for (const name of ['position', 'normal', 'uv']) geometry.setAttribute(name, blade.getAttribute(name).clone());
+    geometry.setAttribute('offset', offset);
+    geometry.setAttribute('shape', shape);
+    geometry.instanceCount = 0;
+    geometry.boundingBox = box.clone(); geometry.boundingSphere = sphere.clone();
+    return geometry;
+  });
 }
 
-type LayerProps = { cell: GrassCell; layer: GrassLayer; profile: GrassProfile; grass: ReturnType<typeof createFieldGrassMaterial>; manager: GrassManager; budget: GrassBudget; density: number; state: BudgetState; camera: Camera; segments: number };
-const GrassLayerMesh = memo(function GrassLayerMesh({ cell, layer, profile, grass, manager, budget, density, state, camera, segments }: LayerProps) {
+type LayerProps = { cell: GrassCell; layer: GrassLayer; profile: GrassProfile; grass: ReturnType<typeof createFieldGrassMaterial>; manager: GrassManager; budget: GrassBudget; density: number; state: BudgetState; camera: Camera; tiers: readonly GrassSegmentTier[] };
+const GrassLayerMesh = memo(function GrassLayerMesh({ cell, layer, profile, grass, manager, budget, density, state, camera, tiers }: LayerProps) {
   const mesh = useRef<Mesh>(null);
   const top = layer.maxY + (profile === 'tall' ? 1.3 : .7);
-  const geometry = useMemo(() => layerGeometry(cell, layer, profile, top, segments), [cell, layer, profile, top, segments]);
-  useEffect(() => () => geometry.dispose(), [geometry]);
+  const geometries = useMemo(() => layerGeometries(cell, layer, profile, top, tiers), [cell, layer, profile, top, tiers]);
+  useEffect(() => () => geometries.forEach(geometry => geometry.dispose()), [geometries]);
   useLayoutEffect(() => {
-    const { uniforms } = grass, ratio = budget.density / density, half = GRASS_CELL / 2;
+    const { uniforms } = grass, ratio = budget.density / density, half = GRASS_CELL / 2, reach = profile === 'tall' ? TALL_GRASS_TIER_REACH : 0;
     if (mesh.current) mesh.current.visible = false;
     // gaesup's manager owns frustum culling, gust time and weather wind for every tile. The draw count
     // uses the tile's nearest point, so the per-blade distance fade in the shader always has its blades.
@@ -174,18 +197,21 @@ const GrassLayerMesh = memo(function GrassLayerMesh({ cell, layer, profile, gras
       apply: next => {
         const target = mesh.current; if (!target) return;
         const eye = camera.position, dx = Math.max(0, Math.abs(eye.x - cell.x) - half), dz = Math.max(0, Math.abs(eye.z - cell.z) - half);
-        const dy = eye.y > top ? eye.y - top : eye.y < layer.minY ? layer.minY - eye.y : 0;
-        const share = next.visible ? Math.min(1, ratio * grassLodWeight(Math.hypot(dx, dy, dz), budget)) : 0;
+        const dy = eye.y > top ? eye.y - top : eye.y < layer.minY ? layer.minY - eye.y : 0, distance = Math.hypot(dx, dy, dz);
+        const share = next.visible ? Math.min(1, ratio * grassLodWeight(distance, budget)) : 0;
         state.requested.set(cell.key, Math.ceil(layer.count * share));
         const count = Math.min(layer.count, Math.ceil(layer.count * share * state.scale * (1 + FADE_BAND)));
         target.visible = count > 0;
+        // Farther cells draw the same blades with fewer joints; a few pixels tall, their bend needs no more.
+        const geometry = geometries[grassSegmentTier(tiers, distance - reach)];
+        if (target.geometry !== geometry) target.geometry = geometry;
         geometry.instanceCount = count;
         uniforms.time.value = next.time; uniforms.wind.value = next.windScale;
       },
     });
     return () => { manager.unregister(tile.id); state.requested.delete(cell.key); };
-  }, [budget, camera, cell, density, geometry, grass, layer, manager, state, top]);
-  return <mesh ref={mesh} name={`${profile === 'tall' ? 'tall-grass' : 'field-grass'}:${cell.ix}:${cell.iz}`} geometry={geometry} material={grass.material} receiveShadow dispose={null} />;
+  }, [budget, camera, cell, density, geometries, grass, layer, manager, profile, state, tiers, top]);
+  return <mesh ref={mesh} name={`${profile === 'tall' ? 'tall-grass' : 'field-grass'}:${cell.ix}:${cell.iz}`} geometry={geometries[0]} material={grass.material} receiveShadow dispose={null} />;
 });
 
 const total = (state: BudgetState) => { let sum = 0; for (const count of state.requested.values()) sum += count; return sum; };
@@ -194,7 +220,7 @@ const total = (state: BudgetState) => { let sum = 0; for (const count of state.r
 export function FieldGrass({ atlas, sampleWorld, player, mobile, skipTown }: { atlas: WorldAtlas; sampleWorld: (x: number, z: number) => WorldSample; player: { x: number; z: number }; mobile: boolean; skipTown: (id: string) => boolean }) {
   const manager = useGrassManager();
   const camera = useThree(state => state.camera), controls = useThree(state => state.controls) as unknown as { target?: Vector3 } | null;
-  const mode = mobile ? 'mobile' : 'desktop', budget = GRASS_BUDGETS[mode], tallBudget = TALL_GRASS_BUDGETS[mode], segments = mobile ? 3 : 5;
+  const mode = mobile ? 'mobile' : 'desktop', budget = GRASS_BUDGETS[mode], tallBudget = TALL_GRASS_BUDGETS[mode], tiers = GRASS_SEGMENT_TIERS[mode];
   const field = useMemo(() => grassField(sampleWorld, atlas, skipTown), [sampleWorld, atlas, skipTown]);
   const lawn = useMemo(() => createFieldGrassMaterial(fieldGrassColors(atlas), 'lawn'), [atlas]);
   const tall = useMemo(() => createFieldGrassMaterial(fieldGrassColors(atlas), 'tall'), [atlas]);
@@ -210,21 +236,26 @@ export function FieldGrass({ atlas, sampleWorld, player, mobile, skipTown }: { a
   const [cells, setCells] = useState<GrassCell[]>([]);
   const lawnState = useMemo<BudgetState>(() => ({ requested: new Map(), scale: 1 }), []);
   const tallState = useMemo<BudgetState>(() => ({ requested: new Map(), scale: 1 }), []);
-  const group = useRef<Group>(null), touched = useRef<typeof wanted | null>(null);
+  const group = useRef<Group>(null), touched = useRef<typeof wanted | null>(null), published = useRef<typeof wanted | null>(null), ready = useRef<GrassCell[]>([]);
   useFrame(() => {
     // Keep wanted cells fresh in the field's LRU so walking never evicts the ground underfoot.
     if (touched.current !== wanted) { touched.current = wanted; for (const slot of wanted) if (field.cells.has(slot.key)) buildGrassCell(field, slot.ix, slot.iz); }
-    // Build missing cells nearest-first within a small per-frame budget, then publish the ready set.
+    // Build missing cells nearest-first within a small per-frame budget; a cell takes a few milliseconds, so
+    // usually one per frame. The ready set is only gathered again when a build or a new anchor changed it.
     const started = performance.now();
-    let pending = false;
+    let pending = false, built = false;
     for (const slot of wanted) {
       if (field.cells.has(slot.key)) continue;
-      if (performance.now() - started > 3.5) { pending = true; break; }
-      buildGrassCell(field, slot.ix, slot.iz);
+      if (performance.now() - started > 2) { pending = true; break; }
+      buildGrassCell(field, slot.ix, slot.iz); built = true;
     }
-    const ready: GrassCell[] = [];
-    for (const slot of wanted) { const cell = field.cells.get(slot.key); if (cell) ready.push(cell); }
-    if (ready.length !== cells.length || ready.some((cell, index) => cell !== cells[index])) setCells(ready);
+    if (built || published.current !== wanted) {
+      published.current = wanted;
+      const next: GrassCell[] = [];
+      for (const slot of wanted) { const cell = field.cells.get(slot.key); if (cell) next.push(cell); }
+      ready.current = next;
+      if (next.length !== cells.length || next.some((cell, index) => cell !== cells[index])) setCells(next);
+    }
     const requested = total(lawnState), tallRequested = total(tallState);
     lawnState.scale = grassBudgetScale(requested, budget); tallState.scale = grassBudgetScale(tallRequested, tallBudget);
     lawn.uniforms.keep.value = lawnState.scale * budget.density / GRASS_DENSITY;
@@ -232,13 +263,13 @@ export function FieldGrass({ atlas, sampleWorld, player, mobile, skipTown }: { a
     // The orbit target follows the rendered player, so blades part around where the player actually stands.
     const focus = controls?.target ?? player;
     lawn.uniforms.trample.value.set(focus.x, focus.z, 1); tall.uniforms.trample.value.set(focus.x, focus.z, 1);
-    if (group.current) group.current.userData.fieldGrass = { cells: ready.length, pending, requested, scale: lawnState.scale, tall: { requested: tallRequested, scale: tallState.scale } };
+    if (group.current) group.current.userData.fieldGrass = { cells: ready.current.length, pending, requested, scale: lawnState.scale, tall: { requested: tallRequested, scale: tallState.scale } };
   });
   return <group ref={group} name="field-grass" userData={{ gaesupWorldObject: 'field-grass' }}>
     <GrassDriver />
     {cells.map(cell => <Fragment key={cell.key}>
-      {cell.count > 0 && <GrassLayerMesh cell={cell} layer={cell} profile="lawn" grass={lawn} manager={manager} budget={budget} density={GRASS_DENSITY} state={lawnState} camera={camera} segments={segments} />}
-      {cell.tall && <GrassLayerMesh cell={cell} layer={cell.tall} profile="tall" grass={tall} manager={manager} budget={tallBudget} density={TALL_GRASS_DENSITY} state={tallState} camera={camera} segments={segments} />}
+      {cell.count > 0 && <GrassLayerMesh cell={cell} layer={cell} profile="lawn" grass={lawn} manager={manager} budget={budget} density={GRASS_DENSITY} state={lawnState} camera={camera} tiers={tiers} />}
+      {cell.tall && <GrassLayerMesh cell={cell} layer={cell.tall} profile="tall" grass={tall} manager={manager} budget={tallBudget} density={TALL_GRASS_DENSITY} state={tallState} camera={camera} tiers={tiers} />}
     </Fragment>)}
   </group>;
 }

@@ -1,4 +1,4 @@
-import { matchesPokemonMotionKind, POKEMON_MOTION_KINDS, type PokemonMotionKind } from '../data/model-motion';
+import { isGenericMotionName, matchesPokemonMotionKind, POKEMON_MOTION_KINDS, type PokemonMotionKind } from '../data/model-motion';
 
 /** Keyframe data shared by three.js KeyframeTracks and raw glTF animation channels. */
 export type KeyframeSample = { name: string; times: ArrayLike<number>; values: ArrayLike<number> };
@@ -71,11 +71,12 @@ export function isMovingClipMotion(summary: ClipMotionSummary): boolean {
 
 /**
  * Motion kinds that need an authored clip because no source clip both matches the kind's
- * name and visibly moves. A moving source clip with a generic name ("Take 001") already
- * serves as idle through the selection fallback, so it suppresses only the authored idle.
+ * name and visibly moves (transitions such as walk01_start or turnmove01_r090 never match).
+ * A moving source clip with a generic name ("Take 001") already serves as idle through the
+ * selection fallback, so it suppresses only the authored idle.
  */
 export function missingMotionKinds(native: ReadonlyArray<{ name: string; moving: boolean }>): PokemonMotionKind[] {
   const moving = native.filter(clip => clip.moving);
-  const generic = moving.some(clip => POKEMON_MOTION_KINDS.every(kind => !matchesPokemonMotionKind(clip.name, kind)));
+  const generic = moving.some(clip => isGenericMotionName(clip.name));
   return POKEMON_MOTION_KINDS.filter(kind => !moving.some(clip => matchesPokemonMotionKind(clip.name, kind)) && !(kind === 'idle' && generic));
 }
