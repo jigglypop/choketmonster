@@ -7,7 +7,7 @@ const typeNames: Record<string, string> = { normal: '노말', fire: '불꽃', wa
 const nameOrder = new Intl.Collator('ko', { numeric: true });
 export type CollectionSort = 'number' | 'level' | 'name' | 'recent';
 
-export function searchPokemon(monsters: readonly Monster[], query: string, type = 'all', sort: CollectionSort = 'number'): Monster[] {
+export function searchPokemon(monsters: readonly Monster[], query: string, type = 'all', sort: CollectionSort = 'number', usable?: (monster: Monster) => boolean): Monster[] {
   const words = query.trim().toLocaleLowerCase().replace(/#/g, '').split(/\s+/).filter(Boolean);
   const matches = monsters.filter(monster => {
     const species = getSpecies(monster.speciesId);
@@ -24,6 +24,9 @@ export function searchPokemon(monsters: readonly Monster[], query: string, type 
     const individual = `${text} ${monster.nickname} ${monster.instanceId}`.toLocaleLowerCase();
     return words.every(word => individual.includes(word));
   });
-  if (sort === 'recent') return matches.reverse();
-  return matches.sort((a, b) => sort === 'level' ? b.level - a.level : sort === 'name' ? nameOrder.compare(a.nickname, b.nickname) : a.speciesId - b.speciesId);
+  const ordered = sort === 'recent' ? matches.reverse() : matches.sort((a, b) => sort === 'level' ? b.level - a.level : sort === 'name' ? nameOrder.compare(a.nickname, b.nickname) : a.speciesId - b.speciesId);
+  if (!usable) return ordered;
+  // Pokémon that can't battle here right now go last; the chosen order holds within each group.
+  const ready = new Map(ordered.map(monster => [monster, usable(monster)]));
+  return ordered.sort((a, b) => Number(ready.get(b)) - Number(ready.get(a)));
 }

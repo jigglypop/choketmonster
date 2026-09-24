@@ -365,7 +365,7 @@ const BOX_PAGE_SIZE = 48;
 let boxResults: Monster[] | undefined;
 let boxObserver: IntersectionObserver | undefined;
 function sortedBox() {
-  return boxResults ??= game ? searchPokemon(game.player.box, boxQuery, boxType, boxSort) : [];
+  return boxResults ??= game ? searchPokemon(game.player.box, boxQuery, boxType, boxSort, monster => !monsterRegionalUseReason(game!, currentCollectionRegion(), monster)) : [];
 }
 function boxCardsHtml(monsters: Monster[]) {
   return monsters.map(monster => monsterCard(monster, `<button class="card-action" data-withdraw-id="${escapeHtml(monster.instanceId)}" ${game!.player.team.length >= 6 ? 'disabled' : ''}>데려오기</button>`, 'box-monster')).join('');
