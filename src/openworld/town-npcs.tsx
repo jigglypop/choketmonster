@@ -12,6 +12,7 @@ import { terrainSurfaceHeight } from './grounding';
 import type { KantoGym, KantoLocation } from './kanto';
 import { isRegionalLeagueLocation } from './scene-landmarks';
 import { nearbyDungeon, npcLines, planTownNpcs, type NpcTalkContext, type TownNpc } from './town-npc-plan';
+import { shadeFigure } from './figure-shading';
 import type { WorldSample } from './types';
 
 /** Townsfolk stand a little shorter than a 1 m Pokémon on screen. */
@@ -46,6 +47,7 @@ function TownNpcFigure({ npc, y, player, lines, talking, quiet, sampleWorld, pos
     if (!gltf) return null;
     const object = cloneSkinned(gltf.scene);
     object.traverse(child => { if (child instanceof Mesh) { child.castShadow = true; child.receiveShadow = true; } });
+    shadeFigure(object);
     object.scale.setScalar(NPC_HEIGHT / (new Box3().setFromObject(object).getSize(new Vector3()).y || 1));
     return object;
   }, [gltf]);

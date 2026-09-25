@@ -4,6 +4,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimationMixer, Box3, Mesh, SkinnedMesh, Vector3, type Group } from 'three';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { releaseRenderObjects } from '../three/render-objects';
+import { shadeFigure } from './figure-shading';
 import { terrainSurfaceHeight } from './grounding';
 import { NPC_HEIGHT, useNpcModel } from './town-npcs';
 import type { WorldSample, WorldTrainer } from './types';
@@ -20,6 +21,7 @@ function RoadTrainerFigure({ trainer, y, player, busy, onChallenge }: {
     if (!gltf) return null;
     const object = cloneSkinned(gltf.scene);
     object.traverse(child => { if (child instanceof Mesh) { child.castShadow = true; child.receiveShadow = true; } });
+    shadeFigure(object);
     object.scale.setScalar(NPC_HEIGHT / (new Box3().setFromObject(object).getSize(new Vector3()).y || 1));
     return object;
   }, [gltf]);
