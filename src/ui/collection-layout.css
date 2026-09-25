@@ -16,7 +16,7 @@
 .team-page .card-action,.box-pagination button,.item-use button,.move-layout-controls button,.move-slot-editor button{color:var(--ui-text);border-color:var(--ui-border);background:var(--ui-surface-soft)}
 .team-page .card-action:not(:disabled):hover,.box-pagination button:not(:disabled):hover{border-color:var(--ui-accent);color:var(--ui-accent)}
 .breeding-panel,.box-panel{padding:18px}
-.team-layout{grid-template-columns:minmax(0,1fr) minmax(370px,420px);gap:18px}
+.team-layout{grid-template-columns:minmax(0,1fr) minmax(400px,480px);gap:18px}
 .box-tools{grid-template-columns:minmax(180px,1fr) minmax(110px,140px) minmax(120px,150px);gap:10px}
 .box-tools label{color:var(--ui-muted)}
 .box-tools input,.box-tools select{color:var(--ui-text);border-color:var(--ui-border);background:var(--ui-surface)}
@@ -93,7 +93,7 @@
 .team-rack{position:static}
 .team-page .detail-card{top:calc(var(--app-header-height,70px) + 16px);max-height:calc(100dvh - var(--app-header-height,70px) - 32px)}
 .team-layout{align-items:start}
-.box-panel .box-tools{position:sticky;top:var(--app-header-height,70px);z-index:2;padding:8px 0;background:var(--ui-surface)}
+.box-panel .box-tools{padding:8px 0}
 .box-result-line{align-items:center;min-height:40px}
 .box-result-line button{font-size:12px;color:var(--ui-accent);border:0;background:none;padding:8px}
 .box-more{display:block;width:100%;min-height:44px;margin-top:12px;border:1px solid var(--ui-border);border-radius:8px;background:var(--ui-surface-soft);color:var(--ui-text)}
@@ -105,8 +105,8 @@
 .collection-actions{margin-top:12px;padding-top:12px;border-top:1px solid var(--ui-border)}
 .team-heading-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .team-heading-actions button{min-height:44px;padding:10px 14px;border-radius:8px;border:1px solid var(--ui-border);background:var(--ui-surface);color:var(--ui-text)}
-@media(max-width:1000px){.team-page .detail-card{max-height:68dvh;overflow:auto}.box-panel .box-tools{position:static}.team-layout{gap:12px}.team-page .detail-card{scroll-margin-top:var(--app-header-height,70px)}}
-@media(max-width:440px){.team-slots{grid-template-columns:repeat(2,minmax(0,1fr))}.team-slots .monster-card{display:flex;padding:8px;min-width:0}.team-slots .card-actions{width:100%}.team-slots .monster-card img{width:56px;height:56px}.team-page .detail-card{max-height:72dvh}.team-heading{gap:10px}.box-grid .monster-card{grid-template-columns:48px minmax(0,1fr)}.box-grid .monster-card img{width:48px;height:48px}}
+@media(max-width:1000px){.team-page .detail-card{max-height:none;overflow:visible}.team-layout{gap:12px}.team-page .detail-card{scroll-margin-top:var(--app-header-height,70px)}}
+@media(max-width:440px){.team-slots{grid-template-columns:repeat(2,minmax(0,1fr))}.team-slots .monster-card{display:flex;padding:8px;min-width:0}.team-slots .card-actions{width:100%}.team-slots .monster-card img{width:56px;height:56px}.team-heading{gap:10px}.box-grid .monster-card{grid-template-columns:48px minmax(0,1fr)}.box-grid .monster-card img{width:48px;height:48px}}
 
 .equipment-field{display:grid;grid-template-columns:64px minmax(0,1fr);align-items:center;gap:10px;font-size:14px}.equipment-field select{min-width:0;min-height:44px;padding:8px;border:1px solid var(--ui-border);border-radius:8px;color:var(--ui-text);background:var(--ui-surface)}.individual-traits details{font-size:12px;color:var(--ui-muted)}.individual-traits summary{cursor:pointer}.individual-traits p{line-height:1.5}
 
@@ -137,3 +137,16 @@
 .dex-card.is-seen img{filter:saturate(.35)}
 .dex-card.is-caught{opacity:1}
 .dex-card.is-unseen:hover,.dex-card.is-seen:hover,.dex-card.is-unseen:focus-visible,.dex-card.is-seen:focus-visible{opacity:1}
+
+/* Selected Pokémon panel: a header row that stays put and a body that scrolls under it, not a see-through bar floating over the content. */
+.team-page .detail-card{display:flex;flex-direction:column;padding:0;overflow:hidden;scrollbar-gutter:auto}
+.team-page .detail-card>.detail-navigator{position:static;flex:0 0 auto;margin:0;padding:10px 14px;border-bottom:1px solid var(--ui-border);background:transparent}
+.team-page .detail-card>.detail-body{flex:1 1 auto;min-height:0;overflow:auto;padding:16px 18px 18px;overscroll-behavior:contain;scrollbar-gutter:stable}
+.team-page .detail-body>.evolution-panel{margin-top:12px}
+@media(max-width:1000px){.team-page .detail-card>.detail-body{overflow:visible}}
+@media(max-width:720px){.team-page .detail-card>.detail-body{padding:14px}}
+/* Card buttons: withdraw and evolve share one row on box cards; evolve stands out. */
+.box-grid .card-actions{position:static;grid-column:1/-1;display:flex;gap:6px;width:100%;margin-top:8px}
+.box-grid .card-actions .card-action{flex:1 1 0;min-width:0;margin-top:0}
+.team-page .card-action.card-evolve{color:#fff;border-color:var(--ui-accent);background:var(--ui-accent)}
+.team-page .card-action.card-evolve:not(:disabled):hover{color:#fff;filter:brightness(1.08)}

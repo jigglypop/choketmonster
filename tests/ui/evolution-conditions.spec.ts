@@ -52,7 +52,7 @@ test('removes friendship evolution UI and uses the explicit capsule substitute, 
   await expect(page.locator('.shop-card').filter({ has: page.locator('[data-buy="evolution-catalyst"]') })).toContainText('보유 2개');
 
   await page.locator('[data-tab="team"]').click();
-  await page.locator('.evolution-panel > summary').click();
+  await page.locator('.evolution-panel').evaluate(panel => { (panel as HTMLDetailsElement).open = true; });
   await expect(page.locator('.evolution-growth')).toHaveCount(0);
   await expect(page.locator('[data-evolve="25"]')).toBeDisabled();
   await expect(page.locator('[data-capsule-evolve="25"]')).toBeEnabled();
@@ -61,7 +61,7 @@ test('removes friendship evolution UI and uses the explicit capsule substitute, 
   await expect(page.locator('.detail-title h2')).toHaveText('피카츄');
 
   await selectMonster(page, combee.instanceId);
-  await page.locator('.evolution-panel > summary').click();
+  await page.locator('.evolution-panel').evaluate(panel => { (panel as HTMLDetailsElement).open = true; });
   await expect(page.locator('[data-evolve="416"]')).toBeDisabled();
   const combeeRoute = page.locator('[data-capsule-evolve="416"]').locator('..');
   await expect(page.locator('[data-capsule-evolve="416"]')).toBeEnabled();
@@ -75,7 +75,7 @@ test('removes friendship evolution UI and uses the explicit capsule substitute, 
   await expect(page.locator('.detail-title h2')).toHaveText('비퀸');
 
   await selectMonster(page, bonsly.instanceId);
-  await page.locator('.evolution-panel > summary').click();
+  await page.locator('.evolution-panel').evaluate(panel => { (panel as HTMLDetailsElement).open = true; });
   await expect(page.locator('#pokemon-canvas')).toHaveAttribute('data-species', '438', { timeout: 45_000 });
   await expect(page.locator('#pokemon-canvas')).toHaveAttribute('data-ready', 'true', { timeout: 45_000 });
   await expect(page.locator('[data-evolve="185"]')).toBeEnabled();

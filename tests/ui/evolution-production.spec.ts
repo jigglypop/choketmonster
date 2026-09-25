@@ -43,13 +43,13 @@ test('production account restores legacy friendship data but evolves through cap
   }
   const first = await browser.newContext({ viewport: { width: 1440, height: 1100 } }), page = await first.newPage();
   await login(page);
-  await page.locator('.evolution-panel > summary').click();
+  await page.locator('.evolution-panel').evaluate(panel => { (panel as HTMLDetailsElement).open = true; });
   await expect(page.locator('.evolution-growth')).toHaveCount(0);
   await expect(page.locator('[data-evolve="169"]')).toBeDisabled();
   await page.locator('[data-capsule-evolve="169"]').click();
   await expect(page.locator('.detail-title h2')).toHaveText('크로뱃');
   await page.locator(`[data-monster="${combee.instanceId}"]`).click();
-  await page.locator('.evolution-panel > summary').click();
+  await page.locator('.evolution-panel').evaluate(panel => { (panel as HTMLDetailsElement).open = true; });
   await expect(page.locator('[data-evolve="416"]')).toBeDisabled();
   await page.locator('[data-capsule-evolve="416"]').click();
   await expect(page.locator('.detail-title h2')).toHaveText('비퀸');

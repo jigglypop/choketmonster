@@ -34,8 +34,16 @@ function evolutionCard(state: GameState, monster: Monster, evolution: Evolution)
   return `<article class="evolution-route">${buttons.join('')}<details class="evolution-source"><summary>원본 진화 조건 ${descriptions.length}가지</summary>${descriptions.length ? `<ul>${descriptions.map(description => `<li>${escapeHtml(description)}</li>`).join('')}</ul>` : ''}</details></article>`;
 }
 
+/** Species this Pokémon can become right now without buying anything. */
+export function readyEvolutionTargets(state: GameState, monster: Monster): number[] {
+  const evolutions = getSpecies(monster.speciesId).evolutions;
+  if (!evolutions.length) return [];
+  return [...new Set(evolutions.filter(evolution => evolutionFormSupported(state, monster, evolution) && evolutionRoute(state, monster, evolution)).map(evolution => evolution.target))];
+}
+
 export function evolutionSectionHtml(state: GameState, monster: Monster): string {
   const evolutions = getSpecies(monster.speciesId).evolutions.filter(evolution => evolutionFormSupported(state, monster, evolution));
   if (!evolutions.length) return '';
-  return `<details class="evolution-panel collection-fold"><summary>진화 선택</summary><div class="evolution-list">${evolutions.map(evolution => evolutionCard(state, monster, evolution)).join('')}</div></details>`;
+  const ready = evolutions.some(evolution => evolutionRoute(state, monster, evolution));
+  return `<details class="evolution-panel collection-fold"${ready ? ' open' : ''}><summary>진화 선택</summary><div class="evolution-list">${evolutions.map(evolution => evolutionCard(state, monster, evolution)).join('')}</div></details>`;
 }

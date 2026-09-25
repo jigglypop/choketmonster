@@ -76,7 +76,7 @@ test('evolution buys only the missing item and removes the shop from the explora
   await expect(page.locator('.adventure-loading')).toHaveCount(0);
   await page.locator('[data-tab="team"]').click();
   await page.locator(`[data-monster="${onix.instanceId}"]`).click();
-  await page.locator('.evolution-panel > summary').click();
+  await page.locator('.evolution-panel').evaluate(panel => { (panel as HTMLDetailsElement).open = true; });
   await page.locator('[data-evolve="208"][data-evolution-item="metal-coat"]').click();
   await expect(page.locator('.detail-title h2')).toHaveText('강철톤');
   await expect(page.locator('#money')).toContainText('0');

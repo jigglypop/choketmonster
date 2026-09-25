@@ -25,7 +25,7 @@ test('auto-buys a missing Metal Coat from evolution and keeps regular shop purch
   await expect(page.locator('.world-shop')).toHaveCount(0);
 
   await page.locator('[data-tab="team"]').click();
-  await page.locator('.evolution-panel > summary').click();
+  await page.locator('.evolution-panel').evaluate(panel => { (panel as HTMLDetailsElement).open = true; });
   const onixEvolution = page.locator('[data-evolve="208"][data-evolution-item="metal-coat"]');
   await expect(onixEvolution).toContainText('금속코트 ×1 · 보유 0개');
   await expect(onixEvolution).toContainText(`자동 구매 ₩${ITEM_PRICES['metal-coat'].toLocaleString('ko-KR')}`);
@@ -45,7 +45,7 @@ test('auto-buys a missing Metal Coat from evolution and keeps regular shop purch
   await page.locator('[data-tab="team"]').click();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator(`[data-monster="${scyther.instanceId}"]`).click();
-  await page.locator('.evolution-panel > summary').click();
+  await page.locator('.evolution-panel').evaluate(panel => { (panel as HTMLDetailsElement).open = true; });
   const scytherEvolution = page.locator('[data-evolve="212"][data-evolution-item="metal-coat"]');
   await expect(scytherEvolution).toContainText('금속코트 ×1 · 보유 1개');
   await expect(scytherEvolution).toContainText('준비 완료');
