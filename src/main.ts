@@ -87,10 +87,10 @@ let game: GameState | undefined;
 let view: PersistentView = { ...defaultView(), rewards: {} };
 let tab: Tab = 'map', selectedMonsterId = '', dexQuery = '', boxQuery = '';
 let dexPage = 0;
-let pausedBeforeAccountSwitch = false;
+let releaseAccountSwitchHold: (() => void) | undefined;
 let switchingAccount = false;
 let reauthenticationRequired = false;
-let trading = false, pausedBeforeTrade = false;
+let trading = false, releaseTradeHold: (() => void) | undefined;
 let accountPanel: ReturnType<typeof mountAccountPanel> | undefined;
 let dexMode: 'all' | 'seen' | 'caught' = 'all';
 let boxType = 'all', boxSort: 'number' | 'level' | 'name' | 'recent' = 'number', boxPage = 0;
@@ -112,8 +112,10 @@ window.addEventListener(AUTH_SESSION_EXPIRED, () => {
   if (reauthenticationRequired) return;
   reauthenticationRequired = true; setAccountSwitching(true);
   void (async () => {
-    try { await worldPanel?.pauseAndSettle(); await saveNow(false, true, true); }
+    let release: (() => void) | undefined;
+    try { release = await worldPanel?.hold(); await saveNow(false, true, true); }
     catch (error) { notify(error instanceof Error ? error.message : String(error), true); }
+    finally { release?.(); }
     await accountPanel?.ready.catch(() => {});
     startupLoading?.remove(); accountPanel?.open();
   })();
@@ -150,13 +152,13 @@ const tradePanel = mountTradePanel({ container: document.body, game: () => game!
   prepare: async () => {
     if (!game) throw new Error('모험을 시작한 뒤 교환할 수 있습니다.');
     if (game.battle || game.captureOffer) throw new Error('배틀과 포획을 마친 뒤 교환해 주세요.');
-    pausedBeforeTrade = worldPanel?.paused ?? false; trading = true;
+    trading = true;
     if (autosaveTimer) { clearTimeout(autosaveTimer); autosaveTimer = 0; }
-    if (worldPanel) await worldPanel.pauseAndSettle();
+    releaseTradeHold?.(); releaseTradeHold = await worldPanel?.hold();
     await saveNow(false, true, false, true);
   },
   applied: save => { const loaded = unpackSave(save, controller.graph); game = loaded.game; view = loaded.view; selectedMonsterId = game.player.team[0].instanceId; prepareWorld(); render(); playGameSound('capture'); },
-  closed: () => { if (!trading) return; trading = false; if (worldPanel) { worldPanel.paused = pausedBeforeTrade; worldPanel.refresh(); } queueSave(); },
+  closed: () => { if (!trading) return; trading = false; releaseTradeHold?.(); releaseTradeHold = undefined; worldPanel?.refresh(); queueSave(); },
   notify, openAccount: () => accountPanel?.open(),
 });
 if (import.meta.hot) import.meta.hot.dispose(() => tradePanel.destroy());
@@ -166,9 +168,12 @@ const rankedPanel = mountRankedPanel({
     if (!game) throw new Error('모험을 시작한 뒤 랭크전에 참가할 수 있습니다.');
     if (!currentAccount()) throw new Error('계정 연결이 필요합니다.');
     if (game.battle || game.captureOffer) throw new Error('진행 중인 배틀과 포획을 먼저 마쳐 주세요.');
-    if (worldPanel) await worldPanel.pauseAndSettle();
-    await saveNow(false, true);
-    await accountPanel?.checkpoint();
+    // Settle the in-flight neural batch so the checkpoint holds its result, then let the world run again.
+    const release = await worldPanel?.hold();
+    try {
+      await saveNow(false, true);
+      await accountPanel?.checkpoint();
+    } finally { release?.(); }
   },
   notify, openAccount: () => accountPanel?.open(),
 });
@@ -224,7 +229,8 @@ async function saveNow(announce = false, throwOnError = false, duringAccountSwit
 function queueSave() { if (switchingAccount || trading) return; setSaveState('pending'); if (!autosaveTimer) autosaveTimer = window.setTimeout(() => { autosaveTimer = 0; void saveNow(); }, 1000); }
 function shellStats() { if (!game) return; $('#money').textContent = `₩${game.player.money.toLocaleString('ko-KR')}`; $('#badges').textContent = `도감 ${game.dex.caught.filter(isPlayableSpecies).length}/${PLAYABLE_SPECIES_IDS.length}`; $('.topbar').classList.toggle('map-overlay', tab === 'map'); document.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === tab)); }
 onSaveStorageStatus(status => setSaveState(status.state, status.message));
-function captureWorld() { if (worldPanel) { view.openWorld = worldPanel.simulation.snapshot(); view.openWorldPaused = switchingAccount ? pausedBeforeAccountSwitch : worldPanel.paused; } }
+// Every pause is a transient hold now, and exploring always resumes on load.
+function captureWorld() { if (worldPanel) { view.openWorld = worldPanel.simulation.snapshot(); view.openWorldPaused = false; } }
 function setAccountSwitching(value: boolean) {
   value = value || reauthenticationRequired || !currentAccount();
   switchingAccount = value;
@@ -647,9 +653,9 @@ function renderTeam() {
   $('#merge-collection').onclick = async () => {
     if (!game) return;
     const editedGame = game, button = $<HTMLButtonElement>('#merge-collection'); button.disabled = true;
-    const wasPaused = worldPanel?.paused ?? false;
+    let release: (() => void) | undefined;
     try {
-      await worldPanel?.pauseAndSettle();
+      release = await worldPanel?.hold();
       const plan = previewCollectionMerge(editedGame, currentCollectionRegion(), selectedMonsterId);
       if (!plan.totalDonors) { notify('합칠 중복 포켓몬이 없습니다.'); return; }
       const confirmed = await confirmAction({ title: '중복 한번에 합치기', message: `${plan.groups.length}종 · ${plan.totalDonors}마리 합치기`,
@@ -662,7 +668,7 @@ function renderTeam() {
       worldPanel?.simulation.reconcileTeamChange(); captureWorld(); renderTeam(); shellStats();
       await saveNow(false, true); notify(`${plan.totalDonors}마리를 합쳤습니다.`);
     } catch (error) { notify(error instanceof Error ? error.message : String(error), true); }
-    finally { if (worldPanel) worldPanel.paused = wasPaused; if (button.isConnected) button.disabled = !!game?.battle || !!game?.captureOffer; }
+    finally { release?.(); if (button.isConnected) button.disabled = !!game?.battle || !!game?.captureOffer; }
   };
   bindMonsterCards($('.team-rack')); document.querySelectorAll<HTMLButtonElement>('[data-lead]').forEach(button => button.onclick = () => action(() => { const index = Number(button.dataset.lead), [monster] = game!.player.team.splice(index, 1); game!.player.team.unshift(monster); worldPanel?.simulation.reconcileTeamChange(); }, '선두 포켓몬을 바꿨습니다.')); document.querySelectorAll<HTMLButtonElement>('[data-deposit]').forEach(button => button.onclick = () => action(() => { depositMonster(game!, Number(button.dataset.deposit), currentCollectionRegion()); worldPanel?.simulation.reconcileTeamChange(); }));
   const refreshFilteredBox = () => {
@@ -822,18 +828,20 @@ document.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b => b.onclic
   const next = b.dataset.tab as Tab;
   if (tab === 'ranked' && next !== 'ranked' && rankedPanel.hasActiveSession()) { notify('매칭 또는 랭크전을 끝낸 뒤 다른 화면으로 이동해 주세요.'); return; }
   if (game?.battle && !worldPanel && next !== 'team' && next !== 'shop') { notify('배틀 중에는 팀·박스와 상점만 열 수 있습니다.'); return; }
-  const panel = worldPanel, wasPaused = panel?.paused;
+  const panel = worldPanel, editing = next === 'team' || next === 'shop';
   changingTab = true;
   document.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(button => { button.disabled = true; });
+  let release: (() => void) | undefined;
   try {
-    // Finish any already submitted battle decision before exposing team edits.
-    if (panel && next !== 'map') await panel.pauseAndSettle();
-    else if (!panel && game?.battle && (next === 'team' || next === 'shop')) await classicTurnPromise;
+    // Finish any already submitted battle decision before exposing team edits. Other screens stop
+    // world ticks by leaving the map tab, so they need not wait for the neural server.
+    if (panel && editing) release = await panel.hold();
+    else if (!panel && game?.battle && editing) await classicTurnPromise;
     if (panel !== worldPanel || switchingAccount) return;
     tab = next; render();
   } catch (error) { notify(error instanceof Error ? error.message : '화면을 전환하지 못했습니다.', true); }
   finally {
-    if (panel && panel === worldPanel && wasPaused !== undefined) panel.paused = wasPaused;
+    release?.();
     changingTab = false;
     document.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(button => { button.disabled = switchingAccount; });
   }
@@ -872,14 +880,21 @@ async function boot() { try {
   serverConnectome = getServerConnectomeInfo();
   startupLoading?.stage('connectome', 100, serverConnectome?.available ? 'Male CNS 부분 회로 · 서버 회로 연결 완료' : 'Male CNS 부분 회로 준비 완료');
   startupLoading?.status('저장된 모험을 확인하고 있습니다.');
-  const runtime = createFieldRuntime(() => { if (!switchingAccount && !trading && tab === 'map') { try { worldPanel?.tick(); } catch (error) { if (worldPanel) worldPanel.paused = true; notify(error instanceof Error ? error.message : '월드 실행 오류', true); } } }, 250);
+  // A failing tick retries on the next one; the same error is reported at most every ten seconds.
+  let lastTickError = '', lastTickErrorAt = 0;
+  const reportTickError = (error: unknown) => {
+    const message = error instanceof Error ? error.message : '월드 실행 오류', now = Date.now();
+    if (message === lastTickError && now - lastTickErrorAt < 10_000) return;
+    lastTickError = message; lastTickErrorAt = now; notify(message, true);
+  };
+  const runtime = createFieldRuntime(() => { if (!switchingAccount && !trading && tab === 'map') worldPanel?.tick().catch(reportTickError); }, 250);
   await runtime.start();
   accountPanel = mountAccountPanel({ container: $('#account-controls'), notify, requireLogin: true,
     canClose: () => !reauthenticationRequired,
     beforeSwitch: async () => {
-      pausedBeforeAccountSwitch = worldPanel?.paused ?? false; setAccountSwitching(true);
+      setAccountSwitching(true);
       if (autosaveTimer) { clearTimeout(autosaveTimer); autosaveTimer = 0; }
-      if (worldPanel) await worldPanel.pauseAndSettle();
+      releaseAccountSwitchHold?.(); releaseAccountSwitchHold = await worldPanel?.hold();
       await saveNow(false, true, true);
     },
     onSwitchError: change => {
@@ -891,11 +906,13 @@ async function boot() { try {
         view = { ...defaultView(), rewards: {} }; selectedMonsterId = '';
         $('#screen').innerHTML = '<section class="fatal"><h1>계정 저장을 다시 확인해 주세요</h1><p>이 기기의 기록은 보존되어 있습니다. 새로고침하면 선택한 계정의 저장을 다시 불러옵니다.</p><button id="retry-account">새로고침</button></section>';
         $('#retry-account').onclick = () => location.reload();
-      } else if (worldPanel) worldPanel.paused = pausedBeforeAccountSwitch;
+      }
+      releaseAccountSwitchHold?.(); releaseAccountSwitchHold = undefined;
     },
     afterSwitch: async change => {
       if (!change.to) { setAccountSwitching(true); worldPanel?.unmount(); worldPanel = undefined; game = undefined; location.reload(); return; }
       if (change.reason === 'login' || change.reason === 'register') reauthenticationRequired = false;
+      releaseAccountSwitchHold?.(); releaseAccountSwitchHold = undefined;
       worldPanel?.unmount(); worldPanel = undefined;
       if (autosaveTimer) { clearTimeout(autosaveTimer); autosaveTimer = 0; }
       game = undefined; view = { ...defaultView(), rewards: {} }; selectedMonsterId = ''; tab = 'map';

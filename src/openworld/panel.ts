@@ -125,6 +125,7 @@ export class OpenWorldPanel {
   };
   paused = false;
   private pausedByRenderer = false;
+  private pauseHolds = 0;
 
   constructor(private readonly options: Options) {
     const seed = options.checkpoint?.seed ?? [...options.game.seed].reduce((value, c) => (Math.imul(value, 31) + c.charCodeAt(0)) >>> 0, 517);
@@ -132,7 +133,25 @@ export class OpenWorldPanel {
     this.simulation.syncPlayerToCompanion();
   }
 
-  async pauseAndSettle(): Promise<void> { this.paused = true; await this.serverRequest; }
+  /**
+   * Holds the world still for a blocking flow (tab change, trade, save, account switch). With settle,
+   * the neural batch already in flight finishes first so its decisions never land on edited state.
+   * The world resumes when the last hold is released; flows no longer restore a captured flag, so two
+   * overlapping flows cannot leave the world stopped.
+   */
+  async hold(settle = true): Promise<() => void> {
+    this.pauseHolds++; this.paused = true;
+    let released = false;
+    const release = () => {
+      if (released) return; released = true;
+      this.pauseHolds = Math.max(0, this.pauseHolds - 1);
+      if (this.pauseHolds) return;
+      // A lost or failed renderer keeps its own pause until the new renderer is ready.
+      this.paused = this.pausedByRenderer; this.refresh();
+    };
+    if (settle) await this.serverRequest;
+    return release;
+  }
 
   mount(host: HTMLElement): void {
     if (this.host === host && this.renderer && host.querySelector('#ow-host')) { this.refresh(); return; }
@@ -197,8 +216,8 @@ export class OpenWorldPanel {
       getSnapshot: () => this.renderSnapshot(), sampleWorld: (x, z) => this.simulation.sampleWorld(x, z), modelUrl: pokemonModelUrl, spriteUrl: pokemonSpriteUrl,
       onReady: () => {
         this.ready = true;
-        // A pause the lost renderer caused ends with the new renderer; a pause the player chose stays.
-        if (this.pausedByRenderer) { this.pausedByRenderer = false; this.paused = false; }
+        // A pause the lost renderer caused ends with the new renderer; a flow's hold stays until released.
+        if (this.pausedByRenderer) { this.pausedByRenderer = false; this.paused = this.pauseHolds > 0; }
         this.refreshRecovery();
         if (getGymScene(this.simulation.sceneId)) { this.cameraHeading = CARDINAL_CAMERA_HEADINGS.south; this.renderer?.setCameraHeading(this.cameraHeading); }
       },
@@ -208,11 +227,11 @@ export class OpenWorldPanel {
         this.loading?.stage('world', this.loadProgress, detail);
       },
       onLoadError: error => {
-        this.ready = false; this.paused = true;
+        this.ready = false; this.pausedByRenderer = true; this.paused = true;
         this.loading ??= createWorldLoading(host.querySelector('.adventure')!);
         this.loading?.fail(`3D 월드를 준비하지 못했습니다. ${error instanceof Error ? error.message : String(error)}`);
       },
-      onRendererLost: () => { if (!this.paused) this.pausedByRenderer = true; this.ready = false; this.paused = true; this.simulation.requireReadyModels(); this.refresh(); },
+      onRendererLost: () => { this.pausedByRenderer = true; this.ready = false; this.paused = true; this.simulation.requireReadyModels(); this.refresh(); },
       onNavigationStart: () => { this.pendingGymEntry = undefined; this.pendingFieldChallenge = undefined; this.pendingDungeonEntry = undefined; return this.noteManualInput(); },
       onMovementInput: () => this.noteManualInput(),
       onMovementEnd: () => {
@@ -1088,16 +1107,16 @@ export class OpenWorldPanel {
     this.button('#world-edit-moves').disabled = !this.options.editMoves;
     this.html('#world-transformations', battleTransformationsHtml(game, false));
     this.host.querySelectorAll<HTMLButtonElement>('[data-battle-transformation]').forEach(button => button.onclick = async () => {
-      const paused = this.paused, currentBattle = game.battle;
+      const currentBattle = game.battle;
       const formIdentifier = this.host!.querySelector<HTMLSelectElement>('[data-mega-form]')?.value;
       button.disabled = true;
+      const release = await this.hold();
       try {
-        await this.pauseAndSettle();
         if (currentBattle !== game.battle) throw new Error('전투가 바뀌었습니다.');
         this.simulation.transformBattle('mega', { formIdentifier });
         await this.options.changed(true);
       } catch (error) { this.options.notify(error instanceof Error ? error.message : String(error), true); }
-      finally { this.paused = paused; this.refresh(); this.renderer?.update(); }
+      finally { release(); this.refresh(); this.renderer?.update(); }
     });
     this.html('#world-moves', Array.from({ length: 4 }, (_, index) => {
       const slot = moveLayout[index]; if (!slot) return `<div class="world-move empty-slot"><span>${index + 1}</span><strong>미습득</strong><small>레벨을 올려 기술을 익히세요</small></div>`;

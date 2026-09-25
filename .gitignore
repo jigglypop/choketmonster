@@ -22,3 +22,6 @@ __pycache__/
 *.pyc
 rust-server/target/
 .cargo-target-*/
+tsconfig.tsbuildinfo
+# Local probe scripts and specs
+**/tmp-*
