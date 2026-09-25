@@ -43,8 +43,11 @@ import { CARDINAL_CAMERA_HEADINGS, cameraMapRotation, compassLabel, mapKindSymbo
 
 const types: Record<string, string> = { normal: '노말', fire: '불꽃', water: '물', grass: '풀', electric: '전기', ice: '얼음', fighting: '격투', poison: '독', ground: '땅', flying: '비행', psychic: '에스퍼', bug: '벌레', rock: '바위', ghost: '고스트', dragon: '드래곤', steel: '강철', dark: '악', fairy: '페어리' };
 const escape = (text: unknown) => String(text).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+/** Writes live text (a distance, a place) into a node only when it changed, so the node itself stays put. */
+const setText = (node: Element | null | undefined, text: string) => { if (node && node.textContent !== text) node.textContent = text; };
 const pokemonDisplayHeight = (speciesId: number) => pokemonWorldDisplayHeight(getSpecies(speciesId).heightMeters);
 const MANUAL_IDLE_SECONDS = .25;
+const ROUTE_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowRight', 'ArrowDown', 'ArrowLeft'];
 const CHAT_ICON = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H10l-4.5 3.5V16H4z"/></svg>';
 type Options = { game: GameState; graph: Graph; policy: FieldPolicy; checkpoint?: OpenWorldSnapshot; learning(): boolean; setLearning(value: boolean): void; musicChanged?(): void; editMoves?(instanceId: string): void; trade?(): void; openAccount?(): void; notify(message: string, error?: boolean): void; changed(immediate?: boolean): void | Promise<void> };
 
@@ -108,6 +111,17 @@ export class OpenWorldPanel {
   private guideCache?: { key: string; guide: DestinationGuide };
   private megaPreload?: { url: string; release(): void };
   private starterDialog?: HTMLDialogElement;
+  /** The last story gate named for a blocked step, so holding a key against it names it once. */
+  private lastBlockNotice?: { reason: string; at: number };
+  /** Row orders kept while a list is open, so live distances never reshuffle it under a tap. */
+  private bagOrder: string[] = [];
+  private peerOrder: string[] = [];
+  /** Formatted chat times by message id, and the history they were drawn for. */
+  private chatTimes = new Map<string, string>();
+  private chatSignature = '';
+  /** Exit order fixed on arrival on a dungeon floor, and the exit chosen from it. */
+  private caveExitOrder?: { sceneId: string; ids: readonly string[] };
+  private caveExitChoice?: string;
   private lastPresence = { x: Number.NaN, z: Number.NaN };
   private readonly htmlCache = new WeakMap<Element, string>();
   private readonly hotkeys = (event: KeyboardEvent) => {
@@ -122,6 +136,12 @@ export class OpenWorldPanel {
       else if (index === 0) this.host.querySelector<HTMLButtonElement>('#world-struggle')?.click();
     }
     if (event.code === 'KeyB') { event.preventDefault(); this.button('#world-catch').click(); }
+  };
+  /** Arrow and WASD keys take over from a click-to-move route, as in the view; a door or challenge at its end is dropped with it. */
+  private readonly routeKeys = (event: KeyboardEvent) => {
+    const target = event.target, typing = target instanceof HTMLElement && (target instanceof HTMLInputElement
+      ? !['checkbox', 'button', 'submit', 'reset'].includes(target.type) : target.isContentEditable || ['TEXTAREA', 'SELECT'].includes(target.tagName));
+    if (!typing && ROUTE_KEYS.includes(event.code)) this.dropPendingArrivals();
   };
   paused = false;
   private pausedByRenderer = false;
@@ -232,15 +252,23 @@ export class OpenWorldPanel {
         this.loading?.fail(`3D 월드를 준비하지 못했습니다. ${error instanceof Error ? error.message : String(error)}`);
       },
       onRendererLost: () => { this.pausedByRenderer = true; this.ready = false; this.paused = true; this.simulation.requireReadyModels(); this.refresh(); },
-      onNavigationStart: () => { this.pendingGymEntry = undefined; this.pendingFieldChallenge = undefined; this.pendingDungeonEntry = undefined; return this.noteManualInput(); },
+      onNavigationStart: destination => {
+        // A destination behind a gate the badges have not opened is named instead of walked toward.
+        const block = destination && this.simulation.routeBlock(destination);
+        if (block) { this.options.notify(block, true); return false; }
+        this.dropPendingArrivals(); return this.noteManualInput();
+      },
       onMovementInput: () => this.noteManualInput(),
       onMovementEnd: () => {
         this.manualMovementActive = false;
+        // A route that failed, was cut short or was blocked never enters a hall later, when the partner happens past its door.
+        this.dropPendingArrivals();
         if (this.shouldResumeAutomaticControl()) this.changeMode('auto');
       },
       onPlayerMove: next => {
         if (!this.noteManualInput()) return false;
         const accepted = this.simulation.movePartner(next);
+        if (!accepted) this.noteMovementBlock();
         // The render store polls positions separately. Rebuilding the full HUD and
         // scene here duplicated that work on the input path and stalled movement.
         const now = performance.now();
@@ -254,9 +282,14 @@ export class OpenWorldPanel {
         }
         return accepted;
       },
-      onSelect: id => { if (id?.startsWith('companion:')) return; this.manualIdleSeconds = 0; this.simulation.selectWild(id, true); this.options.changed(); this.refresh(); },
+      onSelect: id => {
+        // Only a wild Pokémon is inspected; the partner and a leader's or trainer's Pokémon on show are not.
+        if (id !== null && !this.simulation.entities.some(entity => entity.kind === 'wild' && entity.id === id)) return;
+        this.manualIdleSeconds = 0; this.simulation.selectWild(id, true); this.options.changed(); this.refresh();
+      },
       onInteract: id => this.encounter(id),
-      onCollectItem: id => { if (this.simulation.collectFieldItem(id)) { this.options.changed(true); this.refresh(); this.renderer?.update(); } },
+      onCollectItem: id => { if (this.simulation.collectFieldItem(id)) { this.saveNow(); this.refresh(); this.renderer?.update(); } },
+      navigationStep: (from, to) => this.simulation.canStep(from, to),
       onModelStatus: (id, status, speciesId) => {
         this.simulation.setModelStatus(id, status, speciesId);
         this.refreshRecovery();
@@ -272,6 +305,7 @@ export class OpenWorldPanel {
     this.multiplayer = new MultiplayerSession(() => { if (this.host === host) this.renderRealtime(); });
     this.multiplayer.join(this.presence());
     window.addEventListener('keydown', this.hotkeys);
+    window.addEventListener('keydown', this.routeKeys);
     window.addEventListener('online', this.onConnectionRestored);
     this.button('#world-model-retry').onclick = () => { this.renderer?.retryModels(); };
     const battleHud = this.host.querySelector<HTMLDetailsElement>('.world-battle-hud')!;
@@ -332,8 +366,9 @@ export class OpenWorldPanel {
       if (machine) { this.openMachines(Number(machine.dataset.bagMachine)); return; }
       const pickup = target.closest<HTMLButtonElement>('[data-bag-pickup]'), member = target.closest<HTMLButtonElement>('[data-bag-member]');
       if (pickup && !pickup.disabled) {
-        const item = this.simulation.fieldPickups.find(row => row.id === pickup.dataset.bagPickup);
-        if (item && this.renderer?.navigateTo(item)) { bag.open = false; this.options.notify(`${item.name}까지 길찾기를 시작합니다.`); }
+        const item = this.simulation.fieldPickups.find(row => row.id === pickup.dataset.bagPickup), block = item && this.simulation.routeBlock(item);
+        if (block) this.options.notify(block, true);
+        else if (item && this.renderer?.navigateTo(item)) { bag.open = false; this.options.notify(`${item.name}까지 길찾기를 시작합니다.`); }
         else if (item) this.options.notify('현재 위치에서 이어지는 도보 경로가 없습니다.', true);
       }
       if (member && !member.disabled) this.options.editMoves?.(member.dataset.bagMember!);
@@ -365,9 +400,12 @@ export class OpenWorldPanel {
     this.host.querySelector('#world-trainer-list')!.addEventListener('click', event => {
       const button = (event.target as Element).closest<HTMLButtonElement>('[data-trainer-battle]');
       if (!button || button.disabled) return;
-      if (this.simulation.challengeFieldTrainerById(button.dataset.trainerBattle!)) {
+      let started = false;
+      try { started = this.simulation.challengeFieldTrainerById(button.dataset.trainerBattle!); }
+      catch (error) { this.options.notify(error instanceof Error ? error.message : String(error), true); return; }
+      if (started) {
         this.host!.querySelector<HTMLDialogElement>('#world-trainer-dialog')!.close();
-        this.paused = false; this.manualMovementActive = false;
+        this.manualMovementActive = false;
         this.options.changed(); this.refresh();
       }
     });
@@ -483,8 +521,12 @@ export class OpenWorldPanel {
   private fieldChallenge(next: NonNullable<ReturnType<OpenWorldPanel['nextChallenge']>>): boolean {
     const world = this.simulation;
     if (world.locationAt(world.player.x, world.player.z).id !== next.locationId) return false;
-    if (!(next.kind === 'gym' ? world.challengeLocalGym() : world.challengeLocalTrainer())) return false;
-    this.pendingFieldChallenge = undefined; this.paused = false; this.options.changed(); this.refresh();
+    let started = false;
+    // A team the region does not allow is named here, and the walk there ends either way.
+    try { started = next.kind === 'gym' ? world.challengeLocalGym() : world.challengeLocalTrainer(); }
+    catch (error) { this.pendingFieldChallenge = undefined; this.options.notify(error instanceof Error ? error.message : String(error), true); return true; }
+    if (!started) return false;
+    this.pendingFieldChallenge = undefined; this.options.changed(); this.refresh();
     return true;
   }
 
@@ -553,7 +595,7 @@ export class OpenWorldPanel {
   private challengeGymHall(): void {
     try { if (!this.simulation.challengeGymHall()) return; }
     catch (error) { this.options.notify(error instanceof Error ? error.message : String(error), true); return; }
-    this.paused = false; this.manualMovementActive = false; this.options.changed(); this.refresh();
+    this.manualMovementActive = false; this.options.changed(); this.refresh();
   }
 
   /** A hall battle ended: a league win heals the team for the next trainer; the last win, a loss or a gym ends the visit. */
@@ -571,6 +613,33 @@ export class OpenWorldPanel {
     // Face into the hall on the way in, and away from the building on the way out.
     this.cameraHeading = CARDINAL_CAMERA_HEADINGS[getGymScene(this.simulation.sceneId) ? 'south' : 'north'];
     this.renderer?.setCameraHeading(this.cameraHeading); this.updateMapOrientation(); this.minimap();
+  }
+
+  /** Forgets the hall door, dungeon entrance or field challenge a route was heading for. */
+  private dropPendingArrivals(): void { this.pendingGymEntry = undefined; this.pendingFieldChallenge = undefined; this.pendingDungeonEntry = undefined; }
+
+  /** Names the story gate or badge requirement that stopped a step: once, not on every frame a key is held against it. */
+  private noteMovementBlock(): void {
+    const reason = this.simulation.lastMovementBlock, now = performance.now(), previous = this.lastBlockNotice;
+    if (!reason) return;
+    this.lastBlockNotice = { reason, at: now };
+    if (previous?.reason !== reason || now - previous.at > 5000) this.options.notify(reason);
+  }
+
+  /** A wild Pokémon clicked for a look keeps manual control until the player acts or clicks elsewhere. */
+  private get inspectingWild(): boolean {
+    const world = this.simulation;
+    return world.selectionPinned && !world.trackingSelected && world.entities.some(entity => entity.kind === 'wild' && entity.id === world.selectedWildId);
+  }
+
+  /**
+   * Saves at once for an outcome that must not replay on reload. The snapshot is taken now; the world keeps ticking
+   * while it is written, and a failed write reports itself without stopping anything that follows.
+   */
+  private saveNow(): void {
+    let written: void | Promise<void>;
+    try { written = this.options.changed(true); } catch (error) { this.reportError(error, 'world'); return; }
+    void Promise.resolve(written).catch(() => undefined);
   }
 
   private noteManualInput(): boolean {
@@ -618,7 +687,12 @@ export class OpenWorldPanel {
   }
 
   private changeMode(mode: 'auto' | 'manual'): void { this.manualIdleSeconds = 0; this.simulation.setControlMode(mode); this.options.changed(); this.refresh(); }
-  private catchVictory(): void { const caught = this.simulation.captureVictory(); if (caught) playGameSound('capture'); this.options.notify(caught ? '포획 성공! 팀 또는 박스에 저장했습니다.' : '볼이 없어 포획을 패스합니다.'); this.options.changed(); this.refresh(); }
+  private catchVictory(): void {
+    const caught = this.simulation.captureVictory(); if (caught) playGameSound('capture');
+    this.options.notify(caught ? '포획 성공! 팀 또는 박스에 저장했습니다.' : '볼이 없어 포획을 패스합니다.');
+    if (caught) this.saveNow(); else this.options.changed();
+    this.refresh();
+  }
 
   private encounter(id: string): void {
     const wild = this.simulation.entities.find(entity => entity.id === id);
@@ -630,7 +704,7 @@ export class OpenWorldPanel {
       this.refresh(); return;
     }
     if (!this.simulation.canEngageWild(id)) { this.simulation.trackSelected(); this.options.notify(`${getSpecies(wild.speciesId).name} 추적 중 · 길을 따라 4m 안에 도착하면 배틀합니다.`); this.options.changed(); }
-    else if (this.simulation.startEncounter(id)) { this.paused = false; this.options.changed(); }
+    else if (this.simulation.startEncounter(id)) this.options.changed();
     this.refresh();
   }
 
@@ -645,7 +719,7 @@ export class OpenWorldPanel {
     // A route or held key owns control until the renderer reports movement end.
     // Fixed simulation ticks must not expire that ownership between render frames.
     if (this.simulation.controlMode === 'manual' && !this.manualMovementActive && !this.options.game.battle && this.canAcceptMovement()
-      && !this.simulation.isSafeTown(this.simulation.player.x, this.simulation.player.z) && !getGymScene(this.simulation.sceneId)) {
+      && !this.simulation.isSafeTown(this.simulation.player.x, this.simulation.player.z) && !getGymScene(this.simulation.sceneId) && !this.inspectingWild) {
       this.manualIdleSeconds += .25;
       if (this.manualIdleSeconds >= MANUAL_IDLE_SECONDS) this.changeMode('auto');
     } else this.manualIdleSeconds = 0;
@@ -665,6 +739,9 @@ export class OpenWorldPanel {
         else if (event.result.outcome === 'caught') playGameSound('capture');
         const now = performance.now(); this.attacks.clear();
         this.effects = this.effects.filter(effect => now - effect.start < 2000);
+        // Every opponent brings new battlers; cues and flinches already played are dropped.
+        for (const [id, cue] of this.cues) if (cue.end <= now) this.cues.delete(id);
+        for (const [id, hurt] of this.hurts) if (hurt.end <= now) this.hurts.delete(id);
         event.result.executedMoves.filter(move => move.executed).forEach((move, index) => {
           const start = now + index * 300, key = String(++this.cueSerial), style = move.damageClass;
           this.attacks.set(move.actorInstanceId, { start, end: start + 280, type: move.moveType });
@@ -675,7 +752,9 @@ export class OpenWorldPanel {
           if (move.damage > 0 && !self) { const impact = start + (style === 'special' ? 420 : 200); this.hurts.set(move.targetInstanceId, { start: impact, end: impact + 320 }); }
         });
         if (event.result.battleEnded && !event.result.gymVictory) this.options.notify(event.result.outcome === 'won' ? '승리! 경험치와 보상을 받았습니다.' : event.result.outcome === 'caught' ? '포획 성공! 팀과 도감에 등록했습니다.' : event.result.outcome === 'lost' ? '파트너가 쓰러졌습니다. 회복한 뒤 다시 탐험하세요.' : '배틀에서 벗어났습니다.');
-        await this.options.changed(true);
+        // A finished battle, with its capture, rewards and evolutions, is saved at once so it never replays on reload;
+        // a turn in between rides the queued save. The fixed-step world never waits for either.
+        if (event.result.battleEnded) this.saveNow(); else this.options.changed();
         if (event.result.battleEnded) this.afterHallBattle(event.result.outcome);
         if (event.result.gymVictory) {
           this.refresh(); await showGymVictory(event.result.gymVictory);
@@ -850,12 +929,22 @@ export class OpenWorldPanel {
     const dot = this.host.querySelector<HTMLElement>('#world-realtime-dot'); if (dot) dot.dataset.status = view.status;
     const position = this.simulation.player;
     const peers = view.players.map(player => ({ ...player, distance: Math.hypot(player.x - position.x, player.z - position.z), location: this.simulation.locationAt(player.x, player.z).name })).sort((a, b) => a.distance - b.distance);
-    this.html('#world-player-list', peers.map(player => `<button data-remote-player="${escape(player.id)}" data-x="${player.x}" data-z="${player.z}"><img src="${pokemonSpriteUrl(player.speciesId)}" alt=""><span><b>${escape(player.name)}</b><small>${escape(player.location)} · ${Math.round(player.distance)}m · ${player.activity === 'battle' ? '배틀 중' : player.activity === 'moving' ? '이동 중' : '대기'}</small></span><i>↗</i></button>`).join('') || '<p class="world-chat-empty">이 지역에 다른 트레이너가 아직 없습니다.</p>');
-    const tracked = peers.find(player => player.id === this.trackedPlayerId);
+    const byId = new Map(peers.map(player => [player.id, player]));
+    // An open list keeps its order and rebuilds only when someone joins or leaves; places and distances change in
+    // place, so a row never moves or is replaced under a tap.
+    if (!this.host.querySelector<HTMLDetailsElement>('.social-players')?.open || this.peerOrder.length !== peers.length || this.peerOrder.some(id => !byId.has(id)))
+      this.peerOrder = peers.map(player => player.id);
+    this.html('#world-player-list', this.peerOrder.map(id => byId.get(id)!).map(player => `<button data-remote-player="${escape(player.id)}"><img src="${pokemonSpriteUrl(player.speciesId)}" alt=""><span><b>${escape(player.name)}</b><small></small></span><i>↗</i></button>`).join('') || '<p class="world-chat-empty">이 지역에 다른 트레이너가 아직 없습니다.</p>');
+    this.host.querySelectorAll<HTMLElement>('#world-player-list [data-remote-player]').forEach(row => {
+      const player = byId.get(row.dataset.remotePlayer!);
+      if (player) setText(row.querySelector('small'), `${player.location} · ${Math.round(player.distance)}m · ${player.activity === 'battle' ? '배틀 중' : player.activity === 'moving' ? '이동 중' : '대기'}`);
+    });
+    const tracked = this.trackedPlayerId ? byId.get(this.trackedPlayerId) : undefined;
     const tracking = this.host.querySelector<HTMLElement>('#world-trainer-track')!;
     tracking.hidden = !this.trackedPlayerId;
     const direction = tracked ? ['북', '북동', '동', '남동', '남', '남서', '서', '북서'][(Math.round(Math.atan2(tracked.x - position.x, position.z - tracked.z) / (Math.PI / 4)) + 8) % 8] : '';
-    this.html('#world-trainer-track', tracked ? `<button class="trainer-destination"><b>↗ ${escape(tracked.name)}</b><small>${escape(tracked.location)} · ${direction}쪽 ${Math.round(tracked.distance)}m</small></button><button data-stop-tracking aria-label="트레이너 위치 표시 해제">×</button>` : '<span>트레이너가 다른 지역으로 이동했거나 접속을 종료했습니다.</span><button data-stop-tracking aria-label="트레이너 위치 표시 해제">×</button>');
+    this.html('#world-trainer-track', tracked ? `<button class="trainer-destination"><b>↗ ${escape(tracked.name)}</b><small></small></button><button data-stop-tracking aria-label="트레이너 위치 표시 해제">×</button>` : '<span>트레이너가 다른 지역으로 이동했거나 접속을 종료했습니다.</span><button data-stop-tracking aria-label="트레이너 위치 표시 해제">×</button>');
+    if (tracked) setText(tracking.querySelector('.trainer-destination small'), `${tracked.location} · ${direction}쪽 ${Math.round(tracked.distance)}m`);
     const log = this.host.querySelector<HTMLElement>('#world-chat-log')!;
     const collapsed = this.host.querySelector('.social-dock')!.classList.contains('chat-collapsed');
     const followLatest = !collapsed && log.scrollHeight - log.clientHeight - log.scrollTop <= 8;
@@ -864,7 +953,14 @@ export class OpenWorldPanel {
       if (this.lastChatId && !followLatest) this.unreadChats += Math.max(1, view.history.length - view.history.findIndex(message => message.id === this.lastChatId) - 1);
       this.lastChatId = newest;
     }
-    this.html('#world-chat-log', view.history.map(message => `<p class="${message.playerId === view.id ? 'chat-own' : ''}"><b>${escape(message.name)}</b><span>${escape(message.text)}</span><time>${new Date(message.sentAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</time></p>`).join('') || '<p class="world-chat-empty">같은 지역의 트레이너에게 인사해 보세요.</p>');
+    // The log is drawn again only when its messages change, and each message's time is formatted once.
+    const chatSignature = `${view.id ?? ''}:${view.history.length}:${view.history[0]?.id ?? ''}:${newest ?? ''}`;
+    if (chatSignature !== this.chatSignature) {
+      this.chatSignature = chatSignature;
+      const times = new Map(view.history.map(message => [message.id, this.chatTimes.get(message.id) ?? new Date(message.sentAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })]));
+      this.chatTimes = times;
+      this.html('#world-chat-log', view.history.map(message => `<p class="${message.playerId === view.id ? 'chat-own' : ''}"><b>${escape(message.name)}</b><span>${escape(message.text)}</span><time>${times.get(message.id)}</time></p>`).join('') || '<p class="world-chat-empty">같은 지역의 트레이너에게 인사해 보세요.</p>');
+    }
     if (followLatest) requestAnimationFrame(() => { if (this.host?.contains(log)) log.scrollTop = log.scrollHeight; });
     if (followLatest) this.unreadChats = 0;
     this.button('#world-chat-latest').hidden = this.unreadChats === 0;
@@ -1019,6 +1115,9 @@ export class OpenWorldPanel {
       if (typeof x !== 'number' || typeof z !== 'number' || !Number.isFinite(x) || !Number.isFinite(z) || !this.walkableBattle || this.options.game.captureOffer) return;
       const destination = cave ? (!this.simulation.sampleWorld(x, z).blocked ? { x, z } : undefined) : this.simulation.atlas.nearestWalkable(x, z, badges);
       if (!destination) { this.options.notify('현재 위치에서는 통행 가능한 길을 찾지 못했습니다.', true); return; }
+      // Ground behind a gate the badges have not opened is named instead of walked toward.
+      const block = this.simulation.routeBlock(destination);
+      if (block) { this.options.notify(block, true); return; }
       if (!this.simulation.modelsReady) {
         const companion = this.simulation.entities.find(entity => entity.kind === 'companion');
         this.options.notify(this.simulation.modelStatus(companion?.id ?? '') === 'failed' ? '파트너 3D 모델을 불러오지 못해 이동할 수 없습니다. 모델을 다시 불러와 주세요.' : '파트너 3D 모델을 불러오는 중입니다. 준비되면 다시 이동해 주세요.', true);
@@ -1144,7 +1243,7 @@ export class OpenWorldPanel {
     this.button('#world-mode-auto').setAttribute('aria-pressed', String(world.controlMode === 'auto'));
     this.button('#world-mode-manual').setAttribute('aria-pressed', String(world.controlMode === 'manual'));
     this.html('#world-control-title', world.controlMode === 'manual' ? '수동 이동' : '자동 이동 · 배틀');
-    this.html('#world-control-help', world.controlMode === 'manual' ? (battle || game.captureOffer ? '기술 1–4 · M 전환' : location.kind === 'town' ? '마을에서는 수동 이동 유지 · M 전환' : '이동을 멈추면 자동 전환') : '가까운 포켓몬 자동 배틀');
+    this.html('#world-control-help', world.controlMode === 'manual' ? (battle || game.captureOffer ? '기술 1–4 · M 전환' : world.isSafeTown(world.player.x, world.player.z) ? '마을에서는 수동 이동 유지 · M 전환' : '이동을 멈추면 자동 전환') : '가까운 포켓몬 자동 배틀');
     const offer = game.captureOffer, offerNode = this.host.querySelector<HTMLElement>('#world-capture-offer')!;
     offerNode.hidden = !offer;
     if (offer) {
@@ -1167,7 +1266,15 @@ export class OpenWorldPanel {
       this.button('#world-gym-exit').onclick = () => { if (world.exitGym()) this.afterSceneChange(); };
     }
     if (cave) {
-      this.html('#world-cave-exits', `<button id="world-cave-exit" ${battle || offer ? 'disabled' : ''}>${cave.kind === 'cave' ? '동굴 밖으로 나가기' : '나가기'}</button>${exits.length > 1 ? `<select id="world-cave-exit-choice" aria-label="나갈 출구">${exits.map(exit => `<option value="${escape(exit.id)}">${escape(exit.label)}</option>`).join('')}</select>` : ''}`);
+      // The exit list keeps the nearest-first order it had on arrival on this floor, so walking never reorders it or
+      // closes it while open, and a chosen exit stays chosen.
+      if (this.caveExitOrder?.sceneId !== world.sceneId) { this.caveExitOrder = { sceneId: world.sceneId, ids: exits.map(exit => exit.id) }; this.caveExitChoice = undefined; }
+      const order = this.caveExitOrder.ids, rank = (id: string) => { const index = order.indexOf(id); return index < 0 ? order.length : index; };
+      const listed = [...exits].sort((a, b) => rank(a.id) - rank(b.id) || a.id.localeCompare(b.id));
+      const chosen = listed.some(exit => exit.id === this.caveExitChoice) ? this.caveExitChoice : listed[0]?.id;
+      this.html('#world-cave-exits', `<button id="world-cave-exit" ${battle || offer ? 'disabled' : ''}>${cave.kind === 'cave' ? '동굴 밖으로 나가기' : '나가기'}</button>${listed.length > 1 ? `<select id="world-cave-exit-choice" aria-label="나갈 출구">${listed.map(exit => `<option value="${escape(exit.id)}"${exit.id === chosen ? ' selected' : ''}>${escape(exit.label)}</option>`).join('')}</select>` : ''}`);
+      const choice = this.host.querySelector<HTMLSelectElement>('#world-cave-exit-choice');
+      if (choice) choice.onchange = () => { this.caveExitChoice = choice.value; };
       this.button('#world-cave-exit').onclick = () => {
         const chosen = this.host?.querySelector<HTMLSelectElement>('#world-cave-exit-choice')?.value;
         if (world.exitCave(chosen)) { world.setControlMode('manual'); this.afterPortal(); if (cave.kind === 'cave') this.options.notify('동굴 밖으로 나왔습니다.'); }
@@ -1239,12 +1346,16 @@ export class OpenWorldPanel {
       + machines.reduce((sum, machine) => sum + game.technicalMachines![String(machine.moveId)], 0)));
     const near = pickups.some(row => row.distance <= 30);
     if (bag.dataset.nearby !== String(near)) bag.dataset.nearby = String(near);
-    if (!bag.open) return;
+    if (!bag.open) { this.bagOrder = []; return; }
+    // The open bag keeps the nearest-first order it opened with until an item comes or goes; distances change in place,
+    // so a row never moves or is rebuilt under a tap.
+    const byId = new Map(pickups.map(row => [row.item.id, row]));
+    if (this.bagOrder.length !== pickups.length || this.bagOrder.some(id => !byId.has(id))) this.bagOrder = pickups.map(row => row.item.id);
     const compass = (x: number, z: number) => ['북', '북동', '동', '남동', '남', '남서', '서', '북서'][(Math.round(Math.atan2(x - player.x, player.z - z) / (Math.PI / 4)) + 8) % 8];
     const walking = this.walkableBattle && !game.captureOffer, editing = !game.battle && !game.captureOffer && !!this.options.editMoves;
     const groups = [['battle', '장착 도구'], ['berry', '열매'], ['support', '보조'], ['mega-stone', '메가진화석']] as const;
     const describe = (id: string) => HELD_TOOL_DESCRIPTIONS[id as HeldTool] ?? '';
-    const pickupRows = pickups.map(({ item, distance }) => `<button type="button" class="bag-pickup kind-${item.kind}" data-bag-pickup="${escape(item.id)}" ${walking ? '' : 'disabled'}><span>${escape(item.name)}</span><small>${compass(item.x, item.z)} ${Math.round(distance)}m</small></button>`).join('');
+    const pickupRows = this.bagOrder.map(id => byId.get(id)!.item).map(item => `<button type="button" class="bag-pickup kind-${item.kind}" data-bag-pickup="${escape(item.id)}" ${walking ? '' : 'disabled'}><span>${escape(item.name)}</span><small></small></button>`).join('');
     const teamRows = game.player.team.map(monster => `<button type="button" data-bag-member="${escape(monster.instanceId)}" ${editing ? '' : 'disabled'} title="${escape(monster.heldTool ? describe(monster.heldTool) : '')}"><img src="${pokemonSpriteUrl(monster.speciesId)}" alt=""><span>${escape(monster.nickname)}</span><small>${monster.heldTool ? escape(ITEM_LABELS[monster.heldTool]) : '없음'}</small></button>`).join('');
     const ownedRows = groups.map(([group, label]) => {
       const rows = owned.filter(item => (item.kind === 'mega-stone' ? 'mega-stone' : item.category) === group);
@@ -1260,6 +1371,10 @@ export class OpenWorldPanel {
       return;
     }
     this.html('#world-bag-content', `${tabs}<section><h3>주변</h3>${pickupRows || '<p class="bag-empty">없음</p>'}</section><section><h3>팀</h3>${teamRows}</section><section><h3>가방</h3>${ownedRows || '<p class="bag-empty">없음</p>'}</section>`);
+    this.host!.querySelectorAll<HTMLElement>('#world-bag-content [data-bag-pickup]').forEach(row => {
+      const pickup = byId.get(row.dataset.bagPickup!);
+      if (pickup) setText(row.querySelector('small'), `${compass(pickup.item.x, pickup.item.z)} ${Math.round(pickup.distance)}m`);
+    });
   }
 
   private openMachines(moveId?: number): void {
@@ -1339,6 +1454,8 @@ export class OpenWorldPanel {
     this.host!.querySelectorAll<SVGGElement>('[data-pickup-id]').forEach(marker => {
       const navigate = () => { const item = world.fieldPickups.find(row => row.id === marker.dataset.pickupId); if (!item) return;
         if (!this.walkableBattle || game.captureOffer) return;
+        const block = world.routeBlock(item);
+        if (block) { this.options.notify(block, true); return; }
         const dialog = this.host!.querySelector<HTMLDialogElement>('#world-map-dialog')!; dialog.close();
         if (!this.renderer?.navigateTo(item)) { dialog.showModal(); this.options.notify('현재 위치에서 이어지는 도보 경로가 없습니다.', true); }
       };
@@ -1464,5 +1581,12 @@ export class OpenWorldPanel {
   private text(selector: string, value: string): void { const node = this.host?.querySelector(selector); if (node && this.htmlCache.get(node) !== value) { node.textContent = value; this.htmlCache.set(node, value); } }
   private button(selector: string): HTMLButtonElement { return this.host!.querySelector(selector)!; }
   private input(selector: string): HTMLInputElement { return this.host!.querySelector(selector)!; }
-  unmount(): void { this.loading?.remove(); this.loading = undefined; this.starterDialog?.remove(); this.starterDialog = undefined; this.manualMovementActive = false; this.layoutObserver?.disconnect(); this.layoutObserver = undefined; window.removeEventListener('keydown', this.hotkeys); window.removeEventListener('online', this.onConnectionRestored); this.compactViewport.removeEventListener('change', this.onViewportChange); this.multiplayer?.close(); this.multiplayer = undefined; this.renderer?.destroy(); this.renderer = undefined; this.host = undefined; this.ready = false; }
+  unmount(): void {
+    this.loading?.remove(); this.loading = undefined; this.starterDialog?.remove(); this.starterDialog = undefined; this.manualMovementActive = false; this.layoutObserver?.disconnect(); this.layoutObserver = undefined;
+    window.removeEventListener('keydown', this.hotkeys); window.removeEventListener('keydown', this.routeKeys); window.removeEventListener('online', this.onConnectionRestored); this.compactViewport.removeEventListener('change', this.onViewportChange);
+    this.multiplayer?.close(); this.multiplayer = undefined; this.renderer?.destroy(); this.renderer = undefined; this.host = undefined; this.ready = false;
+    // A discarded panel must not keep the Mega model in the shared cache; a new host draws its lists afresh.
+    this.megaPreload?.release(); this.megaPreload = undefined;
+    this.chatSignature = ''; this.bagOrder = []; this.peerOrder = []; this.caveExitOrder = undefined;
+  }
 }

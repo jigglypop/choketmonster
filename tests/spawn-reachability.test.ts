@@ -31,7 +31,8 @@ function walkablePoint(world:OpenWorldSimulation,locationId:string,biome:string)
     world.sceneId=`surface:${world.regionId}`;const atlas=getWorldAtlas(world.regionId),location=atlas.locations.find(item=>item.id===locationId)!;
     for(let radius=0;radius<=45;radius+=.5)for(let step=0;step<72;step++){
       const angle=step/72*Math.PI*2,point={x:location.x+Math.cos(angle)*radius,z:location.z+Math.sin(angle)*radius};
-      if(!world.sampleWorld(point.x,point.z).blocked&&world.sampleWorld(point.x,point.z).biome===biome&&world.locationAt(point.x,point.z).id===locationId)return point;
+      // Town ground is never a spawn point, even where a route or landmark is the nearest place.
+      if(!world.sampleWorld(point.x,point.z).blocked&&world.sampleWorld(point.x,point.z).biome===biome&&world.locationAt(point.x,point.z).id===locationId&&!world.isSafeTown(point.x,point.z))return point;
     }
   }
   throw new Error(`No actual ${biome} spawn coordinate for ${world.regionId}:${locationId}`);

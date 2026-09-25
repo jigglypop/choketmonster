@@ -3,7 +3,7 @@ import type { KantoLocation, KantoLocationKind, KantoTraversal } from './kanto';
 import type { ExpansionRegion } from '../data/expansion-encounters';
 import { expansionEncounterPools } from '../data/expansion-encounters';
 import { terrainPlateauHeight } from './terrain-elevation';
-import { WORLD_MAX, WORLD_SCALE, scaleWorldDistance } from './world-space';
+import { WORLD_MAX, WORLD_SCALE, scaleWorldDistance, townGroundAt } from './world-space';
 
 export type AuthoredRegionDefinition = {
   id: ExpansionRegion;
@@ -18,6 +18,9 @@ export type AuthoredTerrainFeature = {
   radius: number;
   elevation: number;
 };
+
+/** Town ground is a meadow disc this wide around each town centre, whatever place lies nearest. */
+export const AUTHORED_TOWN_RADIUS = scaleWorldDistance(8);
 
 export function authoredLocation(region: ExpansionRegion, id: string, name: string, x: number, z: number, kind: KantoLocationKind, fallback: readonly [number, number], requiredBadges = 0): KantoLocation {
   const method = kind === 'sea' ? 'surf' : 'walk', pools = expansionEncounterPools(region, id, method), slots = pools.flatMap(pool => pool.slots);
@@ -85,7 +88,7 @@ export function createAuthoredRegionSampler(definition: AuthoredRegionDefinition
     const terrainFeature = feature?.feature;
     if (![x, z].every(Number.isFinite) || Math.abs(x) > WORLD_MAX || Math.abs(z) > WORLD_MAX) return { height, biome: 'rock', blocked: true };
     const nearest = nearestLocation(x, z), path = nearestSegment(x, z), localDistance = Math.hypot(x - nearest.x, z - nearest.z);
-    const town=towns.find(item=>Math.hypot(x-item.x,z-item.z)<scaleWorldDistance(8));
+    const town=towns.find(item=>Math.hypot(x-item.x,z-item.z)<AUTHORED_TOWN_RADIUS);
     if(town){const blocked=buildingOffsets(town).some(([dx,dz])=>Math.abs(x-town.x-dx)<scaleWorldDistance(1.9)&&Math.abs(z-town.z-dz)<scaleWorldDistance(1.7));return{height:terrainPlateauHeight(height,x,z,plateaus),biome:'meadow',blocked};}
     const radius = scaleWorldDistance(nearest.kind === 'town' ? 8 : nearest.kind === 'sea' ? 6 : nearest.kind === 'route' ? 4.5 : 5.5);
     const playable = path.distance < scaleWorldDistance(3) || localDistance < radius;
@@ -114,5 +117,6 @@ export function createAuthoredRegionSampler(definition: AuthoredRegionDefinition
     for(let radius=scaleWorldDistance(.5);radius<=scaleWorldDistance(18);radius+=scaleWorldDistance(.5))for(let step=0;step<32;step++){const angle=step/32*Math.PI*2,candidate={x:x+Math.cos(angle)*radius,z:z+Math.sin(angle)*radius};if(!sample(candidate.x,candidate.z).blocked&&nearestLocation(candidate.x,candidate.z).requiredBadges<=badges)return candidate;}
     const fallback=[...definition.locations].filter(location=>location.requiredBadges<=badges).sort((a,b)=>Math.hypot(a.x-x,a.z-z)-Math.hypot(b.x-x,b.z-z))[0];return fallback?safeArrival(fallback.id,badges):undefined;
   };
-  return { locationAt: nearestLocation, distanceToPath: (x: number, z: number) => nearestSegment(x, z).distance, sample, evaluate, safeArrival, nearestWalkable, buildingOffsets };
+  const townAt = (x: number, z: number) => townGroundAt(towns, AUTHORED_TOWN_RADIUS, x, z);
+  return { locationAt: nearestLocation, distanceToPath: (x: number, z: number) => nearestSegment(x, z).distance, sample, evaluate, safeArrival, nearestWalkable, buildingOffsets, townAt };
 }

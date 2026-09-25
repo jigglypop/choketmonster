@@ -117,8 +117,8 @@ export type PlayerMove = { x: number; z: number; heading: WorldHeading };
 export type OpenWorldViewOptions = {
   getSnapshot: () => OpenWorldRenderSnapshot;
   onPlayerMove: (next: PlayerMove) => boolean | void;
-  /** Selects manual control before a click-to-move route begins. */
-  onNavigationStart?: () => boolean | void;
+  /** Selects manual control before a click-to-move route begins; false (a gate the badges have not opened) cancels it. */
+  onNavigationStart?: (destination?: WorldPoint) => boolean | void;
   /** Active keyboard or route input, including attempts blocked by terrain. */
   onMovementInput?: () => boolean | void;
   /** Called once when held movement or a click route stops. */
@@ -141,6 +141,8 @@ export type OpenWorldViewOptions = {
   modelUrl?: (speciesId: number) => string;
   spriteUrl?: (speciesId: number) => string;
   sampleWorld?: (x: number, z: number) => WorldSample;
+  /** Story rules for one step of a click-to-move route (closed gates, gated places), passed to findWorldPath. */
+  navigationStep?: (from: WorldPoint, to: WorldPoint) => boolean;
   /** Fired once keyboard listeners are installed and the Canvas has rendered a frame. */
   onReady?: () => void;
   onLoadProgress?: (percent: number, detail: string) => void;

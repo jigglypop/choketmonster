@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Graph } from '../src/core/brain';
 import type { FieldPolicy } from '../src/game/field';
 import { createGame } from '../src/game/engine';
@@ -61,6 +61,31 @@ describe('gym hall', () => {
     Object.assign(snapshot.entities.find(entity => entity.kind === 'wild')!, blocked);
     const restored = new OpenWorldSimulation(graph, game, world.seed, snapshot, policy);
     expect(restored.entities.filter(entity => restored.sampleWorld(entity.x, entity.z).blocked)).toEqual([]);
+  });
+
+  it('keeps 24 berries for the wild Pokémon however often the hall is visited', () => {
+    const { world } = atPewterDoor(52_005);
+    for (let visit = 0; visit < 4; visit++) {
+      expect(world.enterGym('pewter')).toBe(true);
+      expect(world.exitGym()).toBe(true);
+      expect(world.foods).toHaveLength(24);
+      expect(world.foods.every(food => !world.sampleWorld(food.x, food.z).blocked)).toBe(true);
+    }
+  });
+
+  it('leaves the partner where it stood when a challenge cannot start', () => {
+    const { world, hall } = atPewterDoor(52_006);
+    expect(world.enterGym('pewter')).toBe(true);
+    const standing = { ...world.player };
+    vi.spyOn(world, 'challengeLocalGym').mockImplementationOnce(() => { throw new Error('이 지방에서 사용할 수 있는 포켓몬이 없습니다.'); });
+    expect(() => world.challengeGymHall()).toThrow('사용할 수 있는 포켓몬');
+    expect(world.player).toEqual(standing);
+    expect(world.game.battle).toBeUndefined();
+    vi.spyOn(world, 'challengeLocalGym').mockReturnValueOnce(false);
+    expect(world.challengeGymHall()).toBe(false);
+    expect(world.player).toEqual(standing);
+    expect(world.challengeGymHall()).toBe(true);
+    expect(world.player).toMatchObject(hall.battleSpot);
   });
 
   it('refuses the door from across town', () => {

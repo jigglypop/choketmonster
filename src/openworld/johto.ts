@@ -2,7 +2,7 @@ import type { WorldSample } from './types';
 import type { KantoGate, KantoGym, KantoLocation, KantoLocationKind, KantoTraversal } from './kanto';
 import { terrainProgressGates } from './progression-gates';
 import { terrainPlateauHeight } from './terrain-elevation';
-import { WORLD_MAX, WORLD_SCALE, scaleWorldDistance } from './world-space';
+import { WORLD_MAX, WORLD_SCALE, scaleWorldDistance, townGroundAt } from './world-space';
 import {
   JOHTO_WORLD_LOCATION_TO_POKEAPI, johtoGoldEncounterPools, type JohtoGoldEncounterPool,
 } from '../data/johto-gold-encounters';
@@ -133,6 +133,8 @@ const surfaceSegments = JOHTO_SURFACE_CONNECTIONS.map(([from, to]) => {
 const towns = JOHTO_LOCATIONS.filter(item => item.kind === 'town');
 const baseHeight = (x: number, z: number) => .2 * Math.sin((x / WORLD_SCALE + 11) * .085) + .16 * Math.cos((z / WORLD_SCALE - 7) * .075);
 const townPlateaus = towns.map(item => ({ x: item.x, z: item.z, height: baseHeight(item.x, item.z) }));
+/** Town ground is a meadow disc this wide around each town centre, whatever place lies nearest. */
+const TOWN_RADIUS = scaleWorldDistance(8.5);
 const buildingOffsetCache = new Map<string, ReadonlyArray<readonly [number, number]>>();
 const BUILDING_CANDIDATES = [[-5, -4], [5, -4], [-5, 4], [5, 4], [-6, 0], [6, 0], [0, -6], [0, 6]].map(([x, z]) => [x * WORLD_SCALE, z * WORLD_SCALE] as const);
 
@@ -176,7 +178,7 @@ export function sampleJohtoWorld(x: number, z: number): WorldSample {
   const joinedHeight = (value: number) => terrainPlateauHeight(value, x, z, townPlateaus);
   if (![x, z].every(Number.isFinite) || Math.abs(x) > WORLD_MAX || Math.abs(z) > WORLD_MAX) return { height, biome: 'rock', blocked: true };
   const nearest = johtoLocationAt(x, z), distance = Math.hypot(x - nearest.x, z - nearest.z), pathDistance = distanceToJohtoPath(x, z);
-  const town = towns.find(item => Math.hypot(x - item.x, z - item.z) < scaleWorldDistance(8.5));
+  const town = towns.find(item => Math.hypot(x - item.x, z - item.z) < TOWN_RADIUS);
   if (town) return { height: joinedHeight(height), biome: 'meadow', blocked: townBuildingAt(x, z, town) };
   const radius = scaleWorldDistance(nearest.kind === 'forest' ? 7.5 : nearest.kind === 'sea' ? 6.5 : nearest.kind === 'town' ? 8.5 : nearest.kind === 'route' ? 4.8 : 5.5);
   const playable = pathDistance < scaleWorldDistance(3.2) || distance < radius;
@@ -205,6 +207,9 @@ export function sampleJohtoWorld(x: number, z: number): WorldSample {
 }
 
 export function isJohtoPlayable(x: number, z: number): boolean { return !sampleJohtoWorld(x, z).blocked; }
+
+/** The town whose meadow or plaza covers the point. */
+export const johtoTownAt = (x: number, z: number): JohtoLocation | undefined => townGroundAt(towns, TOWN_RADIUS, x, z);
 
 export function evaluateJohtoTraversal(_from: { x: number; z: number }, to: { x: number; z: number }, badges: number): JohtoTraversal {
   const destination = johtoLocationAt(to.x, to.z);
@@ -265,6 +270,7 @@ export const JOHTO_ATLAS = {
   palette: { ground: '#8cc66c', water: '#5ab9d4', town: '#e3b574' },
   sample: sampleJohtoWorld,
   locationAt: johtoLocationAt,
+  townAt: johtoTownAt,
   distanceToPath: distanceToJohtoPath,
   evaluateTraversal: evaluateJohtoTraversal,
   safeArrival: safeJohtoArrival,

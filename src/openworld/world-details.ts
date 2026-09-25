@@ -5,7 +5,10 @@ import type { SceneryAssetId, SceneryPlacement } from './scenery';
 import { terrainSurfaceHeight } from './grounding';
 import { THEME_BY_REGION, buildExplorationSites, type ExplorationTheme } from './exploration-sites';
 import { scenerySeed, townPavingCells } from './town-style';
-import { WORLD_SCALE } from './world-space';
+import { PAVING_CELL, WORLD_SCALE, isTownPaved } from './world-space';
+
+// The simulation keeps wild Pokémon off the same plaza, so the tile rule lives beside the world coordinates.
+export { PAVING_CELL, isTownPaved };
 
 /**
  * Visual-only town and roadside dressing. Placement is derived once per atlas from
@@ -29,7 +32,6 @@ export type WorldDetails = {
   towns: ReadonlyMap<string, TownLayout>;
 };
 
-export const PAVING_CELL = 1.12 * WORLD_SCALE;
 const MAX_TRAIL_HALF_WIDTH = 2.05 * WORLD_SCALE;
 /** Clearance used for solid-looking props: arrival core, road corridor and building footprints. */
 export const TOWN_ARRIVAL_CORE = 7.5;
@@ -124,11 +126,6 @@ function walkableTownRadius(context: Context, town: KantoLocation): number {
   }
   found.sort((a, b) => a - b);
   return found.length ? found[Math.floor(found.length / 2)] : 8 * WORLD_SCALE;
-}
-
-/** True when a town-local point lies on one of the fixed paving cells. */
-export function isTownPaved(x: number, z: number): boolean {
-  return Math.hypot(Math.round(x / PAVING_CELL), Math.round(z / PAVING_CELL)) <= 7.1;
 }
 
 function layoutTown(context: Context, town: KantoLocation, roads: Road[], framing: WorldDetails['framing'], ground: WorldDetails['ground']): TownLayout {

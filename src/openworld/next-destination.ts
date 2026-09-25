@@ -56,6 +56,7 @@ export function nextDestinationGuide(game: GameState, atlas: WorldAtlas, sceneId
   const cave = getCaveScene(sceneId);
   let next: WorldPoint | undefined, nextName: string | undefined, floorStep = false;
   let sample: (x: number, z: number) => WorldSample = atlas.sample;
+  let canStep: ((from: WorldPoint, to: WorldPoint) => boolean) | undefined;
   if (cave) {
     // Every exit of the dungeon counts; one on another floor is reached by the stairs toward it.
     const exits = openDungeonExits(cave.sceneId, badges).map(({ scene, portal }) => {
@@ -86,14 +87,11 @@ export function nextDestinationGuide(game: GameState, atlas: WorldAtlas, sceneId
       next = portal?.surface ?? atlas.safeArrival(location.id, badges);
       nextName = portal ? `${passage!.dungeonName} 입구` : location.name;
     }
-    // Respect locked terrain while drawing directions as well as while moving.
-    sample = (x, z) => {
-      const terrain = atlas.sample(x, z);
-      return terrain.blocked || !atlas.evaluateTraversal(player, { x, z }, badges).allowed ? { ...terrain, blocked: true } : terrain;
-    };
+    // Respect closed gates and gated places while drawing directions as well as while moving.
+    canStep = (from, to) => atlas.evaluateTraversal(from, to, badges).allowed;
   }
   if (!next) return { ...base, detail: '먼저 배지로 열리는 길을 확인하세요.', points: [], status: 'unreachable' };
-  const points = findWorldPath(player, next, sample);
+  const points = findWorldPath(player, next, sample, undefined, canStep);
   if (!points.length && Math.hypot(next.x - player.x, next.z - player.z) > 2)
     return { ...base, nextName, detail: `${nextName} 방향 · 지도에서 연결된 길을 확인하세요.`, points: [], status: 'unreachable' };
   return { ...base, nextName, detail: `${nextName} ${cave && !floorStep ? '쪽 출구로' : '방향으로'} 이동하세요.`, points, status: 'route' };

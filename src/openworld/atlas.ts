@@ -9,10 +9,11 @@ import * as galarMap from './galar';
 import * as hisuiMap from './hisui';
 import * as paldeaMap from './paldea';
 import { CAVE_SCENES, getCaveScene, type CaveScene } from './caves';
-import { WORLD_SCALE, scaleWorldDistance, surfaceSceneId } from './world-space';
+import { WORLD_SCALE, scaleWorldDistance, surfaceSceneId, townGroundAt } from './world-space';
+import { AUTHORED_TOWN_RADIUS } from './authored-region';
 import {
   KANTO_CONNECTIONS, KANTO_GATES, KANTO_GYMS, KANTO_LOCATIONS, KANTO_MAP_VERSION, KANTO_START, KANTO_SURFACE_CONNECTIONS,
-  distanceToKantoPath, encountersForLocation, evaluateKantoTraversal, kantoGateHalfWidth, kantoTravelPoint, locationAt,
+  distanceToKantoPath, encountersForLocation, evaluateKantoTraversal, kantoGateHalfWidth, kantoTownAt, kantoTravelPoint, locationAt,
   nearestKantoWalkable, safeKantoArrival, sampleKantoWorld, townBuildingOffsets,
   type KantoGate, type KantoGym, type KantoLocation, type KantoLocationKind, type KantoTraversal,
 } from './kanto';
@@ -24,6 +25,8 @@ export type WorldAtlas = {
   locations: readonly KantoLocation[]; connections: ReadonlyArray<readonly [string, string]>; surfaceConnections: ReadonlyArray<readonly [string, string]>;
   gates: readonly KantoGate[]; gyms: readonly KantoGym[]; palette: { ground: string; water: string; town: string };
   sample(x: number, z: number): WorldSample; locationAt(x: number, z: number): KantoLocation; distanceToPath(x: number, z: number): number;
+  /** The town whose drawn ground (meadow disc and plaza) covers the point, even where another place lies nearer. */
+  townAt(x: number, z: number): KantoLocation | undefined;
   evaluateTraversal(from: { x: number; z: number }, to: { x: number; z: number }, badges: number): KantoTraversal;
   safeArrival(id: string, badges?: number): { x: number; z: number } | undefined;
   nearestWalkable(x: number, z: number, badges?: number): { x: number; z: number } | undefined;
@@ -74,6 +77,7 @@ function createAtlas(plan: AtlasPlan, coordinateScale: number = WORLD_SCALE): Wo
     return Math.sqrt(nearest);
   };
   const nearestLocation = (x: number, z: number) => locations.reduce((best, item) => Math.hypot(item.x - x, item.z - z) < Math.hypot(best.x - x, best.z - z) ? item : best, locations[0]);
+  const towns = locations.filter(item => item.kind === 'town');
   const buildings = (town: KantoLocation) => {
     const candidates: ReadonlyArray<readonly [number, number]> = [[-5,-4], [5,-4], [-5,4], [5,4], [-6,0], [6,0], [0,-6], [0,6]]
       .map(([x, z]) => [distance(x), distance(z)] as const);
@@ -115,7 +119,7 @@ function createAtlas(plan: AtlasPlan, coordinateScale: number = WORLD_SCALE): Wo
     buildingOffsets: buildings, id: plan.id, name: plan.name, englishName: plan.englishName, defaultVersion: plan.defaultVersion, mapVersion: `${plan.id}-atlas-v${coordinateScale === WORLD_SCALE ? 2 : 1}`,
     surfaceSceneId: surfaceSceneId(plan.id), caves: CAVE_SCENES.filter(scene => scene.regionId === plan.id),
     start: { x: landmarks[0].x, z: landmarks[0].z }, locations, connections, surfaceConnections: connections, gates: [], gyms: [], palette: plan.palette,
-    sample, locationAt: nearestLocation, distanceToPath,
+    sample, locationAt: nearestLocation, distanceToPath, townAt: (x, z) => townGroundAt(towns, 8 * coordinateScale, x, z),
     evaluateTraversal: (_from, to, badges) => {
       const destination = nearestLocation(to.x, to.z);
       if (!Number.isFinite(badges) || badges < 0) return { allowed: false, location: destination, reason: '배지 정보가 올바르지 않습니다.' };
@@ -161,7 +165,7 @@ const kanto: WorldAtlas = {
   buildingOffsets: townBuildingOffsets, id: 'kanto', name: '관동', englishName: 'Kanto', defaultVersion: 'red', mapVersion: KANTO_MAP_VERSION, start: KANTO_START,
   surfaceSceneId: surfaceSceneId('kanto'), caves: CAVE_SCENES.filter(scene => scene.regionId === 'kanto'),
   locations: KANTO_LOCATIONS, connections: KANTO_CONNECTIONS, surfaceConnections: KANTO_SURFACE_CONNECTIONS, gates: KANTO_GATES, gyms: KANTO_GYMS,
-  palette: { ground: '#88c96a', water: '#58bcd6', town: '#e2b784' }, sample: sampleKantoWorld, locationAt, distanceToPath: distanceToKantoPath,
+  palette: { ground: '#88c96a', water: '#58bcd6', town: '#e2b784' }, sample: sampleKantoWorld, locationAt, distanceToPath: distanceToKantoPath, townAt: kantoTownAt,
   evaluateTraversal: evaluateKantoTraversal, safeArrival: safeKantoArrival, nearestWalkable: nearestKantoWalkable, travelPoint: kantoTravelPoint,
   encounters: encountersForLocation, gateHalfWidth: kantoGateHalfWidth,
 };
@@ -211,6 +215,11 @@ export function migrateLegacyExpansionLocationId(regionId: string, locationId: s
   if (regionId !== 'hoenn' && regionId !== 'sinnoh' && regionId !== 'unova') return locationId;
   return legacyExpansionLocationIds[regionId][locationId] ?? locationId;
 }
+/** Town ground of an authored map: every town's meadow disc and plaza, as its sampler draws them. */
+const authoredTownAt = (locations: WorldAtlas['locations']): WorldAtlas['townAt'] => {
+  const towns = locations.filter(item => item.kind === 'town');
+  return (x, z) => townGroundAt(towns, AUTHORED_TOWN_RADIUS, x, z);
+};
 const expandedAtlas = (base: WorldAtlas, data: {
   mapVersion: string; start: WorldAtlas['start']; locations: WorldAtlas['locations']; connections: WorldAtlas['connections'];
   gates: WorldAtlas['gates']; gyms: WorldAtlas['gyms']; sample: WorldAtlas['sample']; locationAt: WorldAtlas['locationAt'];
@@ -218,6 +227,7 @@ const expandedAtlas = (base: WorldAtlas, data: {
   buildingOffsets: WorldAtlas['buildingOffsets'];
 }): WorldAtlas => ({
   ...base, ...data, surfaceConnections: data.connections,
+  townAt: authoredTownAt(data.locations),
   defaultVersion: base.id === 'hoenn' ? 'emerald' : base.id === 'sinnoh' ? 'platinum' : base.id === 'unova' ? 'black' : base.id === 'kalos' ? 'x' : base.id === 'alola' ? 'ultra-moon' : base.defaultVersion,
   buildingOffsets: data.buildingOffsets,
   gateHalfWidth: () => scaleWorldDistance(3),

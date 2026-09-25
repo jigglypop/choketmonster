@@ -1,7 +1,7 @@
 import type { WorldSample } from './types';
 import { POKEMON } from '../data/pokemon';
 import { terrainPlateauHeight } from './terrain-elevation';
-import { WORLD_MAX, WORLD_SCALE, scaleWorldDistance } from './world-space';
+import { WORLD_MAX, WORLD_SCALE, scaleWorldDistance, townGroundAt } from './world-space';
 
 export type KantoLocationKind = 'town' | 'route' | 'forest' | 'cave' | 'sea' | 'special';
 
@@ -156,6 +156,11 @@ const gateSegments = KANTO_GATES.filter(gate => gate.visible !== false).map(gate
 const gateWidthCache = new Map<string, number>();
 const towns = KANTO_LOCATIONS.filter(item => item.kind === 'town');
 const townPlateaus = towns.map(item => ({ x: item.x, z: item.z, height: 0 }));
+/** Town ground is a meadow disc this wide around each town centre, whatever place lies nearest. */
+const TOWN_RADIUS = scaleWorldDistance(8.5);
+
+/** The town whose meadow or plaza covers the point. */
+export const kantoTownAt = (x: number, z: number): KantoLocation | undefined => townGroundAt(towns, TOWN_RADIUS, x, z);
 
 const TOWN_BUILDING_CANDIDATES = [[-5, -4], [5, -4], [-5, 4], [5, 4], [-6, 0], [6, 0], [0, -6], [0, 6]].map(([x, z]) => [x * WORLD_SCALE, z * WORLD_SCALE] as const);
 const townBuildingOffsetCache = new Map<string, ReadonlyArray<readonly [number, number]>>();
@@ -203,7 +208,7 @@ export function sampleKantoWorld(x: number, z: number): WorldSample {
   const nearest = locationAt(x, z);
   const distance = Math.hypot(x - nearest.x, z - nearest.z);
   const pathDistance = distanceToKantoPath(x, z);
-  const town = towns.find(item => Math.hypot(x - item.x, z - item.z) < scaleWorldDistance(8.5));
+  const town = towns.find(item => Math.hypot(x - item.x, z - item.z) < TOWN_RADIUS);
   if (town) return { height: joinedHeight(height), biome: 'meadow', blocked: townBuildingAt(x, z, town) };
   const southernSea = z > 82 * WORLD_SCALE && x > -78 * WORLD_SCALE && x < 12 * WORLD_SCALE;
   const powerWater = Math.hypot(x - 61 * WORLD_SCALE, z + 25 * WORLD_SCALE) < 13 * WORLD_SCALE;

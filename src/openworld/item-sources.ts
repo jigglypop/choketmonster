@@ -5,6 +5,7 @@ import { getWorldAtlas, type WorldRegionId } from './atlas';
 import { captureItemChances, fieldItemCatalog, HELD_TOOL_PICKUP_WEIGHTS, HELD_TOOL_SOURCE_FAMILIES, heldToolPickupWeight, type FieldItem } from './field-item-drops';
 import { isPlayableWorldRegion } from './availability';
 import { surfaceSceneId } from './world-space';
+import { surfaceBadges } from './dungeon-gates';
 import { technicalMachines, type TechnicalMachine } from '../game/technical-machines';
 
 export type FieldItemLocation = { regionId: WorldRegionId; locationId: string; name: string; requiredBadges: number };
@@ -107,9 +108,10 @@ function roadsidePoint(regionId: WorldRegionId, locationId: string, seed: number
   return roadsidePoints(regionId, locationId, seed)[0];
 }
 
-type RoadsideSpot = { location: FieldItemLocation; point: { x: number; z: number } };
+type Point = { x: number; z: number };
+type RoadsideSpot = { location: FieldItemLocation; point: Point };
 type Candidate = RoadsideSpot & { item: RoadsideItem };
-type RegionCandidates = { items: Candidate[]; spots: RoadsideSpot[] };
+type RegionCandidates = { items: Candidate[]; spots: RoadsideSpot[]; owners: ReadonlyMap<Point, number> };
 const pickupCandidates = new Map<string, RegionCandidates>();
 const activePickupCache = new Map<string, FieldItemPickup[]>();
 const roadsideLocations = (regionId: WorldRegionId): FieldItemLocation[] => getWorldAtlas(regionId).locations
@@ -117,10 +119,47 @@ const roadsideLocations = (regionId: WorldRegionId): FieldItemLocation[] => getW
   .map(place => ({ regionId, locationId: place.id, name: place.name, requiredBadges: place.requiredBadges }));
 /** Stronger machines wait for later roads. */
 const MACHINE_BADGES: Readonly<Record<TechnicalMachine['tier'], number>> = { common: 0, uncommon: 2, rare: 4 };
+/** Active items keep this far apart, as roadside spots of one place do; spots closer than this share a slot. */
+const SLOT_SITE_SPACING = 5;
+/** Fewest badges that open the way to a roadside place, gates on the road there included. */
+const placeBadges = (location: FieldItemLocation) => Math.max(location.requiredBadges, surfaceBadges(getWorldAtlas(location.regionId), location.locationId));
+
+/**
+ * Every roadside spot belongs to one persistent slot, and spots closer than the item spacing to the same one. A slot
+ * chooses only among its own spots, so its item and place never depend on what the other slots hold or whether they
+ * were picked up. Spots are dealt out in the order the badges open them, one per slot per round; the few spots that
+ * can hold a Mega Stone go first to slots that have none, so as many slots as possible offer every kind.
+ */
+function slotOwners(seed: number, rows: readonly Candidate[], spots: readonly RoadsideSpot[]): Map<Point, number> {
+  const all = [...rows, ...spots], points = [...new Set(all.map(row => row.point))], reach = new Map<Point, number>(), mega = new Set<Point>();
+  for (const row of all) reach.set(row.point, Math.min(reach.get(row.point) ?? 8, placeBadges(row.location)));
+  for (const row of rows) if (row.item.kind === 'mega-stone') mega.add(row.point);
+  const parent = points.map((_, index) => index);
+  const root = (index: number): number => parent[index] === index ? index : (parent[index] = root(parent[index]));
+  for (let a = 0; a < points.length; a++) for (let b = a + 1; b < points.length; b++)
+    if (Math.hypot(points[a].x - points[b].x, points[a].z - points[b].z) < SLOT_SITE_SPACING) parent[root(a)] = root(b);
+  const sites = new Map<number, Point[]>();
+  points.forEach((point, index) => { const site = root(index); sites.set(site, [...sites.get(site) ?? [], point]); });
+  const ordered = [...sites.values()].map(members => ({ members, reach: Math.min(...members.map(point => reach.get(point)!)), mega: members.some(point => mega.has(point)),
+    order: hash(`${seed}:${members.map(point => `${point.x.toFixed(2)},${point.z.toFixed(2)}`).sort().join(';')}`) }))
+    .sort((a, b) => a.reach - b.reach || a.order - b.order);
+  const load = Array.from({ length: FIELD_PICKUP_ACTIVE_LIMIT }, () => ({ sites: 0, mega: 0 })), owners = new Map<Point, number>();
+  for (const site of ordered) {
+    let slot = 0;
+    for (let next = 1; next < load.length; next++) {
+      const a = load[next], b = load[slot];
+      if (site.mega ? a.mega < b.mega : a.sites < b.sites) slot = next;
+    }
+    load[slot].sites++; if (site.mega) load[slot].mega++;
+    for (const point of site.members) owners.set(point, slot);
+  }
+  return owners;
+}
+
 function candidatesFor(regionId: WorldRegionId, seed: number): RegionCandidates {
   const key = `${regionId}:${seed}`;
   if (!pickupCandidates.has(key)) {
-    const pointCache = new Map<string, ReadonlyArray<{ x: number; z: number }>>();
+    const pointCache = new Map<string, ReadonlyArray<Point>>();
     const pointsAt = (locationId: string) => {
       if (!pointCache.has(locationId)) pointCache.set(locationId, roadsidePoints(regionId, locationId, hash(`${seed}:${locationId}`)));
       return pointCache.get(locationId)!;
@@ -134,7 +173,7 @@ function candidatesFor(regionId: WorldRegionId, seed: number): RegionCandidates 
       for (const machine of technicalMachines()) if (location.requiredBadges >= MACHINE_BADGES[machine.tier]) items.push({ item: { ...machine, kind: 'technical-machine' }, location, point });
     }
     if (pickupCandidates.size > 20) pickupCandidates.clear();
-    pickupCandidates.set(key, { items, spots });
+    pickupCandidates.set(key, { items, spots, owners: slotOwners(seed, items, spots) });
   }
   return pickupCandidates.get(key)!;
 }
@@ -143,15 +182,16 @@ const pickupWeight = (item: RoadsideItem, affinity: MegaStoneAffinity) => item.k
   : item.kind === 'mega-stone' ? 1 + 4 * (affinity[item.speciesId!] ?? 0) : heldToolPickupWeight(item);
 
 type ItemSpots = { item: RoadsideItem; weight: number; rows: Candidate[] };
-type EligiblePickups = { all: ItemSpots[]; byKind: Map<RoadsideItem['kind'], ItemSpots[]> };
-const eligibleCache = new Map<string, EligiblePickups>();
-/** Every reachable item and its spots for one region, badge count and team; slot state does not change it. */
-function eligiblePickups(regionId: WorldRegionId, seed: number, badges: number, affinity: MegaStoneAffinity, affinityKey: string): EligiblePickups {
+type SlotPickups = Map<RoadsideItem['kind'], ItemSpots[]>;
+const eligibleCache = new Map<string, SlotPickups[]>();
+/** Every reachable item and its spots, slot by slot, for one region, badge count and team; slot state does not change it. */
+function eligiblePickups(regionId: WorldRegionId, seed: number, badges: number, affinity: MegaStoneAffinity, affinityKey: string): SlotPickups[] {
   const key = `${regionId}:${seed}:${badges}:${affinityKey}`, cached = eligibleCache.get(key); if (cached) return cached;
   const atlas = getWorldAtlas(regionId), candidates = candidatesFor(regionId, seed);
-  const traversable = new Map<{ x: number; z: number }, boolean>();
+  const traversable = new Map<Point, boolean>();
+  // Walked to from the region's start: through no closed gate and into no place that needs more badges.
   const reachable = (row: RoadsideSpot) => {
-    if (row.location.requiredBadges > badges) return false;
+    if (placeBadges(row.location) > badges) return false;
     let allowed = traversable.get(row.point);
     if (allowed === undefined) traversable.set(row.point, allowed = atlas.evaluateTraversal(row.point, row.point, badges).allowed);
     return allowed;
@@ -159,32 +199,38 @@ function eligiblePickups(regionId: WorldRegionId, seed: number, badges: number, 
   const teamStones = fieldItemCatalog().filter(item => item.kind === 'mega-stone' && (affinity[item.speciesId!] ?? 0) > 0);
   const rows: Candidate[] = [...candidates.items.filter(reachable),
     ...candidates.spots.filter(reachable).flatMap(spot => teamStones.map(item => ({ item, ...spot })))];
-  const byItem = new Map<string, ItemSpots>();
+  const bySlot = Array.from({ length: FIELD_PICKUP_ACTIVE_LIMIT }, () => new Map<string, ItemSpots>());
   for (const row of rows) {
-    const group = byItem.get(row.item.id);
+    const byItem = bySlot[candidates.owners.get(row.point)!], group = byItem.get(row.item.id);
     if (group) group.rows.push(row); else byItem.set(row.item.id, { item: row.item, weight: pickupWeight(row.item, affinity), rows: [row] });
   }
-  const all = [...byItem.values()], byKind = new Map<RoadsideItem['kind'], ItemSpots[]>();
-  for (const group of all) byKind.set(group.item.kind, [...(byKind.get(group.item.kind) ?? []), group]);
+  const result = bySlot.map(byItem => {
+    const byKind: SlotPickups = new Map();
+    for (const group of byItem.values()) byKind.set(group.item.kind, [...(byKind.get(group.item.kind) ?? []), group]);
+    return byKind;
+  });
   if (eligibleCache.size > 64) eligibleCache.clear();
-  const result = { all, byKind }; eligibleCache.set(key, result); return result;
+  eligibleCache.set(key, result); return result;
 }
 
-/** Choose an item with a free spot by its weight first, then one of its free roadside spots. */
-function weightedPickup(groups: readonly ItemSpots[], roll: number, free: (row: Candidate) => boolean): Candidate | undefined {
-  const open = groups.filter(group => group.rows.some(free));
-  if (!open.length) return undefined;
-  let target = hash(`${roll}:choice`) % open.reduce((sum, group) => sum + group.weight, 0);
-  const group = open.find(candidate => (target -= candidate.weight) < 0) ?? open[open.length - 1];
-  const rows = group.rows.filter(free);
-  return rows[hash(`${roll}:place`) % rows.length];
+/** Choose an item by its weight first, then one of its roadside spots. */
+function weightedPickup(groups: readonly ItemSpots[], roll: number): Candidate | undefined {
+  if (!groups.length) return undefined;
+  let target = hash(`${roll}:choice`) % groups.reduce((sum, group) => sum + group.weight, 0);
+  const group = groups.find(candidate => (target -= candidate.weight) < 0) ?? groups[groups.length - 1];
+  return group.rows[hash(`${roll}:place`) % group.rows.length];
 }
 
-/** Of every 20 slot rolls: 7 Mega Stones, 5 technical machines and 8 held tools. */
-const slotKind = (roll: number): RoadsideItem['kind'] => { const bucket = roll % 20; return bucket < 7 ? 'mega-stone' : bucket < 12 ? 'technical-machine' : 'held-tool'; };
+const KIND_SHARES: ReadonlyArray<readonly [RoadsideItem['kind'], number]> = [['mega-stone', 7], ['technical-machine', 5], ['held-tool', 8]];
+/** Of every 20 slot rolls: 7 Mega Stones, 5 technical machines and 8 held tools; a kind the slot's spots cannot hold passes its share on. */
+function slotKind(roll: number, offered: SlotPickups): RoadsideItem['kind'] | undefined {
+  const shares = KIND_SHARES.filter(([kind]) => offered.has(kind)), total = shares.reduce((sum, [, share]) => sum + share, 0);
+  let bucket = total ? roll % total : 0;
+  return shares.find(([, share]) => (bucket -= share) < 0)?.[0];
+}
 
 /**
- * Persistent slots per region: a collected slot stays empty for 10 minutes of play.
+ * Persistent slots per region: a collected slot stays empty for 10 minutes of play, then rolls again on its own spots.
  * Mega Stones of team species can appear on any reachable road, weighted by affinity.
  */
 export function activeFieldItemPickups(regionId: WorldRegionId, seed: number, states: Readonly<Record<string, FieldItemPickupState>>, badges = 8, affinity: MegaStoneAffinity = {}): FieldItemPickup[] {
@@ -193,14 +239,13 @@ export function activeFieldItemPickups(regionId: WorldRegionId, seed: number, st
     const state = states[`field-item:${regionId}:${slot}`]; return `${state?.collectedCount ?? 0}:${(state?.remainingSeconds ?? 0) > 0}`;
   }).join(',')}`;
   const cached = activePickupCache.get(key); if (cached) return cached;
-  const eligible = eligiblePickups(regionId, seed, badges, affinity, affinityKey);
+  const slots = eligiblePickups(regionId, seed, badges, affinity, affinityKey);
   const active: FieldItemPickup[] = [];
-  const free = (row: Candidate) => !active.some(item => Math.hypot(item.x - row.point.x, item.z - row.point.z) < 5);
   for (let slot = 0; slot < FIELD_PICKUP_ACTIVE_LIMIT; slot++) {
     const id = `field-item:${regionId}:${slot}`, state = states[id];
     if ((state?.remainingSeconds ?? 0) > 0) continue;
-    const cycle = state?.collectedCount ?? 0, roll = hash(`${seed}:${id}:${cycle}`);
-    const chosen = weightedPickup(eligible.byKind.get(slotKind(roll)) ?? [], roll, free) ?? weightedPickup(eligible.all, roll, free);
+    const cycle = state?.collectedCount ?? 0, roll = hash(`${seed}:${id}:${cycle}`), own = slots[slot];
+    const kind = slotKind(roll, own), chosen = kind && weightedPickup(own.get(kind)!, roll);
     if (!chosen) continue;
     active.push({ ...chosen.item, itemId: chosen.item.id, id, ...chosen.point, regionId, sceneId: surfaceSceneId(regionId), locationId: chosen.location.locationId });
   }

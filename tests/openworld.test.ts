@@ -93,6 +93,10 @@ describe('connectome open world', () => {
     expect(world.modelStatus(companion.id)).toBe('failed');
     world.setModelStatus(companion.id, 'ready');
     expect(world.modelsReady).toBe(true);
+    // A model already drawn stays ready when it leaves the view, so a battle never stalls on it; one still loading does not.
+    world.setModelStatus(companion.id, 'untracked');
+    expect(world.modelsReady).toBe(true);
+    world.setModelStatus(companion.id, 'loading');
     world.setModelStatus(companion.id, 'untracked');
     expect(world.modelsReady).toBe(false);
   });

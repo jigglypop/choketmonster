@@ -6,12 +6,16 @@ const DIRECTIONS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], 
 type Node = { x: number; z: number; cost: number; score: number; parent?: string };
 const key = (x: number, z: number) => `${x}:${z}`;
 
-/** Finds a deterministic walkable route without consuming simulation state or randomness. */
+/**
+ * Finds a deterministic walkable route without consuming simulation state or randomness. `canStep` adds the story
+ * rules between two neighbouring cells, such as a gate the badges have not opened, which terrain alone cannot show.
+ */
 export function findWorldPath(
   start: WorldPoint,
   destination: WorldPoint,
   sampleWorld: (x: number, z: number) => WorldSample,
   maxVisited = 24_000,
+  canStep?: (from: WorldPoint, to: WorldPoint) => boolean,
 ): WorldPoint[] {
   if (![start.x, start.z, destination.x, destination.z].every(Number.isFinite) || maxVisited < 1) return [];
   const originX = Math.round(start.x / NAVIGATION_GRID), originZ = Math.round(start.z / NAVIGATION_GRID);
@@ -77,6 +81,7 @@ export function findWorldPath(
       const nextCost = current.cost + (dx && dz ? Math.SQRT2 : 1);
       const nodeKey = key(x, z), previous = nodes.get(nodeKey);
       if (previous && previous.cost <= nextCost) continue;
+      if (canStep && !canStep({ x: current.x * NAVIGATION_GRID, z: current.z * NAVIGATION_GRID }, { x: x * NAVIGATION_GRID, z: z * NAVIGATION_GRID })) continue;
       const next = { x, z, cost: nextCost, score: nextCost + heuristic(x, z), parent: key(current.x, current.z) };
       nodes.set(nodeKey, next); push(next);
     }

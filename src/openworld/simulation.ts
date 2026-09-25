@@ -21,7 +21,8 @@ import { KANTO_START, KANTO_MAP_VERSION } from './kanto';
 import { WORLD_MIN, WORLD_MAX, WORLD_SCALE, migrateSurfaceSnapshotCoordinates, surfaceSceneId } from './world-space';
 import { CAVE_SCENES, caveLocation, cavePortalAtInterior, cavePortalAtSurface, caveStairsAt, getCaveScene, nearestCaveWalkable } from './caves';
 import { getGymScene, gymSceneId, LEAGUE_LOCATION_IDS, leagueSceneId } from './gym-scenes';
-import { openDungeonExits, portalBadges } from './dungeon-gates';
+import { openDungeonExits, portalBadges, reachableLocations } from './dungeon-gates';
+import { regionalItinerary } from './next-destination';
 import { getWorldAtlas, getLegacyJohtoAtlas, getLegacyExpansionAtlas, migrateLegacyExpansionLocationId, type WorldAtlas, type WorldRegionId } from './atlas';
 import { getPlayableSpeciesIds, isPlayableAdventureVersion, isPlayableWorldRegion, playableWorldRegionForVersion } from './availability';
 import type { FieldPolicy } from '../game/field';
@@ -243,6 +244,7 @@ export class OpenWorldSimulation {
   trackingSelected = false;
   visitedTownIds: string[] = ['pallet'];
   visitedTownsByRegion: Record<string, string[]> = { kanto: ['pallet'] };
+  /** The story gate or badge requirement that stopped the last manual step, if one did. */
   lastMovementBlock?: string;
   rewardLedgers: Record<string, RewardLedger> = {};
   autoCapture = true;
@@ -281,7 +283,8 @@ export class OpenWorldSimulation {
     if (gym?.contains(x, z, 2)) return this.atlas.locations.find(location => location.id === gym.locationId) ?? this.atlas.locationAt(x, z);
     return caveLocation(this.sceneId) ?? this.atlas.locationAt(x, z);
   }
-  isSafeTown(x: number, z: number): boolean { return !getCaveScene(this.sceneId) && this.locationAt(x, z).kind === 'town'; }
+  /** Town ground as drawn, the town's own area with its meadow and plaza: wild Pokémon never spawn, walk or battle on it. */
+  isSafeTown(x: number, z: number): boolean { return !getCaveScene(this.sceneId) && (this.locationAt(x, z).kind === 'town' || Boolean(this.atlas.townAt(x, z))); }
   /** The dungeon floor's encounter areas and rare-slot anchor, or undefined outside dungeons. */
   private get encounterFloor(): EncounterFloor | undefined {
     const scene = getCaveScene(this.sceneId);
@@ -302,9 +305,10 @@ export class OpenWorldSimulation {
   }
   setModelStatus(entityId: string, status: 'loading' | 'ready' | 'failed' | 'untracked', speciesId = this.modelSpecies(entityId)): void {
     if (speciesId === undefined || speciesId !== this.modelSpecies(entityId)) return;
-    // Leaving the frustum is not a successful load. Never release a failed model's gate.
+    // Leaving the frustum is not a successful load and never releases a failed model's gate. A model already drawn
+    // stays ready, so an opponent that walks off screen never stalls its battle.
     if (status === 'untracked') {
-      if (this.modelStatuses.get(entityId)?.status !== 'failed') this.modelStatuses.delete(entityId);
+      if (this.modelStatuses.get(entityId)?.status === 'loading') this.modelStatuses.delete(entityId);
     } else this.modelStatuses.set(entityId, { speciesId, status });
   }
   modelStatus(entityId: string): 'loading' | 'failed' | undefined {
@@ -446,6 +450,7 @@ export class OpenWorldSimulation {
       // Older and interrupted checkpoints can be short of the current minimum.
       // Keep every validated saved individual and deterministically fill only the missing slots.
       this.fillRoster(12);
+      this.refillFoods();
     }
     else {
       this.entities.push(this.makeCompanion());
@@ -463,14 +468,18 @@ export class OpenWorldSimulation {
   }
 
   movePartner(position: WorldPosition): boolean {
+    this.lastMovementBlock = undefined;
     if (!this.modelsReady) return false;
     // Wild battles continue while the partner walks; the opponent follows it.
     if ((this.game.battle && this.game.battle.kind !== 'wild') || this.game.captureOffer || ![position.x, position.z, position.heading].every(finite) || !Number.isInteger(position.heading) || position.heading < 0 || position.heading > 4) return false;
     const companion = this.entities.find(entity => entity.kind === 'companion'); if (!companion) return false;
-    this.lastMovementBlock = undefined;
     if (this.onSurfaceMap) {
       const traversal = this.atlas.evaluateTraversal(companion, position, this.regionalBadges);
-      if (!traversal.allowed) { this.lastMovementBlock = traversal.reason; return false; }
+      if (!traversal.allowed) {
+        // Plain terrain edges are felt, not announced.
+        if (traversal.gate || traversal.location.requiredBadges > this.regionalBadges) this.lastMovementBlock = traversal.reason;
+        return false;
+      }
     }
     const maximum = movementSpeed(companion.speciesId, companion.level) * .35;
     // Manual movement can pass wild creatures; terrain and route gates still block it.
@@ -480,6 +489,31 @@ export class OpenWorldSimulation {
     const brain = this.brain(companion.id); brain.state.previous = null;
     this.player = structuredClone(position); this.manualControlRemaining = MANUAL_CONTROL_HOLD; this.recordTownVisit();
     this.collectNearbyFieldItems(); return true;
+  }
+
+  /** One step of a walking route: open ground the badges reach, never across a closed gate. */
+  canStep(from: { x: number; z: number }, to: { x: number; z: number }): boolean {
+    return this.onSurfaceMap ? this.atlas.evaluateTraversal(from, to, this.regionalBadges).allowed : !this.sampleWorld(to.x, to.z).blocked;
+  }
+
+  /**
+   * Why a surface point cannot be reached on foot from here with the current badges, undefined when it can: the first
+   * closed gate or gated place on the way there.
+   */
+  routeBlock(point: { x: number; z: number }): string | undefined {
+    if (!this.onSurfaceMap) return undefined;
+    const atlas = this.atlas, badges = this.regionalBadges, target = atlas.locationAt(point.x, point.z);
+    const from = atlas.locationAt(this.player.x, this.player.z).id;
+    if (target.requiredBadges <= badges && reachableLocations(atlas, from, badges).has(target.id)) return undefined;
+    const route = regionalItinerary(atlas, from, target.id, 8);
+    for (let index = 1; index < route.length; index++) {
+      const [a, b] = [route[index - 1], route[index]];
+      const gate = atlas.gates.find(item => item.requiredBadges > badges && ((item.from === a && item.to === b) || (item.from === b && item.to === a)));
+      if (gate) return gate.reason;
+      const place = atlas.locations.find(item => item.id === b)!;
+      if (place.requiredBadges > badges) return atlas.evaluateTraversal(place, place, badges).reason;
+    }
+    return '현재 위치에서 이어지는 도보 경로가 없습니다.';
   }
 
   syncPlayerToCompanion(): WorldPosition {
@@ -741,9 +775,13 @@ export class OpenWorldSimulation {
     if (!gym || this.game.battle || this.game.captureOffer) return false;
     const previous = this.player;
     this.placeInsideScene(gym.battleSpot, 2);
-    if (gym.kind === 'league' ? this.challengeLocalTrainer() : this.challengeLocalGym()) { if (gym.kind === 'gym') this.controlMode = 'auto'; return true; }
-    this.placeInsideScene(previous);
-    return false;
+    // A challenge the team cannot take (fainted, or no Pokémon allowed in this region) leaves the partner where it stood.
+    let started = false;
+    try { started = gym.kind === 'league' ? this.challengeLocalTrainer() : this.challengeLocalGym(); }
+    finally { if (!started) this.placeInsideScene(previous, previous.heading); }
+    if (!started) return false;
+    if (gym.kind === 'gym') this.controlMode = 'auto';
+    return true;
   }
 
   /** Between league trainers the partner steps back to the challenger's mark, off the court, so the next battle waits for a step. */
@@ -763,15 +801,17 @@ export class OpenWorldSimulation {
   exitGym(): boolean {
     const gym = getGymScene(this.sceneId);
     if (!gym || this.game.battle || this.game.captureOffer) return false;
-    this.sceneId = surfaceSceneId(this.regionId); this.surfaceReturn = undefined;
-    this.placeInsideScene(gym.door);
-    // The hall floor is rock or woods on the surface; nothing may stay standing where the hall was.
+    // The hall floor is rock or woods on the surface; nothing may stay standing where the hall was. New spots are
+    // chosen while the hall still stands, so none lands on its floor.
     for (const entity of this.wildEntities()) {
-      if (!this.sampleWorld(entity.x, entity.z).blocked && !gym.contains(entity.x, entity.z)) continue;
+      if (!this.atlas.sample(entity.x, entity.z).blocked && !gym.contains(entity.x, entity.z)) continue;
       const point = this.localSpawnPosition();
       Object.assign(entity, point, this.encounterAt(point)); entity.target = undefined;
     }
+    this.sceneId = surfaceSceneId(this.regionId); this.surfaceReturn = undefined;
+    this.placeInsideScene(gym.door);
     this.foods = this.foods.filter(food => !this.sampleWorld(food.x, food.z).blocked && !gym.contains(food.x, food.z));
+    this.refillFoods();
     return true;
   }
 
@@ -1141,28 +1181,27 @@ export class OpenWorldSimulation {
     companion.speciesId = lead.speciesId; companion.level = lead.level;
   }
 
-  /** Legendary and mythical Pokémon are one of a kind: taken once caught, or while one already roams or waits to respawn here. */
-  private uniqueTaken(speciesId: number): boolean {
-    // The whole Pokédex counts: a legendary outside this version's dex is still caught once and for all.
-    return this.game.dex.caught.includes(speciesId) || this.entities.some(entity => entity.kind === 'wild' && entity.speciesId === speciesId)
-      || this.respawnQueue.some(pending => pending.speciesId === speciesId);
-  }
-
-  /** The next legendary waiting on this lair floor once the region's eight badges are held, if any is still free. */
+  /**
+   * The legendary waiting on this lair floor once the region's eight badges are held. They come one at a time: while
+   * one roams the floor or waits to respawn, the next stays hidden; each is gone once caught, in any version's dex.
+   */
   private waitingLegend(): number | undefined {
     const species = getCaveScene(this.sceneId)?.legendary;
     if (!species?.length || this.regionalBadges < 8) return undefined;
-    return species.find(speciesId => !this.uniqueTaken(speciesId));
+    const present = (speciesId: number) => this.entities.some(entity => entity.kind === 'wild' && entity.speciesId === speciesId)
+      || this.respawnQueue.some(pending => pending.speciesId === speciesId);
+    if (species.some(present)) return undefined;
+    return species.find(speciesId => !this.game.dex.caught.includes(speciesId));
+  }
+
+  /** Wild levels at a point; deeper floors of a dungeon hold slightly stronger Pokémon. */
+  private levelsAt(position: { x: number; z: number }): { minLevel: number; maxLevel: number } {
+    const band = regionalWildLevels(this.game, this.regionId, this.locationAt(position.x, position.z)), shift = getCaveScene(this.sceneId)?.levelShift ?? 0;
+    return { minLevel: Math.min(100, band.minLevel + shift), maxLevel: Math.min(100, band.maxLevel + shift) };
   }
 
   private encounterAt(position: { x: number; z: number }): { speciesId: number; level: number } {
-    const location = this.locationAt(position.x, position.z), floor = this.encounterFloor;
-    const band = regionalWildLevels(this.game, this.regionId, location), shift = getCaveScene(this.sceneId)?.levelShift ?? 0;
-    // Deeper floors of a dungeon hold slightly stronger Pokémon.
-    const levels = { minLevel: Math.min(100, band.minLevel + shift), maxLevel: Math.min(100, band.maxLevel + shift) };
-    // A lair's legendary is the first to appear on its floor, at Lv.50 or the floor's top level.
-    const legend = this.waitingLegend();
-    if (legend !== undefined) return { speciesId: legend, level: Math.min(100, Math.max(50, levels.maxLevel)) };
+    const location = this.locationAt(position.x, position.z), floor = this.encounterFloor, levels = this.levelsAt(position);
     const encounterRegion = this.regionId === 'johto' ? 'johto' : 'kanto';
     const biome = this.sampleWorld(position.x, position.z).biome;
     const choose = (serial: number) => isExpansionRegion(this.regionId)
@@ -1244,37 +1283,54 @@ export class OpenWorldSimulation {
     const ground = (x: number, z: number) => hall ? (hall.contains(x, z, 3) ? { height: 0, biome: 'rock' as const, blocked: true } : this.atlas.sample(x, z)) : this.sampleWorld(x, z);
     // Stream nearby zones: the location under the spawn controls species and level.
     const current = this.locationAt(center.x, center.z);
+    // On the surface a wild Pokémon appears only where the partner can go and fight it: ground the badges open, in a
+    // place the roads reach from here without a closed gate.
+    const reachable = this.walkableFrom(center);
     for (let attempt = 0; attempt < 2500; attempt++) {
       const radius = 6 + this.rng.next() * (attempt < 1000 ? 18 : 35), angle = this.rng.next() * Math.PI * 2;
       const x = center.x + Math.cos(angle) * radius, z = center.z + Math.sin(angle) * radius;
       const location = this.locationAt(x, z);
       const sample = ground(x, z);
-      if (!sample.blocked && !this.isSafeTown(x, z) && location.minLevel <= current.maxLevel + 4 && this.spawnPool(location.id, sample.biome).length && !this.entities.some(entity => distance(entity, { x, z }) < 2)) return { x, z };
+      if (!sample.blocked && !this.isSafeTown(x, z) && location.minLevel <= current.maxLevel + 4 && reachable({ x, z }, location.id)
+        && this.spawnPool(location.id, sample.biome).length && !this.entities.some(entity => distance(entity, { x, z }) < 2)) return { x, z };
     }
     // Surface locations are another coordinate space; a dungeon floor spawns only on itself.
     if (getCaveScene(this.sceneId)) throw new Error(`No ${this.sceneId} spawn position`);
-    for (const location of [...this.atlas.locations].sort((a, b) => distance(a, center) - distance(b, center))) {
+    // Farther places, nearest first; ground out of reach is the last resort, so a stranded older save still fills its roster.
+    for (const strict of [true, false]) for (const location of [...this.atlas.locations].sort((a, b) => distance(a, center) - distance(b, center))) {
       if (location.kind === 'town' || !this.spawnPool(location.id).length) continue;
       for (let radius = 0; radius <= 18; radius += 2) for (let step = 0; step < 16; step++) {
         const angle = step / 16 * Math.PI * 2, point = { x: location.x + Math.cos(angle) * radius, z: location.z + Math.sin(angle) * radius };
         const sample = ground(point.x, point.z);
-        if (this.locationAt(point.x, point.z).id === location.id && !sample.blocked && !this.isSafeTown(point.x, point.z) && this.spawnPool(location.id, sample.biome).length
-          && !this.entities.some(entity => distance(entity, point) < 2)) return point;
+        if (this.locationAt(point.x, point.z).id === location.id && !sample.blocked && !this.isSafeTown(point.x, point.z) && (!strict || reachable(point, location.id))
+          && this.spawnPool(location.id, sample.biome).length && !this.entities.some(entity => distance(entity, point) < 2)) return point;
       }
     }
     throw new Error(`No unlocked ${this.regionId} spawn position`);
   }
 
+  /**
+   * Surface ground the partner can walk to from `origin` with the current badges: a place the roads reach without a
+   * closed gate, and a point its badges open. Dungeon floors are open all over.
+   */
+  private walkableFrom(origin: { x: number; z: number }): (point: { x: number; z: number }, locationId: string) => boolean {
+    if (getCaveScene(this.sceneId)) return () => true;
+    const badges = this.regionalBadges, places = reachableLocations(this.atlas, this.atlas.locationAt(origin.x, origin.z).id, badges);
+    return (point, locationId) => places.has(locationId) && this.atlas.evaluateTraversal(point, point, badges).allowed;
+  }
+
   private spawnWild(): OpenWorldEntity {
-    // A lair's waiting legendary appears at its altar at the end of the last floor.
-    const altar = getCaveScene(this.sceneId)?.altar;
-    if (altar && this.waitingLegend() !== undefined && !this.entities.some(entity => distance(entity, altar) < 1)) return this.spawnWildAt(altar);
+    // A lair's waiting legendary appears only at its altar at the end of the last floor, at Lv.50 or the floor's top
+    // level; while anything stands there the slot holds an ordinary wild Pokémon.
+    const altar = getCaveScene(this.sceneId)?.altar, legend = altar ? this.waitingLegend() : undefined;
+    if (altar && legend !== undefined && !this.entities.some(entity => distance(entity, altar) < 1))
+      return this.spawnWildAt(altar, { speciesId: legend, level: Math.min(100, Math.max(50, this.levelsAt(altar).maxLevel)) });
     return this.spawnWildAt(this.localSpawnPosition());
   }
 
-  private spawnWildAt(position: { x: number; z: number }): OpenWorldEntity {
+  private spawnWildAt(position: { x: number; z: number }, encounter?: { speciesId: number; level: number }): OpenWorldEntity {
     if (this.sampleWorld(position.x,position.z).blocked || this.isSafeTown(position.x, position.z)) throw new Error('Wild spawn position is blocked or inside a safe town');
-    const { speciesId, level } = this.encounterAt(position);
+    const { speciesId, level } = encounter ?? this.encounterAt(position);
     const entity = this.makeEntity(`wild-${this.spawnSerial++}`, 'wild', speciesId, level, position); this.entities.push(entity); return entity;
   }
 
@@ -1297,10 +1353,12 @@ export class OpenWorldSimulation {
     }
   }
 
-  /** Preserve saved identity and brain state while remapping illegal town spawns to a route pool. */
+  /** Preserve saved identity and brain state while remapping illegal town or locked-ground spawns to a route pool. */
   private relocateTownWilds(): void {
+    // Ground the badges have not opened holds a wild Pokémon still: it could neither move nor be reached.
+    const locked = (point: { x: number; z: number }) => this.onSurfaceMap && !this.atlas.evaluateTraversal(point, point, this.regionalBadges).allowed;
     for (const entity of this.wildEntities()) {
-      if (entity.id === this.battleWildId || !this.isSafeTown(entity.x, entity.z)) continue;
+      if (entity.id === this.battleWildId || !(this.isSafeTown(entity.x, entity.z) || locked(entity))) continue;
       const point = this.localSpawnPosition();
       Object.assign(entity, point, this.encounterAt(point));
       entity.target = undefined;
@@ -1401,6 +1459,11 @@ export class OpenWorldSimulation {
     return { x: this.player.x, z: this.player.z };
   }
 
+  /** Wild Pokémon forage for 24 berries; any a hall visit or an older save removed grow back. A hall waits for its exit. */
+  private refillFoods(): void {
+    if (!getGymScene(this.sceneId)) while (this.foods.length < 24) this.spawnFood();
+  }
+
   private spawnFood(): void {
     for (let attempt = 0; attempt < 5000; attempt++) {
       const anchor = this.entities[this.rng.int(this.entities.length)] ?? this.player;
@@ -1417,8 +1480,10 @@ export class OpenWorldSimulation {
     const companion = this.entities.find(entity => entity.kind === 'companion');
     if (!companion) return undefined;
     let nearest: OpenWorldEntity | undefined, nearestDistance = Infinity;
+    // Only wild Pokémon the partner can reach and fight: no failed model, no ground behind a closed gate.
+    const reachable = this.walkableFrom(companion);
     for (const entity of this.entities) {
-      if (entity.kind !== 'wild') continue;
+      if (entity.kind !== 'wild' || this.modelStatus(entity.id) === 'failed' || !reachable(entity, this.atlas.locationAt(entity.x, entity.z).id)) continue;
       const candidateDistance = distance(entity, companion);
       if (candidateDistance < nearestDistance || candidateDistance === nearestDistance && entity.id.localeCompare(nearest!.id) < 0) {
         nearest = entity; nearestDistance = candidateDistance;

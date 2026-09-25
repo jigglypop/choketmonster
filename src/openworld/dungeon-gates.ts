@@ -2,6 +2,25 @@ import { getWorldAtlas, type WorldAtlas } from './atlas';
 import { dungeonExits, getCaveScene, type CavePortal, type CaveScene } from './caves';
 
 const reachCache = new WeakMap<WorldAtlas, Map<string, number>>();
+const reachableCache = new WeakMap<WorldAtlas, Map<string, ReadonlySet<string>>>();
+
+/** Places the region's own roads reach from `fromId` with `badges`: through no closed gate and into no place needing more badges. */
+export function reachableLocations(atlas: WorldAtlas, fromId: string, badges: number): ReadonlySet<string> {
+  let byKey = reachableCache.get(atlas);
+  if (!byKey) reachableCache.set(atlas, byKey = new Map());
+  const key = `${fromId}:${badges}`, cached = byKey.get(key);
+  if (cached) return cached;
+  const byId = new Map(atlas.locations.map(location => [location.id, location]));
+  const open = (from: string, to: string) => (byId.get(to)?.requiredBadges ?? 0) <= badges
+    && !atlas.gates.some(gate => gate.requiredBadges > badges && ((gate.from === from && gate.to === to) || (gate.from === to && gate.to === from)));
+  const seen = new Set([fromId]), queue = [fromId];
+  for (let head = 0; head < queue.length; head++) for (const [a, b] of atlas.connections) {
+    const next = a === queue[head] ? b : b === queue[head] ? a : undefined;
+    if (next && !seen.has(next) && open(queue[head], next)) { seen.add(next); queue.push(next); }
+  }
+  byKey.set(key, seen);
+  return seen;
+}
 
 /**
  * Fewest badges with which the region's own roads, gates and gated places reach a location from its start.
@@ -11,18 +30,8 @@ export function surfaceBadges(atlas: WorldAtlas, locationId: string): number {
   let reach = reachCache.get(atlas);
   if (!reach) {
     reach = new Map();
-    const byId = new Map(atlas.locations.map(location => [location.id, location]));
     const start = atlas.locationAt(atlas.start.x, atlas.start.z).id;
-    for (let badges = 0; badges <= 8; badges++) {
-      const open = (from: string, to: string) => (byId.get(to)?.requiredBadges ?? 0) <= badges
-        && !atlas.gates.some(gate => gate.requiredBadges > badges && ((gate.from === from && gate.to === to) || (gate.from === to && gate.to === from)));
-      const seen = new Set([start]), queue = [start];
-      for (let head = 0; head < queue.length; head++) for (const [a, b] of atlas.connections) {
-        const next = a === queue[head] ? b : b === queue[head] ? a : undefined;
-        if (next && !seen.has(next) && open(queue[head], next)) { seen.add(next); queue.push(next); }
-      }
-      for (const id of seen) if (!reach.has(id)) reach.set(id, badges);
-    }
+    for (let badges = 0; badges <= 8; badges++) for (const id of reachableLocations(atlas, start, badges)) if (!reach.has(id)) reach.set(id, badges);
     reachCache.set(atlas, reach);
   }
   // Places the roads never reach stay behind the last badge.
