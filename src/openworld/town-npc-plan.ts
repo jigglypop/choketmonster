@@ -14,7 +14,7 @@ import { BUILDING_HALF_X, BUILDING_HALF_Z, SIGNBOARD } from './world-details';
  * colour maps that browsers fail to decode side by side, so they load from copies in `web/` whose maps alone are halved
  * (colour 4096, normal and metallic-roughness 2048); mesh, rig and clips are untouched.
  */
-const npcModel = (name: 'docter' | 'police' | 'man' | 'mountain' | 'nurse') => `/models/trainer/web/${name}.glb`;
+const npcModel = (name: 'docter' | 'police' | 'man' | 'mountain' | 'nurse' | 'boy') => `/models/trainer/web/${name}.glb`;
 
 /** Who stands where: beside the Pokémon Center, the mart, the gym, Pallet's houses and lab, or out on the plaza. */
 export type TownNpcRole = 'clinic' | 'shop' | 'gym' | 'lab' | 'home' | 'plaza' | 'police';
@@ -26,7 +26,7 @@ export type TownNpc = { id: string; townId: string; role: TownNpcRole; title: st
 
 /** The doctor keeps the Pokémon Center and the lab, the clerk the mart and the plaza, the mountain man the gym and home. */
 const MODELS: Record<TownNpcRole, readonly string[]> = {
-  clinic: [npcModel('nurse')], shop: [npcModel('man')], gym: [npcModel('mountain')], lab: [npcModel('docter')], home: [npcModel('mountain')], plaza: [npcModel('man')],
+  clinic: [npcModel('nurse')], shop: [npcModel('man')], gym: [npcModel('mountain')], lab: [npcModel('docter')], home: [npcModel('mountain')], plaza: [npcModel('boy')],
   police: [npcModel('police')],
 };
 /** Who paces rather than stands: the clerk and the mountain man; the plaza clerk jogs. */

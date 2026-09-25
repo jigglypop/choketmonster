@@ -1,10 +1,11 @@
 import { GENERATED_FIELD_TRAINERS } from './field-trainers.generated';
+import { GENERATED_ROUTE_TRAINERS } from './route-trainers.generated';
 import authoredTrainers from './authored-trainers.json' with { type: 'json' };
 import type { CampaignRegion } from '../game/campaign';
 export type FieldTrainer = {
   id: string; region: CampaignRegion; locationId: string; name: string; trainerClass: string;
   team: readonly (readonly [speciesId: number, level: number])[]; reward: number;
-  sourceClass?: string; sourceMap?: string; sourceX?: number; sourceZ?: number;
+  sourceClass?: string; female?: boolean; sourceMap?: string; sourceX?: number; sourceZ?: number;
   trainerOrigin?: 'source' | 'supplemental' | 'authored';
 };
 
@@ -15,7 +16,8 @@ export const FIELD_TRAINER_SOURCE = {
 } as const;
 
 const TRAINER_FREE_PROGRESS_LOCATIONS = ['new-bark','tohjo-falls','mt-silver','route-29','cherrygrove','burned-tower','bell-tower','olivine','whirl-islands','mt-mortar','ice-path','dark-cave-east','dark-cave-west'] as const;
-const sourceTrainers = GENERATED_FIELD_TRAINERS.map(trainer => ({ ...trainer, trainerOrigin: 'source' as const }));
+/** Crystal's Johto, then FireRed's Kanto and Emerald's Hoenn routes (scripts/generate-route-trainers.ts). */
+const sourceTrainers = [...GENERATED_FIELD_TRAINERS, ...GENERATED_ROUTE_TRAINERS].map(trainer => ({ ...trainer, trainerOrigin: 'source' as const }));
 const supplementalTrainers = TRAINER_FREE_PROGRESS_LOCATIONS.map((locationId, index): FieldTrainer => {
   const source = sourceTrainers[index % sourceTrainers.length];
   return { ...source, id: `supplemental-${locationId}-${source.id}`, locationId, trainerOrigin: 'supplemental' };
