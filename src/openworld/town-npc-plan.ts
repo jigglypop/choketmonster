@@ -9,16 +9,16 @@ import { DUNGEON_PLANS } from './dungeons';
 import type { KantoGym, KantoLocation } from './kanto';
 import { BUILDING_HALF_X, BUILDING_HALF_Z, SIGNBOARD } from './world-details';
 
-/** Two SD trainers, drawn from the owner's files as they are: a fire boy in red and a leaf girl in green. */
-const npcModel = (name: 'red' | 'green') => `/models/trainer/${name}.glb`;
+/** SD townsfolk, drawn from the owner's files as they are: a fire boy in red, a leaf girl in green and a doctor. */
+const npcModel = (name: 'red' | 'green' | 'docter') => `/models/trainer/${name}.glb`;
 
 /** Who stands where: beside the Pokémon Center, the mart, the gym, Pallet's houses and lab, or out on the plaza. */
 export type TownNpcRole = 'clinic' | 'shop' | 'gym' | 'lab' | 'home' | 'plaza';
 export type TownNpc = { id: string; townId: string; role: TownNpcRole; title: string; x: number; z: number; facing: number; model: string };
 
-/** Posts alternate between the two, so every town shows both. */
+/** The doctor keeps the Pokémon Center and the lab; the red boy the mart and gym; the green girl the plaza and home. */
 const MODELS: Record<TownNpcRole, readonly string[]> = {
-  clinic: [npcModel('green')], shop: [npcModel('red')], gym: [npcModel('red')], lab: [npcModel('green')], home: [npcModel('red')], plaza: [npcModel('green')],
+  clinic: [npcModel('docter')], shop: [npcModel('red')], gym: [npcModel('red')], lab: [npcModel('docter')], home: [npcModel('green')], plaza: [npcModel('green')],
 };
 const TITLES: Record<TownNpcRole, string> = { clinic: '센터 도우미', shop: '상점 단골', gym: '체육관 안내원', lab: '연구소 조수', home: '이웃 주민', plaza: '소문난 주민' };
 

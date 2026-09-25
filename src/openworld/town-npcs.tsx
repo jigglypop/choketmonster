@@ -1,7 +1,7 @@
 import { Html } from '@react-three/drei';
 import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { AnimationMixer, Box3, LoopRepeat, Mesh, SkinnedMesh, Vector3, type Group } from 'three';
+import { AnimationMixer, Box3, LoopOnce, LoopRepeat, Mesh, SkinnedMesh, Vector3, type AnimationAction, type AnimationClip, type Group } from 'three';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { getSpecies } from '../data/pokemon';
@@ -44,15 +44,36 @@ function TownNpcFigure({ npc, y, player, lines, talking, quiet }: { npc: TownNpc
     object.scale.setScalar(NPC_HEIGHT / (new Box3().setFromObject(object).getSize(new Vector3()).y || 1));
     return object;
   }, [gltf]);
-  const mixer = useRef<AnimationMixer | null>(null);
+  const hop = useRef(-1);
+  const mixer = useRef<AnimationMixer | null>(null), stance = useRef<AnimationAction | undefined>(undefined);
+  const waves = useMemo(() => gltf?.animations.filter(clip => /wave/i.test(clip.name)) ?? [], [gltf]);
   useEffect(() => {
     if (!figure || !gltf) return;
-    const next = new AnimationMixer(figure), clip = gltf.animations.find(item => /^idle/i.test(item.name));
+    const next = new AnimationMixer(figure), idle = gltf.animations.find(clip => /^idle/i.test(clip.name));
     mixer.current = next;
-    // Each figure starts its idle loop at its own point, so neighbours never sway in step.
-    if (clip) next.clipAction(clip).setLoop(LoopRepeat, Infinity).play().time = (npc.x * 7.3 + npc.z * 3.1) % clip.duration;
-    return () => { next.stopAllAction(); next.uncacheRoot(figure); mixer.current = null; };
-  }, [figure, gltf]);
+    if (idle) {
+      // Each figure starts its idle loop at its own point, so neighbours never sway in step.
+      const action = next.clipAction(idle).setLoop(LoopRepeat, Infinity).play();
+      action.time = (npc.x * 7.3 + npc.z * 3.1) % idle.duration; stance.current = action;
+    } else if (waves[0]) {
+      // No idle loop: a wave's first frame is the figure standing with its arms down (its rest pose is a T).
+      const hold = next.clipAction(waves[0].clone()).play(); hold.paused = true; hold.time = 0; stance.current = hold;
+    }
+    // A finished wave hands back to the stance.
+    const settle = (event: { action: AnimationAction }) => {
+      const standing = stance.current; if (!standing || event.action === standing) return;
+      const paused = standing.paused; standing.reset().play(); standing.paused = paused; standing.crossFadeFrom(event.action, .3, false);
+    };
+    next.addEventListener('finished', settle);
+    return () => { next.removeEventListener('finished', settle); next.stopAllAction(); next.uncacheRoot(figure); mixer.current = null; stance.current = undefined; };
+  }, [figure, gltf, waves]);
+  /** Plays a wave once; a figure without one hops instead. */
+  const greet = (clip: AnimationClip | undefined) => {
+    if (!clip || !mixer.current) { hop.current = performance.now(); return; }
+    const action = mixer.current.clipAction(clip).reset().setLoop(LoopOnce, 1);
+    action.clampWhenFinished = true; action.play();
+    if (stance.current) action.crossFadeFrom(stance.current, .25, false);
+  };
   useEffect(() => () => {
     if (!figure) return;
     const skeletons = new Set<SkinnedMesh['skeleton']>();
@@ -60,10 +81,9 @@ function TownNpcFigure({ npc, y, player, lines, talking, quiet }: { npc: TownNpc
     skeletons.forEach(skeleton => skeleton.dispose());
     releaseRenderObjects(figure);
   }, [figure]);
-  const hop = useRef(-1);
   const [line, setLine] = useState(0), [turn, setTurn] = useState(0);
-  // Hops with joy when the player walks up.
-  useEffect(() => { if (talking) hop.current = performance.now(); }, [talking]);
+  // Waves (or hops) when the player walks up.
+  useEffect(() => { if (talking) greet(waves.find(clip => /big/i.test(clip.name)) ?? waves[0]); }, [talking, figure]);
   useEffect(() => {
     if (!talking || lines.length < 2) return;
     const timer = window.setInterval(() => setLine(value => value + 1), LINE_MS);
@@ -85,7 +105,7 @@ function TownNpcFigure({ npc, y, player, lines, talking, quiet }: { npc: TownNpc
     event?.stopPropagation();
     if ((event?.delta ?? 0) > 5) return;
     setLine(value => value + 1); setTurn(value => value + 1);
-    hop.current = performance.now();
+    greet(waves.find(clip => !/big/i.test(clip.name)) ?? waves[0]);
   };
   const text = lines.length ? lines[line % lines.length] : '';
   return <group position={[npc.x, y, npc.z]} name={`town-npc:${npc.id}`}>
