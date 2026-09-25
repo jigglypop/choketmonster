@@ -182,8 +182,8 @@ async function assertWriter(profile: SaveProfile): Promise<void> {
   throw error;
 }
 
-/** Each kind of full backup keeps only its newest copies per profile; every copy is about 1MB. */
-const BACKUPS_PER_KIND = 5;
+/** Each kind of full backup keeps only its newest copies per profile; a grown collection makes every copy several MB. */
+const BACKUPS_PER_KIND = 3;
 const stampOnly = (rest: string) => /^\d{13}$/.test(rest) ? rest : undefined;
 const stampThenId = (rest: string) => /^(\d{13})-[\w-]+$/.exec(rest)?.[1];
 const idThenStamp = (rest: string) => /^[\w-]+-(\d{13})$/.exec(rest)?.[1];
@@ -217,6 +217,13 @@ function tidyBrainCache(save: SaveEnvelope, profile: SaveProfile): void {
   void pruneServerBrains(profile ? `account:${profile.id}:${game.seed}` : game.seed, live).catch(() => {});
 }
 
+/** The current save's trade epoch lives beside it, so an autosave checks it without reading the whole save back. */
+const epochSlot = (slot: string) => `${slot}#tradeEpoch`;
+function putCurrent(saves: IDBObjectStore, slot: string, save: unknown): void {
+  saves.put(save, slot);
+  saves.put(validRemote(save) ? normalizeTradeEpoch(save.tradeEpoch) : 0, epochSlot(slot));
+}
+
 export function writeSave(save: SaveEnvelope, key = 'current'): Promise<void> {
   const snapshot = structuredClone(save), profile = activeProfile, generation = profileGeneration,
     baseSlot = key === 'current' || /-\d{13}$/.test(key) ? key : `${key}-${Date.now()}`, slot = profileSlot(baseSlot, profile);
@@ -228,20 +235,29 @@ export function writeSave(save: SaveEnvelope, key = 'current'): Promise<void> {
     await new Promise<void>((resolve, reject) => {
       const stores = profile ? [STORE, SYNC_STORE] : [STORE], tx = db.transaction(stores, 'readwrite');
       const watchdog = setTimeout(() => { try { tx.abort(); } catch { /* already finished */ } reject(new Error(STUCK_STORAGE)); }, TRANSACTION_MS);
-      const saves = tx.objectStore(STORE), currentRequest = baseSlot === 'current' ? saves.get(slot) : undefined;
+      const saves = tx.objectStore(STORE), epochRequest = baseSlot === 'current' ? saves.get(epochSlot(slot)) : undefined;
+      let storedEpoch = 0;
       const apply = () => {
-        const storedEpoch = validRemote(currentRequest?.result) ? normalizeTradeEpoch(currentRequest!.result.tradeEpoch) : 0;
         if (baseSlot === 'current' && normalizeTradeEpoch(snapshot.tradeEpoch) < storedEpoch) { tx.abort(); return; }
-        saves.put(snapshot, slot);
+        if (baseSlot === 'current') putCurrent(saves, slot, snapshot); else saves.put(snapshot, slot);
         const kind = baseSlot === 'current' ? undefined : /^(.*)-\d{13}$/.exec(slot)?.[1];
         if (kind) pruneBackups(saves, kind, stampOnly);
       };
-      if (currentRequest) currentRequest.onsuccess = apply; else apply();
+      if (!epochRequest) apply();
+      else epochRequest.onsuccess = () => {
+        if (typeof epochRequest.result === 'number') { storedEpoch = epochRequest.result; apply(); return; }
+        // A save written before the epoch record existed: read it whole this once.
+        const stored = saves.get(slot);
+        stored.onsuccess = () => { storedEpoch = validRemote(stored.result) ? normalizeTradeEpoch(stored.result.tradeEpoch) : 0; apply(); };
+      };
       if (profile && baseSlot === 'current') {
         const syncStore = tx.objectStore(SYNC_STORE), request = syncStore.get(syncKey(profile.id));
         request.onsuccess = () => {
           const prior = request.result as SyncRecord | undefined;
           retainedConflict = prior?.conflict;
+          // Already dirty with no upload being prepared: nothing a checkpoint reads changes, so the record, which can
+          // carry a whole conflicting server save, is not rewritten on every save.
+          if (prior?.dirty && !prior.outbox) return;
           // An unacknowledged upload stays recorded, so the next checkpoint can reuse or recognize it.
           syncStore.put({ ...prior, profileId: profile.id, serverRevision: prior?.serverRevision ?? 0, localVersion: (prior?.localVersion ?? 0) + 1, dirty: true } satisfies SyncRecord, syncKey(profile.id));
         };
@@ -252,7 +268,7 @@ export function writeSave(save: SaveEnvelope, key = 'current'): Promise<void> {
         clearTimeout(watchdog);
         // A damaged stored epoch must still settle the save instead of leaving the queue waiting.
         let stale = false;
-        try { stale = normalizeTradeEpoch(snapshot.tradeEpoch) < (validRemote(currentRequest?.result) ? normalizeTradeEpoch(currentRequest!.result.tradeEpoch) : 0); } catch { /* reported below */ }
+        try { stale = normalizeTradeEpoch(snapshot.tradeEpoch) < storedEpoch; } catch { /* reported below */ }
         reject(stale ? new StaleTradeEpochError() : tx.error ?? new Error(STUCK_STORAGE));
       };
     });
@@ -321,7 +337,7 @@ async function reconcileRemote(profile: NonNullable<SaveProfile>, remote: Remote
       if (localRequest.readyState !== 'done' || syncRequest.readyState !== 'done') return;
       const local = localRequest.result, prior = syncRequest.result as SyncRecord | undefined;
       if (local !== undefined && remote && equivalentSave(local, remote.save)) {
-        saves.put(structuredClone(remote.save), localKey);
+        putCurrent(saves, localKey, structuredClone(remote.save));
         syncs.put({ profileId: profile.id, serverRevision: remoteRevision, localVersion: prior?.localVersion ?? 1, dirty: false } satisfies SyncRecord, key);
         result = { save: remote.save, upload: false }; return;
       }
@@ -349,7 +365,7 @@ async function reconcileRemote(profile: NonNullable<SaveProfile>, remote: Remote
           saves.put(structuredClone(local), profileSlot(`backup-before-trade-recovery-${Date.now()}-${requestId()}`, profile));
           pruneBackups(saves, profileSlot('backup-before-trade-recovery', profile), stampThenId);
         }
-        saves.put(structuredClone(remote.save), localKey);
+        putCurrent(saves, localKey, structuredClone(remote.save));
         syncs.put({ profileId: profile.id, serverRevision: remoteRevision, localVersion: (prior?.localVersion ?? 0) + 1, dirty: false } satisfies SyncRecord, key);
         result = { save: remote.save, upload: false }; return;
       }
@@ -375,7 +391,7 @@ async function copyAccountToDevice(profile: NonNullable<SaveProfile>): Promise<u
       // Backup and replacement commit together. The account save and sync outbox
       // stay untouched, so neither a failed transaction nor logout loses progress.
       if (device.result !== undefined) { saves.put(device.result, backupKey); pruneBackups(saves, 'backup-before-logout', idThenStamp); }
-      saves.put(account.result, 'current');
+      putCurrent(saves, 'current', account.result);
     };
     account.onsuccess = copy; device.onsuccess = copy;
     tx.oncomplete = () => resolve(result); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
@@ -572,7 +588,7 @@ export async function resolveSaveConflict(choice: 'device' | 'server'): Promise<
       if (!local || !sync || (!sync.conflict && !(choice === 'device' && sync.dirty))) { tx.abort(); return; }
       if (!sync.conflict) { result = structuredClone(local); return; }
       if (choice === 'server') {
-        result = structuredClone(sync.conflict.remote); saves.put(result, localKey);
+        result = structuredClone(sync.conflict.remote); putCurrent(saves, localKey, result);
         syncs.put({ profileId: profile.id, serverRevision: sync.conflict.remoteRevision, localVersion: sync.localVersion + 1, dirty: false } satisfies SyncRecord, key);
       } else {
         result = structuredClone(local);
@@ -649,7 +665,7 @@ export async function adoptTradeResult(result: TradeSaveResult, checkpoint: Trad
         || sync.dirty || sync.outbox || sync.conflict || localEpoch !== checkpoint.tradeEpoch || local.savedAt !== checkpoint.savedAt) { tx.abort(); return; }
       saves.put(structuredClone(local), profileSlot(`backup-before-trade-${Date.now()}-${requestId()}`, profile));
       pruneBackups(saves, profileSlot('backup-before-trade', profile), stampThenId);
-      saves.put(adopted, localKey);
+      putCurrent(saves, localKey, adopted);
       syncs.put({ profileId: profile.id, serverRevision: result.revision, localVersion: sync.localVersion + 1, dirty: false } satisfies SyncRecord, key);
       if (receiptKey) syncs.put({ profileId: profile.id, tradeId: tradeId!, revision: result.revision, tradeEpoch: resultEpoch } satisfies TradeReceipt, receiptKey);
       chosen = { save: adopted, newlyApplied: true };

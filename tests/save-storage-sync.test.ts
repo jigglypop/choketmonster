@@ -131,7 +131,7 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('save backups', () => {
-  it('keeps the newest five full backups of each kind per profile', { timeout: 60_000 }, async () => {
+  it('keeps the newest three full backups of each kind per profile', { timeout: 60_000 }, async () => {
     const storage = await freshStorage();
     await storage.activateSaveProfile(null);
     const save = storage.packSave(createGame(1, 'backups'), graph, storage.defaultView());
@@ -140,13 +140,13 @@ describe('save backups', () => {
     await storage.writeSave(save, `backup-before-map-${Date.now()}`);
     const keys = [...readStore('choketmon-151', 'saves').keys()];
     const moves = keys.filter(key => key.startsWith('backup-before-move-change-')).sort();
-    expect(moves).toHaveLength(5);
+    expect(moves).toHaveLength(3);
     expect(keys.filter(key => key.startsWith('backup-before-release-'))).toHaveLength(1);
     expect(keys.filter(key => key.startsWith('backup-before-map-'))).toHaveLength(1);
     await storage.writeSave(save, 'backup-before-move-change');
     const after = [...readStore('choketmon-151', 'saves').keys()].filter(key => key.startsWith('backup-before-move-change-')).sort();
-    expect(after).toHaveLength(5);
-    expect(after.slice(0, 4)).toEqual(moves.slice(1));
+    expect(after).toHaveLength(3);
+    expect(after.slice(0, 2)).toEqual(moves.slice(1));
   });
 });
 

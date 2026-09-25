@@ -845,7 +845,8 @@ export class OpenWorldPanel {
     }
     const drops = result.events.filter(event => event.type === 'item-drop');
     if (drops.length) { this.options.notify(drops.map(event => event.message).join(' · ')); playGameSound('select'); this.options.changed(); }
-    if (result.tick % 20 === 0) this.options.changed();
+    // A grown collection makes every save several MB, so quiet exploring is kept every 30 seconds.
+    if (result.tick % 120 === 0) this.options.changed();
     this.refresh();
     } catch (error) {
       this.reportError(error, 'world');
