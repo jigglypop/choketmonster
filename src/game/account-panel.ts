@@ -34,8 +34,13 @@ export function mountAccountPanel(options: AccountPanelOptions) {
   const modeButtons = [...form.querySelectorAll<HTMLButtonElement>('.account-mode button')];
   const recoveryDialog = host.querySelector<HTMLDialogElement>('.save-recovery-dialog')!, recoveryError = recoveryDialog.querySelector<HTMLElement>('.account-error')!;
   let authMode: AuthMode = 'login';
-  let busy = false, disposed = false, switchInFlight = true, recoveryPending = false, recoveryPreparationFailed = false, recoveryReady: Promise<void> | undefined;
-  const setBusy = (value: boolean) => { busy = value; for (const button of host.querySelectorAll<HTMLButtonElement>('button')) button.disabled = value; };
+  let busy = false, disposed = false, switchInFlight = true, recoveryPending = false, recoveryPreparationFailed = false, recoveryReady: Promise<void> | undefined, openWhenIdle = false;
+  const showDialog = () => { if (disposed || dialog.open) return; error.hidden = true; dialog.showModal(); };
+  const setBusy = (value: boolean) => {
+    busy = value; for (const button of host.querySelectorAll<HTMLButtonElement>('button')) button.disabled = value;
+    // A request to sign in again that arrived mid-operation (an expired session) must not be dropped.
+    if (!value && openWhenIdle) { openWhenIdle = false; showDialog(); }
+  };
   const showError = (reason: unknown) => { const message = reason instanceof Error ? reason.message : String(reason); error.textContent = message; error.hidden = false; options.notify?.(message, true); };
   const fieldInputs: Record<CredentialField, HTMLInputElement> = { username: usernameInput, password: passwordInput, passwordConfirmation: confirmationInput };
   const errorElement = (key: CredentialField) => form.querySelector<HTMLElement>(`#account-${key === 'passwordConfirmation' ? 'password-confirmation' : key}-error`)!;
@@ -78,15 +83,18 @@ export function mountAccountPanel(options: AccountPanelOptions) {
     if (disposed || switchInFlight || !recoveryPending || recoveryReady) return;
       recoveryPreparationFailed = false;
       const user = currentAccount(), change: AccountSwitch = { from: user, to: user, reason: 'recovery' };
-      recoveryReady = Promise.resolve(options.beforeSwitch?.(change)).catch(async failure => {
+      const ready: Promise<void> = Promise.resolve(options.beforeSwitch?.(change)).catch(async failure => {
         recoveryPreparationFailed = true;
+        // Cleared so the next choice prepares again instead of replaying this failure.
+        if (recoveryReady === ready) recoveryReady = undefined;
         try { await options.onSwitchError?.(change, failure); } catch { /* Preserve the original error. */ }
         recoveryError.textContent = failure instanceof Error ? failure.message : String(failure); recoveryError.hidden = false;
         throw failure;
       });
+      recoveryReady = ready;
       // The button awaits and reports this failure. This catch prevents an
       // unhandled rejection while the user is still reading the dialog.
-      void recoveryReady.catch(() => {});
+      void ready.catch(() => {});
   };
   const finishSwitch = () => {
     switchInFlight = false;
@@ -104,17 +112,20 @@ export function mountAccountPanel(options: AccountPanelOptions) {
     prepareRecovery();
   });
   recoveryDialog.addEventListener('cancel', event => event.preventDefault());
+  // Chromium closes a modal on a repeated Esc or Android Back even when cancel is prevented.
+  recoveryDialog.addEventListener('close', () => { if (!disposed && recoveryPending && !recoveryDialog.open) recoveryDialog.showModal(); });
   for (const button of recoveryDialog.querySelectorAll<HTMLButtonElement>('button[value]')) button.onclick = () => {
     if (busy) return;
     void (async () => {
       setBusy(true); recoveryError.hidden = true;
       try {
+        if (!recoveryReady) prepareRecovery();
         await recoveryReady;
         const save = await resolveSaveConflict(button.value === 'device' ? 'device' : 'server');
         const user = currentAccount();
         await options.afterSwitch?.({ from: user, to: user, reason: 'recovery', save });
-        recoveryDialog.close();
         recoveryReady = undefined; recoveryPending = false; recoveryPreparationFailed = false;
+        recoveryDialog.close();
         options.notify?.(button.value === 'device' ? '이 기기 진행을 서버에 저장했습니다.' : '서버 진행을 이 기기에 불러왔습니다.');
       } catch (failure) {
         const user = currentAccount(), change: AccountSwitch = { from: user, to: user, reason: 'recovery' };
@@ -127,6 +138,9 @@ export function mountAccountPanel(options: AccountPanelOptions) {
   open.onclick = () => { error.hidden = true; dialog.showModal(); usernameInput.focus(); };
   const canClose = () => (!options.requireLogin || Boolean(currentAccount())) && (options.canClose?.() ?? true);
   dialog.addEventListener('cancel', event => { if (!canClose()) event.preventDefault(); });
+  // Chromium closes a modal on a repeated Esc or Android Back even when cancel is prevented;
+  // while sign-in is required nothing else could bring this dialog back.
+  dialog.addEventListener('close', () => { if (!disposed && !dialog.open && !canClose()) dialog.showModal(); });
   dialog.querySelector<HTMLButtonElement>('.account-close')!.onclick = () => { if (!canClose()) return; setPasswordVisible(false); dialog.close(); };
   form.addEventListener('submit', event => {
     event.preventDefault();
@@ -196,7 +210,7 @@ export function mountAccountPanel(options: AccountPanelOptions) {
   }).catch(reason => { showError(reason); throw reason; }).finally(() => { if (!disposed) { setBusy(false); finishSwitch(); } });
   return {
     ready,
-    open() { if (!disposed && !busy) { error.hidden = true; dialog.showModal(); } },
+    open() { if (busy) openWhenIdle = true; else showDialog(); },
     checkpoint: () => checkpointSave('manual'),
     destroy() { disposed = true; unsubscribe(); unsubscribeStorage(); stopAutosave(); dialog.remove(); recoveryDialog.remove(); host.querySelector('.account-panel')?.remove(); },
   };

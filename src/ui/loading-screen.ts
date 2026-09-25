@@ -21,13 +21,33 @@ export class LoadingScreen {
     const text = this.element.querySelector('[data-loading-status]')!;
     if (text.textContent !== message) text.textContent = message;
   }
-  fail(message: string, retry: () => void = () => location.reload()) {
+  fail(message: string, retry: () => void = () => location.reload(), logout?: () => Promise<unknown>) {
     this.element.hidden = false;
     this.element.dataset.failed = 'true';
     this.status(message);
     const button = this.element.querySelector<HTMLButtonElement>('[data-loading-retry]')!;
+    const leave = this.logoutButton(button, logout);
     button.hidden = false;
-    button.onclick = () => { button.hidden = true; delete this.element.dataset.failed; retry(); };
+    button.onclick = () => { button.hidden = true; if (leave) leave.hidden = true; delete this.element.dataset.failed; retry(); };
+  }
+  /** A signed-in player whose adventure cannot start can still leave the account. */
+  private logoutButton(retry: HTMLButtonElement, logout?: () => Promise<unknown>) {
+    let button = this.element.querySelector<HTMLButtonElement>('[data-loading-logout]');
+    if (!button && logout) {
+      button = document.createElement('button');
+      button.type = 'button'; button.className = retry.className; button.dataset.loadingLogout = ''; button.textContent = '로그아웃';
+      retry.after(button);
+    }
+    if (!button) return undefined;
+    const leave = button;
+    leave.hidden = !logout; leave.disabled = false;
+    leave.onclick = () => {
+      if (!logout) return;
+      leave.disabled = true; retry.hidden = true;
+      // The reload shows the sign-in form; a logout the server missed is retried on that load.
+      void logout().catch(() => undefined).finally(() => location.reload());
+    };
+    return leave;
   }
   remove() { this.element.remove(); }
 }

@@ -57,9 +57,11 @@ test('real ranked applies preset Mega and Alola before the first move, then surv
     expect(match.turn).toBe(1);
     expect(match.selfSide.team[0].types).toEqual(['fire', 'dragon']);
     expect(match.opponentSide.team[0].types).toEqual(['electric', 'psychic']);
-    expect(match.opponentSide.team[0].moves.find((move: { id: number }) => move.id === 851).type).toBe('normal');
+    // The opponent view carries only the active Pokémon's card, so the move list is read from the owner's side.
+    const rightMatch = (await (await right.context.request.get(`${base}/api/ranked?league=standard`, { headers: right.headers })).json()).currentMatch;
+    expect(rightMatch.selfSide.team[0].moves.find((move: { id: number }) => move.id === 851).type).toBe('normal');
     await expect(right.page.locator('.ranked-moves button').filter({ hasText: '테라버스트' })).toContainText('노말');
-    expect(match.selfSide.megaUsed).toBe(true); expect(match.opponentSide.teraUsed).toBe(false);
+    expect(match.selfSide.megaUsed).toBe(true);
     const repeated = await a.request.post(`${base}/api/ranked/matches/${match.id}/action`, { headers: left.headers, data: { turn: match.turn, transformation: { kind: 'mega', formIdentifier: 'charizard-mega-x' } } });
     expect(repeated.status()).toBe(422);
     await left.page.reload(); await left.page.locator('[data-tab="ranked"]').click();

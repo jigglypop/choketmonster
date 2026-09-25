@@ -63,6 +63,8 @@ const validRoom = (value: unknown): TradeRoom => {
 };
 const responseRoom = (body: unknown) => validRoom((body as { trade?: unknown })?.trade);
 const money = (value: number) => `₩${value.toLocaleString('ko-KR')}`;
+// A pushed offer change lands between the player's look and click; confirm waits this long after it.
+const OFFER_REVIEW_MS = 2_000;
 const optionLabel = (monster: Monster) => `${monster.nickname} · ${getSpecies(monster.speciesId).name} · Lv.${monster.level} · ${monster.instanceId}`;
 
 export function mountTradePanel(options: TradePanelOptions) {
@@ -86,19 +88,37 @@ export function mountTradePanel(options: TradePanelOptions) {
   const confirmButton = dialog.querySelector<HTMLButtonElement>('[data-confirm]')!, cancelButton = dialog.querySelector<HTMLButtonElement>('[data-cancel]')!, retryButton = dialog.querySelector<HTMLButtonElement>('[data-retry]')!;
   let trade: TradeRoom | undefined, checkpoint: TradeCheckpoint | undefined, ignoredTerminalId: string | undefined, pendingGameApplicationId: string | undefined,
     pollTimer = 0, reconnectTimer = 0, reconnectDelay = 1_000, socket: WebSocket | undefined,
-    disposed = false, busy = false, applyingResult = false, polling = false, pollAgain = false, sessionId = 0,
-    offeredItems: TradeItem[] = [], offerItemsDirty = false;
+    disposed = false, busy = false, applyingResult = false, polling = false, pollAgain = false, sessionId = 0, sessionOpen = false,
+    offeredItems: TradeItem[] = [], offerItemsDirty = false, otherOfferKey = '', confirmHeldUntil = 0, confirmHoldTimer = 0;
+  // Completed trades already applied, or whose application failed, in this page. The server save stays
+  // authoritative, so a result is not applied again on close or poll; the next boot loads the account save.
+  const settledTrades = new Set<string>();
   const account = () => options.currentAccount();
   const setError = (failure?: unknown) => { error.hidden = !failure; error.textContent = failure ? (failure instanceof Error ? failure.message : String(failure)) : ''; if (failure) options.notify?.(error.textContent, true); };
-  const setBusy = (value: boolean) => { busy = value; for (const button of dialog.querySelectorAll<HTMLButtonElement>('button')) button.disabled = value; monsterSelect.disabled = value; moneyInput.disabled = value; itemSelect.disabled = value; itemQuantity.disabled = value; };
+  const confirmHeld = () => Date.now() < confirmHeldUntil;
+  const setBusy = (value: boolean) => { busy = value; for (const button of dialog.querySelectorAll<HTMLButtonElement>('button')) button.disabled = value; confirmButton.disabled = value || confirmHeld(); monsterSelect.disabled = value; moneyInput.disabled = value; itemSelect.disabled = value; itemQuantity.disabled = value; };
   const stopLive = () => { if (pollTimer) window.clearTimeout(pollTimer); if (reconnectTimer) window.clearTimeout(reconnectTimer); pollTimer = 0; reconnectTimer = 0; if (socket) { const current = socket; socket = undefined; current.close(); } };
   const terminal = (status: TradeStatus) => ['completed', 'cancelled', 'expired'].includes(status);
+  const offerKey = (room: TradeRoom) => {
+    const other = room.participants.find(item => item.user.id !== account()?.id);
+    return other ? JSON.stringify([room.id, other.user.id, other.offer.monster, other.offer.money, other.offer.items]) : '';
+  };
   const acceptRoom = (next: TradeRoom) => {
     if (trade?.id === next.id && (next.version < trade.version || (terminal(trade.status) && !terminal(next.status)))) return trade;
-    trade = next; return trade;
+    trade = next;
+    const key = offerKey(next);
+    if (key && key !== otherOfferKey) {
+      // The version moves with the other side's offer, so a click now would confirm what the player has not seen.
+      confirmHeldUntil = Date.now() + OFFER_REVIEW_MS; confirmButton.disabled = true;
+      window.clearTimeout(confirmHoldTimer); confirmHoldTimer = window.setTimeout(() => { confirmButton.disabled = busy || confirmHeld(); }, OFFER_REVIEW_MS);
+    }
+    otherOfferKey = key;
+    return trade;
   };
   const finish = (outcome: 'no-trade' | 'cancelled' | 'completed') => {
-    sessionId++; trade = undefined; checkpoint = undefined; pendingGameApplicationId = undefined; offeredItems = []; offerItemsDirty = false; stopLive(); dialog.close(); options.closed?.(outcome);
+    // Cleared before close(): the close event below then knows this session already ended.
+    sessionOpen = false;
+    sessionId++; trade = undefined; checkpoint = undefined; pendingGameApplicationId = undefined; offeredItems = []; offerItemsDirty = false; otherOfferKey = ''; stopLive(); dialog.close(); options.closed?.(outcome);
   };
   const participantCard = (element: HTMLElement, title: string, participant?: Participant) => {
     element.replaceChildren(); const heading = document.createElement('h3'); heading.textContent = title; element.append(heading);
@@ -148,7 +168,7 @@ export function mountTradePanel(options: TradePanelOptions) {
     renderOfferItems(); fillItems();
     const labels: Record<TradeStatus, string> = { waiting: '상대가 초대 코드로 들어오기를 기다립니다.', active: '제안을 고른 뒤 두 사람이 확인해 주세요.', completed: '거래가 완료되었습니다. 결과를 안전하게 적용하는 중입니다.', cancelled: '취소된 거래입니다.', expired: '시간이 만료된 거래입니다.' };
     stateText.textContent = `${labels[trade.status]} · ${new Date(trade.expiresAt).toLocaleTimeString('ko-KR')}까지`;
-    const editable = trade.status === 'active' || trade.status === 'waiting'; offerForm.hidden = !editable; confirmButton.hidden = trade.status !== 'active'; cancelButton.hidden = !editable; retryButton.hidden = !['completed'].includes(trade.status);
+    const editable = trade.status === 'active' || trade.status === 'waiting'; offerForm.hidden = !editable; confirmButton.hidden = trade.status !== 'active'; confirmButton.disabled = busy || confirmHeld(); cancelButton.hidden = !editable; retryButton.hidden = !['completed'].includes(trade.status);
     if (own) confirmButton.textContent = own.confirmed ? '확인 취소는 제안을 바꾸세요' : '이 내용으로 확인';
   };
   const fillBox = () => {
@@ -158,7 +178,7 @@ export function mountTradePanel(options: TradePanelOptions) {
     fillItems();
   };
   const applyCompleted = async (room: TradeRoom) => {
-    if (applyingResult || !checkpoint) return;
+    if (applyingResult || !checkpoint || settledTrades.has(room.id)) return;
     applyingResult = true;
     try {
       const user = account(); if (!user) throw new Error('거래 결과를 받을 계정 연결이 끊겼습니다.');
@@ -172,12 +192,18 @@ export function mountTradePanel(options: TradePanelOptions) {
       // after the durable save receipt makes the next adoption idempotent.
       if (adoption.newlyApplied) pendingGameApplicationId = room.id;
       if (result.incomingNeural) await importTransferableServerBrain(result.incomingNeural.instanceId, result.incomingNeural.neural, room.id);
+      settledTrades.add(room.id);
       if (pendingGameApplicationId === room.id) {
         await options.applied(adoption.save); pendingGameApplicationId = undefined;
         options.notify?.('거래 완료'); finish('completed');
       } else {
         ignoredTerminalId = room.id; trade = undefined; setError(); render();
       }
+    } catch (failure) {
+      // Reported by the caller once. Only the retry button tries again; closing ends the session
+      // and play goes on, since the adopted save or the server save is what the next boot loads.
+      settledTrades.add(room.id);
+      throw failure;
     } finally { applyingResult = false; }
   };
   const pollOnce = async () => {
@@ -189,6 +215,8 @@ export function mountTradePanel(options: TradePanelOptions) {
       if (!body.trade) { if (trade && !['cancelled', 'expired'].includes(trade.status)) throw new Error('진행 중인 거래를 서버에서 찾지 못했습니다. 다시 확인해 주세요.'); trade = undefined; render(); return; }
       const next = validRoom(body.trade);
       if (next.id === ignoredTerminalId) { trade = undefined; render(); return; }
+      // A result already handled in this page stays on screen with its error, or opens the lobby next time.
+      if (settledTrades.has(next.id)) { if (trade?.id !== next.id) { trade = undefined; render(); } return; }
       if (!trade && (next.status === 'cancelled' || next.status === 'expired')) { ignoredTerminalId = next.id; render(); return; }
       const current = acceptRoom(next); setError(); render();
       if (current.status === 'completed') await applyCompleted(current);
@@ -263,7 +291,7 @@ export function mountTradePanel(options: TradePanelOptions) {
     const neural = monster ? await exportTransferableServerBrain(monster.instanceId) : null;
     await mutate(`/api/trades/${encodeURIComponent(trade.id)}/offer`, { version: trade.version, revision: checkpoint.revision, monsterId, money: amount, items: offeredItems, neural }); offerItemsDirty = false; render(); setError();
   } catch (failure) { setError(failure); void poll(); } finally { setBusy(false); render(); } })(); };
-  confirmButton.onclick = () => void (async () => { if (busy || !trade) return; setBusy(true); try { await mutate(`/api/trades/${encodeURIComponent(trade.id)}/confirm`, { version: trade.version }); setError(); if (trade.status === 'completed') await applyCompleted(trade); else void poll(); } catch (failure) { setError(failure); void poll(); } finally { setBusy(false); render(); } })();
+  confirmButton.onclick = () => void (async () => { if (busy || !trade || confirmHeld()) return; setBusy(true); try { await mutate(`/api/trades/${encodeURIComponent(trade.id)}/confirm`, { version: trade.version }); setError(); if (trade.status === 'completed') await applyCompleted(trade); else void poll(); } catch (failure) { setError(failure); void poll(); } finally { setBusy(false); render(); } })();
   const cancelTrade = async () => { if (!trade || !['waiting', 'active'].includes(trade.status)) return terminal(trade?.status ?? 'cancelled'); try {
     const updated = await mutate(`/api/trades/${encodeURIComponent(trade.id)}/cancel`, { version: trade.version });
     if (updated.status === 'completed') { await applyCompleted(updated); return false; }
@@ -274,20 +302,27 @@ export function mountTradePanel(options: TradePanelOptions) {
   const close = dialog.querySelector<HTMLButtonElement>('.trade-close')!;
   close.onclick = () => void (async () => {
     if (busy) return;
-    if (trade?.status === 'completed') { setBusy(true); try { await applyCompleted(trade); } catch (failure) { setError(failure); retryButton.hidden = false; } finally { setBusy(false); } return; }
-    let outcome: 'no-trade' | 'cancelled' = 'no-trade';
+    if (trade?.status === 'completed' && !settledTrades.has(trade.id)) { setBusy(true); try { await applyCompleted(trade); } catch (failure) { setError(failure); retryButton.hidden = false; } finally { setBusy(false); } return; }
+    let outcome: 'no-trade' | 'cancelled' | 'completed' = 'no-trade';
     if (trade && ['waiting', 'active'].includes(trade.status)) { setBusy(true); const closed = await cancelTrade(); setBusy(false); if (!closed) return; outcome = 'cancelled'; }
+    else if (trade?.status === 'completed') outcome = 'completed';
     else if (trade?.status === 'cancelled' || trade?.status === 'expired') outcome = 'cancelled';
     finish(outcome);
   })();
   dialog.addEventListener('cancel', event => { event.preventDefault(); close.click(); });
-  retryButton.onclick = () => void poll();
+  // Chromium closes the dialog on a repeated Esc or Android Back even though cancel was prevented.
+  // Reopen it and take the close button's path, so the session always ends through finish().
+  dialog.addEventListener('close', () => {
+    if (!sessionOpen || disposed || dialog.open) return;
+    dialog.showModal(); close.click();
+  });
+  retryButton.onclick = () => { if (trade) settledTrades.delete(trade.id); void poll(); };
   dialog.querySelector<HTMLButtonElement>('[data-copy]')!.onclick = () => void navigator.clipboard.writeText(codeText.textContent ?? '').then(() => options.notify?.('초대 코드를 복사했습니다.')).catch(failure => setError(failure));
   dialog.querySelector<HTMLButtonElement>('[data-login]')!.onclick = () => { finish('no-trade'); options.openAccount?.(); };
   return {
     async open() {
-      if (disposed || busy || dialog.open) return;
-      sessionId++; trade = undefined; checkpoint = undefined; ignoredTerminalId = undefined; pendingGameApplicationId = undefined; offeredItems = []; offerItemsDirty = false; reconnectDelay = 1_000; setError(); dialog.showModal(); render(); setBusy(true);
+      if (disposed || busy || dialog.open || sessionOpen) return;
+      sessionId++; trade = undefined; checkpoint = undefined; ignoredTerminalId = undefined; pendingGameApplicationId = undefined; offeredItems = []; offerItemsDirty = false; otherOfferKey = ''; reconnectDelay = 1_000; setError(); sessionOpen = true; dialog.showModal(); render(); setBusy(true);
       try {
         await options.prepare();
         if (!account()) { render(); return; }
@@ -296,6 +331,6 @@ export function mountTradePanel(options: TradePanelOptions) {
       finally { setBusy(false); render(); }
     },
     isActive: () => Boolean(dialog.open && (trade || checkpoint)),
-    destroy() { disposed = true; sessionId++; stopLive(); dialog.remove(); },
+    destroy() { disposed = true; sessionId++; stopLive(); window.clearTimeout(confirmHoldTimer); dialog.remove(); },
   };
 }

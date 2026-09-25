@@ -17,10 +17,13 @@ export type RealtimeView = { status: RealtimeStatus; id?: string; region?: Realt
 type Options = { url?: string; ticket?: string; getTicket?: () => Promise<string>; createSocket?: (url: string) => WebSocket; now?: () => number; random?: () => number; visible?: () => boolean; maxBufferedAmount?: number };
 
 const REALTIME_REGIONS: readonly RealtimeRegion[] = ['kanto', 'johto', 'hoenn', 'sinnoh', 'unova', 'kalos', 'alola', 'galar', 'hisui', 'paldea'];
+// A glance at another tab keeps the socket: every reconnect spends a rate-limited ticket.
+const HIDDEN_DISCONNECT_MS = 30_000;
 const validRegion = (value: unknown): value is RealtimeRegion => REALTIME_REGIONS.includes(value as RealtimeRegion);
 const WS_CONNECTING = 0, WS_OPEN = 1, WS_CLOSING = 2;
 const codePointLength = (value: string) => Array.from(value).length;
-const validScene = (value: unknown, region: RealtimeRegion): value is string => typeof value === 'string' && (value === `surface:${region}` || new RegExp(`^cave:${region}:[a-z0-9-]+$`).test(value)) && value.length <= 64;
+// Gym and league halls are scenes too; the server admits only the region's known halls and caves.
+const validScene = (value: unknown, region: RealtimeRegion): value is string => typeof value === 'string' && (value === `surface:${region}` || new RegExp(`^(?:cave|gym|league):${region}:[a-z0-9-]+$`).test(value)) && value.length <= 64;
 const validPlayer = (value: unknown): value is RemotePlayer => { const p = value as RemotePlayer; return Boolean(p && typeof p.id === 'string' && p.id && typeof p.name === 'string' && codePointLength(p.name) <= 32 && validRegion(p.region) && validScene(p.sceneId, p.region) && Number.isInteger(p.speciesId) && p.speciesId > 0 && p.speciesId <= 1025 && [p.x, p.z, p.heading, p.updatedAt].every(Number.isFinite) && ['idle', 'moving', 'battle'].includes(p.activity)); };
 const validChat = (value: unknown): value is ChatMessage => { const m = value as ChatMessage; return Boolean(m && typeof m.id === 'string' && m.id && typeof m.playerId === 'string' && typeof m.name === 'string' && codePointLength(m.name) <= 32 && typeof m.text === 'string' && codePointLength(m.text) <= 200 && Number.isFinite(m.sentAt)); };
 const samePresence = (a?: Presence, b?: Presence) => Boolean(a && b && a.region === b.region && a.sceneId === b.sceneId && a.speciesId === b.speciesId && a.x === b.x && a.z === b.z && a.heading === b.heading && a.activity === b.activity);
@@ -37,6 +40,7 @@ export class RealtimeClient {
   private stateTimer?: number;
   private pingTimer?: number;
   private reauthTimer?: number;
+  private hiddenTimer?: number;
   private reauthPending = false;
   private attempt = 0;
   private seq = 0;
@@ -51,7 +55,10 @@ export class RealtimeClient {
   private readonly createSocket: (url: string) => WebSocket;
   private readonly visible: () => boolean;
   private readonly maxBufferedAmount: number;
-  private readonly visibility = () => { if (this.visible()) this.connect(); else this.disconnect(false); };
+  private readonly visibility = () => {
+    if (this.visible()) { this.clearHidden(); this.connect(); return; }
+    this.hiddenTimer ??= window.setTimeout(() => { this.hiddenTimer = undefined; if (!this.visible()) this.disconnect(false); }, HIDDEN_DISCONNECT_MS);
+  };
 
   constructor(private readonly options: Options = {}) {
     this.now = options.now ?? Date.now; this.random = options.random ?? Math.random;
@@ -121,12 +128,13 @@ export class RealtimeClient {
   close(): void { this.disposed = true; if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this.visibility); this.disconnect(true); this.listeners.clear(); }
 
   private disconnect(permanent: boolean): void {
-    this.clearReconnect(); this.stopTimers(); const socket = this.socket; this.socket = undefined; this.joined = false;
+    this.clearReconnect(); this.clearHidden(); this.stopTimers(); const socket = this.socket; this.socket = undefined; this.joined = false;
     if (socket && socket.readyState < WS_CLOSING) socket.close(1000, permanent ? 'client-close' : 'background');
     this.peers.clear(); this.publish({ status: 'offline', id: undefined, players: [] });
   }
   private scheduleReconnect(): void { this.clearReconnect(); const delay = Math.min(15_000, 500 * 2 ** Math.min(this.attempt++, 5)) * (.75 + this.random() * .5); this.publish({ status: 'reconnecting' }); this.reconnectTimer = window.setTimeout(() => this.connect(), delay); }
   private clearReconnect(): void { if (this.reconnectTimer !== undefined) window.clearTimeout(this.reconnectTimer); this.reconnectTimer = undefined; }
+  private clearHidden(): void { if (this.hiddenTimer !== undefined) window.clearTimeout(this.hiddenTimer); this.hiddenTimer = undefined; }
   private startTimers(): void { this.stopTimers(); this.stateTimer = window.setInterval(() => this.flushState(), 100); this.pingTimer = window.setInterval(() => this.send({ type: 'ping', sentAt: this.now() }), 15_000); this.scheduleReauthentication(40_000); this.flushState(); }
   private stopTimers(): void { if (this.stateTimer !== undefined) window.clearInterval(this.stateTimer); if (this.pingTimer !== undefined) window.clearInterval(this.pingTimer); if (this.reauthTimer !== undefined) window.clearTimeout(this.reauthTimer); this.stateTimer = this.pingTimer = this.reauthTimer = undefined; this.reauthPending = false; }
   private scheduleReauthentication(delay: number): void {
@@ -135,18 +143,22 @@ export class RealtimeClient {
     this.reauthTimer = window.setTimeout(() => void this.reauthenticate(), delay);
   }
   private async reauthenticate(): Promise<void> {
-    if (this.reauthPending || !this.joined) return;
+    // The ticket expires on the socket, not the room: a scene re-join leaves `joined` false for a
+    // moment, and skipping then would let the server drop the connection. A closed socket gets a
+    // fresh ticket when it reconnects.
+    const socket = this.socket;
+    if (this.reauthPending || !socket || socket.readyState !== WS_OPEN) return;
     this.reauthPending = true;
     const generation = this.ticketGeneration;
     try {
       const ticket = await (this.options.getTicket ?? fetchRealtimeTicket)();
-      if (generation !== this.ticketGeneration || !this.joined) return;
+      if (generation !== this.ticketGeneration || socket !== this.socket || socket.readyState !== WS_OPEN) return;
       if (!this.send({ type:'reauth', ticket }, true)) throw new Error('실시간 인증을 갱신하지 못했습니다.');
       this.scheduleReauthentication(40_000);
     } catch (error) {
       if (generation !== this.ticketGeneration) return;
       if (error instanceof RealtimeAuthRequiredError) this.accountChanged(false);
-      else { this.publish({ error:error instanceof Error ? error.message : String(error) }); this.scheduleReauthentication(5_000); }
+      else if (socket === this.socket) { this.publish({ error:error instanceof Error ? error.message : String(error) }); this.scheduleReauthentication(5_000); }
     } finally { this.reauthPending = false; }
   }
   private flushState(): void { if (!this.joined || !this.latest || samePresence(this.sent, this.latest)) return; if (this.send({ type: 'state', seq: ++this.seq, x: this.latest.x, z: this.latest.z, heading: this.latest.heading, speciesId: this.latest.speciesId, activity: this.latest.activity })) this.sent = { ...this.latest }; }

@@ -7,7 +7,7 @@ import { getPlayableSpeciesIds, isPlayableSpecies, PLAYABLE_SPECIES_IDS, isPlaya
 import './game.css';
 import './team.css';
 import './game/breeding.css';
-import { currentAccount } from './game/account';
+import { currentAccount, logout } from './game/account';
 import { AUTH_SESSION_EXPIRED } from './game/auth-session';
 import { mountAccountPanel } from './game/account-panel';
 import './game/account-form.css';
@@ -55,7 +55,7 @@ import { confirmAction } from './ui/confirm-action';
 import { showGymVictory } from './ui/gym-victory';
 import { attachGameAudio, playGameSound } from './audio';
 import { mountTradePanel } from './game/trade-panel';
-import { mountRankedPanel } from './game/ranked-panel';
+import { mountRankedPanel, RANKED_SESSION_MESSAGE } from './game/ranked-panel';
 import { mountOriginalMusic } from './audio/original-music';
 import { bindBreedingPanel, breedingPanelHtml } from './game/breeding-ui';
 import { regionalSpeciesHabitats } from './data/regional-encounters';
@@ -106,6 +106,14 @@ app.innerHTML = `
   <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true" popover="manual" hidden></div><input id="import-file" type="file" accept="application/json" hidden>
   <dialog id="starter-dialog" class="starter-dialog"><div class="starter-copy"><span class="kicker">PALLET LAB · 첫 파트너</span><h1>관동에서 함께 떠날<br>포켓몬을 선택하세요</h1><p>선택한 한 마리만 처음 팀에 들어옵니다. 각 개체는 서로 다른 회로 상태와 학습 기록을 이 기기에 보관합니다.</p><div class="starter-account"><span>진행 상황은 이 브라우저의 IndexedDB에 자동 저장됩니다.</span><button type="button" class="quiet" data-load-account>계정 저장 불러오기</button></div></div><div class="starter-grid">
     ${[1, 4, 7].map(id => { const s = getSpecies(id); return `<button data-starter="${id}" class="starter-card"><span>No.${String(id).padStart(3, '0')}</span><img src="${s.frontSprite}" alt="${s.name}"><strong>${s.name}</strong><small>${s.types.map(type => typeLabel[type]).join(' · ')}</small><em>이 파트너로 시작</em></button>`; }).join('')}</div></dialog>`;
+// Held by reference: without popovers the toast moves into dialogs that are later removed or re-rendered.
+const toast = $('#toast');
+const toastDialogs = new WeakSet<HTMLDialogElement>();
+const starterDialog = $<HTMLDialogElement>('#starter-dialog');
+// Nothing is playable behind the partner choice, so Esc or Android Back must not leave it.
+starterDialog.addEventListener('cancel', event => { if (!game) event.preventDefault(); });
+// Chromium closes a modal on a repeated Esc/Back even when cancel was prevented.
+starterDialog.addEventListener('close', () => { if (!game && !starterDialog.open) starterDialog.showModal(); });
 
 setAccountSwitching(true);
 window.addEventListener(AUTH_SESSION_EXPIRED, () => {
@@ -180,7 +188,6 @@ const rankedPanel = mountRankedPanel({
 if (import.meta.hot) import.meta.hot.dispose(() => rankedPanel.destroy());
 
 function notify(message: string, error = false) {
-  const toast = $('#toast');
   toast.textContent = message; toast.classList.toggle('error', error); toast.hidden = false;
   // A fixed z-index cannot rise above showModal(). A manual popover enters the
   // browser's top layer without stealing focus or intercepting world controls.
@@ -190,6 +197,14 @@ function notify(message: string, error = false) {
   } else {
     const dialog = [...document.querySelectorAll<HTMLDialogElement>('dialog[open]')].at(-1);
     (dialog ?? document.body).append(toast);
+    if (dialog && !toastDialogs.has(dialog)) {
+      toastDialogs.add(dialog);
+      // Closed dialogs are often removed or re-rendered; the toast returns to the page instead.
+      dialog.addEventListener('close', () => {
+        toastDialogs.delete(dialog);
+        if (dialog.contains(toast) || !toast.isConnected) document.body.append(toast);
+      }, { once: true });
+    }
   }
   clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => {
@@ -297,7 +312,7 @@ function renderBattle() {
   const trainer = battle.trainerId ? CAMPAIGN_TRAINERS.find(item => item.id === battle.trainerId) : undefined;
   const battleTitle = battle.kind === 'wild' ? '야생 포켓몬과 조우' : battle.kind === 'gym' ? '체육관 승부' : trainer ? `${trainer.name}과의 승부` : '챔피언 결정전';
   $('#screen').innerHTML = `<div class="battle-page page"><div class="battle-top"><div><span class="kicker">${battle.kind.toUpperCase()} BATTLE · TURN ${battle.turn}</span><h1>${escapeHtml(battleTitle)}</h1></div><div class="brain-controls"><label><input id="learning" type="checkbox" ${view.learning ? 'checked' : ''}> 기술 학습</label><label class="switch"><input id="auto" type="checkbox" ${autoBattle ? 'checked' : ''}><span></span> 커넥톰 자동 배틀</label><button id="brain-turn" class="primary">회로로 한 턴</button></div></div>
-    <section class="battle-stage panel"><div class="opponent combatant"><div class="battle-info"><span>Lv.${enemy.level} ${eDisplay.types.map(type => `<span class="type type-${type}">${typeLabel[type]}</span>`).join('')}</span><h2>${escapeHtml(eDisplay.name)}</h2><div class="hp"><i style="width:${eHp}%"></i></div><small>HP ${enemy.hp}/${eView.stats.hp}${statusLabel(enemy.status) ? ` · ${statusLabel(enemy.status)}` : ''}</small></div><img src="${eDisplay.sprite}" alt="${eDisplay.name}"></div><div class="battle-ground"></div><div class="player combatant"><img src="${pDisplay.form ? pDisplay.sprite : pSpecies.backSprite}" alt="${pDisplay.name}"><div class="battle-info"><span>Lv.${player.level} ${pDisplay.types.map(type => `<span class="type type-${type}">${typeLabel[type]}</span>`).join('')}</span><h2>${escapeHtml(pDisplay.name)}</h2><div class="hp"><i style="width:${pHp}%"></i></div><small>HP ${player.hp}/${pView.stats.hp}${statusLabel(player.status) ? ` · ${statusLabel(player.status)}` : ''}</small></div></div></section>
+    <section class="battle-stage panel"><div class="opponent combatant"><div class="battle-info"><span>Lv.${enemy.level} ${eDisplay.types.map(type => `<span class="type type-${type}">${typeLabel[type]}</span>`).join('')}</span><h2>${escapeHtml(eDisplay.name)}</h2><div class="hp"><i style="width:${eHp}%"></i></div><small>HP ${enemy.hp}/${eView.stats.hp}${statusLabel(enemy.status) ? ` · ${statusLabel(enemy.status)}` : ''}</small></div><img src="${eDisplay.sprite}" alt="${escapeHtml(eDisplay.name)}"></div><div class="battle-ground"></div><div class="player combatant"><img src="${pDisplay.form ? pDisplay.sprite : pSpecies.backSprite}" alt="${escapeHtml(pDisplay.name)}"><div class="battle-info"><span>Lv.${player.level} ${pDisplay.types.map(type => `<span class="type type-${type}">${typeLabel[type]}</span>`).join('')}</span><h2>${escapeHtml(pDisplay.name)}</h2><div class="hp"><i style="width:${pHp}%"></i></div><small>HP ${player.hp}/${pView.stats.hp}${statusLabel(player.status) ? ` · ${statusLabel(player.status)}` : ''}</small></div></div></section>
     <div class="battle-console"><section class="move-grid">${getMoveLayout({ ...player, moves: pView.moves }).map(slot => { const move = getMove(slot.moveId); return `<button data-battle-move="${slot.sourceIndex}" ${brainTurnPending || (pView.lockedMoveId !== undefined && pView.lockedMoveId !== slot.moveId) ? 'disabled' : ''}><span>${typeLabel[move.type]} · ${move.damageClass === 'status' ? '변화' : move.power}</span><strong>${move.name}</strong><small>명중 ${move.accuracy || '—'}</small></button>`; }).join('') || '<button data-battle-wait="1"><strong>기다리기</strong></button>'}${pView.lockedMoveId !== undefined && !pView.moves.some(slot => slot.moveId === pView.lockedMoveId) ? '<button data-battle-move="0"><strong>발버둥</strong></button>' : ''}</section>
       <aside class="battle-menu">${battleTransformationsHtml(game, brainTurnPending)}<div class="ball-row"><span class="infinite-ball">${ITEM_LABELS['poke-ball']} ∞</span><button id="catch" ${battle.kind !== 'wild' ? 'disabled' : ''}>잡기</button></div>${(['potion', 'super-potion'] as const).map(item => `<button data-battle-heal="${item}" ${!game!.inventory[item] || player.hp <= 0 || player.hp >= battleMonsterMaxHp(battle, player) ? 'disabled' : ''}>${ITEM_LABELS[item]} +${HEALING_ITEM_HP[item]} HP · ×${game!.inventory[item]}</button>`).join('')}<button id="switch-mon">포켓몬 교체</button><button id="run" ${!battle.canRun ? 'disabled' : ''}>도망치기</button><p><b>회로:</b> ${escapeHtml(lastDecision)}</p></aside></div>
     <section class="battle-log panel">${game.logs.slice(-5).reverse().map(log => `<p>${escapeHtml(log)}</p>`).join('')}</section></div>`;
@@ -792,6 +807,8 @@ function showModel(initialId: number, orderedIds = getPlayableSpeciesIds()) {
   let id = initialId;
   const dialog = document.createElement('dialog');
   dialog.className = 'model-dialog';
+  // Registered before any 3D work so a failed scene still leaves a dialog that closes and cleans up.
+  dialog.addEventListener('close', () => { detachPokemonScene(); dialog.remove(); render(); }, { once: true });
   const renderDetail = () => {
     const species = getSpecies(id), forms = getPokemonForms(id).filter(form => !/-mega(?:-[xyz])?$/.test(form.identifier) || getPokemonFormModelSource(form.identifier)), index = orderedIds.indexOf(id), habitats = dexHabitats(id);
     const caught = game?.dex.caught.includes(id), seen = game?.dex.seen.includes(id), ownedCount = owned().filter(monster => monster.speciesId === id).length;
@@ -810,23 +827,27 @@ function showModel(initialId: number, orderedIds = getPlayableSpeciesIds()) {
       if (orderedIds[target] !== undefined) { id = orderedIds[target]; detachPokemonScene(); renderDetail(); }
     });
     dialog.querySelectorAll<HTMLButtonElement>('[data-related-species]').forEach(button => button.onclick = () => { id = Number(button.dataset.relatedSpecies); if (!orderedIds.includes(id)) orderedIds = [...orderedIds, id].sort((a, b) => a - b); detachPokemonScene(); renderDetail(); });
-    const modelHost = dialog.querySelector<HTMLElement>('.model-host')!;
-    if (hasPokemonModel(id)) getPokemonScene().showSpecimen(modelHost, id); else { modelHost.innerHTML = `<img class="species-preview" src="${species.frontSprite}" alt="${escapeHtml(species.name)}">`; dialog.querySelector('.model-control-hint')!.textContent = '현재 게임에서 3D 미지원 · 도감 이미지를 표시합니다.'; }
+    const modelHost = dialog.querySelector<HTMLElement>('.model-host')!, hint = dialog.querySelector<HTMLElement>('.model-control-hint')!;
+    const preview = () => { modelHost.innerHTML = `<img class="species-preview" src="${species.frontSprite}" alt="${escapeHtml(species.name)}">`; };
+    if (!hasPokemonModel(id)) { preview(); hint.textContent = '현재 게임에서 3D 미지원 · 도감 이미지를 표시합니다.'; }
+    else {
+      try { getPokemonScene().showSpecimen(modelHost, id); }
+      catch { detachPokemonScene(); preview(); hint.hidden = true; }
+    }
   };
   document.body.append(dialog); dialog.showModal();
   renderDetail();
-  dialog.addEventListener('close', () => { detachPokemonScene(); dialog.remove(); render(); }, { once: true });
 }
 function action(operation: () => unknown, success?: string) { try { operation(); if (success) notify(success); render(); queueSave(); } catch (error) { notify(error instanceof Error ? error.message : '요청을 처리하지 못했습니다.', true); } }
 function exportSave() { if (!game) return; captureWorld(); const blob = new Blob([JSON.stringify(packSave(game, controller.graph, view), null, 2)], { type: 'application/json' }), url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = `choketmon-${new Date().toISOString().slice(0, 10)}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
-async function newGame() { if (!game) return; captureWorld(); await writeSave(packSave(game, controller.graph, view), 'backup-before-new-game'); worldPanel?.unmount(); worldPanel = undefined; game = undefined; view = { ...defaultView(), rewards: {} }; selectedMonsterId = ''; $<HTMLDialogElement>('#starter-dialog').showModal(); notify('현재 모험을 백업했습니다. 새 파트너를 골라 주세요.'); }
+async function newGame() { if (!game) return; captureWorld(); await writeSave(packSave(game, controller.graph, view), 'backup-before-new-game'); worldPanel?.unmount(); worldPanel = undefined; game = undefined; view = { ...defaultView(), rewards: {} }; selectedMonsterId = ''; if (!starterDialog.open) starterDialog.showModal(); notify('현재 모험을 백업했습니다. 새 파트너를 골라 주세요.'); }
 
 let changingTab = false;
 document.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b => b.onclick = async e => {
   e.preventDefault();
   if (changingTab || switchingAccount) return;
   const next = b.dataset.tab as Tab;
-  if (tab === 'ranked' && next !== 'ranked' && rankedPanel.hasActiveSession()) { notify('매칭 또는 랭크전을 끝낸 뒤 다른 화면으로 이동해 주세요.'); return; }
+  if (tab === 'ranked' && next !== 'ranked' && rankedPanel.hasActiveSession()) { notify(RANKED_SESSION_MESSAGE); return; }
   if (game?.battle && !worldPanel && next !== 'team' && next !== 'shop') { notify('배틀 중에는 팀·박스와 상점만 열 수 있습니다.'); return; }
   const panel = worldPanel, editing = next === 'team' || next === 'shop';
   changingTab = true;
@@ -891,7 +912,10 @@ async function boot() { try {
   await runtime.start();
   accountPanel = mountAccountPanel({ container: $('#account-controls'), notify, requireLogin: true,
     canClose: () => !reauthenticationRequired,
-    beforeSwitch: async () => {
+    beforeSwitch: async change => {
+      // The server scores a missed ranked deadline as a loss after this account leaves. A re-login
+      // for an expired session keeps the same account, and its requests would be refused anyway.
+      if (change.reason !== 'recovery' && !reauthenticationRequired) await rankedPanel.leave();
       setAccountSwitching(true);
       if (autosaveTimer) { clearTimeout(autosaveTimer); autosaveTimer = 0; }
       releaseAccountSwitchHold?.(); releaseAccountSwitchHold = await worldPanel?.hold();
@@ -920,12 +944,15 @@ async function boot() { try {
         const loaded = unpackSave(change.save, controller.graph); game = loaded.game; view = loaded.view;
         $<HTMLDialogElement>('#starter-dialog').close();
         selectedMonsterId = game.player.team[0].instanceId; prepareWorld(); render();
-      } else { $('#screen').innerHTML = '<section class="loading"><h1>새 모험을 시작하세요</h1></section>'; $<HTMLDialogElement>('#starter-dialog').showModal(); }
+      } else { $('#screen').innerHTML = '<section class="loading"><h1>새 모험을 시작하세요</h1></section>'; if (!starterDialog.open) starterDialog.showModal(); }
       setAccountSwitching(getSaveStorageStatus()?.state === 'conflict');
     },
   });
   $<HTMLButtonElement>('[data-load-account]').onclick = () => accountPanel?.open();
   await accountPanel.ready;
   startupLoading?.remove();
-} catch (error) { startupLoading?.fail(`게임을 시작할 수 없습니다. ${error instanceof Error ? error.message : String(error)}`); } }
+} catch (error) {
+  // A save that cannot load must not lock this device to the account.
+  startupLoading?.fail(`게임을 시작할 수 없습니다. ${error instanceof Error ? error.message : String(error)}`, undefined, currentAccount() ? logout : undefined);
+} }
 void boot();

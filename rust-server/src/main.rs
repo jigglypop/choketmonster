@@ -44,6 +44,8 @@ async fn main() -> anyhow::Result<()> {
         };
         let state = api::AppState::new(db, graph);
         api::spawn_cleanup(state.db.clone());
+        // Close ranked matches whose players both left, even before anyone opens the ranked tab.
+        ranked::start_sweeper(&state);
         api::router(state)
     };
     let address = env::var("LISTEN_ADDR").unwrap_or_else(|_| "127.0.0.1:8080".into());

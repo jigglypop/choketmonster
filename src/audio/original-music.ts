@@ -62,6 +62,15 @@ async function deleteStoredTrack(): Promise<void> {
   } finally { db.close(); }
 }
 
+// Blocked storage throws on access; the pause choice then lasts for this page only.
+export function readMusicPaused(): boolean {
+  try { return sessionStorage.getItem(PAUSED_KEY) === '1'; } catch { return false; }
+}
+export function writeMusicPaused(paused: boolean): void {
+  try { if (paused) sessionStorage.setItem(PAUSED_KEY, '1'); else sessionStorage.removeItem(PAUSED_KEY); }
+  catch { /* Kept in memory by the caller. */ }
+}
+
 function validateAudio(url: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const probe = new Audio();
@@ -96,6 +105,7 @@ export function mountOriginalMusic(button: HTMLButtonElement): { open(): void; s
   let customTrack = false;
   let restoring = true;
   let selecting = false;
+  let selectingToken = 0;
   let sceneCue: MusicCue = 'opening';
   const sceneDirector = new SceneMusicDirector();
   let installedCue: MusicCue | undefined;
@@ -108,7 +118,7 @@ export function mountOriginalMusic(button: HTMLButtonElement): { open(): void; s
   let objectUrl: string | undefined;
   let disposed = false;
   let generation = 0;
-  let wantsPlayback = sessionStorage.getItem(PAUSED_KEY) !== '1';
+  let wantsPlayback = !readMusicPaused();
   let playbackRequested = true;
   let playbackGeneration = 0;
   let playAttempt: Promise<void> | undefined;
@@ -278,7 +288,7 @@ export function mountOriginalMusic(button: HTMLButtonElement): { open(): void; s
   };
   const pause = (announce = false) => {
     wantsPlayback = false; playbackGeneration++; playAttempt = undefined;
-    sessionStorage.setItem(PAUSED_KEY, '1'); audio.pause(); stopFadingAudio(); syncButton();
+    writeMusicPaused(true); audio.pause(); stopFadingAudio(); syncButton();
     if (track) emit({ message: 'BGM 정지', hasFile: true, name: track.name, playing: false, state: 'paused' }, announce);
   };
   const choose = () => input.click();
@@ -303,38 +313,42 @@ export function mountOriginalMusic(button: HTMLButtonElement): { open(): void; s
     const supported = (type.startsWith('audio/') || type === 'video/mp4') && (audio.canPlayType(type) !== '' || type === 'audio/flac');
     if (!supported) { emit({ message: '지원하는 음악 파일(MP4, MP3, M4A, AAC, OGG, WAV, FLAC)을 선택해 주세요.', hasFile: Boolean(track), name: track?.name, playing: false, state: 'error' }, true); return; }
     const token = ++generation;
-    selecting = true;
-    emit({ message: '선택한 BGM 파일을 읽는 중…', hasFile: Boolean(track), name: track?.name, playing: false, state: 'loading' });
-    let next: StoredTrack;
+    selecting = true; selectingToken = token;
     try {
-      const bytes = await file.arrayBuffer();
-      next = { blob: new Blob([bytes], { type }), name: file.name, type, size: file.size, lastModified: file.lastModified };
-    } catch {
+      emit({ message: '선택한 BGM 파일을 읽는 중…', hasFile: Boolean(track), name: track?.name, playing: false, state: 'loading' });
+      let next: StoredTrack;
+      try {
+        const bytes = await file.arrayBuffer();
+        next = { blob: new Blob([bytes], { type }), name: file.name, type, size: file.size, lastModified: file.lastModified };
+      } catch {
+        if (token !== generation || disposed) return;
+        emit({ message: '선택한 음악 파일을 읽지 못했습니다. 파일 접근 권한을 확인해 주세요.', hasFile: Boolean(track), name: track?.name, playing: false, state: 'error' }, true); return;
+      }
       if (token !== generation || disposed) return;
+      wantsPlayback = true; playbackRequested = true; writeMusicPaused(false);
+      const installed = await installTrack(next, token);
+      if (token !== generation || disposed || !installed) return;
       selecting = false;
-      emit({ message: '선택한 음악 파일을 읽지 못했습니다. 파일 접근 권한을 확인해 주세요.', hasFile: Boolean(track), name: track?.name, playing: false, state: 'error' }, true); return;
+      try {
+        await persist(() => writeStoredTrack(next));
+        if (disposed || token !== generation || track !== next) return;
+        emit({ message: '선택한 BGM을 이 기기에 저장했습니다.', hasFile: true, name: next.name, playing: !audio.paused, state: audio.paused ? 'ready' : 'playing' }, true);
+      } catch {
+        if (disposed || token !== generation || track !== next) return;
+        emit({ message: '선택한 BGM은 지금 재생할 수 있지만 이 기기에 저장하지 못했습니다. 저장 공간을 확인해 주세요.', hasFile: true, name: next.name, playing: !audio.paused, state: 'error' }, true);
+      }
+      void attemptPlay();
+    } finally {
+      // Every other exit, including one superseded by "기본 음악으로", hands music back to the scene;
+      // installScene() also releases a replaced custom track's object URL. A newer file owns the flag.
+      if (selecting && selectingToken === token) { selecting = false; if (!disposed) installScene(); }
     }
-    if (token !== generation || disposed) return;
-    wantsPlayback = true; playbackRequested = true; sessionStorage.removeItem(PAUSED_KEY);
-    const installed = await installTrack(next, token);
-    if (token !== generation || disposed) return;
-    selecting = false;
-    if (!installed) { installScene(); return; }
-    try {
-      await persist(() => writeStoredTrack(next));
-      if (disposed || token !== generation || track !== next) return;
-      emit({ message: '선택한 BGM을 이 기기에 저장했습니다.', hasFile: true, name: next.name, playing: !audio.paused, state: audio.paused ? 'ready' : 'playing' }, true);
-    } catch {
-      if (disposed || token !== generation || track !== next) return;
-      emit({ message: '선택한 BGM은 지금 재생할 수 있지만 이 기기에 저장하지 못했습니다. 저장 공간을 확인해 주세요.', hasFile: true, name: next.name, playing: !audio.paused, state: 'error' }, true);
-    }
-    void attemptPlay();
   };
 
   button.onclick = () => {
     if (!track) { choose(); return; }
     if (!audio.paused && !audio.ended) pause(true);
-    else { wantsPlayback = true; playbackRequested = true; sessionStorage.removeItem(PAUSED_KEY); void attemptPlay(); }
+    else { wantsPlayback = true; playbackRequested = true; writeMusicPaused(false); void attemptPlay(); }
   };
   audio.onplay = () => syncButton();
   audio.onpause = () => syncButton();
@@ -372,7 +386,7 @@ export function mountOriginalMusic(button: HTMLButtonElement): { open(): void; s
 
   return {
     setScene,
-    open: () => { if (track) { wantsPlayback = true; playbackRequested = true; sessionStorage.removeItem(PAUSED_KEY); void attemptPlay(); } else choose(); },
+    open: () => { if (track) { wantsPlayback = true; playbackRequested = true; writeMusicPaused(false); void attemptPlay(); } else choose(); },
     destroy: () => {
       disposed = true; generation++; playbackGeneration++; playAttempt = undefined;
       window.clearTimeout(feedbackTimer); window.clearTimeout(sceneTimer); stopFadingAudio(); unsubscribe(); audio.pause(); audio.removeAttribute('src'); audio.load(); releaseUrl();

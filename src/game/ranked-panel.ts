@@ -35,10 +35,12 @@ export type RankedPanelOptions = {
   notify(message: string, error?: boolean): void;
 };
 
+const LEAGUES: readonly League[] = ['standard', 'open'];
 const leagueCopy = {
   standard: { name: '스탠더드', note: '전설·환상 사용 불가' },
   open: { name: '오픈', note: '전설·환상 사용 가능' },
 } as const;
+export const RANKED_SESSION_MESSAGE = '매칭 또는 랭크전을 끝낸 뒤 다른 화면으로 이동해 주세요.';
 const tierName: Record<Tier, string> = { bronze: '브론즈', silver: '실버', gold: '골드', platinum: '플래티넘', master: '마스터' };
 const escape = (value: unknown) => String(value).replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[c]!);
 
@@ -58,7 +60,9 @@ export function mountRankedPanel(options: RankedPanelOptions) {
   let busy = false;
   let generation = 0;
   let dismissedMatchId: string | undefined;
-  const activeSession = () => Boolean(view?.me?.queued || view?.currentMatch?.status === 'active');
+  let painted: { root: Element | null; html: string } | undefined;
+  const sessionIn = (item?: RankedView) => Boolean(item?.me?.queued || item?.currentMatch?.status === 'active');
+  const activeSession = () => sessionIn(view);
 
   const user = () => options.currentAccount();
   const standing = (id: string) => view?.leaderboard.find(item => item.userId === id);
@@ -103,19 +107,42 @@ export function mountRankedPanel(options: RankedPanelOptions) {
         </div>`}
     </section>`;
   };
+  const focusSelector = () => {
+    const active = document.activeElement;
+    if (!host || !(active instanceof HTMLElement) || !host.contains(active)) return undefined;
+    const data = [...active.attributes].find(attribute => attribute.name.startsWith('data-ranked-'));
+    if (data) return `[${data.name}="${CSS.escape(data.value)}"]`;
+    return active.matches('.ranked-actions summary') ? '.ranked-actions summary' : undefined;
+  };
+  /** Replaces the markup only when it changed, keeping the chosen Mega form, an open switch list and focus. */
+  const paint = (html: string) => {
+    if (!host) return false;
+    if (painted && painted.html === html && painted.root && host.firstElementChild === painted.root) return false;
+    const mega = host.querySelector<HTMLSelectElement>('[data-ranked-mega-form]')?.value;
+    const switching = host.querySelector<HTMLDetailsElement>('.ranked-actions details')?.open;
+    const focus = focusSelector();
+    host.innerHTML = html; painted = { root: host.firstElementChild, html };
+    const select = host.querySelector<HTMLSelectElement>('[data-ranked-mega-form]');
+    if (select && mega && [...select.options].some(option => option.value === mega)) select.value = mega;
+    const details = host.querySelector<HTMLDetailsElement>('.ranked-actions details');
+    if (details && switching) details.open = true;
+    if (focus) host.querySelector<HTMLElement>(focus)?.focus({ preventScroll: true });
+    return true;
+  };
   const render = () => {
     if (!host) return;
     const account = user();
     const restricted = options.game().player.team.filter(monster => isLegendarySpecies(monster.speciesId));
     if (!account) {
-      host.innerHTML = `<section class="ranked-page"><header><span class="kicker">TRAINER RANKED</span><h1>트레이너 랭크전</h1><p>서버에 저장된 현재 팀으로 다른 트레이너와 대전합니다.</p></header><div class="ranked-login"><strong>계정 연결이 필요합니다.</strong><button data-ranked-login>가입 / 로그인</button></div></section>`;
-      host.querySelector<HTMLButtonElement>('[data-ranked-login]')!.onclick = () => options.openAccount?.(); return;
+      if (paint(`<section class="ranked-page"><header><span class="kicker">TRAINER RANKED</span><h1>트레이너 랭크전</h1><p>서버에 저장된 현재 팀으로 다른 트레이너와 대전합니다.</p></header><div class="ranked-login"><strong>계정 연결이 필요합니다.</strong><button data-ranked-login>가입 / 로그인</button></div></section>`))
+        host.querySelector<HTMLButtonElement>('[data-ranked-login]')!.onclick = () => options.openAccount?.();
+      return;
     }
     const me = view?.me, match = view?.currentMatch;
-    host.innerHTML = `<section class="ranked-page">
+    const changed = paint(`<section class="ranked-page">
       <header class="ranked-heading"><div><span class="kicker">TRAINER RANKED</span><h1>트레이너 랭크전</h1><p>저장된 팀을 Lv.50으로 맞춰 겨룹니다. 원래 HP·경험치·회로 기억은 바뀌지 않습니다.</p></div>
       ${me ? `<div class="ranked-own">${trainerName({ userId: account.id, username: account.username, activeIndex: 0, team: [] }, true)}<b>${me.rating}점</b><span>${me.wins}승 ${me.losses}패</span></div>` : ''}</header>
-      <nav class="ranked-leagues" aria-label="랭크 리그">${(['standard', 'open'] as League[]).map(id => `<button data-ranked-league="${id}" class="${league === id ? 'active' : ''}" ${busy || activeSession() ? 'disabled' : ''}><strong>${leagueCopy[id].name}</strong><small>${leagueCopy[id].note}</small></button>`).join('')}</nav>
+      <nav class="ranked-leagues" aria-label="랭크 리그">${LEAGUES.map(id => `<button data-ranked-league="${id}" class="${league === id ? 'active' : ''}" ${busy || activeSession() ? 'disabled' : ''}><strong>${leagueCopy[id].name}</strong><small>${leagueCopy[id].note}</small></button>`).join('')}</nav>
       ${match && (match.status === 'active' || match.id !== dismissedMatchId) ? battle(match) : `<div class="ranked-lobby"><section><h2>${leagueCopy[league].name} 리그</h2><p>${league === 'standard' ? '전설·환상 포켓몬을 제외한 팀만 참가할 수 있습니다.' : '보유한 모든 포켓몬을 사용할 수 있습니다.'}</p>
         ${league === 'standard' && restricted.length ? `<p class="ranked-restricted">현재 팀에 제한 포켓몬 ${restricted.length}마리가 있어 참가할 수 없습니다.</p>` : ''}
         <button class="primary" data-ranked-queue ${busy || me?.queued || (league === 'standard' && restricted.length) ? 'disabled' : ''}>${me?.queued ? '상대를 찾는 중…' : '매칭 시작'}</button>
@@ -123,16 +150,27 @@ export function mountRankedPanel(options: RankedPanelOptions) {
         <section class="ranked-board"><header><h2>${leagueCopy[league].name} 순위</h2><button data-ranked-refresh>새로고침</button></header>
           <ol>${(view?.leaderboard ?? []).map(row => `<li><span>${row.rank}</span><strong class="ranked-trainer rank-tier-${row.tier}">${escape(row.username)}<small>${tierName[row.tier]}</small></strong><b>${row.rating}</b><small>${row.wins}승 ${row.losses}패</small></li>`).join('') || '<li class="ranked-empty">아직 순위 기록이 없습니다.</li>'}</ol></section></div>`}
       <p class="ranked-boundary">피해·회복·상태 판정과 지구던지기·나이트헤드·분노의앞니, 잠자기·흑안개·클리어스모그·치료방울·아로마테라피·고속스핀 효과를 서버가 처리합니다. 그 밖의 일부 특수 규칙·전용 연출은 아직 적용되지 않습니다.</p>
-    </section>`;
-    bind(); updateDeadline();
+    </section>`);
+    if (changed) bind();
+    updateDeadline();
   };
   const fail = (error: unknown) => options.notify(error instanceof Error ? error.message : String(error), true);
-  const load = async (announce = true) => {
+  const load = async (announce = true, discover = false) => {
     if (busy) return;
     const account = user(), expected = ++generation; if (!account || !host) { render(); return; }
     try {
-      const next = await request<RankedView>(`/api/ranked?league=${league}`, account);
-      if (expected !== generation || !host || account.id !== user()?.id || league !== next.league) return;
+      let next: RankedView;
+      if (discover) {
+        // Queue and match state are per league; after a reload the session may be in the other one.
+        const settled = await Promise.allSettled(LEAGUES.map(id => request<RankedView>(`/api/ranked?league=${id}`, account)));
+        const views = settled.flatMap(result => result.status === 'fulfilled' ? [result.value] : []);
+        const found = views.find(item => item.league === league && sessionIn(item)) ?? views.find(item => sessionIn(item)) ?? views.find(item => item.league === league);
+        if (!found) throw (settled.find(result => result.status === 'rejected') as PromiseRejectedResult).reason;
+        next = found;
+      } else next = await request<RankedView>(`/api/ranked?league=${league}`, account);
+      if (expected !== generation || !host || account.id !== user()?.id) return;
+      if (discover) league = next.league;
+      if (league !== next.league) return;
       view = next; render(); schedule();
     } catch (error) { if (expected !== generation) return; if (announce) fail(error); schedule(); }
   };
@@ -166,12 +204,14 @@ export function mountRankedPanel(options: RankedPanelOptions) {
     });
     host.querySelector<HTMLButtonElement>('[data-ranked-queue]')?.addEventListener('click', () => void (async () => {
       if (busy) return;
+      // mutate() stopped polling; a failed or lost response may still have queued the player.
       try { const next = await mutate('/api/ranked/queue', { league }, true) as RankedView; view = next; render(); schedule(); }
-      catch (error) { fail(error); render(); }
+      catch (error) { fail(error); render(); await load(false); }
     })());
     host.querySelector<HTMLButtonElement>('[data-ranked-cancel]')?.addEventListener('click', () => void (async () => {
-      try { await mutate('/api/ranked/cancel', { league }); await load(false); }
+      try { await mutate('/api/ranked/cancel', { league }); }
       catch (error) { fail(error); render(); }
+      await load(false);
     })());
     host.querySelectorAll<HTMLButtonElement>('[data-ranked-transform]').forEach(button => button.onclick = () => void submit({ turn: view!.currentMatch!.turn,
       transformation: { kind: 'mega', formIdentifier: host!.querySelector<HTMLSelectElement>('[data-ranked-mega-form]')?.value } }));
@@ -189,10 +229,34 @@ export function mountRankedPanel(options: RankedPanelOptions) {
     time.textContent = view?.currentMatch?.status === 'active' ? `${seconds}초 남음` : '대전 종료';
   };
   const clock = window.setInterval(updateDeadline, 1_000);
+  // A queue entry left by a closed page would be matched and then lost by timeout.
+  const abandonQueue = () => {
+    const account = user();
+    if (!account || !view?.me?.queued) return;
+    void fetch('/api/ranked/cancel', { method: 'POST', credentials: 'same-origin', keepalive: true,
+      headers: { 'content-type': 'application/json', 'x-choketmon-profile': account.id }, body: '{}' }).catch(() => undefined);
+  };
+  window.addEventListener('pagehide', abandonQueue);
   return {
-    mount(nextHost: HTMLElement) { if (host === nextHost) { render(); return; } host = nextHost; generation++; view = undefined; render(); void load(); },
-    unmount() { stop(); generation++; host = undefined; },
+    mount(nextHost: HTMLElement) { if (host === nextHost) { render(); return; } host = nextHost; generation++; view = undefined; painted = undefined; render(); void load(true, true); },
+    unmount() { stop(); generation++; host = undefined; painted = undefined; },
     hasActiveSession() { return busy || activeSession(); },
-    destroy() { stop(); window.clearInterval(clock); host = undefined; generation++; },
+    /**
+     * Before this account signs out or switches: refuses while a match is active in either league,
+     * since the server scores missed deadlines as losses, and withdraws any queue entry.
+     */
+    async leave() {
+      const account = user(); if (!account) return;
+      const quick = () => ({ signal: AbortSignal.timeout(3_000) });
+      // A queued player has no active match, so withdrawing runs alongside the status check.
+      // Unreachable status does not block leaving; the account could not play the match either.
+      const [views] = await Promise.all([
+        Promise.all(LEAGUES.map(id => request<RankedView>(`/api/ranked?league=${id}`, account, quick()).catch(() => undefined))),
+        request('/api/ranked/cancel', account, { method: 'POST', body: '{}', ...quick() }).catch(() => undefined),
+      ]);
+      if (view?.me) view.me.queued = false;
+      if (views.some(item => item?.currentMatch?.status === 'active')) throw new Error(RANKED_SESSION_MESSAGE);
+    },
+    destroy() { stop(); window.clearInterval(clock); window.removeEventListener('pagehide', abandonQueue); host = undefined; generation++; },
   };
 }

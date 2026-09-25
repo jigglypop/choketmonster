@@ -120,6 +120,44 @@ describe('RealtimeClient', () => {
     client.close();
   });
 
+  it('keeps renewing the ticket while a scene change waits for its welcome', async () => {
+    const sockets: FakeSocket[] = [];
+    let ticket = 0;
+    const client = new RealtimeClient({ url: 'ws://test/api/realtime', getTicket: async () => `ticket-${++ticket}`,
+      createSocket: () => { const socket = new FakeSocket(); sockets.push(socket); return socket as unknown as WebSocket; }, visible: () => true });
+    client.join(base); await vi.advanceTimersByTimeAsync(0);
+    sockets[0].open(); sockets[0].message({ type: 'welcome', id: 'self', region: 'kanto', sceneId: 'surface:kanto', tickRate: 10, players: [], history: [] });
+    client.join({ ...base, sceneId: 'cave:kanto:mt-moon-b2f' });
+    expect(sockets[0].sent.at(-1)).toMatchObject({ type: 'join', sceneId: 'cave:kanto:mt-moon-b2f' });
+    await vi.advanceTimersByTimeAsync(40_000);
+    await vi.advanceTimersByTimeAsync(40_000);
+    expect(sockets[0].sent.filter(row => row.type === 'reauth').map(row => row.ticket)).toEqual(['ticket-2', 'ticket-3']);
+    expect(sockets).toHaveLength(1);
+    client.close();
+  });
+
+  it('keeps a healthy socket through a brief hidden tab and spends a ticket only after a long one', async () => {
+    const page = Object.assign(new EventTarget(), { hidden: false });
+    Object.defineProperty(globalThis, 'document', { value: page, configurable: true });
+    try {
+      const sockets: FakeSocket[] = [];
+      let ticket = 0;
+      const client = new RealtimeClient({ url: 'ws://test/api/realtime', getTicket: async () => `ticket-${++ticket}`,
+        createSocket: () => { const socket = new FakeSocket(); sockets.push(socket); return socket as unknown as WebSocket; }, visible: () => !page.hidden });
+      const setHidden = (hidden: boolean) => { page.hidden = hidden; page.dispatchEvent(new Event('visibilitychange')); };
+      client.join(base); await vi.advanceTimersByTimeAsync(0);
+      sockets[0].open(); sockets[0].message({ type: 'welcome', id: 'self', region: 'kanto', sceneId: 'surface:kanto', tickRate: 10, players: [], history: [] });
+      setHidden(true); await vi.advanceTimersByTimeAsync(5_000); setHidden(false);
+      expect(sockets).toHaveLength(1); expect(sockets[0].readyState).toBe(1); expect(ticket).toBe(1);
+      expect(client.snapshot().status).toBe('connected');
+      setHidden(true); await vi.advanceTimersByTimeAsync(30_000);
+      expect(sockets[0].readyState).toBe(3); expect(client.snapshot().status).toBe('offline');
+      setHidden(false); await vi.advanceTimersByTimeAsync(0);
+      expect(sockets).toHaveLength(2); expect(ticket).toBe(2);
+      client.close();
+    } finally { Reflect.deleteProperty(globalThis, 'document'); }
+  });
+
   it('backs off and retries when ticket issuance has a transient failure', async () => {
     const sockets: FakeSocket[] = [];
     let calls = 0;
