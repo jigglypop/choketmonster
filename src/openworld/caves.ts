@@ -1,6 +1,7 @@
 import type { WorldSample } from './types';
-import { KANTO_LOCATIONS, sampleKantoWorld, type KantoLocation } from './kanto';
-import { JOHTO_LOCATIONS, sampleJohtoWorld } from './johto';
+import { KANTO_LOCATIONS, KANTO_SURFACE_CONNECTIONS, sampleKantoWorld, type KantoLocation } from './kanto';
+import { JOHTO_CONNECTIONS, JOHTO_LOCATIONS, sampleJohtoWorld } from './johto';
+import { deadEndFacing, mouthReach } from './cave-passages';
 import { scaleWorldDistance, surfaceSceneId, type ScenePoint } from './world-space';
 import { caveRelief, caveFloorHeight, type CaveRelief } from './cave-relief';
 import { DUNGEON_PLANS, dungeonEntryFloor, dungeonFloorAsciiLabel, dungeonFloorSceneLocalId, type DungeonKind, type DungeonPlan, type DungeonSilhouette, type DungeonStyle } from './dungeons';
@@ -8,14 +9,14 @@ import { roomBlocked, roomLayout, type DungeonRoom } from './dungeon-rooms';
 import { parkLayout, parkSample, type ParkLayout } from './park-layout';
 import { regionalRuntimePools } from '../data/regional-encounters';
 import { expansionEncounterPools, type ExpansionRegion } from '../data/expansion-encounters';
-import { HOENN_LOCATIONS, sampleHoennWorld } from './hoenn';
-import { SINNOH_LOCATIONS, sampleSinnohWorld } from './sinnoh';
-import { UNOVA_LOCATIONS, sampleUnovaWorld } from './unova';
-import { KALOS_LOCATIONS, sampleKalosWorld } from './kalos';
-import { ALOLA_LOCATIONS, sampleAlolaWorld } from './alola';
-import { GALAR_LOCATIONS, sampleGalarWorld } from './galar';
-import { HISUI_LOCATIONS, sampleHisuiWorld } from './hisui';
-import { PALDEA_LOCATIONS, samplePaldeaWorld } from './paldea';
+import { HOENN_CONNECTIONS, HOENN_LOCATIONS, sampleHoennWorld } from './hoenn';
+import { SINNOH_CONNECTIONS, SINNOH_LOCATIONS, sampleSinnohWorld } from './sinnoh';
+import { UNOVA_CONNECTIONS, UNOVA_LOCATIONS, sampleUnovaWorld } from './unova';
+import { KALOS_CONNECTIONS, KALOS_LOCATIONS, sampleKalosWorld } from './kalos';
+import { ALOLA_CONNECTIONS, ALOLA_LOCATIONS, sampleAlolaWorld } from './alola';
+import { GALAR_CONNECTIONS, GALAR_LOCATIONS, sampleGalarWorld } from './galar';
+import { HISUI_CONNECTIONS, HISUI_LOCATIONS, sampleHisuiWorld } from './hisui';
+import { PALDEA_CONNECTIONS, PALDEA_LOCATIONS, samplePaldeaWorld } from './paldea';
 
 export type CaveRegionId = string;
 export type CaveSilhouette = DungeonSilhouette | 'room' | 'park';
@@ -95,19 +96,24 @@ export type CaveScene = {
   sample: (x: number, z: number) => WorldSample;
 };
 
-type RegionData = { locations: readonly KantoLocation[]; sample: (x: number, z: number) => WorldSample };
+/** A region's places, the roads walked on its surface, and its terrain. */
+type RegionData = { locations: readonly KantoLocation[]; roads: ReadonlyArray<readonly [string, string]>; sample: (x: number, z: number) => WorldSample };
 const REGIONS: Record<string, RegionData> = {
-  kanto: { locations: KANTO_LOCATIONS, sample: sampleKantoWorld },
-  johto: { locations: JOHTO_LOCATIONS, sample: sampleJohtoWorld },
-  hoenn: { locations: HOENN_LOCATIONS, sample: sampleHoennWorld },
-  sinnoh: { locations: SINNOH_LOCATIONS, sample: sampleSinnohWorld },
-  unova: { locations: UNOVA_LOCATIONS, sample: sampleUnovaWorld },
-  kalos: { locations: KALOS_LOCATIONS, sample: sampleKalosWorld },
-  alola: { locations: ALOLA_LOCATIONS, sample: sampleAlolaWorld },
-  galar: { locations: GALAR_LOCATIONS, sample: sampleGalarWorld },
-  hisui: { locations: HISUI_LOCATIONS, sample: sampleHisuiWorld },
-  paldea: { locations: PALDEA_LOCATIONS, sample: samplePaldeaWorld },
+  kanto: { locations: KANTO_LOCATIONS, roads: KANTO_SURFACE_CONNECTIONS, sample: sampleKantoWorld },
+  johto: { locations: JOHTO_LOCATIONS, roads: JOHTO_CONNECTIONS, sample: sampleJohtoWorld },
+  hoenn: { locations: HOENN_LOCATIONS, roads: HOENN_CONNECTIONS, sample: sampleHoennWorld },
+  sinnoh: { locations: SINNOH_LOCATIONS, roads: SINNOH_CONNECTIONS, sample: sampleSinnohWorld },
+  unova: { locations: UNOVA_LOCATIONS, roads: UNOVA_CONNECTIONS, sample: sampleUnovaWorld },
+  kalos: { locations: KALOS_LOCATIONS, roads: KALOS_CONNECTIONS, sample: sampleKalosWorld },
+  alola: { locations: ALOLA_LOCATIONS, roads: ALOLA_CONNECTIONS, sample: sampleAlolaWorld },
+  galar: { locations: GALAR_LOCATIONS, roads: GALAR_CONNECTIONS, sample: sampleGalarWorld },
+  hisui: { locations: HISUI_LOCATIONS, roads: HISUI_CONNECTIONS, sample: sampleHisuiWorld },
+  paldea: { locations: PALDEA_LOCATIONS, roads: PALDEA_CONNECTIONS, sample: samplePaldeaWorld },
 };
+/** Places joined to `id` by a surface road. */
+const roadNeighbours = (region: RegionData, id: string): KantoLocation[] => region.roads
+  .flatMap(([from, to]) => from === id ? [to] : to === id ? [from] : [])
+  .map(other => region.locations.find(item => item.id === other)).filter((item): item is KantoLocation => !!item);
 
 const TILE_SIZE = 2, ARRIVAL_STEP = TILE_SIZE * 1.4, ROOM_LINK_INSET = 3.2;
 const SILHOUETTES: readonly DungeonSilhouette[] = ['rounded', 'oval', 'long', 'hall', 'bend'];
@@ -170,22 +176,32 @@ function floorHasWild(regionId: string, locationId: string, areas: readonly stri
  * A tower or building stands just outside its location's clearing, its door on the clearing's edge.
  * Searching the real surface sampler keeps the whole footprint on ground the partner cannot walk.
  */
-function doorway(region: RegionData, center: ScenePoint, seed: number): { door: ScenePoint; arrival: ScenePoint; landmark: ScenePoint & { rotationY: number } } | undefined {
+function doorway(region: RegionData, center: KantoLocation, seed: number): { door: ScenePoint; arrival: ScenePoint; landmark: ScenePoint & { rotationY: number } } | undefined {
   const towns = region.locations.filter(item => item.kind === 'town'), start = seed % 16;
-  for (let radius = 5; radius <= 26; radius++) for (let step = 0; step < 16; step++) {
+  // The building stands where no road leaves the clearing, so walking in along a road it is ahead, not beside the way.
+  const roads = roadNeighbours(region, center.id).map(other => Math.atan2(other.z - center.z, other.x - center.x));
+  const clearance = (angle: number) => roads.length ? Math.min(...roads.map(road => Math.abs(Math.atan2(Math.sin(angle - road), Math.cos(angle - road))))) : Math.PI;
+  let best: { score: number; door: ScenePoint; arrival: ScenePoint; landmark: ScenePoint & { rotationY: number } } | undefined;
+  for (let step = 0; step < 16; step++) {
     const angle = (start + step) / 16 * Math.PI * 2, dx = Math.cos(angle), dz = Math.sin(angle);
-    const door = { x: center.x + dx * radius, z: center.z + dz * radius };
-    if (region.sample(door.x, door.z).blocked || !region.sample(door.x + dx * 1.4, door.z + dz * 1.4).blocked) continue;
-    let open = true;
-    for (let t = 0; t < radius && open; t += .75) open = !region.sample(center.x + dx * t, center.z + dz * t).blocked;
-    const body = { x: door.x + dx * 4.4, z: door.z + dz * 4.4 };
-    if (!open || towns.some(town => Math.hypot(town.x - body.x, town.z - body.z) < scaleWorldDistance(11))) continue;
-    let solid = region.sample(body.x, body.z).blocked;
-    for (let k = 0; k < 12 && solid; k++) { const a = k / 12 * Math.PI * 2; solid = region.sample(body.x + Math.cos(a) * 3.3, body.z + Math.sin(a) * 3.3).blocked; }
-    if (!solid) continue;
-    return { door, arrival: { x: door.x - dx * 3, z: door.z - dz * 3 }, landmark: { ...body, rotationY: Math.atan2(-dx, -dz) } };
+    // Each radian turned from the back of the clearing toward a road costs as much as eight metres farther out.
+    const penalty = (Math.PI - clearance(angle)) * 8;
+    for (let radius = 5; radius <= 26; radius++) {
+      if (best && radius + penalty >= best.score) break;
+      const door = { x: center.x + dx * radius, z: center.z + dz * radius };
+      if (region.sample(door.x, door.z).blocked || !region.sample(door.x + dx * 1.4, door.z + dz * 1.4).blocked) continue;
+      let open = true;
+      for (let t = 0; t < radius && open; t += .75) open = !region.sample(center.x + dx * t, center.z + dz * t).blocked;
+      const body = { x: door.x + dx * 4.4, z: door.z + dz * 4.4 };
+      if (!open || towns.some(town => Math.hypot(town.x - body.x, town.z - body.z) < scaleWorldDistance(11))) continue;
+      let solid = region.sample(body.x, body.z).blocked;
+      for (let k = 0; k < 12 && solid; k++) { const a = k / 12 * Math.PI * 2; solid = region.sample(body.x + Math.cos(a) * 3.3, body.z + Math.sin(a) * 3.3).blocked; }
+      if (!solid) continue;
+      best = { score: radius + penalty, door, arrival: { x: door.x - dx * 3, z: door.z - dz * 3 }, landmark: { ...body, rotationY: Math.atan2(-dx, -dz) } };
+      break;
+    }
   }
-  return undefined;
+  return best && { door: best.door, arrival: best.arrival, landmark: best.landmark };
 }
 
 /** The open spot, with two metres of room on every side, farthest from all of a floor's doorways. */
@@ -200,29 +216,36 @@ function farthestOpenPoint(sample: (x: number, z: number) => WorldSample, doors:
 }
 
 type SurfaceEnd = Omit<CavePortal, 'interior' | 'interiorArrival'>;
+/** A cave standing between two places it joins by road: the way from one to the other runs through it. */
+const throughCave = (plan: DungeonPlan, region: RegionData, exactLocation: KantoLocation | undefined): exactLocation is KantoLocation =>
+  plan.kind === 'cave' && !!exactLocation && plan.surfaceLocations.length === 2
+  && plan.surfaceLocations.every(id => roadNeighbours(region, plan.id).some(item => item.id === id));
 function surfaceEnd(plan: DungeonPlan, region: RegionData, exactLocation: KantoLocation | undefined, locationId: string, index: number, reach = scaleWorldDistance(2.2)): SurfaceEnd {
   const surfaceLocation = region.locations.find(item => item.id === locationId);
   if (!surfaceLocation) throw new Error(`Unknown dungeon portal location: ${plan.regionId}:${locationId}`);
   const common = { id: `${plan.id}:${index}`, surfaceLocationId: locationId, surfaceSceneId: surfaceSceneId(plan.regionId) };
-  if (plan.kind === 'cave' && !plan.legacy && exactLocation) {
-    // Entrances sit on the roads out toward each neighbour; a dead-end cave opens at its clearing.
-    const dx = surfaceLocation.x - exactLocation.x, dz = surfaceLocation.z - exactLocation.z, length = Math.hypot(dx, dz);
-    if (length > 12) {
-      const at = (distance: number) => ({ x: exactLocation.x + dx / length * distance, z: exactLocation.z + dz / length * distance });
-      return { ...common, surface: at(reach), surfaceArrival: at(reach + scaleWorldDistance(3)) };
-    }
-    for (let step = 0; step < 16; step++) {
-      const angle = step / 16 * Math.PI * 2, arrival = { x: exactLocation.x + Math.cos(angle) * 6, z: exactLocation.z + Math.sin(angle) * 6 };
-      if ([.25, .5, .75, 1].every(t => !region.sample(exactLocation.x + (arrival.x - exactLocation.x) * t, exactLocation.z + (arrival.z - exactLocation.z) * t).blocked))
-        return { ...common, surface: { x: exactLocation.x, z: exactLocation.z }, surfaceArrival: arrival };
-    }
-  }
   if (plan.kind === 'cave') {
-    const direction = index === 0 ? -1 : 1;
-    const surface = exactLocation && plan.surfaceLocations.length > 1
-      ? { x: exactLocation.x + direction * scaleWorldDistance(2.2), z: exactLocation.z }
-      : { x: surfaceLocation.x, z: surfaceLocation.z };
-    return { ...common, surface, surfaceArrival: { x: surface.x + direction * scaleWorldDistance(3), z: surface.z } };
+    // A cave across a road: each mouth stands on the road toward its side and faces along it.
+    if (throughCave(plan, region, exactLocation)) {
+      const dx = surfaceLocation.x - exactLocation.x, dz = surfaceLocation.z - exactLocation.z, length = Math.hypot(dx, dz);
+      if (length > 12) {
+        const at = (distance: number) => ({ x: exactLocation.x + dx / length * distance, z: exactLocation.z + dz / length * distance });
+        return { ...common, surface: at(reach), surfaceArrival: at(reach + scaleWorldDistance(3)) };
+      }
+    }
+    // A cave with one way in at a place (its own clearing, or one end of a long tunnel) opens at the back of the
+    // clearing, facing back along its roads, so the road leads straight up to the mouth.
+    const others = new Set(plan.surfaceLocations);
+    const face = deadEndFacing(surfaceLocation, roadNeighbours(region, surfaceLocation.id).filter(item => !others.has(item.id)));
+    const open = (x: number, z: number) => !region.sample(x, z).blocked;
+    for (let back = scaleWorldDistance(3.5); back > 0; back -= .5) {
+      const surface = { x: surfaceLocation.x - face.x * back, z: surfaceLocation.z - face.z * back };
+      const surfaceArrival = { x: surface.x + face.x * scaleWorldDistance(3), z: surface.z + face.z * scaleWorldDistance(3) };
+      if (open(surface.x, surface.z) && open(surfaceArrival.x, surfaceArrival.z)
+        && [.25, .5, .75].every(t => open(surfaceLocation.x - face.x * back * t, surfaceLocation.z - face.z * back * t))) return { ...common, surface, surfaceArrival };
+    }
+    return { ...common, surface: { x: surfaceLocation.x, z: surfaceLocation.z },
+      surfaceArrival: { x: surfaceLocation.x + face.x * scaleWorldDistance(3), z: surfaceLocation.z + face.z * scaleWorldDistance(3) } };
   }
   const door = doorway(region, surfaceLocation, plan.seed);
   if (door) return { ...common, surface: door.door, surfaceArrival: door.arrival, landmark: door.landmark };
@@ -266,10 +289,17 @@ function buildDungeon(plan: DungeonPlan): CaveScene[] {
   // Legendaries wait at the end of the dungeon: its last floor with wild Pokémon, whatever the rare-slot anchor.
   const lairFloor = wild.lastIndexOf(true);
   if (plan.legendary?.length && lairFloor < 0) throw new Error(`${plan.regionId}:${plan.id}: a legendary lair needs a wild floor`);
-  // Roads that leave a cave at a narrow angle move both entrances farther out so they never overlap.
-  let ends = plan.surfaceLocations.map((locationId, index) => surfaceEnd(plan, region, exactLocation, locationId, index));
-  for (let reach = scaleWorldDistance(2.2); ends.length === 2 && Math.hypot(ends[0].surface.x - ends[1].surface.x, ends[0].surface.z - ends[1].surface.z) < 8 && reach < 24; reach += .5)
-    ends = plan.surfaceLocations.map((locationId, index) => surfaceEnd(plan, region, exactLocation, locationId, index, reach));
+  // Roads that leave a cave at a narrow angle move both entrances farther out so they never overlap; the samplers'
+  // cave hills (cave-passages.ts) reach exactly as far.
+  let reach = scaleWorldDistance(2.2);
+  if (throughCave(plan, region, exactLocation)) {
+    const [a, b] = plan.surfaceLocations.map(id => {
+      const end = region.locations.find(item => item.id === id)!, length = Math.hypot(end.x - exactLocation.x, end.z - exactLocation.z) || 1;
+      return { x: (end.x - exactLocation.x) / length, z: (end.z - exactLocation.z) / length };
+    });
+    reach = mouthReach(a.x, a.z, b.x, b.z);
+  }
+  const ends = plan.surfaceLocations.map((locationId, index) => surfaceEnd(plan, region, exactLocation, locationId, index, reach));
   const farthest = Math.max(entry, count - 1 - entry);
   return plan.floors.map((floor, index): CaveScene => {
     const legacy = plan.kind === 'cave' && plan.legacy && index === entry;

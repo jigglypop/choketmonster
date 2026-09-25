@@ -6,6 +6,8 @@ import { SINNOH_CONNECTIONS, SINNOH_GYMS, SINNOH_LOCATIONS, nearestSinnohWalkabl
 import { UNOVA_CONNECTIONS, UNOVA_GYMS, UNOVA_LOCATIONS, nearestUnovaWalkable, sampleUnovaWorld, unovaBuildingOffsets } from '../src/openworld/unova';
 import { KALOS_CONNECTIONS, KALOS_GYMS, KALOS_LOCATIONS, nearestKalosWalkable, sampleKalosWorld, kalosBuildingOffsets } from '../src/openworld/kalos';
 import { ALOLA_CONNECTIONS, ALOLA_GYMS, ALOLA_LOCATIONS, nearestAlolaWalkable, sampleAlolaWorld, alolaBuildingOffsets } from '../src/openworld/alola';
+import { passageMouthArrival } from '../src/openworld/cave-passages';
+import { passagesOf } from './helpers/cave-crossings';
 
 const regions = [
   {id:'hoenn' as const,locations:HOENN_LOCATIONS,connections:HOENN_CONNECTIONS,gyms:HOENN_GYMS,sample:sampleHoennWorld,nearest:nearestHoennWalkable,buildings:hoennBuildingOffsets,dex:[252,386] as const,league:'ever-grande-city'},
@@ -18,7 +20,10 @@ describe('authored expansion regions',()=>{
   for(const region of regions)it(`${region.id} has connected walkable progression and collision`,()=>{
     const ids=new Set(region.locations.map(location=>location.id));expect(ids.has(region.league)).toBe(true);expect(region.gyms.map(gym=>gym.badge)).toEqual([1,2,3,4,5,6,7,8]);
     for(const [from,to] of region.connections){expect(ids.has(from)).toBe(true);expect(ids.has(to)).toBe(true);}
-    for(const location of region.locations){expect(region.sample(location.x,location.z).blocked).toBe(false);expect(region.nearest(location.x,location.z,8)).toBeDefined();}
+    // A cave across the road covers its place with its hill; each of its mouths opens onto walkable road.
+    const passages=passagesOf(region);
+    for(const location of region.locations){const passage=passages.find(item=>item.dungeonId===location.id);expect(region.sample(location.x,location.z).blocked).toBe(!!passage);expect(region.nearest(location.x,location.z,8)).toBeDefined();
+      if(passage)passage.mouths.forEach((_,index)=>{const doorstep=passageMouthArrival(passage,index);expect(region.sample(doorstep.x,doorstep.z).blocked,`${region.id}:${location.id} mouth ${index}`).toBe(false);});}
     for(const town of region.locations.filter(location=>location.kind==='town'))for(const [dx,dz] of region.buildings(town))expect(region.sample(town.x+dx,town.z+dz).blocked).toBe(true);
     const graph=new Map<string,string[]>();for(const [from,to] of region.connections){graph.set(from,[...(graph.get(from)??[]),to]);graph.set(to,[...(graph.get(to)??[]),from]);}
     const reached=new Set<string>(),queue=[region.locations[0].id];while(queue.length){const id=queue.shift()!;if(reached.has(id))continue;reached.add(id);queue.push(...(graph.get(id)??[]));}

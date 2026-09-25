@@ -8,7 +8,10 @@ import { JOHTO_GOLD_ENCOUNTERS } from '../src/data/johto-gold-encounters';
 import { terrainSurfaceHeight } from '../src/openworld/grounding';
 import { JOHTO_CAMPAIGN_GYMS } from '../src/game/campaign';
 import { getGymScene, gymSceneId } from '../src/openworld/gym-scenes';
-import { findWorldPath } from '../src/openworld/navigation';
+import { onPassageHill } from '../src/openworld/cave-passages';
+import { passagesOf, walkThroughCaves } from './helpers/cave-crossings';
+
+const JOHTO_PASSAGES = passagesOf({ id: 'johto', locations: JOHTO_LOCATIONS, connections: JOHTO_CONNECTIONS });
 
 describe('Johto v3 exploration map', () => {
   it('places the ten cities in their Gold-era relative directions and covers Routes 29-46', () => {
@@ -53,7 +56,8 @@ describe('Johto v3 exploration map', () => {
       const from = byId.get(fromId)!, to = byId.get(toId)!;
       for (let step = 0; step <= 20; step += 1) {
         const t = step / 20, x = from.x + (to.x - from.x) * t, z = from.z + (to.z - from.z) * t;
-        expect(sampleJohtoWorld(x, z).blocked, `${fromId}->${toId}@${t}`).toBe(false);
+        // The hill of a cave across the road is crossed inside the cave; the road runs up to each mouth.
+        if (!onPassageHill(JOHTO_PASSAGES, x, z)) expect(sampleJohtoWorld(x, z).blocked, `${fromId}->${toId}@${t}`).toBe(false);
         expect(distanceToJohtoPath(x, z)).toBeLessThan(1e-7);
       }
     }
@@ -86,7 +90,7 @@ describe('Johto v3 exploration map', () => {
     for (const gym of JOHTO_CAMPAIGN_GYMS) {
       const badges = gym.badge - 1, door = getGymScene(gymSceneId('johto', gym.locationId))!.door;
       const sample = (x: number, z: number) => ({ ...sampleJohtoWorld(x, z), blocked: !evaluateJohtoTraversal({ x, z }, { x, z }, badges).allowed });
-      const path = findWorldPath(from, door, sample, 60_000);
+      const path = walkThroughCaves(JOHTO_PASSAGES, from, door, sample, 60_000);
       expect(path.length, `${gym.locationId} with ${badges}`).toBeGreaterThan(0);
       expect(Math.hypot(path.at(-1)!.x - door.x, path.at(-1)!.z - door.z)).toBeLessThan(1.5);
       from = door;

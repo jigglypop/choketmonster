@@ -51,6 +51,8 @@ export type DungeonPlan = {
   levels?: readonly [number, number];
   /** The entry floor keeps the historical single-chamber footprint. */
   legacy?: boolean;
+  /** A tunnel across the road between its two neighbours: its hill closes the ground above, so the way past is through it. */
+  crossing?: true;
 };
 
 const KEY_LEVEL = /^(b)?(\d+)f/;
@@ -81,25 +83,25 @@ const zone = (key: string, label: string, level: number, areas: readonly string[
 
 export const DUNGEON_PLANS: readonly DungeonPlan[] = [
   // Kanto. FireRed floors; the PokeAPI calls Rock Tunnel's 1F/B1F "b1f"/"b2f".
-  cave({ regionId: 'kanto', id: 'mt-moon', name: '달맞이산 동굴', label: 'Mt. Moon', seed: 11, width: 23, depth: 17, silhouette: 'rounded', surfaceLocations: ['route-3', 'route-4'], legacy: true }, floors('1f', 'b1f', 'b2f')),
+  cave({ regionId: 'kanto', id: 'mt-moon', name: '달맞이산 동굴', label: 'Mt. Moon', seed: 11, width: 23, depth: 17, silhouette: 'rounded', surfaceLocations: ['route-3', 'route-4'], crossing: true, legacy: true }, floors('1f', 'b1f', 'b2f')),
   // Its mouths lie 171 m apart under half the map: a second floor makes the tunnel a walk, not a jump to the far side.
   cave({ regionId: 'kanto', id: 'diglett-cave', name: '디그다의 굴', label: "Diglett's Cave", seed: 23, width: 29, depth: 11, silhouette: 'long', surfaceLocations: ['diglett-cave-east', 'diglett-cave-west'], legacy: true }, [floor('1f'), floor('b1f')]),
-  cave({ regionId: 'kanto', id: 'rock-tunnel', name: '돌산터널', label: 'Rock Tunnel', seed: 37, width: 21, depth: 21, silhouette: 'bend', surfaceLocations: ['route-10-south', 'route-10-north'], legacy: true }, [floor('1f', ['b1f']), floor('b1f', ['b2f'])]),
-  cave({ regionId: 'kanto', id: 'seafoam-islands', name: '쌍둥이섬 동굴', label: 'Seafoam Islands', seed: 41, width: 25, depth: 19, silhouette: 'oval', surfaceLocations: ['route-20-east', 'route-20-west'], legacy: true, legendary: [144] }, floors('1f', 'b1f', 'b2f', 'b3f', 'b4f')),
-  cave({ regionId: 'kanto', id: 'victory-road', name: '챔피언로드', label: 'Victory Road', seed: 53, width: 27, depth: 21, silhouette: 'hall', surfaceLocations: ['route-23', 'indigo-plateau'], legacy: true, anchor: 1, legendary: [146] }, floors('1f', '2f', '3f')),
+  cave({ regionId: 'kanto', id: 'rock-tunnel', name: '돌산터널', label: 'Rock Tunnel', seed: 37, width: 21, depth: 21, silhouette: 'bend', surfaceLocations: ['route-10-south', 'route-10-north'], crossing: true, legacy: true }, [floor('1f', ['b1f']), floor('b1f', ['b2f'])]),
+  cave({ regionId: 'kanto', id: 'seafoam-islands', name: '쌍둥이섬 동굴', label: 'Seafoam Islands', seed: 41, width: 25, depth: 19, silhouette: 'oval', surfaceLocations: ['route-20-east', 'route-20-west'], crossing: true, legacy: true, legendary: [144] }, floors('1f', 'b1f', 'b2f', 'b3f', 'b4f')),
+  cave({ regionId: 'kanto', id: 'victory-road', name: '챔피언로드', label: 'Victory Road', seed: 53, width: 27, depth: 21, silhouette: 'hall', surfaceLocations: ['route-23', 'indigo-plateau'], crossing: true, legacy: true, anchor: 1, legendary: [146] }, floors('1f', '2f', '3f')),
   cave({ regionId: 'kanto', id: 'cerulean-cave', name: '블루시티 동굴', label: 'Cerulean Cave', seed: 67, width: 21, depth: 19, silhouette: 'rounded', surfaceLocations: ['cerulean-cave'], legacy: true, entry: 1, legendary: [150, 151] }, floors('2f', '1f', 'b1f')),
   room('plant', 'industrial', { regionId: 'kanto', id: 'power-plant', name: '무인발전소 내부', label: 'Power Plant', seed: 71, width: 29, depth: 19, surfaceLocations: ['power-plant'], legendary: [145] }, [floor('1f')]),
   room('tower', 'ghost', { regionId: 'kanto', id: 'pokemon-tower', name: '포켓몬타워', label: 'Pokemon Tower', seed: 79, width: 16, depth: 13, surfaceLocations: ['pokemon-tower'] }, tower(7, ['3f', '4f', '5f', '6f', '7f'])),
   room('building', 'mansion', { regionId: 'kanto', id: 'pokemon-mansion', name: '포켓몬저택', label: 'Pokemon Mansion', seed: 89, width: 21, depth: 15, surfaceLocations: ['pokemon-mansion'], entry: 2 }, floors('3f', '2f', '1f', 'b1f')),
   // Johto. HeartGold floors; Slowpoke Well's B1F/B2F are "1f"/"b1f" in the PokeAPI.
   cave({ regionId: 'johto', id: 'tohjo-falls', name: '동성폭포 동굴', label: 'Tohjo Falls', seed: 83, width: 23, depth: 17, silhouette: 'oval', surfaceLocations: ['route-27', 'mt-silver'], legacy: true }, [floor('1f')]),
-  cave({ regionId: 'johto', id: 'union-cave', name: '연결동굴', label: 'Union Cave', seed: 97, width: 25, depth: 19, silhouette: 'bend', surfaceLocations: ['route-32', 'route-33'], legacy: true }, floors('1f', 'b1f', 'b2f')),
+  cave({ regionId: 'johto', id: 'union-cave', name: '연결동굴', label: 'Union Cave', seed: 97, width: 25, depth: 19, silhouette: 'bend', surfaceLocations: ['route-32', 'route-33'], crossing: true, legacy: true }, floors('1f', 'b1f', 'b2f')),
   cave({ regionId: 'johto', id: 'slowpoke-well', name: '야돈의 우물', label: 'Slowpoke Well', seed: 101, width: 17, depth: 17, silhouette: 'rounded', surfaceLocations: ['slowpoke-well'], legacy: true }, [floor('b1f', ['1f']), floor('b2f', ['b1f'])]),
-  cave({ regionId: 'johto', id: 'whirl-islands', name: '소용돌이섬 동굴', label: 'Whirl Islands', seed: 113, width: 27, depth: 23, silhouette: 'hall', surfaceLocations: ['route-40', 'route-41'], legacy: true, legendary: [249] }, floors('1f', 'b1f', 'b2f', 'b3f')),
-  cave({ regionId: 'johto', id: 'mt-mortar', name: '절구산', label: 'Mt. Mortar', seed: 127, width: 29, depth: 17, silhouette: 'long', surfaceLocations: ['route-42-west', 'route-42-east'], legacy: true }, [
+  cave({ regionId: 'johto', id: 'whirl-islands', name: '소용돌이섬 동굴', label: 'Whirl Islands', seed: 113, width: 27, depth: 23, silhouette: 'hall', surfaceLocations: ['route-40', 'route-41'], crossing: true, legacy: true, legendary: [249] }, floors('1f', 'b1f', 'b2f', 'b3f')),
+  cave({ regionId: 'johto', id: 'mt-mortar', name: '절구산', label: 'Mt. Mortar', seed: 127, width: 29, depth: 17, silhouette: 'long', surfaceLocations: ['route-42-west', 'route-42-east'], crossing: true, legacy: true }, [
     floor('1f', ['1f'], { label: '1층 바깥' }), floor('1f-inside', ['lower-cave'], { label: '1층 안쪽', level: .5 }), floor('2f', ['upper-cave'], { label: '2층 안쪽' }), floor('b1f', ['b1f']),
   ]),
-  cave({ regionId: 'johto', id: 'ice-path', name: '얼음샛길', label: 'Ice Path', seed: 139, width: 23, depth: 23, silhouette: 'oval', surfaceLocations: ['route-44', 'blackthorn'], legacy: true }, floors('1f', 'b1f', 'b2f', 'b3f')),
+  cave({ regionId: 'johto', id: 'ice-path', name: '얼음샛길', label: 'Ice Path', seed: 139, width: 23, depth: 23, silhouette: 'oval', surfaceLocations: ['route-44', 'blackthorn'], crossing: true, legacy: true }, floors('1f', 'b1f', 'b2f', 'b3f')),
   // Crystal lists Dragon's Den as one surf table, shared by both floors.
   cave({ regionId: 'johto', id: 'dragons-den', name: '용의 굴', label: "Dragon's Den", seed: 149, width: 19, depth: 21, silhouette: 'rounded', surfaceLocations: ['dragons-den'], legacy: true }, [floor('1f'), floor('b1f')]),
   cave({ regionId: 'johto', id: 'dark-cave', name: '어둠의 동굴', label: 'Dark Cave', seed: 163, width: 31, depth: 15, silhouette: 'bend', surfaceLocations: ['dark-cave-east', 'dark-cave-west'], legacy: true }, [
@@ -118,18 +120,18 @@ export const DUNGEON_PLANS: readonly DungeonPlan[] = [
   // Later regions: floors where the PokeAPI keeps per-floor areas, otherwise one floor with the whole table.
   cave({ regionId: 'hoenn', id: 'granite-cave', name: '바위동굴', label: 'Granite Cave', seed: 307, width: 21, depth: 17, silhouette: 'bend', surfaceLocations: ['granite-cave'] },
     [floor('1f', ['1f', '1fsmall-room']), floor('b1f', ['b1f']), floor('b2f', ['b2f'])]),
-  cave({ regionId: 'hoenn', id: 'rusturf-tunnel', name: '금잔터널', label: 'Rusturf Tunnel', seed: 311, width: 25, depth: 11, silhouette: 'long', surfaceLocations: ['hoenn-route-116', 'verdanturf-town'] }, [floor('1f')]),
+  cave({ regionId: 'hoenn', id: 'rusturf-tunnel', name: '금잔터널', label: 'Rusturf Tunnel', seed: 311, width: 25, depth: 11, silhouette: 'long', surfaceLocations: ['hoenn-route-116', 'verdanturf-town'], crossing: true }, [floor('1f')]),
   cave({ regionId: 'hoenn', id: 'fiery-path', name: '불꽃샛길', label: 'Fiery Path', seed: 317, width: 23, depth: 13, silhouette: 'long', surfaceLocations: ['hoenn-route-112', 'lavaridge-town'] }, [floor('1f')]),
-  cave({ regionId: 'hoenn', id: 'meteor-falls', name: '유성폭포', label: 'Meteor Falls', seed: 331, width: 23, depth: 19, silhouette: 'oval', surfaceLocations: ['hoenn-route-114', 'hoenn-route-115'] },
+  cave({ regionId: 'hoenn', id: 'meteor-falls', name: '유성폭포', label: 'Meteor Falls', seed: 331, width: 23, depth: 19, silhouette: 'oval', surfaceLocations: ['hoenn-route-114', 'hoenn-route-115'], crossing: true },
     [floor('1f', ['', 'back', 'backsmall-room']), floor('b1f', ['b1f'])]),
-  cave({ regionId: 'hoenn', id: 'hoenn-victory-road', name: '챔피언로드', label: 'Victory Road', seed: 337, width: 25, depth: 21, silhouette: 'hall', surfaceLocations: ['hoenn-route-128', 'ever-grande-city'] }, floors('1f', 'b1f', 'b2f')),
-  cave({ regionId: 'sinnoh', id: 'oreburgh-gate', name: '무쇠게이트', label: 'Oreburgh Gate', seed: 347, width: 21, depth: 13, silhouette: 'long', surfaceLocations: ['sinnoh-route-203', 'oreburgh-city'] }, floors('1f', 'b1f')),
+  cave({ regionId: 'hoenn', id: 'hoenn-victory-road', name: '챔피언로드', label: 'Victory Road', seed: 337, width: 25, depth: 21, silhouette: 'hall', surfaceLocations: ['hoenn-route-128', 'ever-grande-city'], crossing: true }, floors('1f', 'b1f', 'b2f')),
+  cave({ regionId: 'sinnoh', id: 'oreburgh-gate', name: '무쇠게이트', label: 'Oreburgh Gate', seed: 347, width: 21, depth: 13, silhouette: 'long', surfaceLocations: ['sinnoh-route-203', 'oreburgh-city'], crossing: true }, floors('1f', 'b1f')),
   // The Route 207-208 passage crosses 1F; the mountain's other floors branch off it.
   cave({ regionId: 'sinnoh', id: 'mt-coronet', name: '천관산', label: 'Mt. Coronet', seed: 349, width: 27, depth: 21, silhouette: 'hall', surfaceLocations: ['sinnoh-route-207', 'sinnoh-route-208'], surfaceFloors: [1, 1] }, [
     floor('b1f', ['b1f']), floor('1f', ['1f-route-207', '1f-route-211', '1f-route-216', '1f-from-exterior']), floor('2f', ['2f']), floor('3f', ['3f']),
     floor('4f', ['4f', '4f-small-room']), floor('5f', ['5f']), floor('6f', ['6f']), floor('top', ['exterior-snowfall', 'exterior-blizzard']),
   ]),
-  cave({ regionId: 'sinnoh', id: 'sinnoh-victory-road', name: '챔피언로드', label: 'Victory Road', seed: 353, width: 25, depth: 21, silhouette: 'hall', surfaceLocations: ['sinnoh-sea-route-223', 'sinnoh-pokemon-league'] },
+  cave({ regionId: 'sinnoh', id: 'sinnoh-victory-road', name: '챔피언로드', label: 'Victory Road', seed: 353, width: 25, depth: 21, silhouette: 'hall', surfaceLocations: ['sinnoh-sea-route-223', 'sinnoh-pokemon-league'], crossing: true },
     [floor('1f', ['1f', 'inside', 'inside-exit']), floor('2f', ['2f']), floor('b1f', ['b1f', 'inside-b1f'])]),
   cave({ regionId: 'sinnoh', id: 'iron-island', name: '강철섬', label: 'Iron Island', seed: 359, width: 21, depth: 17, silhouette: 'rounded', surfaceLocations: ['iron-island'], legendary: [490, 489] },
     [floor('1f', ['1f']), floor('b1f', ['b1f-left', 'b1f-right']), floor('b2f', ['b2f-left', 'b2f-right']), floor('b3f', ['b3f'])]),
@@ -138,18 +140,18 @@ export const DUNGEON_PLANS: readonly DungeonPlan[] = [
   room('ruins', 'sand', { regionId: 'unova', id: 'relic-castle', name: '고대의성', label: 'Relic Castle', seed: 379, width: 18, depth: 15, surfaceLocations: ['relic-castle'], legendary: [494] },
     [floor('1f', ['a']), floor('b1f', ['b']), floor('b2f', ['c']), floor('b3f', ['d'])]),
   room('building', 'warehouse', { regionId: 'unova', id: 'cold-storage', name: '냉동컨테이너', label: 'Cold Storage', seed: 383, width: 19, depth: 13, surfaceLocations: ['cold-storage'], legendary: [649] }, [floor('1f')]),
-  cave({ regionId: 'unova', id: 'chargestone-cave', name: '전기돌동굴', label: 'Chargestone Cave', seed: 389, width: 23, depth: 19, silhouette: 'bend', surfaceLocations: ['unova-route-6', 'mistralton-city'] }, floors('1f', 'b1f', 'b2f')),
+  cave({ regionId: 'unova', id: 'chargestone-cave', name: '전기돌동굴', label: 'Chargestone Cave', seed: 389, width: 23, depth: 19, silhouette: 'bend', surfaceLocations: ['unova-route-6', 'mistralton-city'], crossing: true }, floors('1f', 'b1f', 'b2f')),
   room('tower', 'ghost', { regionId: 'unova', id: 'celestial-tower', name: '타워오브해븐', label: 'Celestial Tower', seed: 397, width: 14, depth: 14, surfaceLocations: ['celestial-tower'], legendary: [648] }, tower(5, ['2f', '3f', '4f', '5f'])),
-  cave({ regionId: 'unova', id: 'twist-mountain', name: '태엽산', label: 'Twist Mountain', seed: 401, width: 25, depth: 19, silhouette: 'hall', surfaceLocations: ['unova-route-7', 'icirrus-city'] }, [floor('1f')]),
+  cave({ regionId: 'unova', id: 'twist-mountain', name: '태엽산', label: 'Twist Mountain', seed: 401, width: 25, depth: 19, silhouette: 'hall', surfaceLocations: ['unova-route-7', 'icirrus-city'], crossing: true }, [floor('1f')]),
   room('tower', 'stone', { regionId: 'unova', id: 'dragonspiral-tower', name: '용나선탑', label: 'Dragonspiral Tower', seed: 409, width: 15, depth: 15, surfaceLocations: ['dragonspiral-tower'], legendary: [643, 644] }, floors('1f', '2f')),
-  cave({ regionId: 'unova', id: 'unova-victory-road', name: '챔피언로드', label: 'Victory Road', seed: 419, width: 27, depth: 21, silhouette: 'oval', surfaceLocations: ['unova-route-10', 'unova-pokemon-league'], legendary: [639] }, [floor('1f')]),
+  cave({ regionId: 'unova', id: 'unova-victory-road', name: '챔피언로드', label: 'Victory Road', seed: 419, width: 27, depth: 21, silhouette: 'oval', surfaceLocations: ['unova-route-10', 'unova-pokemon-league'], crossing: true, legendary: [639] }, [floor('1f')]),
   cave({ regionId: 'kalos', id: 'glittering-cave', name: '반짝임의동굴', label: 'Glittering Cave', seed: 421, width: 21, depth: 15, silhouette: 'bend', surfaceLocations: ['kalos-route-8', 'kalos-route-10'], legendary: [721] }, [floor('1f')]),
   // Kalos areas carry no floor names; their table order follows the floors.
-  cave({ regionId: 'kalos', id: 'reflection-cave', name: '비춤의동굴', label: 'Reflection Cave', seed: 431, width: 21, depth: 17, silhouette: 'oval', surfaceLocations: ['geosenge-town', 'shalour-city'], legendary: [719] },
+  cave({ regionId: 'kalos', id: 'reflection-cave', name: '비춤의동굴', label: 'Reflection Cave', seed: 431, width: 21, depth: 17, silhouette: 'oval', surfaceLocations: ['geosenge-town', 'shalour-city'], crossing: true, legendary: [719] },
     [floor('1f', ['unknown-area-305']), floor('b1f', ['unknown-area-306']), floor('b2f', ['unknown-area-307']), floor('b3f', ['unknown-area-308'])]),
   cave({ regionId: 'kalos', id: 'frost-cavern', name: '프로스트케이브', label: 'Frost Cavern', seed: 437, width: 21, depth: 17, silhouette: 'rounded', surfaceLocations: ['dendemille-town', 'kalos-route-18'], legendary: [720] },
     [floor('1f', ['unknown-area-313', 'unknown-area-314']), floor('2f', ['unknown-area-315']), floor('3f', ['unknown-area-316', 'unknown-area-317'])]),
-  cave({ regionId: 'kalos', id: 'kalos-victory-road', name: '챔피언로드', label: 'Victory Road', seed: 439, width: 27, depth: 21, silhouette: 'hall', surfaceLocations: ['kalos-route-21', 'kalos-pokemon-league'] }, [floor('1f')]),
+  cave({ regionId: 'kalos', id: 'kalos-victory-road', name: '챔피언로드', label: 'Victory Road', seed: 439, width: 27, depth: 21, silhouette: 'hall', surfaceLocations: ['kalos-route-21', 'kalos-pokemon-league'], crossing: true }, [floor('1f')]),
   cave({ regionId: 'alola', id: 'verdant-cavern', name: '우거진동굴', label: 'Verdant Cavern', seed: 443, width: 19, depth: 15, silhouette: 'rounded', surfaceLocations: ['alola-route-2', 'alola-route-3'], legendary: [801] }, [floor('1f')]),
   cave({ regionId: 'alola', id: 'wela-volcano-park', name: '벨라화산공원', label: 'Wela Volcano Park', seed: 449, width: 21, depth: 17, silhouette: 'oval', surfaceLocations: ['lush-jungle', 'konikoni-city'], legendary: [802] }, [floor('1f')]),
   cave({ regionId: 'alola', id: 'mount-hokulani', name: '호쿠라니큰산', label: 'Mount Hokulani', seed: 457, width: 23, depth: 17, silhouette: 'bend', surfaceLocations: ['alola-route-10', 'blush-mountain'], legendary: [808, 809] }, [floor('1f')]),

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { getWorldAtlas } from '../src/openworld/atlas';
-import { findWorldPath } from '../src/openworld/navigation';
 import { regionalItinerary } from '../src/openworld/next-destination';
+import { passagesOf, walkThroughCaves } from './helpers/cave-crossings';
 
 describe('stage-by-stage campaign access', () => {
   for (const region of ['hoenn', 'sinnoh', 'unova', 'kalos', 'alola', 'galar', 'hisui', 'paldea']) {
@@ -14,7 +14,8 @@ describe('stage-by-stage campaign access', () => {
         expect(destination.requiredBadges, `${region}:${gym.locationId} self-lock`).toBeLessThanOrEqual(badges);
         expect(regionalItinerary(atlas, atlas.locationAt(from.x, from.z).id, destination.id, badges).length).toBeGreaterThan(0);
         const sample = (x: number, z: number) => ({ ...atlas.sample(x, z), blocked: !atlas.evaluateTraversal({ x, z }, { x, z }, badges).allowed });
-        const path = findWorldPath(from, destination, sample);
+        // A cave across the road is walked through, mouth to mouth.
+        const path = walkThroughCaves(passagesOf(atlas), from, destination, sample, 24_000, 1);
         expect(path.length, `${region}:${gym.locationId} unreachable with ${badges}`).toBeGreaterThan(0);
         expect(Math.hypot(path.at(-1)!.x - destination.x, path.at(-1)!.z - destination.z)).toBeLessThan(1);
         for (const point of path) expect(atlas.evaluateTraversal(from, point, badges).allowed).toBe(true);

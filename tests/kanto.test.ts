@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { POKEMON } from '../src/data/pokemon';
 import { createSceneryPlacements } from '../src/openworld/scenery';
+import { onPassageHill } from '../src/openworld/cave-passages';
+import { passagesOf } from './helpers/cave-crossings';
 import {
   encountersForLocation,
   evaluateKantoTraversal,
@@ -53,10 +55,12 @@ describe('compressed Kanto open world', () => {
   });
 
   it('keeps towns and every mapped path endpoint walkable inside the world', () => {
+    // A cave across the road covers its own place with its hill; the way past it is through the cave.
+    const passages = passagesOf({ id: 'kanto', locations: KANTO_LOCATIONS, connections: KANTO_CONNECTIONS });
     for (const item of KANTO_LOCATIONS) {
       expect(Math.abs(item.x)).toBeLessThanOrEqual(240);
       expect(Math.abs(item.z)).toBeLessThanOrEqual(240);
-      expect(sampleKantoWorld(item.x, item.z).blocked, item.id).toBe(false);
+      expect(sampleKantoWorld(item.x, item.z).blocked, item.id).toBe(passages.some(passage => passage.dungeonId === item.id));
       expect(locationAt(item.x, item.z).id).toBe(item.id);
     }
     for (const town of KANTO_LOCATIONS.filter(item => item.kind === 'town')) {
@@ -70,8 +74,8 @@ describe('compressed Kanto open world', () => {
       const from = byId.get(fromId)!, to = byId.get(toId)!;
       if (fromId === 'diglett-cave-east' && toId === 'diglett-cave-west') continue;
       for (let step = 0; step <= 10; step += 1) {
-        const t = step / 10;
-        expect(sampleKantoWorld(from.x + (to.x - from.x) * t, from.z + (to.z - from.z) * t).blocked, `${fromId} -> ${toId} at ${t}`).toBe(false);
+        const t = step / 10, x = from.x + (to.x - from.x) * t, z = from.z + (to.z - from.z) * t;
+        if (!onPassageHill(passages, x, z)) expect(sampleKantoWorld(x, z).blocked, `${fromId} -> ${toId} at ${t}`).toBe(false);
       }
     }
   });

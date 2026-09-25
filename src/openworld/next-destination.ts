@@ -1,6 +1,7 @@
 import { campaignEntryReason, getCampaignGyms, getNextCampaignTrainer, getRegionalBadges, onwardCampaignRegion } from '../game/campaign';
 import type { GameState } from '../game/engine';
 import type { WorldAtlas } from './atlas';
+import { cavePassages, type CavePassage } from './cave-passages';
 import { dungeonExits, getCaveScene, stairsToward } from './caves';
 import { openDungeonExits, portalBadges } from './dungeon-gates';
 import { findWorldPath } from './navigation';
@@ -16,6 +17,14 @@ const REGION_NAMES: Record<string, string> = {
   johto: '성도', kanto: '관동', hoenn: '호연', sinnoh: '신오', unova: '하나',
   kalos: '칼로스', alola: '알로라', galar: '가라르', hisui: '히스이', paldea: '팔데아',
 };
+
+const passagesByAtlas = new WeakMap<WorldAtlas, readonly CavePassage[]>();
+/** The cave whose hill closes the road at this place, if its place is one. */
+function passageAt(atlas: WorldAtlas, locationId: string): CavePassage | undefined {
+  let passages = passagesByAtlas.get(atlas);
+  if (!passages) passagesByAtlas.set(atlas, passages = cavePassages(atlas.id, atlas.locations, atlas.connections));
+  return passages.find(passage => passage.dungeonId === locationId);
+}
 
 /** Authored campaign guidance, independent of the neural policy and its random stream. */
 export function regionalItinerary(atlas: WorldAtlas, from: string, to: string, badges: number): string[] {
@@ -81,9 +90,14 @@ export function nextDestinationGuide(game: GameState, atlas: WorldAtlas, sceneId
     const location = atlas.locations.find(item => item.id === nextId);
     if (location) {
       const edgeOnSurface = atlas.surfaceConnections.some(([a, b]) => (a === current.id && b === location.id) || (b === current.id && a === location.id));
-      const passage = atlas.caves.find(item => item.id === location.id || item.id === current.id
+      // A cave across the road is crossed inside: head for its mouth on this side, unless the next place is on this side too.
+      const hill = passageAt(atlas, location.id) ?? passageAt(atlas, current.id);
+      const hillScene = hill && atlas.caves.find(item => item.dungeonId === hill.dungeonId);
+      const passage = hillScene ?? atlas.caves.find(item => item.id === location.id || item.id === current.id
         || item.portals.some(portal => portal.surfaceLocationId === current.id || portal.surfaceLocationId === location.id));
-      const portal = passage && !edgeOnSurface ? dungeonExits(passage).filter(item => portalBadges(item.scene, item.portal) <= badges).map(item => item.portal).sort((a, b) => Math.hypot(a.surface.x - player.x, a.surface.z - player.z) - Math.hypot(b.surface.x - player.x, b.surface.z - player.z))[0] : undefined;
+      const openPortals = passage ? dungeonExits(passage).filter(item => portalBadges(item.scene, item.portal) <= badges).map(item => item.portal).sort((a, b) => Math.hypot(a.surface.x - player.x, a.surface.z - player.z) - Math.hypot(b.surface.x - player.x, b.surface.z - player.z)) : [];
+      const crossing = Boolean(hillScene && openPortals[0] && (location.id === hill!.dungeonId || openPortals[0].surfaceLocationId !== location.id));
+      const portal = passage && (!edgeOnSurface || crossing) ? openPortals[0] : undefined;
       next = portal?.surface ?? atlas.safeArrival(location.id, badges);
       nextName = portal ? `${passage!.dungeonName} 입구` : location.name;
     }

@@ -2,6 +2,7 @@ import type { WorldSample } from './types';
 import { POKEMON } from '../data/pokemon';
 import { terrainPlateauHeight } from './terrain-elevation';
 import { WORLD_MAX, WORLD_SCALE, scaleWorldDistance, townGroundAt } from './world-space';
+import { cavePassages, onPassageHill, passageMouthArrival } from './cave-passages';
 
 export type KantoLocationKind = 'town' | 'route' | 'forest' | 'cave' | 'sea' | 'special';
 
@@ -156,6 +157,8 @@ const gateSegments = KANTO_GATES.filter(gate => gate.visible !== false).map(gate
 const gateWidthCache = new Map<string, number>();
 const towns = KANTO_LOCATIONS.filter(item => item.kind === 'town');
 const townPlateaus = towns.map(item => ({ x: item.x, z: item.z, height: 0 }));
+/** Caves standing across a road: the way past is through them, mouth to mouth. */
+const PASSAGES = cavePassages('kanto', KANTO_LOCATIONS, KANTO_CONNECTIONS);
 /** Town ground is a meadow disc this wide around each town centre, whatever place lies nearest. */
 const TOWN_RADIUS = scaleWorldDistance(8.5);
 
@@ -210,6 +213,7 @@ export function sampleKantoWorld(x: number, z: number): WorldSample {
   const pathDistance = distanceToKantoPath(x, z);
   const town = towns.find(item => Math.hypot(x - item.x, z - item.z) < TOWN_RADIUS);
   if (town) return { height: joinedHeight(height), biome: 'meadow', blocked: townBuildingAt(x, z, town) };
+  if (onPassageHill(PASSAGES, x, z)) return { height: joinedHeight(height + .7), biome: 'rock', blocked: true };
   const southernSea = z > 82 * WORLD_SCALE && x > -78 * WORLD_SCALE && x < 12 * WORLD_SCALE;
   const powerWater = Math.hypot(x - 61 * WORLD_SCALE, z + 25 * WORLD_SCALE) < 13 * WORLD_SCALE;
   const locationRadius = scaleWorldDistance(nearest.kind === 'town' ? 8.5 : nearest.kind === 'forest' ? 7.5 : nearest.kind === 'sea' ? 6.5 : nearest.kind === 'route' ? 4.8 : 5.5);
@@ -282,6 +286,9 @@ export function evaluateKantoTraversal(from: { x: number; z: number }, to: { x: 
 export function safeKantoArrival(locationId: string, badges = 0): { x: number; z: number } | undefined {
   const target = byId.get(locationId);
   if (!target || !Number.isFinite(badges) || badges < target.requiredBadges) return undefined;
+  // A cave across the road is arrived at on the doorstep of its first mouth; its hill covers the place itself.
+  const passage = PASSAGES.find(item => item.dungeonId === locationId);
+  if (passage) return passageMouthArrival(passage, 0);
   const offset = scaleWorldDistance(2), candidates = [[target.x, target.z], [target.x, target.z + offset], [target.x + offset, target.z], [target.x - offset, target.z], [target.x, target.z - offset]] as const;
   const arrival = candidates.find(([x, z]) => isKantoPlayable(x, z));
   return arrival ? { x: arrival[0], z: arrival[1] } : undefined;

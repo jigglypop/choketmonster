@@ -70,8 +70,9 @@ import { onRenderSuspension, renderingSuspended } from '../three/render-budget';
 import { releaseOnDetach, releaseRenderObjects, useReleasingRef } from '../three/render-objects';
 import { visibleTimeout } from '../three/visible-time';
 
-import { WORLD_MIN, WORLD_MAX, WORLD_SCALE, surfaceSceneId } from './world-space';
+import { WORLD_MIN, WORLD_MAX, WORLD_SCALE, scaleWorldDistance, surfaceSceneId } from './world-space';
 import { getCaveScene, hasDungeonLandmark } from './caves';
+import { deadEndFacing } from './cave-passages';
 import { DUNGEON_LOOKS, DungeonEntrances, DungeonInterior } from './dungeon-interior';
 import { IndoorLighting } from './interior-lighting';
 import { getGymScene, gymBuildingPoint } from './gym-scenes';
@@ -469,8 +470,8 @@ function WorldLabel({ name, x, y, z }: { name: string; x: number; y: number; z: 
   </Html>;
 }
 
-function RegionalLandmark({ region, x, y, z }: { region: string; x: number; y: number; z: number }) {
-  return <group name={`regional-landmark:${region}`} position={[x, y, z]}>
+function RegionalLandmark({ region, x, y, z, rotationY }: { region: string; x: number; y: number; z: number; rotationY: number }) {
+  return <group name={`regional-landmark:${region}`} position={[x, y, z]} rotation={[0, rotationY, 0]}>
     <mesh ref={releaseOnDetach} geometry={regionalLandmarkGeometry(region)} material={detailMaterial()} castShadow receiveShadow dispose={null} />
   </group>;
 }
@@ -478,6 +479,12 @@ function RegionalLandmark({ region, x, y, z }: { region: string; x: number; y: n
 function TrailAndWater({ sampleWorld, player, badges, atlas, visible, gyms = atlas.gyms, onGymEnter, onLeagueEnter }: { sampleWorld: (x: number, z: number) => WorldSample; player: { x: number; z: number }; badges: number; atlas: WorldAtlas; visible: VisibilityTest; gyms?: WorldAtlas['gyms']; onGymEnter?: (locationId: string) => void; onLeagueEnter?: (locationId: string) => void }) {
   const locations = useMemo(() => new Map(atlas.locations.map(item => [item.id, item])), [atlas]);
   const details = useWorldDetails(sampleWorld, atlas, leagueFilter(atlas.id));
+  // A special place's landmark stands at the back of its clearing with its front toward the roads that lead in.
+  const landmarkPlacements = useMemo(() => new Map(atlas.locations.filter(item => item.kind === 'special').map(item => {
+    const neighbours = atlas.surfaceConnections.flatMap(([from, to]) => from === item.id ? [to] : to === item.id ? [from] : []).map(id => locations.get(id)).filter((other): other is NonNullable<typeof other> => !!other);
+    const face = deadEndFacing(item, neighbours), back = scaleWorldDistance(2.5);
+    return [item.id, { x: item.x - face.x * back, z: item.z - face.z * back, rotationY: Math.atan2(face.x, face.z) }] as const;
+  })), [atlas, locations]);
   const trail = useMemo(() => {
     const vertices: number[] = [], colors: number[] = [], indices: number[] = [];
     const towns = atlas.locations.filter(item => item.kind === 'town' && !isRegionalLeagueLocation(atlas.id, item.id));
@@ -510,7 +517,8 @@ function TrailAndWater({ sampleWorld, player, badges, atlas, visible, gyms = atl
           push(x + sideX * reach, z + sideZ * reach, shoulder[column], alpha[column]);
         });
         const mx = from.x + dx * ((step + .5) / steps), mz = from.z + dz * ((step + .5) / steps);
-        if (step < steps && sampleWorld(mx, mz).biome !== 'lake' && !paved(mx, mz)) {
+        // The road stops at a cave mouth; the hill over a cave across the road carries no trail.
+        if (step < steps && sampleWorld(mx, mz).biome !== 'lake' && !sampleWorld(mx, mz).blocked && !paved(mx, mz)) {
           // Counter-clockwise seen from above, so the front face (and its normal) points at the sky.
           const base = offset + step * 6;
           for (let column = 0; column < 5; column++) {
@@ -523,7 +531,7 @@ function TrailAndWater({ sampleWorld, player, badges, atlas, visible, gyms = atl
     // Round joints fill the notch where straight roads meet at an angle or end.
     for (const [id, width] of joints) {
       const node = locations.get(id)!;
-      if (node.kind === 'sea' || paved(node.x, node.z) || sampleWorld(node.x, node.z).biome === 'lake') continue;
+      if (node.kind === 'sea' || paved(node.x, node.z) || sampleWorld(node.x, node.z).biome === 'lake' || sampleWorld(node.x, node.z).blocked) continue;
       const center = vertices.length / 3, rim = 20;
       push(node.x, node.z, 1.02, 1);
       for (let index = 0; index < rim; index++) {
@@ -550,7 +558,7 @@ function TrailAndWater({ sampleWorld, player, badges, atlas, visible, gyms = atl
   return (
     <group name={`region-landmarks:${atlas.id}`} userData={{ gaesupWorldObject: 'region-landmarks' }}>
       <mesh geometry={trail} receiveShadow><SurfaceMaterial surface="path" color={regionTrailColor(atlas)} vertexColors /></mesh>
-      {atlas.id !== 'kanto' && atlas.locations.filter(item => item.kind === 'special' && !isRegionalLeagueLocation(atlas.id, item.id) && !hasDungeonLandmark(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) < 70 && visible(item.x, 5, item.z, 10)).map(item => <RegionalLandmark key={item.id} region={atlas.id} x={item.x} y={terrainSurfaceHeight(sampleWorld, item.x, item.z)} z={item.z} />)}
+      {atlas.id !== 'kanto' && atlas.locations.filter(item => item.kind === 'special' && !isRegionalLeagueLocation(atlas.id, item.id) && !hasDungeonLandmark(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) < 70 && visible(item.x, 5, item.z, 10)).map(item => { const place = landmarkPlacements.get(item.id)!; return <RegionalLandmark key={item.id} region={atlas.id} x={place.x} y={terrainSurfaceHeight(sampleWorld, place.x, place.z)} z={place.z} rotationY={place.rotationY} />; })}
       {atlas.locations.filter(item => isRegionalLeagueLocation(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) < 100)
         .map(item => <RegionalLeagueLandmark key={item.id} region={atlas.id} x={item.x} y={terrainSurfaceHeight(sampleWorld, item.x, item.z)} z={item.z} onEnter={onLeagueEnter && badges >= 8 ? () => onLeagueEnter(item.id) : undefined} />)}
       {/* Towns stay mounted while in range: the renderer culls them off screen, and turning the camera

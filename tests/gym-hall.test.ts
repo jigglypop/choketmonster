@@ -115,7 +115,7 @@ describe('gym hall', () => {
     world.setControlMode('manual'); world.setAutoHunt(false);
     const hall = getGymScene(leagueSceneId('kanto', 'indigo-plateau'))!;
     expect(hall.kind).toBe('league');
-    expect(world.sampleWorld(hall.challenger.x, hall.challenger.z).blocked).toBe(false);
+    expect(hall.sample(hall.challenger.x, hall.challenger.z).blocked).toBe(false);
     expect(onGymCourt(hall, hall.leader.x, hall.leader.z - 4)).toBe(true);
     world.player = { ...hall.door, heading: 0 };
     Object.assign(world.entities.find(entity => entity.kind === 'companion')!, world.player);

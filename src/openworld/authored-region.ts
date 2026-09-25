@@ -4,6 +4,7 @@ import type { ExpansionRegion } from '../data/expansion-encounters';
 import { expansionEncounterPools } from '../data/expansion-encounters';
 import { terrainPlateauHeight } from './terrain-elevation';
 import { WORLD_MAX, WORLD_SCALE, scaleWorldDistance, townGroundAt } from './world-space';
+import { cavePassages, onPassageHill, passageMouthArrival } from './cave-passages';
 
 export type AuthoredRegionDefinition = {
   id: ExpansionRegion;
@@ -42,6 +43,8 @@ export function createAuthoredRegionSampler(definition: AuthoredRegionDefinition
     const dx = b.x - a.x, dz = b.z - a.z; return { from: a, to: b, x: a.x, z: a.z, dx, dz, lengthSquared: dx * dx + dz * dz || 1 };
   });
   const towns = definition.locations.filter(location => location.kind === 'town');
+  /** Caves standing across a road: the way past is through them, mouth to mouth. */
+  const passages = cavePassages(definition.id, definition.locations, definition.connections);
   const buildingCache = new Map<string, ReadonlyArray<readonly [number, number]>>();
   const buildingCandidates = [[-5,-4],[5,-4],[-5,4],[5,4],[-6,0],[6,0],[0,-6],[0,6]].map(([x,z])=>[x*WORLD_SCALE,z*WORLD_SCALE] as const);
   const featureAt = (x: number, z: number) => {
@@ -90,6 +93,7 @@ export function createAuthoredRegionSampler(definition: AuthoredRegionDefinition
     const nearest = nearestLocation(x, z), path = nearestSegment(x, z), localDistance = Math.hypot(x - nearest.x, z - nearest.z);
     const town=towns.find(item=>Math.hypot(x-item.x,z-item.z)<AUTHORED_TOWN_RADIUS);
     if(town){const blocked=buildingOffsets(town).some(([dx,dz])=>Math.abs(x-town.x-dx)<scaleWorldDistance(1.9)&&Math.abs(z-town.z-dz)<scaleWorldDistance(1.7));return{height:terrainPlateauHeight(height,x,z,plateaus),biome:'meadow',...(terrainFeature?{surface:terrainFeature.surface}:{}),blocked};}
+    if (onPassageHill(passages, x, z)) return { height: terrainPlateauHeight(height + .65, x, z, plateaus), biome: 'rock', ...(terrainFeature ? { surface: terrainFeature.surface } : {}), blocked: true };
     const radius = scaleWorldDistance(nearest.kind === 'town' ? 8 : nearest.kind === 'sea' ? 6 : nearest.kind === 'route' ? 4.5 : 5.5);
     const playable = path.distance < scaleWorldDistance(3) || localDistance < radius;
     // A snowfield, desert or marsh covers the woods and rock around its roads as well.
@@ -111,7 +115,12 @@ export function createAuthoredRegionSampler(definition: AuthoredRegionDefinition
     if (!Number.isFinite(badges) || badges < location.requiredBadges) return { allowed: false, location, reason: `${location.name} 이동에는 배지 ${location.requiredBadges}개가 필요합니다.` };
     return sample(to.x, to.z).blocked ? { allowed: false, location, reason: '표시된 길과 탐험 지형을 벗어났습니다.' } : { allowed: true, location };
   };
-  const safeArrival = (locationId: string, badges = 0) => { const target = byId.get(locationId); return target && target.requiredBadges <= badges ? { x: target.x, z: target.z } : undefined; };
+  const safeArrival = (locationId: string, badges = 0) => {
+    const target = byId.get(locationId); if (!target || target.requiredBadges > badges) return undefined;
+    // A cave across the road is arrived at on the doorstep of its first mouth; its hill covers the place itself.
+    const passage = passages.find(item => item.dungeonId === locationId);
+    return passage ? passageMouthArrival(passage, 0) : { x: target.x, z: target.z };
+  };
   const nearestWalkable=(x:number,z:number,badges=0):{x:number;z:number}|undefined=>{
     if(![x,z,badges].every(Number.isFinite)||badges<0)return undefined;
     if(!sample(x,z).blocked&&nearestLocation(x,z).requiredBadges<=badges)return{x,z};

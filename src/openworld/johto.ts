@@ -3,6 +3,7 @@ import type { KantoGate, KantoGym, KantoLocation, KantoLocationKind, KantoTraver
 import { terrainProgressGates } from './progression-gates';
 import { terrainPlateauHeight } from './terrain-elevation';
 import { WORLD_MAX, WORLD_SCALE, scaleWorldDistance, townGroundAt } from './world-space';
+import { cavePassages, onPassageHill, passageMouthArrival } from './cave-passages';
 import {
   JOHTO_WORLD_LOCATION_TO_POKEAPI, johtoGoldEncounterPools, type JohtoGoldEncounterPool,
 } from '../data/johto-gold-encounters';
@@ -133,6 +134,8 @@ const surfaceSegments = JOHTO_SURFACE_CONNECTIONS.map(([from, to]) => {
 const towns = JOHTO_LOCATIONS.filter(item => item.kind === 'town');
 const baseHeight = (x: number, z: number) => .2 * Math.sin((x / WORLD_SCALE + 11) * .085) + .16 * Math.cos((z / WORLD_SCALE - 7) * .075);
 const townPlateaus = towns.map(item => ({ x: item.x, z: item.z, height: baseHeight(item.x, item.z) }));
+/** Caves standing across a road: the way past is through them, mouth to mouth. */
+const PASSAGES = cavePassages('johto', JOHTO_LOCATIONS, JOHTO_CONNECTIONS);
 /** Town ground is a meadow disc this wide around each town centre, whatever place lies nearest. */
 const TOWN_RADIUS = scaleWorldDistance(8.5);
 const buildingOffsetCache = new Map<string, ReadonlyArray<readonly [number, number]>>();
@@ -180,6 +183,7 @@ export function sampleJohtoWorld(x: number, z: number): WorldSample {
   const nearest = johtoLocationAt(x, z), distance = Math.hypot(x - nearest.x, z - nearest.z), pathDistance = distanceToJohtoPath(x, z);
   const town = towns.find(item => Math.hypot(x - item.x, z - item.z) < TOWN_RADIUS);
   if (town) return { height: joinedHeight(height), biome: 'meadow', blocked: townBuildingAt(x, z, town) };
+  if (onPassageHill(PASSAGES, x, z)) return { height: joinedHeight(height + .72), biome: 'rock', ...landform, blocked: true };
   const radius = scaleWorldDistance(nearest.kind === 'forest' ? 7.5 : nearest.kind === 'sea' ? 6.5 : nearest.kind === 'town' ? 8.5 : nearest.kind === 'route' ? 4.8 : 5.5);
   const playable = pathDistance < scaleWorldDistance(3.2) || distance < radius;
   const westernSea = x < -48 * WORLD_SCALE && z > -12 * WORLD_SCALE && z < 22 * WORLD_SCALE;
@@ -223,6 +227,9 @@ export function evaluateJohtoTraversal(_from: { x: number; z: number }, to: { x:
 export function safeJohtoArrival(locationId: string, badges = 0): { x: number; z: number } | undefined {
   const target = byId.get(locationId);
   if (!target || !Number.isFinite(badges) || badges < target.requiredBadges) return undefined;
+  // A cave across the road is arrived at on the doorstep of its first mouth; its hill covers the place itself.
+  const passage = PASSAGES.find(item => item.dungeonId === locationId);
+  if (passage) return passageMouthArrival(passage, 0);
   const offset = scaleWorldDistance(2), candidates = [[target.x, target.z], [target.x, target.z + offset], [target.x + offset, target.z], [target.x - offset, target.z], [target.x, target.z - offset]] as const;
   const arrival = candidates.find(([x, z]) => isJohtoPlayable(x, z));
   return arrival ? { x: arrival[0], z: arrival[1] } : undefined;

@@ -7,6 +7,9 @@ import {
   nearestKantoWalkable, safeKantoArrival, sampleKantoWorld,
 } from '../src/openworld/kanto';
 
+import { onPassageHill } from '../src/openworld/cave-passages';
+import { passagesOf } from './helpers/cave-crossings';
+
 const ids: WorldRegionId[] = ['kanto','johto','hoenn','sinnoh','unova','kalos','alola','galar','hisui','paldea'];
 
 describe('compressed world atlas', () => {
@@ -40,15 +43,19 @@ describe('compressed world atlas', () => {
 
   it('makes every declared surface connection continuously walkable', () => {
     for (const world of WORLDS.slice(1)) {
-      const locations = new Map(world.locations.map(location => [location.id, location]));
+      const locations = new Map(world.locations.map(location => [location.id, location])), passages = passagesOf(world);
       for (const [fromId, toId] of world.surfaceConnections) {
         const from = locations.get(fromId)!, to = locations.get(toId)!;
         expect(from, `${world.id}:${fromId}`).toBeDefined(); expect(to, `${world.id}:${toId}`).toBeDefined();
-        let priorHeight = world.sample(from.x, from.z).height;
+        let priorHeight = world.sample(from.x, from.z).height, walked = true;
         for (let step = 0; step <= 20; step++) {
-          const t = step / 20, sample = world.sample(from.x + (to.x - from.x) * t, from.z + (to.z - from.z) * t);
+          const t = step / 20, x = from.x + (to.x - from.x) * t, z = from.z + (to.z - from.z) * t;
+          // The hill of a cave across the road is crossed inside the cave; the road runs up to each mouth.
+          if (onPassageHill(passages, x, z)) { walked = false; continue; }
+          const sample = world.sample(x, z);
           expect(sample.blocked, `${world.id}:${fromId}->${toId}@${t}`).toBe(false);
-          expect(Math.abs(sample.height - priorHeight)).toBeLessThan(.7); priorHeight = sample.height;
+          if (walked) expect(Math.abs(sample.height - priorHeight)).toBeLessThan(.7);
+          priorHeight = sample.height; walked = true;
         }
       }
     }
