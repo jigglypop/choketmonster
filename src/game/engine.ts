@@ -130,7 +130,11 @@ export type BattleAction =
   | { type: 'catch'; ball: BallItem }
   | { type: 'run' };
 
-export type BattleLogEntry = { turn: number; text: string; kind: 'info' | 'damage' | 'status' | 'capture' | 'reward' };
+export type BattleLogEntry = {
+  turn: number; text: string; kind: 'info' | 'damage' | 'status' | 'capture' | 'reward';
+  /** A held or used item's effect, as a short note over the Pokémon it touched. */
+  cue?: { instanceId: string; text: string };
+};
 export type ExecutedMove = {
   actorInstanceId: string;
   targetInstanceId: string;
@@ -812,8 +816,12 @@ function pickEnemyMove(state: GameState, battle: BattleState, monster: Monster, 
   return { index: valid[Math.floor(random(state) * valid.length)], wait: false, source: 'seeded-random' };
 }
 
-function event(battle: BattleState, text: string, kind: BattleLogEntry['kind'] = 'info'): BattleLogEntry {
-  return { turn: battle.turn, text, kind };
+function event(battle: BattleState, text: string, kind: BattleLogEntry['kind'] = 'info', cue?: BattleLogEntry['cue']): BattleLogEntry {
+  return cue ? { turn: battle.turn, text, kind, cue } : { turn: battle.turn, text, kind };
+}
+/** An item's effect on a Pokémon: the log line plus a short note shown over it. */
+function itemEvent(battle: BattleState, monster: Monster, text: string, note: string): BattleLogEntry {
+  return event(battle, text, 'status', { instanceId: monster.instanceId, text: note });
 }
 
 const SELF_TARGETS = new Set([4, 7, 13, 15]);
@@ -850,18 +858,18 @@ function reactHeldItems(battle: BattleState, monster: Monster, events: BattleLog
     const before = monster.hp;
     monster.hp = Math.min(maxHp, monster.hp + (tool === 'oran-berry' ? 10 : Math.max(1, Math.floor(maxHp / 4))));
     consumeHeldTool(battle, monster);
-    events.push(event(battle, `${monster.nickname}은(는) ${HELD_TOOL_LABELS[tool]}로 ${monster.hp - before} 회복했다.`, 'status'));
+    events.push(itemEvent(battle, monster, `${monster.nickname}은(는) ${HELD_TOOL_LABELS[tool]}로 ${monster.hp - before} 회복했다.`, `${HELD_TOOL_LABELS[tool]} +${monster.hp - before}`));
   } else if (tool === 'lum-berry' && MAJOR_STATUSES.has(monster.status ?? '')) {
     monster.status = undefined; monster.statusTurns = undefined;
     consumeHeldTool(battle, monster);
-    events.push(event(battle, `${monster.nickname}은(는) 리샘열매로 상태이상이 나았다.`, 'status'));
+    events.push(itemEvent(battle, monster, `${monster.nickname}은(는) 리샘열매로 상태이상이 나았다.`, '리샘열매'));
   } else if (tool === 'white-herb') {
     const stages = battle.statStages?.[monster.instanceId];
     const lowered = stages ? (Object.keys(stages) as BattleStat[]).filter(stat => (stages[stat] ?? 0) < 0) : [];
     if (!lowered.length) return;
     for (const stat of lowered) stages![stat] = 0;
     consumeHeldTool(battle, monster);
-    events.push(event(battle, `${monster.nickname}은(는) 하양허브로 떨어진 능력을 되돌렸다.`, 'status'));
+    events.push(itemEvent(battle, monster, `${monster.nickname}은(는) 하양허브로 떨어진 능력을 되돌렸다.`, '하양허브'));
   }
 }
 
@@ -906,7 +914,7 @@ function performMoveAction(state: GameState, battle: BattleState, attacker: Mons
   }
   const move = getMove(slot.moveId);
   if (move.damageClass === 'status' && activeHeldTool(battle, attacker) === 'assault-vest') {
-    events.push(event(battle, `${attacker.nickname}은(는) 돌격조끼 때문에 ${move.name}을(를) 쓸 수 없다.`, 'status'));
+    events.push(itemEvent(battle, attacker, `${attacker.nickname}은(는) 돌격조끼 때문에 ${move.name}을(를) 쓸 수 없다.`, '돌격조끼'));
     executedMoves.push({ actorInstanceId: attacker.instanceId, targetInstanceId: defender.instanceId,
       moveId: move.id, moveType: move.type, damageClass: move.damageClass, damagingMove: false,
       executed: true, hit: false, typeMultiplier: 1, damage: 0, category: 'status', hpRecovered: 0, statStageDelta: 0, ailmentApplied: false, strategicEffect: false, result: 'failed' });
@@ -1017,9 +1025,10 @@ function performMoveAction(state: GameState, battle: BattleState, attacker: Mons
     if (activatedAbility === 'focus-sash') consumeHeldTool(battle, defender);
     const source = activatedAbility === 'focus-sash' ? '기합의띠' : activatedAbility === 'air-balloon' ? '풍선' : monsterAbility(defender).name;
     const detail = activatedAbility === 'sturdy' || activatedAbility === 'focus-sash' ? '쓰러지지 않았다' : activatedAbility === 'absorb' ? '공격을 흡수해 회복했다' : '공격을 무효화했다';
-    events.push(event(battle, `${defender.nickname}의 ${source}: ${detail}.`, 'status'));
+    const text = `${defender.nickname}의 ${source}: ${detail}.`;
+    events.push(activatedAbility === 'focus-sash' || activatedAbility === 'air-balloon' ? itemEvent(battle, defender, text, source) : event(battle, text, 'status'));
   }
-  if (bandSaved) events.push(event(battle, `${defender.nickname}의 기합의머리띠: 쓰러지지 않았다.`, 'status'));
+  if (bandSaved) events.push(itemEvent(battle, defender, `${defender.nickname}의 기합의머리띠: 쓰러지지 않았다.`, '기합의머리띠'));
   if (move.power > 0 || fixed !== undefined || isOhko) {
     let text = `${attacker.nickname}의 ${move.name}! ${totalDamage} 피해.`;
     if (multiplier > 1) text += ' 효과가 굉장했다.'; if (multiplier === 0) text += ' 효과가 없다.'; else if (multiplier < 1) text += ' 효과가 별로였다.';
@@ -1028,12 +1037,12 @@ function performMoveAction(state: GameState, battle: BattleState, attacker: Mons
   const defenderTool = activeHeldTool(battle, defender), attackerTool = activeHeldTool(battle, attacker);
   if (defenderTool === 'air-balloon' && totalDamage > 0) {
     consumeHeldTool(battle, defender);
-    events.push(event(battle, `${defender.nickname}의 풍선이 터졌다.`, 'status'));
+    events.push(itemEvent(battle, defender, `${defender.nickname}의 풍선이 터졌다.`, '풍선'));
   }
   if (defenderTool === 'weakness-policy' && multiplier > 1 && totalDamage > 0 && defender.hp > 0) {
     const raised = Math.abs(changeStage(battle, defender, 'attack', 2)) + Math.abs(changeStage(battle, defender, 'specialAttack', 2));
     consumeHeldTool(battle, defender);
-    if (raised) events.push(event(battle, `${defender.nickname}의 약점보험: 공격과 특수공격이 크게 올랐다.`, 'status'));
+    if (raised) events.push(itemEvent(battle, defender, `${defender.nickname}의 약점보험: 공격과 특수공격이 크게 올랐다.`, '약점보험'));
   }
 
   if (move.drain && totalDamage > 0) {
@@ -1052,7 +1061,7 @@ function performMoveAction(state: GameState, battle: BattleState, attacker: Mons
   if (attackerTool === 'shell-bell' && totalDamage > 0 && attacker.hp > 0) {
     const before = attacker.hp; attacker.hp = Math.min(battleMonsterMaxHp(battle, attacker), attacker.hp + Math.max(1, Math.floor(totalDamage / 8)));
     hpRecovered += attacker.hp - before;
-    if (attacker.hp > before) events.push(event(battle, `${attacker.nickname}은(는) 조개껍질방울로 ${attacker.hp - before} 회복했다.`, 'status'));
+    if (attacker.hp > before) events.push(itemEvent(battle, attacker, `${attacker.nickname}은(는) 조개껍질방울로 ${attacker.hp - before} 회복했다.`, `조개껍질방울 +${attacker.hp - before}`));
   }
   let clearedBinding = false;
   if (move.id === 499 && totalDamage > 0) {
@@ -1062,12 +1071,12 @@ function performMoveAction(state: GameState, battle: BattleState, attacker: Mons
   if (monsterUsesLifeOrb(attacker, totalDamage)) {
     const recoil = Math.max(1, Math.floor(battleMonsterMaxHp(battle, attacker) / 10));
     attacker.hp = Math.max(0, attacker.hp - recoil);
-    events.push(event(battle, `${attacker.nickname}은(는) 생명의구슬 반동으로 ${recoil} 피해를 입었다.`, 'status'));
+    events.push(itemEvent(battle, attacker, `${attacker.nickname}은(는) 생명의구슬 반동으로 ${recoil} 피해를 입었다.`, `생명의구슬 -${recoil}`));
   }
   if (defenderTool === 'rocky-helmet' && move.damageClass === 'physical' && totalDamage > 0 && attacker.hp > 0) {
     const recoil = Math.min(attacker.hp, Math.max(1, Math.floor(battleMonsterMaxHp(battle, attacker) / 6)));
     attacker.hp -= recoil;
-    events.push(event(battle, `${attacker.nickname}은(는) 울퉁불퉁멧으로 ${recoil} 피해를 입었다.`, 'status'));
+    events.push(itemEvent(battle, attacker, `${attacker.nickname}은(는) 울퉁불퉁멧으로 ${recoil} 피해를 입었다.`, `울퉁불퉁멧 -${recoil}`));
   }
   if (move.id === 229 && totalDamage > 0 && ['trap', 'leech-seed'].includes(attacker.status ?? '')) {
     attacker.status = undefined; attacker.statusTurns = undefined; clearedBinding = true;
@@ -1125,16 +1134,16 @@ function residual(battle: BattleState, monster: Monster, events: BattleLogEntry[
   if (monster.hp > 0 && monster.heldTool === 'leftovers') {
     const before = monster.hp, amount = Math.max(1, Math.floor(battleMonsterMaxHp(battle, monster) / 16));
     monster.hp = Math.min(battleMonsterMaxHp(battle, monster), monster.hp + amount);
-    if (monster.hp > before) events.push(event(battle, `${monster.nickname}은(는) 먹다남은음식으로 ${monster.hp - before} 회복했다.`, 'status'));
+    if (monster.hp > before) events.push(itemEvent(battle, monster, `${monster.nickname}은(는) 먹다남은음식으로 ${monster.hp - before} 회복했다.`, `먹다남은음식 +${monster.hp - before}`));
   }
   if (monster.hp > 0 && monster.heldTool === 'black-sludge') {
     const maxHp = battleMonsterMaxHp(battle, monster), before = monster.hp;
     if (effectiveTypes(battle, monster).includes('poison')) {
       monster.hp = Math.min(maxHp, monster.hp + Math.max(1, Math.floor(maxHp / 16)));
-      if (monster.hp > before) events.push(event(battle, `${monster.nickname}은(는) 검은오물로 ${monster.hp - before} 회복했다.`, 'status'));
+      if (monster.hp > before) events.push(itemEvent(battle, monster, `${monster.nickname}은(는) 검은오물로 ${monster.hp - before} 회복했다.`, `검은오물 +${monster.hp - before}`));
     } else {
       monster.hp = Math.max(0, monster.hp - Math.max(1, Math.floor(maxHp / 8)));
-      events.push(event(battle, `${monster.nickname}은(는) 검은오물로 ${before - monster.hp} 피해를 입었다.`, 'status'));
+      events.push(itemEvent(battle, monster, `${monster.nickname}은(는) 검은오물로 ${before - monster.hp} 피해를 입었다.`, `검은오물 -${before - monster.hp}`));
     }
   }
   reactHeldItems(battle, monster, events);
@@ -1289,7 +1298,7 @@ export function actBattle(state: GameState, action: BattleAction, aiChoice?: num
     const player = active(battle.player); const enemy = active(battle.enemy);
     const chance = Math.min(.95, .45 + (player.stats.speed - enemy.stats.speed) / Math.max(1, enemy.stats.speed) * .3);
     const smokeBall = battle.kind === 'wild' && activeHeldTool(battle, player) === 'smoke-ball';
-    if (smokeBall || random(state) < chance) { endBattle(state, result); events.push(event(battle, smokeBall ? `${player.nickname}의 연막탄으로 무사히 도망쳤다.` : '무사히 도망쳤다.')); for (const entry of events) addLog(state, entry.text); result.battleEnded = true; result.outcome = 'escaped'; return result; }
+    if (smokeBall || random(state) < chance) { endBattle(state, result); events.push(smokeBall ? itemEvent(battle, player, `${player.nickname}의 연막탄으로 무사히 도망쳤다.`, '연막탄') : event(battle, '무사히 도망쳤다.')); for (const entry of events) addLog(state, entry.text); result.battleEnded = true; result.outcome = 'escaped'; return result; }
     events.push(event(battle, '도망치지 못했다.')); enemyActs(player);
   } else if (action.type === 'catch') {
     if (battle.kind !== 'wild') throw new Error('야생 포켓몬만 잡을 수 있습니다.');
@@ -1316,8 +1325,9 @@ export function actBattle(state: GameState, action: BattleAction, aiChoice?: num
     events.push(event(battle, `${species.name}이(가) 볼에서 나왔다.`, 'capture'));
     enemyActs(active(battle.player));
   } else if (action.type === 'item') {
-    useHealingItem(state, action.item, action.targetInstanceId ?? active(battle.player).instanceId);
-    events.push(event(battle, `${action.item}을(를) 사용했다.`));
+    const target = findOwned(state, action.targetInstanceId ?? active(battle.player).instanceId), before = target.hp;
+    useHealingItem(state, action.item, target.instanceId);
+    events.push(itemEvent(battle, target, `${ITEM_LABELS[action.item]}을(를) 사용했다.`, `${ITEM_LABELS[action.item]} +${target.hp - before}`));
     enemyActs(active(battle.player));
   } else if (action.type === 'wait') {
     events.push(event(battle, `${active(battle.player).nickname}은(는) 기다렸다.`));
@@ -1333,7 +1343,7 @@ export function actBattle(state: GameState, action: BattleAction, aiChoice?: num
     const quickClaw = { player: samePriority && activeHeldTool(battle, player) === 'quick-claw' && random(state) < .2,
       enemy: samePriority && !enemyPick.wait && activeHeldTool(battle, enemy) === 'quick-claw' && random(state) < .2 };
     const order = turnOrder(combatant(player, battle), playerMove, combatant(enemy, battle), enemyMove, random(state), quickClaw);
-    if (quickClaw.player !== quickClaw.enemy) events.push(event(battle, `${(quickClaw.player ? player : enemy).nickname}은(는) 선제공격손톱으로 먼저 움직였다.`, 'status'));
+    if (quickClaw.player !== quickClaw.enemy) { const first = quickClaw.player ? player : enemy; events.push(itemEvent(battle, first, `${first.nickname}은(는) 선제공격손톱으로 먼저 움직였다.`, '선제공격손톱')); }
     if (order === 'player') { performMove(state, battle, player, enemy, resolvedPlayerIndex, events, executedMoves); if (enemyPick.wait) events.push(event(battle, `${enemy.nickname}은(는) 기다렸다.`)); else performMove(state, battle, enemy, player, enemyPick.index, events, executedMoves); }
     else { if (enemyPick.wait) events.push(event(battle, `${enemy.nickname}은(는) 기다렸다.`)); else performMove(state, battle, enemy, player, enemyPick.index, events, executedMoves); performMove(state, battle, player, enemy, resolvedPlayerIndex, events, executedMoves); }
   }

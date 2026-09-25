@@ -65,7 +65,9 @@ export class OpenWorldPanel {
   private loadProgress = 0;
   private attacks = new Map<string, { start: number; end: number; type: string }>();
   /** Move names above nameplates, target flinches and move effects, keyed by battler instance. */
-  private cues = new Map<string, { key: string; text: string; moveType: string; start: number; end: number }>();
+  private cues = new Map<string, { key: string; text: string; moveType: string; damage?: number; start: number; end: number }>();
+  /** Item effects of the last turns, by Pokémon, shown beside its nameplate. */
+  private notes = new Map<string, { key: string; text: string; start: number; end: number }>();
   private hurts = new Map<string, { start: number; end: number }>();
   private effects: WorldMoveEffect[] = [];
   private cueSerial = 0;
@@ -201,7 +203,7 @@ export class OpenWorldPanel {
         <button id="world-next-guide" class="world-next-guide" aria-label="다음 목적지 길안내" aria-expanded="false"></button>
       </section>
       <aside class="world-radar world-radar-round" style="--minimap-scale:${this.minimapScale}"><button id="world-map-open" aria-label="지역 전체 지도 열기"><span class="world-minimap-frame"><canvas id="world-minimap" width="180" height="180" aria-label="카메라 방향으로 회전하는 월드 지도"></canvas><b id="world-minimap-heading" aria-hidden="true">북</b></span></button></aside>
-      <div class="world-quick-actions"><div class="world-mode-buttons" role="group" aria-label="조작 모드"><button id="world-mode-auto">자동</button><button id="world-mode-manual">수동</button></div><button id="world-heal" class="world-heal">캠프 회복</button><button id="world-quick-run" class="world-heal world-quick-run" type="button" hidden>도망가기</button><div id="world-cave-exits" class="world-cave-exits" hidden></div></div>
+      <div class="world-quick-actions"><div class="world-mode-buttons" role="group" aria-label="조작 모드"><button id="world-mode-auto">자동</button><button id="world-mode-manual">수동</button></div><div class="world-heal-row"><button id="world-heal" class="world-heal">캠프 회복</button><button id="world-quick-run" class="world-heal world-quick-run" type="button" disabled>도망가기</button></div><div id="world-cave-exits" class="world-cave-exits" hidden></div></div>
       <button id="world-gym-notice" class="world-gym-notice" hidden></button>
       <div class="world-lower-hud">
       <section class="world-multiplayer social-dock" aria-label="지역 채팅">
@@ -801,15 +803,21 @@ export class OpenWorldPanel {
         // Every opponent brings new battlers; cues and flinches already played are dropped.
         for (const [id, cue] of this.cues) if (cue.end <= now) this.cues.delete(id);
         for (const [id, hurt] of this.hurts) if (hurt.end <= now) this.hurts.delete(id);
-        event.result.executedMoves.filter(move => move.executed).forEach((move, index) => {
+        for (const [id, note] of this.notes) if (note.end <= now) this.notes.delete(id);
+        const executed = event.result.executedMoves.filter(move => move.executed);
+        executed.forEach((move, index) => {
           const start = now + index * 300, key = String(++this.cueSerial), style = move.damageClass;
-          this.attacks.set(move.actorInstanceId, { start, end: start + 280, type: move.moveType });
-          this.cues.set(move.actorInstanceId, { key, text: move.moveId < 0 ? '발버둥' : getMove(move.moveId).name, moveType: move.moveType, start, end: start + 1600 });
           const self = move.category === 'buff' || move.category === 'healing' || move.targetInstanceId === move.actorInstanceId;
+          this.attacks.set(move.actorInstanceId, { start, end: start + 280, type: move.moveType });
+          this.cues.set(move.actorInstanceId, { key, text: move.moveId < 0 ? '발버둥' : getMove(move.moveId).name, moveType: move.moveType, damage: !self && move.damage > 0 ? move.damage : undefined, start, end: start + 1600 });
           const from = battlers.get(move.actorInstanceId), to = self ? from : battlers.get(move.targetInstanceId);
           if (from && to) this.effects.push({ key, moveType: move.moveType, style, hit: move.hit && move.result !== 'immune' && move.result !== 'failed', from, to, start });
           if (move.damage > 0 && !self) { const impact = start + (style === 'special' ? 420 : 200); this.hurts.set(move.targetInstanceId, { start: impact, end: impact + 320 }); }
         });
+        // Item effects follow the moves; several on one Pokémon in a turn share its note.
+        const noted = new Map<string, string[]>();
+        for (const entry of event.result.events) if (entry.cue) noted.set(entry.cue.instanceId, [...noted.get(entry.cue.instanceId) ?? [], entry.cue.text]);
+        for (const [id, texts] of noted) { const start = now + executed.length * 300; this.notes.set(id, { key: String(++this.cueSerial), text: texts.join(' · '), start, end: start + 2200 }); }
         if (event.result.battleEnded && !event.result.gymVictory) this.options.notify(event.result.outcome === 'won' ? '승리! 경험치와 보상을 받았습니다.' : event.result.outcome === 'caught' ? '포획 성공! 팀과 도감에 등록했습니다.' : event.result.outcome === 'lost' ? '파트너가 쓰러졌습니다. 회복한 뒤 다시 탐험하세요.' : '배틀에서 벗어났습니다.');
         // A finished battle, with its capture, rewards and evolutions, is saved at once so it never replays on reload;
         // a turn in between rides the queued save. The fixed-step world never waits for either.
@@ -909,7 +917,8 @@ export class OpenWorldPanel {
     const now = performance.now();
     const attacking = (id?: string) => { const attack = id ? this.attacks.get(id) : undefined; return attack && now >= attack.start && now < attack.end ? attack : undefined; };
     const hurting = (id?: string) => { const hurt = id ? this.hurts.get(id) : undefined; return Boolean(hurt && now >= hurt.start && now < hurt.end); };
-    const cue = (id?: string) => { const shown = id ? this.cues.get(id) : undefined; return shown && now >= shown.start && now < shown.end ? { key: shown.key, text: shown.text, moveType: shown.moveType } : undefined; };
+    const cue = (id?: string) => { const shown = id ? this.cues.get(id) : undefined; return shown && now >= shown.start && now < shown.end ? { key: shown.key, text: shown.text, moveType: shown.moveType, damage: shown.damage } : undefined; };
+    const note = (id?: string) => { const shown = id ? this.notes.get(id) : undefined; return shown && now >= shown.start && now < shown.end ? { key: shown.key, text: shown.text } : undefined; };
     const ally = battle ? battle.player.team[battle.player.activeIndex] : game.player.team[firstUsableRegionalTeamIndex(game, this.simulation.regionId)] ?? game.player.team[0];
     const enemy = battle?.enemy.team[battle.enemy.activeIndex];
     this.preloadMegaModel(battle ? ally : undefined);
@@ -949,7 +958,7 @@ export class OpenWorldPanel {
           heading: entity.heading as WorldHeading, inBattle,
           action: monster?.hp === 0 ? 'fainted' : inBattle && attacking(monster?.instanceId) ? 'attack' : inBattle && hurting(monster?.instanceId) ? 'hurt' : entity.action < 4 ? 'walk' : 'idle',
           moveType: attacking(monster?.instanceId)?.type,
-          cue: inBattle ? cue(monster?.instanceId) : undefined, status: monster?.status,
+          cue: inBattle ? cue(monster?.instanceId) : undefined, note: inBattle ? note(monster?.instanceId) : undefined, status: monster?.status,
           lookAt: inBattle && entity.action >= 4 ? entity.kind === 'companion' && opponentPoint ? opponentPoint : (() => {
             const target = this.simulation.entities.find(other => entity.kind === 'companion' ? other.id === this.simulation.battleWildId : other.kind === 'companion');
             return target ? { x: target.x, z: target.z } : undefined;
@@ -957,7 +966,7 @@ export class OpenWorldPanel {
           movementSpeed: movementSpeed(speciesId, level),
           displayHeight: formModel ? pokemonWorldDisplayHeight(formModel.heightMeters) : pokemonDisplayHeight(speciesId),
         } as WorldCreature;
-      }).concat(battle && battle.kind !== 'wild' && enemy ? [{ id: this.simulation.battleWildId!, speciesId: enemy.speciesId, name: enemy.nickname, level: enemy.level, hp: enemy.hp, maxHp: enemy.stats.hp, ...opponentPoint!, heading: (hall ? 0 : 2) as WorldHeading, action: enemy.hp === 0 ? 'fainted' as const : attacking(enemy.instanceId) ? 'attack' as const : hurting(enemy.instanceId) ? 'hurt' as const : 'idle' as const, moveType: attacking(enemy.instanceId)?.type, cue: cue(enemy.instanceId), status: enemy.status, inBattle: true, lookAt: this.simulation.player, displayHeight: pokemonDisplayHeight(enemy.speciesId), movementSpeed: movementSpeed(enemy.speciesId, enemy.level) }] : [])
+      }).concat(battle && battle.kind !== 'wild' && enemy ? [{ id: this.simulation.battleWildId!, speciesId: enemy.speciesId, name: enemy.nickname, level: enemy.level, hp: enemy.hp, maxHp: enemy.stats.hp, ...opponentPoint!, heading: (hall ? 0 : 2) as WorldHeading, action: enemy.hp === 0 ? 'fainted' as const : attacking(enemy.instanceId) ? 'attack' as const : hurting(enemy.instanceId) ? 'hurt' as const : 'idle' as const, moveType: attacking(enemy.instanceId)?.type, cue: cue(enemy.instanceId), note: note(enemy.instanceId), status: enemy.status, inBattle: true, lookAt: this.simulation.player, displayHeight: pokemonDisplayHeight(enemy.speciesId), movementSpeed: movementSpeed(enemy.speciesId, enemy.level) }] : [])
         .concat(hallLeader && !battle ? [{ id: `gym-leader:${hall!.locationId}`, speciesId: hallLeader.speciesId, name: getSpecies(hallLeader.speciesId).name, level: hallLeader.level, hp: 1, maxHp: 1, x: hall!.leader.x, z: hall!.leader.z - 3.2, heading: 0 as WorldHeading, action: 'idle' as const, displayHeight: pokemonDisplayHeight(hallLeader.speciesId), movementSpeed: 0 }] : [])
         .concat(this.multiplayer?.creatures(this.simulation.player, id => movementSpeed(id)) ?? []),
     };
@@ -1375,9 +1384,7 @@ export class OpenWorldPanel {
       button.title = `HP +${HEALING_ITEM_HP[item]}`;
     }
     this.button('#world-run').disabled = !battle?.canRun;
-    // In a battle that allows it, run takes the camp heal's place at the bottom of the group, so nothing shifts.
-    this.button('#world-quick-run').hidden = !battle?.canRun;
-    this.button('#world-heal').hidden = Boolean(battle?.canRun);
+    this.button('#world-quick-run').disabled = !battle?.canRun;
     this.button('#world-heal').disabled = Boolean(battle);
     this.button('#world-trainer-open').disabled = Boolean(battle || offer);
     this.input('#world-auto-catch').checked = world.autoCapture;

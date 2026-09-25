@@ -230,7 +230,30 @@
 .ow-status-poison { --status: #a35bc4; } .ow-status-burn { --status: #e0663c; } .ow-status-paralysis { --status: #c9a515; }
 .ow-status-sleep { --status: #7d8aa0; } .ow-status-freeze { --status: #4fb0d6; } .ow-status-confusion { --status: #d66fa3; }
 .ow-status-trap { --status: #8a7a5c; } .ow-status-leech-seed { --status: #5aa35a; } .ow-status-infatuation { --status: #f06f9f; }
-@media (prefers-reduced-motion: reduce) { .ow-move-cue { animation: none; } }
+/* The damage a move dealt floats above its name; an item's effect sits beside the nameplate. */
+.ow-cue-damage { position: absolute; left: 50%; bottom: calc(100% + 2px); transform: translateX(-50%); color: #fff; font: 800 19px/1 var(--ui-font-family, system-ui, sans-serif); font-style: normal; letter-spacing: -.02em; text-shadow: 0 1px 0 #6b2412, 0 0 .45rem rgba(107, 36, 18, .85); white-space: nowrap; }
+.ow-item-cue {
+  position: absolute;
+  left: calc(100% + 6px);
+  top: 50%;
+  padding: .28rem .62rem;
+  border: 1px solid #e8c45c;
+  border-radius: 99px;
+  background: #fff6d8;
+  box-shadow: 0 .3rem .8rem rgba(40, 30, 8, .28);
+  color: #4a3a17;
+  font: 700 12px/1.2 var(--ui-font-family, system-ui, sans-serif);
+  white-space: nowrap;
+  transform: translateY(-50%);
+  animation: ow-item-cue 2.2s ease both;
+}
+@keyframes ow-item-cue {
+  0% { opacity: 0; transform: translate(-6px, -50%); }
+  12% { opacity: 1; transform: translate(0, -50%); }
+  85% { opacity: 1; }
+  100% { opacity: 0; transform: translate(0, -60%); }
+}
+@media (prefers-reduced-motion: reduce) { .ow-move-cue, .ow-item-cue { animation: none; } }
 /* Type dots before a nameplate name. A legendary's plate is a warm bronze card in a gold frame, the name in plain white; the player's own partner wears a white frame. */
 .ow-creature-label .ow-type-dot { display: inline-block; width: 8px; height: 8px; margin: 0 3px 1px 0; border-radius: 50%; vertical-align: middle; box-shadow: 0 0 0 1px #ffffff55; }
 .ow-creature-label .ow-type-dot:last-of-type { margin-right: 6px; }

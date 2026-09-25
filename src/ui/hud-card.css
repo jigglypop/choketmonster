@@ -64,7 +64,7 @@
   right: 20px;
   display: grid;
   gap: 6px;
-  width: var(--world-radar-width, 164px);
+  width: max(150px, var(--world-radar-width, 164px));
 }
 .adventure .world-quick-actions .world-mode-buttons {
   display: grid;
@@ -135,7 +135,7 @@
   .adventure .world-hud-card .world-explore-scroll { max-height: max(120px, calc(100dvh - var(--app-header-height) - var(--world-hud-card-height, 110px) - var(--app-nav-height) - var(--world-partner-height, 48px) - 40px)); }
   /* Landscape phones used to park the minimap beside a narrow card; it stays at the top right. */
   .adventure .world-radar { top: calc(var(--app-header-height) + 8px); right: 10px; left: auto; }
-  .adventure .world-quick-actions { top: calc(var(--app-header-height) + 14px + var(--world-radar-height, 130px)); right: 10px; left: auto; gap: 4px; }
+  .adventure .world-quick-actions { top: calc(var(--app-header-height) + 14px + var(--world-radar-height, 130px)); right: 10px; left: auto; gap: 4px; width: max(124px, var(--world-radar-width, 104px)); }
   .adventure .world-quick-actions .world-mode-buttons { gap: 2px; padding: 3px; border-radius: 12px; }
   .adventure .world-quick-actions .world-mode-buttons button { min-height: 32px; padding: 2px; font-size: calc(12px * var(--ui-font-scale, 1)); }
   .adventure .world-heal { min-height: 36px; padding: 4px 6px; font-size: calc(12px * var(--ui-font-scale, 1)); }
@@ -156,10 +156,12 @@
 .adventure .world-radar.world-radar-round { --minimap-base: 144px; width: auto; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; touch-action: none; }
 .adventure .world-radar.world-radar-round #world-map-open { display: block; padding: 0; border: 0; border-radius: 50%; background: none; }
 .adventure .world-radar.world-radar-round canvas { display: block; width: calc(var(--minimap-base) * var(--minimap-scale, 1)); height: calc(var(--minimap-base) * var(--minimap-scale, 1)); border: 2px solid rgba(255, 255, 255, .72); box-shadow: 0 8px 24px rgba(6, 20, 15, .32); }
-/* Run stands in the camp heal's slot during a battle that allows it. */
-.adventure .world-quick-actions .world-quick-run { background: #b4553d; border-color: rgba(255, 214, 196, .55); color: #fff; font-weight: 700; }
+/* Camp heal and run share one row; whichever does not apply right now is blurred out. */
+.adventure .world-quick-actions .world-heal-row { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.adventure .world-quick-actions .world-heal-row .world-heal { min-width: 0; padding-inline: 4px; white-space: nowrap; }
+.adventure .world-quick-actions .world-quick-run:not(:disabled) { background: #b4553d; border-color: rgba(255, 214, 196, .55); color: #fff; font-weight: 700; }
 .adventure .world-quick-actions .world-quick-run:hover:not(:disabled) { background: #c4644b; }
-.adventure .world-quick-actions :is(.world-heal, .world-quick-run)[hidden] { display: none; }
+.adventure .world-quick-actions .world-heal-row .world-heal:disabled { opacity: .45; filter: blur(.6px) grayscale(.4); }
 @media (max-width: 720px) {
   .adventure .world-radar.world-radar-round { --minimap-base: 104px; padding: 0; }
 }

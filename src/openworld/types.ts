@@ -33,8 +33,10 @@ export type WorldCreature = WorldPoint & {
   /** A battle opponent to face without changing the simulation heading. */
   lookAt?: { x: number; z: number };
   inBattle?: boolean;
-  /** Move just used, shown above the nameplate; the key restarts its animation. */
-  cue?: { key: string; text: string; moveType: string };
+  /** Move just used, shown above the nameplate with the damage it dealt; the key restarts its animation. */
+  cue?: { key: string; text: string; moveType: string; damage?: number };
+  /** A held or used item's effect this turn, shown beside the nameplate. */
+  note?: { key: string; text: string };
   /** Engine ailment id (poison, burn, sleep…). */
   status?: string;
   /** Ephemeral same-region presence. Never participates in simulation selection or saves. */
