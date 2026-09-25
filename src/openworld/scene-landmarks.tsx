@@ -40,17 +40,24 @@ export function GymEntranceStatus({ gym, badges, showLabel }: { gym: KantoGym; b
   </group>;
 }
 
-/** Red and white bands along a toll barrier arm, from its pivot outward. */
-function BarrierArm({ length }: { length: number }) {
-  const bands = Math.max(3, Math.round(length / .6)), band = length / bands;
-  return <>{Array.from({ length: bands }, (_, index) => <mesh key={index} position={[-(index + .5) * band, 0, 0]} castShadow>
-    <boxGeometry args={[band, .16, .12]} /><meshStandardMaterial color={index % 2 ? '#f6f3ec' : '#d8402f'} roughness={.6} />
-  </mesh>)}</>;
+const GATE_WOOD = '#9a6a3c', GATE_WOOD_DARK = '#6f4527', GATE_STONE = '#ddd6c6', GATE_ROOF = '#2f7f78';
+
+/** One leaf of the gate's wooden double door, hinged at its pillar: a framed board with two rails. */
+function GateDoor({ width, height, open, side }: { width: number; height: number; open: boolean; side: -1 | 1 }) {
+  // The hinge sits at the pillar and the leaf reaches toward the road's centre; both leaves swing toward the far side.
+  return <group rotation={[0, open ? side * 1.35 : 0, 0]}>
+    <group position={[-side * width / 2, height / 2 + .06, 0]}>
+      <mesh castShadow receiveShadow><boxGeometry args={[width - .04, height, .12]} /><meshStandardMaterial color={GATE_WOOD} roughness={.85} /></mesh>
+      {[-.3, .3].map(rail => <mesh key={rail} position={[0, rail * height, 0]} castShadow><boxGeometry args={[width - .04, .12, .18]} /><meshStandardMaterial color={GATE_WOOD_DARK} roughness={.85} /></mesh>)}
+      <mesh position={[0, 0, 0]}><boxGeometry args={[width + .02, height + .02, .08]} /><meshStandardMaterial color={GATE_WOOD_DARK} roughness={.9} /></mesh>
+    </group>
+  </group>;
 }
 
 /**
- * A toll-gate checkpoint: a booth beside the road and a striped barrier arm across it. Locked, the arm is down and the
- * booth light red; open, the arm stands up and the light turns green. Badge slots sit on the booth's road-side sign.
+ * A route gatehouse: two stone pillars under a timber beam and tiled roof, with a wooden double door across the road.
+ * Locked, the doors are shut and the pillar lanterns glow red; open, the doors stand wide and the lanterns turn green.
+ * The badge plaque hangs under the beam on both faces.
  */
 export function ProgressGate({ gate, from, to, y, halfWidth, badges, showLabel }: {
   gate: KantoGate; from: KantoLocation; to: KantoLocation; y: number; halfWidth: number; badges: number; showLabel: boolean;
@@ -58,36 +65,37 @@ export function ProgressGate({ gate, from, to, y, halfWidth, badges, showLabel }
   const x = gate.position?.x ?? (from.x + to.x) / 2, z = gate.position?.z ?? (from.z + to.z) / 2;
   const rotationY = Math.atan2(to.x - from.x, to.z - from.z);
   const state = gateVisualState(gate.requiredBadges, badges);
-  const width = Math.max(2.4, halfWidth * 2), edge = width / 2;
-  const booth = { x: edge + 1.35, width: 1.7, depth: 2, height: 2.3 }, pivot = { x: edge + .35, y: 1.05 };
-  const sign = { width: Math.max(1.2, state.required * .34 + .3), y: booth.height + .55 };
+  const width = Math.max(2.4, halfWidth * 2), edge = width / 2, pillarX = edge + .36, beamY = 2.62, doorHeight = 1.85;
+  const plaque = { width: Math.max(1.2, state.required * .34 + .3), y: 2.18 };
+  const lantern = state.locked ? ['#ff5a45', '#c01d10'] : ['#62e38a', '#1c9c4a'];
   return <group name={`progress-gate:${gate.id}:${state.locked ? 'locked' : 'open'}`} position={[x, y, z]} rotation={[0, rotationY, 0]}>
-    <group name="toll-booth" position={[booth.x, 0, 0]}>
-      <mesh position={[0, .08, 0]} receiveShadow><boxGeometry args={[booth.width + .7, .16, booth.depth + .9]} /><meshStandardMaterial color="#c9c3b5" roughness={.95} /></mesh>
-      <mesh position={[0, booth.height / 2 + .16, 0]} castShadow receiveShadow><boxGeometry args={[booth.width, booth.height, booth.depth]} /><meshStandardMaterial color="#f3efe5" roughness={.8} /></mesh>
-      {/* A glass band on every side, darker than the walls. */}
-      <mesh position={[0, booth.height * .62 + .16, 0]}><boxGeometry args={[booth.width + .02, .75, booth.depth + .02]} /><meshStandardMaterial color="#35505c" roughness={.2} metalness={.1} /></mesh>
-      <mesh position={[0, booth.height + .28, 0]} castShadow><boxGeometry args={[booth.width + .5, .24, booth.depth + .5]} /><meshStandardMaterial color="#2f8f86" roughness={.7} /></mesh>
-      <mesh position={[-booth.width / 2 - .02, booth.height * .95, booth.depth / 2 - .3]}><sphereGeometry args={[.13, 12, 8]} />
-        <meshStandardMaterial color={state.locked ? '#ff4a3a' : '#46e07a'} emissive={state.locked ? '#c01d10' : '#1c9c4a'} emissiveIntensity={1.4} /></mesh>
-      {state.required > 0 && <group position={[-booth.width / 2 - .06, 0, 0]} rotation={[0, -Math.PI / 2, 0]}>
-        <mesh position={[0, sign.y, 0]} castShadow><boxGeometry args={[sign.width, .5, .08]} /><meshStandardMaterial color="#1f5f8f" roughness={.7} /></mesh>
-        <mesh position={[0, sign.y - .45, 0]}><boxGeometry args={[.08, .4, .08]} /><meshStandardMaterial color="#8b9196" /></mesh>
-        {Array.from({ length: state.required }, (_, index) => {
-          const offset = state.required <= 1 ? 0 : (index / (state.required - 1) - .5) * (sign.width - .34);
-          return [-1, 1].map(face => <mesh key={`${index}:${face}`} position={[offset, sign.y, face * .05]} rotation={[Math.PI / 2, 0, 0]}>
-            <cylinderGeometry args={[.13, .13, .04, 12]} />
-            <meshStandardMaterial color={index < state.earned ? '#f4d65c' : '#4a4036'} emissive={index < state.earned ? '#5b4608' : '#000000'} emissiveIntensity={.35} />
-          </mesh>);
-        })}
-      </group>}
-    </group>
-    <group name="toll-barrier" position={[pivot.x, 0, 0]}>
-      <mesh position={[0, pivot.y / 2, 0]} castShadow><boxGeometry args={[.36, pivot.y, .36]} /><meshStandardMaterial color="#f1c33c" roughness={.6} /></mesh>
-      <group position={[0, pivot.y, 0]} rotation={[0, 0, state.locked ? 0 : -1.35]}>
-        <mesh position={[.3, 0, 0]} castShadow><boxGeometry args={[.4, .26, .2]} /><meshStandardMaterial color="#5c6268" roughness={.6} /></mesh>
-        <BarrierArm length={width + .2} />
-      </group>
+    <mesh position={[0, .03, 0]} receiveShadow><boxGeometry args={[width + 1.6, .06, 1]} /><meshStandardMaterial color="#c9c3b5" roughness={.95} /></mesh>
+    {[-1, 1].map(side => <group key={side} name="gate-pillar" position={[side * pillarX, 0, 0]}>
+      <mesh position={[0, .16, 0]} castShadow receiveShadow><boxGeometry args={[.84, .32, .84]} /><meshStandardMaterial color="#a39c8f" roughness={.95} /></mesh>
+      <mesh position={[0, 1.44, 0]} castShadow receiveShadow><boxGeometry args={[.58, 2.3, .58]} /><meshStandardMaterial color={GATE_STONE} roughness={.9} /></mesh>
+      <mesh position={[0, 2.66, 0]} castShadow><boxGeometry args={[.74, .16, .74]} /><meshStandardMaterial color="#b9b1a0" roughness={.9} /></mesh>
+      <mesh position={[0, 3.02, 0]}><boxGeometry args={[.26, .34, .26]} /><meshStandardMaterial color={GATE_WOOD_DARK} roughness={.8} /></mesh>
+      <mesh position={[0, 3.02, 0]}><sphereGeometry args={[.11, 12, 8]} /><meshStandardMaterial color={lantern[0]} emissive={lantern[1]} emissiveIntensity={1.4} /></mesh>
+    </group>)}
+    <mesh position={[0, beamY, 0]} castShadow><boxGeometry args={[width + 1.7, .28, .44]} /><meshStandardMaterial color={GATE_WOOD_DARK} roughness={.85} /></mesh>
+    <mesh position={[0, beamY - .36, 0]} castShadow><boxGeometry args={[width, .14, .3]} /><meshStandardMaterial color={GATE_WOOD} roughness={.85} /></mesh>
+    {[-1, 1].map(face => <mesh key={face} position={[0, beamY + .36, face * .28]} rotation={[face * -.5, 0, 0]} castShadow>
+      <boxGeometry args={[width + 2.1, .09, .78]} /><meshStandardMaterial color={GATE_ROOF} roughness={.7} />
+    </mesh>)}
+    <mesh position={[0, beamY + .55, 0]} castShadow><boxGeometry args={[width + 2.2, .1, .14]} /><meshStandardMaterial color="#245f59" roughness={.7} /></mesh>
+    {state.required > 0 && [-1, 1].map(face => <group key={face} position={[0, 0, face * .17]}>
+      <mesh position={[0, plaque.y, 0]} castShadow><boxGeometry args={[plaque.width, .44, .06]} /><meshStandardMaterial color="#1f5f8f" roughness={.7} /></mesh>
+      {Array.from({ length: state.required }, (_, index) => {
+        const offset = state.required <= 1 ? 0 : (index / (state.required - 1) - .5) * (plaque.width - .34);
+        return <mesh key={index} position={[offset, plaque.y, face * .04]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[.12, .12, .04, 12]} />
+          <meshStandardMaterial color={index < state.earned ? '#f4d65c' : '#4a4036'} emissive={index < state.earned ? '#5b4608' : '#000000'} emissiveIntensity={.35} />
+        </mesh>;
+      })}
+    </group>)}
+    <group name="gate-doors">
+      <group position={[-edge, 0, 0]}><GateDoor width={edge} height={doorHeight} open={!state.locked} side={-1} /></group>
+      <group position={[edge, 0, 0]}><GateDoor width={edge} height={doorHeight} open={!state.locked} side={1} /></group>
     </group>
     {state.locked && !gate.terrainBoundary && <RigidBody type="fixed" colliders={false} position={[0, .82, 0]}><CuboidCollider args={[edge, .7, .2]} /></RigidBody>}
     {showLabel && <Html center calculatePosition={gateScreenPosition} position={[0, 3.3, 0]} zIndexRange={[10, 9]} style={{ pointerEvents: 'none' }}>
