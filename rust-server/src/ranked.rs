@@ -5,8 +5,9 @@
 //! the original monsters' HP, experience, memories, or save revision. The bundled catalog is
 //! generated from the repository's pinned PokeAPI data. General move metadata (damage, healing,
 //! drain, stat stages, common ailments and multi-hit ranges) and the battle engine's implemented
-//! ability rules are resolved here, together with explicit fixed-damage, recovery, cleansing,
-//! stat-reset and Rapid Spin rules. Other move-specific scripts remain outside this core.
+//! ability rules are resolved here, together with explicit fixed-damage, one-hit KO, Psywave,
+//! recovery, cleansing, stat-reset and Rapid Spin rules, and timed confusion and binding. Other
+//! move-specific scripts remain outside this core. Every roll comes from a per-match secret seed.
 
 use crate::api::{ApiError, AppState, decompress, profile_user, rate_limit};
 use crate::combat_forms::{combat_form, mega_stone_matches};
@@ -17,14 +18,22 @@ use axum::{
     http::{HeaderMap, StatusCode},
     routing::{get, post},
 };
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use sqlx::{Postgres, Row, Transaction, types::Json as SqlJson};
-use std::{collections::HashMap, sync::OnceLock};
+use sha2::{Digest, Sha256};
+use sqlx::{PgPool, Postgres, Row, Transaction, types::Json as SqlJson};
+use std::{
+    collections::HashMap,
+    sync::{Once, OnceLock},
+    time::Duration,
+};
 use uuid::Uuid;
 
 const TURN_SECONDS: i32 = 90;
 const ELO_K: f64 = 32.0;
+const SWEEP_SECONDS: u64 = 30;
+const TRI_ATTACK: i64 = 161;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -76,6 +85,13 @@ struct TransformationRequest {
     form_identifier: Option<String>,
     #[serde(rename = "teraType")]
     tera_type: Option<String>,
+}
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PendingTransformation {
+    /// The team slot that asked; the request lapses if another Pokémon is active at resolution.
+    index: usize,
+    request: TransformationRequest,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -199,6 +215,14 @@ struct Fighter {
     original_types: Option<Vec<String>>,
     status: Option<String>,
     status_turns: Option<i8>,
+    /// Confusion, binding and Leech Seed are volatile: they end when the Pokémon leaves the field
+    /// and sit beside the major status instead of blocking it.
+    #[serde(default)]
+    confusion_turns: Option<i8>,
+    #[serde(default)]
+    trap_turns: Option<i8>,
+    #[serde(default)]
+    seeded: bool,
     #[serde(default)]
     stages: HashMap<String, i8>,
 }
@@ -213,6 +237,9 @@ struct Side {
     mega_used: bool,
     #[serde(default)]
     tera_used: bool,
+    /// A Mega Evolution requested this turn. Only its owner sees it until the turn resolves.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pending_transformation: Option<PendingTransformation>,
 }
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -221,6 +248,10 @@ struct Battle {
     player2: Side,
     #[serde(default)]
     events: Vec<String>,
+    /// Secret source of every roll in the match. It stays in the stored state and is never sent;
+    /// matches stored before it existed get one in `resolve_turn`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    seed: Option<String>,
 }
 
 fn invalid(message: &'static str) -> ApiError {
@@ -367,6 +398,9 @@ fn snapshot(
             transformation_kind: None, tera_type: None, original_types: None,
             status: None,
             status_turns: None,
+            confusion_turns: None,
+            trap_turns: None,
+            seeded: false,
             stages: HashMap::new(),
         });
     }
@@ -375,6 +409,7 @@ fn snapshot(
         username,
         active_index: 0,
         team, mega_used: false, tera_used: false,
+        pending_transformation: None,
     })
 }
 async fn saved_team(
@@ -427,7 +462,14 @@ async fn status(
 ) -> Result<Json<Value>, ApiError> {
     let account = profile_user(&state, &headers).await?;
     rate_limit(&state, format!("ranked-status:{}", account.id), 600)?;
+    start_sweeper(&state);
     let league = League::parse(&query.league)?;
+    // Polling keeps a queued player matchable; a closed tab stops refreshing and drops out.
+    sqlx::query("UPDATE ranked_queue SET last_seen=now() WHERE user_id=$1 AND league=$2")
+        .bind(account.id)
+        .bind(league.as_str())
+        .execute(&state.db)
+        .await?;
     expire_for_user(&state, account.id).await?;
     Ok(Json(view(&state, account.id, league).await?))
 }
@@ -467,21 +509,19 @@ async fn queue(
 ) -> Result<Json<Value>, ApiError> {
     let account = profile_user(&state, &headers).await?;
     rate_limit(&state, format!("ranked-queue:{}", account.id), 60)?;
+    start_sweeper(&state);
     let league = League::parse(&body.league)?;
     let team = saved_team(&state, account.id, account.username.clone(), league).await?;
+    expire_for_user(&state, account.id).await?;
     let mut tx = state.db.begin().await?;
+    // The player lock serializes one player's queue requests across both leagues, so parallel
+    // requests cannot pair the same player twice; the league lock serializes matchmaking.
+    lock_player(&mut tx, account.id).await?;
     sqlx::query("SELECT pg_advisory_xact_lock(hashtext($1))")
         .bind(format!("ranked:{}", league.as_str()))
         .execute(&mut *tx)
         .await?;
-    if sqlx::query(
-        "SELECT 1 FROM ranked_matches WHERE status='active' AND (player1_id=$1 OR player2_id=$1)",
-    )
-    .bind(account.id)
-    .fetch_optional(&mut *tx)
-    .await?
-    .is_some()
-    {
+    if in_match(&mut tx, account.id).await? {
         return Err(conflict("이미 진행 중인 랭크전이 있습니다."));
     }
     ensure_rating(&mut tx, account.id, league).await?;
@@ -490,21 +530,76 @@ async fn queue(
         .bind(league.as_str())
         .execute(&mut *tx)
         .await?;
-    sqlx::query("DELETE FROM ranked_queue WHERE joined_at<now()-interval '5 minutes'")
-        .execute(&mut *tx)
-        .await?;
-    sqlx::query("INSERT INTO ranked_queue(user_id,league,username,team,joined_at) VALUES($1,$2,$3,$4,now()) ON CONFLICT(user_id) DO UPDATE SET league=excluded.league,username=excluded.username,team=excluded.team,joined_at=now()")
+    drop_unseen_queue(&mut *tx).await?;
+    // Queueing again in the same league keeps the original place in line.
+    sqlx::query("INSERT INTO ranked_queue(user_id,league,username,team,joined_at,last_seen) VALUES($1,$2,$3,$4,now(),now()) ON CONFLICT(user_id) DO UPDATE SET joined_at=CASE WHEN ranked_queue.league=excluded.league THEN ranked_queue.joined_at ELSE now() END,league=excluded.league,username=excluded.username,team=excluded.team,last_seen=now()")
         .bind(account.id).bind(league.as_str()).bind(&account.username).bind(SqlJson(&team)).execute(&mut *tx).await?;
-    if let Some(other)=sqlx::query("SELECT user_id,team FROM ranked_queue WHERE league=$1 AND user_id<>$2 ORDER BY joined_at FOR UPDATE SKIP LOCKED LIMIT 1").bind(league.as_str()).bind(account.id).fetch_optional(&mut *tx).await?{
-        let other_id:Uuid=other.get("user_id"); let SqlJson(other_team):SqlJson<Side>=other.get("team"); let id=Uuid::new_v4();
-        ensure_rating(&mut tx,other_id,league).await?;
-        let battle=initial_battle(other_team,team);
+    let candidates=sqlx::query("SELECT user_id,team FROM ranked_queue WHERE league=$1 AND user_id<>$2 AND last_seen>=now()-interval '30 seconds' ORDER BY joined_at FOR UPDATE SKIP LOCKED LIMIT 10").bind(league.as_str()).bind(account.id).fetch_all(&mut *tx).await?;
+    for other in candidates {
+        let other_id: Uuid = other.get("user_id");
+        // A player whose own queue request is running waits for the next matchmaking.
+        if !try_lock_player(&mut tx, other_id).await? {
+            continue;
+        }
+        if in_match(&mut tx, other_id).await? {
+            // A queue row left behind by a player who is already playing.
+            sqlx::query("DELETE FROM ranked_queue WHERE user_id=$1")
+                .bind(other_id)
+                .execute(&mut *tx)
+                .await?;
+            continue;
+        }
+        let SqlJson(other_team): SqlJson<Side> = other.get("team");
+        let id = Uuid::new_v4();
+        ensure_rating(&mut tx, other_id, league).await?;
+        let battle = initial_battle(other_team, team);
         sqlx::query("INSERT INTO ranked_matches(id,league,player1_id,player2_id,state,deadline_at) VALUES($1,$2,$3,$4,$5,now()+interval '90 seconds')")
             .bind(id).bind(league.as_str()).bind(other_id).bind(account.id).bind(SqlJson(battle)).execute(&mut *tx).await?;
         sqlx::query("DELETE FROM ranked_queue WHERE user_id=$1 OR user_id=$2").bind(other_id).bind(account.id).execute(&mut *tx).await?;
+        break;
     }
     tx.commit().await?;
     Ok(Json(view(&state, account.id, league).await?))
+}
+
+fn player_lock_key(id: Uuid) -> String {
+    format!("ranked-player:{id}")
+}
+async fn lock_player(tx: &mut Transaction<'_, Postgres>, id: Uuid) -> Result<(), ApiError> {
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtext($1))")
+        .bind(player_lock_key(id))
+        .execute(&mut **tx)
+        .await?;
+    Ok(())
+}
+/// Never waits, so two matchmakers holding each other's players cannot deadlock.
+async fn try_lock_player(tx: &mut Transaction<'_, Postgres>, id: Uuid) -> Result<bool, ApiError> {
+    Ok(
+        sqlx::query_scalar::<_, bool>("SELECT pg_try_advisory_xact_lock(hashtext($1))")
+            .bind(player_lock_key(id))
+            .fetch_one(&mut **tx)
+            .await?,
+    )
+}
+/// Whether the player is in an active match of either league.
+async fn in_match(tx: &mut Transaction<'_, Postgres>, id: Uuid) -> Result<bool, ApiError> {
+    Ok(sqlx::query(
+        "SELECT 1 FROM ranked_matches WHERE status='active' AND (player1_id=$1 OR player2_id=$1) LIMIT 1",
+    )
+    .bind(id)
+    .fetch_optional(&mut **tx)
+    .await?
+    .is_some())
+}
+/// Queue rows whose player stopped polling for 30 seconds are gone. Rows another request holds
+/// are left for the next pass instead of waited on.
+async fn drop_unseen_queue(
+    executor: impl sqlx::Executor<'_, Database = Postgres>,
+) -> Result<(), ApiError> {
+    sqlx::query("DELETE FROM ranked_queue WHERE user_id IN (SELECT user_id FROM ranked_queue WHERE last_seen<now()-interval '30 seconds' FOR UPDATE SKIP LOCKED)")
+        .execute(executor)
+        .await?;
+    Ok(())
 }
 
 async fn cancel(
@@ -543,6 +638,7 @@ async fn action(
 ) -> Result<Json<Value>, ApiError> {
     let account = profile_user(&state, &headers).await?;
     rate_limit(&state, format!("ranked-action:{}", account.id), 600)?;
+    start_sweeper(&state);
     let mut tx = state.db.begin().await?;
     let row=sqlx::query("SELECT league,player1_id,player2_id,state,actions,turn,status,deadline_at<=now() expired FROM ranked_matches WHERE id=$1 FOR UPDATE").bind(id).fetch_optional(&mut *tx).await?.ok_or_else(not_found)?;
     let p1: Uuid = row.get("player1_id");
@@ -592,18 +688,19 @@ async fn action(
     if map.contains_key(&key) {
         return Err(conflict("이미 이번 턴의 행동을 제출했습니다."));
     }
+    let SqlJson(mut battle): SqlJson<Battle> = row.get("state");
+    normalize_battle(&mut battle);
+    let own_is_p1 = account.id == p1;
     if let Some(ref transformation) = input.transformation {
-        let SqlJson(mut current): SqlJson<Battle> = row.get("state");
-        apply_transformation(if account.id == p1 { &mut current.player1 } else { &mut current.player2 }, transformation)?;
-        sqlx::query("UPDATE ranked_matches SET state=$2,updated_at=now() WHERE id=$1").bind(id).bind(SqlJson(current)).execute(&mut *tx).await?;
+        request_transformation(if own_is_p1 { &mut battle.player1 } else { &mut battle.player2 }, transformation)?;
+        sqlx::query("UPDATE ranked_matches SET state=$2,updated_at=now() WHERE id=$1").bind(id).bind(SqlJson(&battle)).execute(&mut *tx).await?;
         tx.commit().await?;
         return Ok(Json(json!({"match":match_value(&state,id,account.id).await?})));
     }
-    let SqlJson(current): SqlJson<Battle> = row.get("state");
-    let (own_side, other_side, other) = if account.id == p1 {
-        (&current.player1, &current.player2, p2)
+    let (own_side, other_side, other) = if own_is_p1 {
+        (&battle.player1, &battle.player2, p2)
     } else {
-        (&current.player2, &current.player1, p1)
+        (&battle.player2, &battle.player1, p1)
     };
     check_turn_action(own_side, &input)?;
     // Resolution must never fail on the opponent's stored choice: that would roll back every
@@ -618,6 +715,10 @@ async fn action(
         map.remove(&other_key);
     }
     map.insert(key.clone(), serde_json::to_value(&input).unwrap());
+    if input.switch_index.is_some() {
+        // The Pokémon a pending Mega Evolution was for is leaving before it could happen.
+        (if own_is_p1 { &mut battle.player1 } else { &mut battle.player2 }).pending_transformation = None;
+    }
     if input.surrender {
         finalize(
             &mut tx,
@@ -629,8 +730,6 @@ async fn action(
         )
         .await?;
     } else if map.len() == 2 {
-        let SqlJson(mut battle): SqlJson<Battle> = row.get("state");
-        remove_legacy_tera(&mut battle.player1); remove_legacy_tera(&mut battle.player2);
         let a1: TurnAction = serde_json::from_value(map[&p1.to_string()].clone())
             .map_err(|_| invalid("대전 행동 정보가 손상되었습니다."))?;
         let a2: TurnAction = serde_json::from_value(map[&p2.to_string()].clone())
@@ -657,9 +756,10 @@ async fn action(
             .await?;
         }
     } else {
-        sqlx::query("UPDATE ranked_matches SET actions=$2,updated_at=now() WHERE id=$1")
+        sqlx::query("UPDATE ranked_matches SET state=$2,actions=$3,updated_at=now() WHERE id=$1")
             .bind(id)
-            .bind(SqlJson(actions))
+            .bind(SqlJson(&battle))
+            .bind(SqlJson(&actions))
             .execute(&mut *tx)
             .await?;
     }
@@ -699,6 +799,7 @@ fn active(side: &Side) -> &Fighter {
 fn auto_switch(side: &mut Side) {
     if side.team[side.active_index].hp <= 0 {
         if let Some(i) = side.team.iter().position(|m| m.hp > 0) {
+            leave_field(&mut side.team[side.active_index]);
             side.active_index = i;
             apply_preferred_transformation(side);
         }
@@ -708,11 +809,18 @@ fn apply_switch(side: &mut Side, index: usize) -> Result<(), ApiError> {
     if index >= side.team.len() || side.team[index].hp <= 0 || index == side.active_index {
         return Err(invalid("교체할 수 없는 포켓몬입니다."));
     }
-    side.team[side.active_index].stages.clear();
-    side.team[side.active_index].choice_move = None;
+    leave_field(&mut side.team[side.active_index]);
     side.active_index = index;
     apply_preferred_transformation(side);
     Ok(())
+}
+/// Stat stages, a Choice lock and volatile effects last only while the Pokémon is on the field.
+fn leave_field(fighter: &mut Fighter) {
+    fighter.stages.clear();
+    fighter.choice_move = None;
+    fighter.confusion_turns = None;
+    fighter.trap_turns = None;
+    fighter.seeded = false;
 }
 
 fn apply_preferred_transformation(side: &mut Side) {
@@ -735,6 +843,27 @@ fn initial_battle(mut player1: Side, mut player2: Side) -> Battle {
         player1,
         player2,
         events: vec!["랭크전이 시작되었습니다.".into()],
+        seed: Some(new_seed()),
+    }
+}
+
+/// A requested Mega Evolution waits for the turn to resolve, so the opponent cannot see it
+/// before locking in and it lapses if its Pokémon switches out first.
+fn request_transformation(side: &mut Side, request: &TransformationRequest) -> Result<(), ApiError> {
+    let mut preview = side.clone();
+    apply_pending_transformation(&mut preview);
+    apply_transformation(&mut preview, request)?;
+    side.pending_transformation = Some(PendingTransformation {
+        index: side.active_index,
+        request: request.clone(),
+    });
+    Ok(())
+}
+fn apply_pending_transformation(side: &mut Side) {
+    if let Some(pending) = side.pending_transformation.take() {
+        if pending.index == side.active_index {
+            let _ = apply_transformation(side, &pending.request);
+        }
     }
 }
 
@@ -783,6 +912,29 @@ fn remove_legacy_tera(side: &mut Side) {
     }
 }
 
+/// Brings a stored battle up to the current rules: legacy Tera is undone, and old matches that
+/// kept every ailment in the single status slot keep only what this engine carries out.
+fn normalize_battle(battle: &mut Battle) {
+    for side in [&mut battle.player1, &mut battle.player2] {
+        remove_legacy_tera(side);
+        let active_index = side.active_index;
+        for (index, fighter) in side.team.iter_mut().enumerate() {
+            let on_field = index == active_index;
+            match fighter.status.as_deref() {
+                None | Some("sleep" | "freeze" | "paralysis" | "poison" | "burn") => continue,
+                // These never counted down before, so the active Pokémon gets the shortest
+                // duration; a benched one has already left the field.
+                Some("confusion") if on_field => fighter.confusion_turns = Some(2),
+                Some("trap") if on_field => fighter.trap_turns = Some(2),
+                Some("leech-seed") if on_field => fighter.seeded = true,
+                Some(_) => {}
+            }
+            fighter.status = None;
+            fighter.status_turns = None;
+        }
+    }
+}
+
 fn stab_multiplier(monster: &Fighter, move_type: &str) -> f64 {
     if monster.types.iter().any(|kind| kind == move_type) { 1.5 } else { 1.0 }
 }
@@ -791,10 +943,18 @@ fn effective_move(_monster: &Fighter, mv: &Move) -> (String, String, i64) {
     (mv.move_type.clone(), mv.damage_class.clone(), mv.power)
 }
 
+/// The move a Choice item still locks the fighter into. A lock on a move the fighter no longer
+/// knows, or without a Choice item, is ignored, so it can never leave the fighter unable to act.
+fn choice_lock(fighter: &Fighter) -> Option<i64> {
+    fighter.choice_move.filter(|id| {
+        matches!(tool(fighter), Some("choice-band" | "choice-specs" | "choice-scarf"))
+            && fighter.moves.iter().any(|known| known.id == *id)
+    })
+}
 fn selected_move(side: &Side, index: usize) -> Result<Move, ApiError> {
     let fighter = active(side);
     let selected = fighter.moves.get(index).ok_or(invalid("선택한 기술이 없습니다."))?;
-    if fighter.choice_move.is_some_and(|id| id != selected.id) { return Err(invalid("구애 도구에 고정된 기술만 사용할 수 있습니다.")); }
+    if choice_lock(fighter).is_some_and(|id| id != selected.id) { return Err(invalid("구애 도구에 고정된 기술만 사용할 수 있습니다.")); }
     Ok(selected.clone())
 }
 
@@ -806,6 +966,10 @@ fn resolve_turn(
     a2: TurnAction,
 ) -> Result<(), ApiError> {
     battle.events.clear();
+    let dice = Dice {
+        seed: battle.seed.get_or_insert_with(|| legacy_seed(id)).clone(),
+        turn,
+    };
     if let Some(i) = a1.switch_index {
         apply_switch(&mut battle.player1, i)?;
         battle
@@ -818,6 +982,9 @@ fn resolve_turn(
             .events
             .push(format!("{}이(가) 교체했습니다.", battle.player2.username));
     }
+    // A Mega Evolution requested this turn happens before anyone moves, so its speed counts.
+    apply_pending_transformation(&mut battle.player1);
+    apply_pending_transformation(&mut battle.player2);
     let p1move = a1
         .move_index
         .map(|i| selected_move(&battle.player1, i))
@@ -829,20 +996,19 @@ fn resolve_turn(
     let first = match (&p1move, &p2move) {
         (Some(a), Some(b)) => {
             let same = a.priority == b.priority;
-            let p1_quick = same && tool(active(&battle.player1)) == Some("quick-claw") && roll(id, turn, 81) < 20;
-            let p2_quick = same && tool(active(&battle.player2)) == Some("quick-claw") && roll(id, turn, 82) < 20;
+            let p1_quick = same && tool(active(&battle.player1)) == Some("quick-claw") && dice.percent(Roll::QuickClaw, true, 0) < 20;
+            let p2_quick = same && tool(active(&battle.player2)) == Some("quick-claw") && dice.percent(Roll::QuickClaw, false, 0) < 20;
             if p1_quick != p2_quick {
                 let holder = active(if p1_quick { &battle.player1 } else { &battle.player2 }).nickname.clone();
                 battle.events.push(format!("{holder}은(는) 선제공격손톱으로 먼저 움직였습니다."));
                 p1_quick
             } else {
+                let speed1 = effective_stat(active(&battle.player1), "speed");
+                let speed2 = effective_stat(active(&battle.player2), "speed");
                 a.priority > b.priority
                     || (same
-                        && (effective_stat(active(&battle.player1), "speed")
-                            > effective_stat(active(&battle.player2), "speed")
-                            || (effective_stat(active(&battle.player1), "speed")
-                                == effective_stat(active(&battle.player2), "speed")
-                                && deterministic(id, turn, 0) % 2 == 0)))
+                        && (speed1 > speed2
+                            || (speed1 == speed2 && dice.draw(Roll::SpeedTie, true, 0) % 2 == 0)))
             }
         }
         (Some(_), None) => true,
@@ -855,7 +1021,7 @@ fn resolve_turn(
             p2move.clone()
         };
         if let Some(mv) = selected {
-            attack(id, turn, battle, p1_turn, &mv);
+            attack(&dice, battle, p1_turn, &mv);
             for side in [&mut battle.player1, &mut battle.player2] {
                 let index = side.active_index;
                 react_held_items(&mut side.team[index], &mut battle.events);
@@ -868,8 +1034,58 @@ fn resolve_turn(
     auto_switch(&mut battle.player2);
     Ok(())
 }
-fn deterministic(id: Uuid, turn: i32, salt: u8) -> u64 {
-    id.as_u128() as u64 ^ (turn as u64).wrapping_mul(0x9e3779b97f4a7c15) ^ salt as u64
+
+/// What a roll decides. With the turn, the side and an index it selects an independent draw.
+#[derive(Clone, Copy)]
+enum Roll {
+    SpeedTie = 1,
+    QuickClaw,
+    Accuracy,
+    Thaw,
+    FullParalysis,
+    ConfusionHit,
+    Hits,
+    FocusBand,
+    StatChance,
+    AilmentChance,
+    AilmentKind,
+    Duration,
+    Psywave,
+}
+/// The rolls of one turn. Each hashes the match's secret seed with the turn, purpose, side and
+/// index, so a client cannot predict an outcome and no roll follows from another.
+struct Dice {
+    seed: String,
+    turn: i32,
+}
+impl Dice {
+    fn draw(&self, roll: Roll, p1: bool, index: u8) -> u64 {
+        let digest = Sha256::new()
+            .chain_update(self.seed.as_bytes())
+            .chain_update(self.turn.to_le_bytes())
+            .chain_update([roll as u8, u8::from(p1), index])
+            .finalize();
+        u64::from_le_bytes(digest[..8].try_into().expect("sha256 digest"))
+    }
+    fn percent(&self, roll: Roll, p1: bool, index: u8) -> i64 {
+        (self.draw(roll, p1, index) % 100) as i64
+    }
+}
+fn new_seed() -> String {
+    let mut seed = [0u8; 32];
+    rand::rngs::OsRng.fill_bytes(&mut seed);
+    hex::encode(seed)
+}
+/// Matches stored before per-match seeds existed derive one from a key that never leaves this
+/// process, so their remaining rolls are as unpredictable as a new match's.
+fn legacy_seed(id: Uuid) -> String {
+    static KEY: OnceLock<[u8; 32]> = OnceLock::new();
+    let key = KEY.get_or_init(|| {
+        let mut key = [0u8; 32];
+        rand::rngs::OsRng.fill_bytes(&mut key);
+        key
+    });
+    hex::encode(Sha256::new().chain_update(key).chain_update(id.as_bytes()).finalize())
 }
 fn effectiveness(move_type: &str, types: &[String]) -> f64 {
     types
@@ -991,11 +1207,12 @@ fn react_held_items(monster: &mut Fighter, events: &mut Vec<String>) {
         Some("lum-berry")
             if matches!(
                 monster.status.as_deref(),
-                Some("sleep" | "freeze" | "paralysis" | "poison" | "burn" | "confusion")
-            ) =>
+                Some("sleep" | "freeze" | "paralysis" | "poison" | "burn")
+            ) || monster.confusion_turns.is_some() =>
         {
             monster.status = None;
             monster.status_turns = None;
+            monster.confusion_turns = None;
             monster.held_tool_used = true;
             events.push(format!("{}은(는) 리샘열매로 상태이상이 나았습니다.", monster.nickname));
         }
@@ -1050,10 +1267,7 @@ fn self_stat_target(mv: &Move) -> bool {
         _ => USER_STAT_MOVES.contains(&mv.id) || self_target(mv),
     }
 }
-fn roll(id: Uuid, turn: i32, salt: u8) -> i64 {
-    (deterministic(id, turn, salt) % 100) as i64
-}
-fn can_act(id: Uuid, turn: i32, p1: bool, side: &mut Side, events: &mut Vec<String>) -> bool {
+fn can_act(dice: &Dice, p1: bool, side: &mut Side, events: &mut Vec<String>) -> bool {
     let monster = &mut side.team[side.active_index];
     if monster.status.as_deref() == Some("sleep") {
         let left = monster.status_turns.unwrap_or(1);
@@ -1067,7 +1281,7 @@ fn can_act(id: Uuid, turn: i32, p1: bool, side: &mut Side, events: &mut Vec<Stri
         events.push(format!("{}은(는) 잠에서 깨어났습니다.", monster.nickname));
     }
     if monster.status.as_deref() == Some("freeze") {
-        if roll(id, turn, if p1 { 31 } else { 32 }) < 20 {
+        if dice.percent(Roll::Thaw, p1, 0) < 20 {
             monster.status = None;
             monster.status_turns = None;
             events.push(format!("{}의 얼음이 녹았습니다.", monster.nickname));
@@ -1080,13 +1294,28 @@ fn can_act(id: Uuid, turn: i32, p1: bool, side: &mut Side, events: &mut Vec<Stri
         }
     }
     if monster.status.as_deref() == Some("paralysis")
-        && roll(id, turn, if p1 { 33 } else { 34 }) < 25
+        && dice.percent(Roll::FullParalysis, p1, 0) < 25
     {
         events.push(format!(
             "{}은(는) 마비되어 움직일 수 없습니다.",
             monster.nickname
         ));
         return false;
+    }
+    // Like the client rules: each action uses up a turn of confusion, and while it lasts a third
+    // of actions hit the user for 1/8 of its max HP instead.
+    if let Some(left) = monster.confusion_turns {
+        if left <= 1 {
+            monster.confusion_turns = None;
+            events.push(format!("{}의 혼란이 풀렸습니다.", monster.nickname));
+        } else {
+            monster.confusion_turns = Some(left - 1);
+            if dice.draw(Roll::ConfusionHit, p1, 0) % 3 == 0 {
+                monster.hp = (monster.hp - (monster.max_hp / 8).max(1)).max(0);
+                events.push(format!("{}은(는) 혼란으로 자신을 공격했습니다.", monster.nickname));
+                return false;
+            }
+        }
     }
     true
 }
@@ -1158,16 +1387,24 @@ fn support_move(
     }
     true
 }
-fn fixed_damage(mv: &Move, attacker: &Fighter, defender: &Fighter) -> Option<i64> {
+fn one_hit_ko(mv: &Move) -> bool {
+    matches!(mv.id, 12 | 32 | 90)
+}
+/// Damage that skips the attack formula, as in the client rules. Guillotine, Horn Drill and
+/// Fissure take all remaining HP (every ranked fighter is level 50, so their level check never
+/// fails); Psywave deals 0.5-1.5x the user's level from a 0-99 `roll`.
+fn fixed_damage(mv: &Move, attacker: &Fighter, defender: &Fighter, roll: i64) -> Option<i64> {
     match mv.id {
         49 => Some(20),
         82 => Some(40),
         69 | 101 => Some(attacker.level),
         162 => Some((defender.hp / 2).max(1)),
+        _ if one_hit_ko(mv) => Some(defender.hp),
+        149 => Some((attacker.level * (50 + roll) / 100).max(1)),
         _ => None,
     }
 }
-fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
+fn attack(dice: &Dice, battle: &mut Battle, p1: bool, mv: &Move) {
     let (attacker, defender) = if p1 {
         (&mut battle.player1, &mut battle.player2)
     } else {
@@ -1176,7 +1413,7 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
     if !alive(attacker)
         || !alive(defender)
         || active(attacker).hp <= 0
-        || !can_act(id, turn, p1, attacker, &mut battle.events)
+        || !can_act(dice, p1, attacker, &mut battle.events)
     {
         return;
     }
@@ -1199,7 +1436,7 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
         / stage_multiplier(*active(defender).stages.get("evasion").unwrap_or(&0))
         * accuracy_tool)
     .round() as i64;
-    if mv.accuracy > 0 && roll(id, turn, if p1 { 1 } else { 2 }) >= accuracy {
+    if mv.accuracy > 0 && dice.percent(Roll::Accuracy, p1, 0) >= accuracy {
         battle.events.push(format!(
             "{}의 {}이(가) 빗나갔습니다.",
             active(attacker).nickname,
@@ -1245,9 +1482,15 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
             active(defender).nickname,
             mv.name
         ));
-    } else if let Some(mut damage) = fixed_damage(mv, active(attacker), active(defender)) {
+    } else if let Some(mut damage) = fixed_damage(
+        mv,
+        active(attacker),
+        active(defender),
+        dice.percent(Roll::Psywave, p1, 0),
+    ) {
         let target = &mut defender.team[defender.active_index];
-        if type_mult == 0.0 || (matches!(mv.id, 12 | 32 | 90) && target.ability.as_deref() == Some("sturdy")) {
+        let sturdy_blocks = one_hit_ko(mv) && target.ability.as_deref() == Some("sturdy");
+        if type_mult == 0.0 || sturdy_blocks {
             damage = 0;
         }
         if (target.ability.as_deref() == Some("sturdy")
@@ -1258,23 +1501,21 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
             if target.ability.as_deref() != Some("sturdy") { target.held_tool_used = true; }
             damage = (target.hp - 1).max(0);
         }
-        if damage >= target.hp && target.hp > 0 && tool(target) == Some("focus-band") && roll(id, turn, if p1 { 83 } else { 84 }) < 10 {
+        if damage >= target.hp && target.hp > 0 && tool(target) == Some("focus-band") && dice.percent(Roll::FocusBand, p1, 0) < 10 {
             damage = target.hp - 1;
             banded = true;
         }
         total_damage = damage.min(target.hp);
         target.hp -= total_damage;
-        battle.events.push(format!(
-            "{}의 {}: {} 피해.",
-            active(attacker).nickname,
-            mv.name,
-            total_damage
-        ));
+        battle.events.push(if sturdy_blocks {
+            format!("{}의 특성이 {}을(를) 막았습니다.", active(defender).nickname, mv.name)
+        } else {
+            format!("{}의 {}: {} 피해.", active(attacker).nickname, mv.name, total_damage)
+        });
     } else if move_power > 0 && damage_class != "status" {
         let hits = match (mv.min_hits, mv.max_hits) {
             (Some(min), Some(max)) if min > 0 && max >= min => {
-                min + (deterministic(id, turn, if p1 { 41 } else { 42 }) % (max - min + 1) as u64)
-                    as i64
+                min + (dice.draw(Roll::Hits, p1, 0) % (max - min + 1) as u64) as i64
             }
             _ => 1,
         };
@@ -1320,7 +1561,7 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
             if damage >= target.hp
                 && target.hp > 0
                 && tool(target) == Some("focus-band")
-                && roll(id, turn, (if p1 { 83 } else { 84 }) + 2 * hit as u8) < 10
+                && dice.percent(Roll::FocusBand, p1, hit as u8) < 10
             {
                 damage = target.hp - 1;
                 banded = true;
@@ -1405,9 +1646,9 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
     }
     if mv.id == 229 && total_damage > 0 {
         let actor = &mut attacker.team[attacker.active_index];
-        if matches!(actor.status.as_deref(), Some("trap" | "leech-seed")) {
-            actor.status = None;
-            actor.status_turns = None;
+        if actor.trap_turns.is_some() || actor.seeded {
+            actor.trap_turns = None;
+            actor.seeded = false;
             battle
                 .events
                 .push(format!("{}은(는) 속박에서 벗어났습니다.", actor.nickname));
@@ -1424,7 +1665,7 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
         .unwrap_or(100);
     if type_mult > 0.0
         && !mv.stat_changes.is_empty()
-        && roll(id, turn, if p1 { 51 } else { 52 }) < stat_chance
+        && dice.percent(Roll::StatChance, p1, 0) < stat_chance
     {
         let target = if self_stat_target(mv) {
             &mut attacker.team[attacker.active_index]
@@ -1444,48 +1685,87 @@ fn attack(id: Uuid, turn: i32, battle: &mut Battle, p1: bool, mv: &Move) {
             mv.effect_chance
         })
         .unwrap_or(0);
-    if type_mult > 0.0 && roll(id, turn, if p1 { 61 } else { 62 }) < ailment_chance {
-        if let Some(ailment) = mv.ailment.as_deref().filter(|v| *v != "none") {
+    let ailment = move_ailment(mv, dice.draw(Roll::AilmentKind, p1, 0));
+    if type_mult > 0.0 && dice.percent(Roll::AilmentChance, p1, 0) < ailment_chance {
+        if let Some(ailment) = ailment {
             let target = if self_target(mv) {
                 &mut attacker.team[attacker.active_index]
             } else {
                 &mut defender.team[defender.active_index]
             };
+            inflict(target, ailment, dice, p1, &mut battle.events);
+        }
+    }
+    // Effects this engine does not carry out (Protect, Roar, Yawn...) are said to do nothing.
+    if mv.damage_class == "status"
+        && type_mult > 0.0
+        && mv.stat_changes.is_empty()
+        && !mv.healing.is_some_and(|v| v > 0)
+        && ailment.is_none()
+    {
+        battle.events.push(format!("{}: 아무 일도 일어나지 않았습니다.", mv.name));
+    }
+}
+/// The ailment a move inflicts, limited to what this engine carries out: the major statuses,
+/// confusion, binding and Leech Seed. Tri Attack's "unknown" is a burn, paralysis or freeze
+/// picked by `pick`; the rest (Protect, Ingrain, Yawn, Attract, grounding...) is not kept.
+fn move_ailment(mv: &Move, pick: u64) -> Option<&'static str> {
+    const KEPT: [&str; 8] = ["sleep", "freeze", "paralysis", "poison", "burn", "confusion", "trap", "leech-seed"];
+    if mv.id == TRI_ATTACK {
+        return Some(["burn", "paralysis", "freeze"][(pick % 3) as usize]);
+    }
+    let ailment = mv.ailment.as_deref()?;
+    KEPT.into_iter().find(|kept| *kept == ailment)
+}
+fn inflict(target: &mut Fighter, ailment: &str, dice: &Dice, p1: bool, events: &mut Vec<String>) {
+    if target.hp <= 0 {
+        return;
+    }
+    // Two to five turns for confusion and binding, as in the client rules.
+    let volatile_turns = || Some(2 + (dice.draw(Roll::Duration, p1, 0) % 4) as i8);
+    match ailment {
+        "confusion" if target.confusion_turns.is_none() => target.confusion_turns = volatile_turns(),
+        "trap" if target.trap_turns.is_none() => target.trap_turns = volatile_turns(),
+        "leech-seed" if !target.seeded => target.seeded = true,
+        "confusion" | "trap" | "leech-seed" => return,
+        _ => {
             let immune = (ailment == "poison"
                 && target.types.iter().any(|t| t == "poison" || t == "steel"))
                 || (ailment == "burn" && target.types.iter().any(|t| t == "fire"))
                 || (ailment == "freeze" && target.types.iter().any(|t| t == "ice"))
                 || (ailment == "paralysis" && target.types.iter().any(|t| t == "electric"));
-            if target.hp > 0 && target.status.is_none() && !immune {
-                target.status = Some(ailment.into());
-                target.status_turns = if ailment == "sleep" {
-                    Some(2 + (deterministic(id, turn, 71) % 3) as i8)
-                } else {
-                    None
-                };
-                battle.events.push(format!(
-                    "{}은(는) {} 상태가 되었습니다.",
-                    target.nickname, ailment
-                ));
+            if target.status.is_some() || immune {
+                return;
             }
+            target.status = Some(ailment.into());
+            target.status_turns = (ailment == "sleep")
+                .then(|| 2 + (dice.draw(Roll::Duration, p1, 0) % 3) as i8);
         }
     }
+    events.push(format!(
+        "{}은(는) {} 상태가 되었습니다.",
+        target.nickname, ailment
+    ));
 }
 fn residual(side: &mut Side, events: &mut Vec<String>) {
     if active(side).hp <= 0 {
         return;
     }
     let target = &mut side.team[side.active_index];
-    if matches!(
-        target.status.as_deref(),
-        Some("poison" | "burn" | "trap" | "leech-seed")
-    ) {
-        let damage = (target.max_hp / 8).max(1);
-        target.hp = (target.hp - damage).max(0);
-        events.push(format!(
-            "{}은(는) 상태 이상으로 {} 피해를 입었습니다.",
-            target.nickname, damage
-        ));
+    let poisoned = matches!(target.status.as_deref(), Some("poison" | "burn"));
+    for hurt in [poisoned, target.seeded, target.trap_turns.is_some()] {
+        if hurt && target.hp > 0 {
+            let damage = (target.max_hp / 8).max(1);
+            target.hp = (target.hp - damage).max(0);
+            events.push(format!(
+                "{}은(는) 상태 이상으로 {} 피해를 입었습니다.",
+                target.nickname, damage
+            ));
+        }
+    }
+    // Binding wears off after its turns, like in the client rules.
+    if let Some(left) = target.trap_turns {
+        target.trap_turns = (left > 1).then(|| left - 1);
     }
     if target.hp > 0 && target.held_tool.as_deref() == Some("leftovers") {
         target.hp = (target.hp + (target.max_hp / 16).max(1)).min(target.max_hp);
@@ -1587,6 +1867,46 @@ async fn expire_for_user(state: &AppState, id: Uuid) -> Result<(), ApiError> {
     Ok(())
 }
 
+/// Expired matches must end even when neither player comes back. The router is built before it
+/// has the database, so the first ranked request starts the sweep; later calls do nothing.
+pub(crate) fn start_sweeper(state: &AppState) {
+    static STARTED: Once = Once::new();
+    STARTED.call_once(|| {
+        let db = state.db.clone();
+        tokio::spawn(async move {
+            let mut ticks = tokio::time::interval(Duration::from_secs(SWEEP_SECONDS));
+            ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                ticks.tick().await;
+                if let Err(error) = sweep(&db).await {
+                    tracing::warn!(?error, "Ranked sweep failed");
+                }
+            }
+        });
+    });
+}
+/// Finalizes expired active matches through the same timeout rules a participant's request
+/// uses, drops queue rows nobody polls, and prunes completed matches after 30 days.
+async fn sweep(db: &PgPool) -> Result<(), ApiError> {
+    for _ in 0..100 {
+        let mut tx = db.begin().await?;
+        // A participant's own request may be finalizing a match already; it is skipped, not waited on.
+        let Some(row) = sqlx::query("SELECT id,player1_id,player2_id,actions FROM ranked_matches WHERE status='active' AND deadline_at<=now() ORDER BY deadline_at FOR UPDATE SKIP LOCKED LIMIT 1")
+            .fetch_optional(&mut *tx)
+            .await?
+        else {
+            break;
+        };
+        finalize_timeout(&mut tx, row.get("id"), row.get("player1_id"), row.get("player2_id"), row.get::<SqlJson<Value>, _>("actions").0).await?;
+        tx.commit().await?;
+    }
+    drop_unseen_queue(db).await?;
+    sqlx::query("DELETE FROM ranked_matches WHERE id IN (SELECT id FROM ranked_matches WHERE status='completed' AND completed_at<now()-interval '30 days' LIMIT 500)")
+        .execute(db)
+        .await?;
+    Ok(())
+}
+
 async fn current_match(
     state: &AppState,
     id: Uuid,
@@ -1598,8 +1918,14 @@ async fn current_match(
         None => Ok(None),
     }
 }
-fn presentation_side(mut side: Side) -> Side {
-    for fighter in &mut side.team {
+/// The viewer's own side. A pending Mega Evolution is shown as already applied, a stale Choice
+/// lock is left out, and the remaining sleep, confusion and binding turns stay on the server.
+fn own_side_view(side: &Side) -> Value {
+    let mut shown = side.clone();
+    apply_pending_transformation(&mut shown);
+    shown.pending_transformation = side.pending_transformation.clone();
+    for fighter in &mut shown.team {
+        fighter.choice_move = choice_lock(fighter);
         fighter.moves = fighter.moves.iter().map(|source| {
             let (move_type, damage_class, power) = effective_move(fighter, source);
             let mut view = source.clone();
@@ -1607,28 +1933,41 @@ fn presentation_side(mut side: Side) -> Side {
             view
         }).collect();
     }
-    side
+    let mut value = serde_json::to_value(&shown).unwrap_or_default();
+    if let Some(team) = value.get_mut("team").and_then(Value::as_array_mut) {
+        for fighter in team.iter_mut().filter_map(Value::as_object_mut) {
+            for hidden in ["statusTurns", "confusionTurns", "trapTurns"] {
+                fighter.remove(hidden);
+            }
+        }
+    }
+    value
+}
+/// What the opponent may see: the trainer and the active Pokémon's form, typing, HP and status.
+/// The bench, moves, held items, abilities, IVs and Mega plans stay hidden.
+fn opponent_view(side: &Side) -> Value {
+    let fighter = active(side);
+    json!({"userId":side.user_id,"username":side.username,"activeIndex":0,"team":[{
+        "speciesId":fighter.species_id,"nickname":fighter.nickname,"level":fighter.level,"hp":fighter.hp,"maxHp":fighter.max_hp,
+        "types":fighter.types,"regionalForm":fighter.regional_form,"status":fighter.status}]})
 }
 
 async fn match_value(state: &AppState, id: Uuid, viewer: Uuid) -> Result<Value, ApiError> {
     let row=sqlx::query("SELECT league,state,actions,turn,status,winner_id,result_reason,rating_changes,deadline_at::text deadline_at FROM ranked_matches WHERE id=$1").bind(id).fetch_optional(&state.db).await?.ok_or_else(not_found)?;
     let SqlJson(mut battle): SqlJson<Battle> = row.get("state");
-    remove_legacy_tera(&mut battle.player1); remove_legacy_tera(&mut battle.player2);
-    let p1 = battle.player1.user_id;
-    let (p_self, p_other) = if viewer == p1 {
-        (battle.player1, battle.player2)
+    normalize_battle(&mut battle);
+    let (p_self, p_other) = if viewer == battle.player1.user_id {
+        (&battle.player1, &battle.player2)
     } else {
-        (battle.player2, battle.player1)
+        (&battle.player2, &battle.player1)
     };
     let actions = row.get::<SqlJson<Value>, _>("actions").0;
-    let p_self = presentation_side(p_self);
-    let p_other = presentation_side(p_other);
     let submitted = actions
         .as_object()
         .is_some_and(|m| m.contains_key(&viewer.to_string()));
     let status: String = row.get("status");
     Ok(
-        json!({"id":id,"league":row.get::<String,_>("league"),"status":status,"turn":row.get::<i32,_>("turn"),"deadlineAt":row.get::<String,_>("deadline_at"),"selfSide":p_self,"opponentSide":p_other,"events":battle.events,"awaitingOpponent":status=="active"&&submitted,"winnerId":row.get::<Option<Uuid>,_>("winner_id"),"resultReason":row.get::<Option<String>,_>("result_reason"),"ratingChange":row.get::<SqlJson<Value>,_>("rating_changes").0.get(viewer.to_string()).cloned().unwrap_or(json!(0))}),
+        json!({"id":id,"league":row.get::<String,_>("league"),"status":status,"turn":row.get::<i32,_>("turn"),"deadlineAt":row.get::<String,_>("deadline_at"),"selfSide":own_side_view(p_self),"opponentSide":opponent_view(p_other),"events":battle.events,"awaitingOpponent":status=="active"&&submitted,"winnerId":row.get::<Option<Uuid>,_>("winner_id"),"resultReason":row.get::<Option<String>,_>("result_reason"),"ratingChange":row.get::<SqlJson<Value>,_>("rating_changes").0.get(viewer.to_string()).cloned().unwrap_or(json!(0))}),
     )
 }
 
@@ -1689,25 +2028,38 @@ mod tests {
             individual_values: None, preferred_transformation: None, transformation_kind: None, tera_type: None, original_types: None,
             status: None,
             status_turns: None,
+            confusion_turns: None,
+            trap_turns: None,
+            seeded: false,
             stages: HashMap::new(),
+        }
+    }
+    const TEST_SEED: &str = "ranked-test-seed";
+    fn dice(turn: i32) -> Dice {
+        Dice { seed: TEST_SEED.into(), turn }
+    }
+    fn side(id: u128, name: &str, team: Vec<Fighter>) -> Side {
+        Side {
+            user_id: Uuid::from_u128(id),
+            username: name.into(),
+            active_index: 0,
+            team, mega_used: false, tera_used: false,
+            pending_transformation: None,
         }
     }
     fn battle(left: Fighter, right: Fighter) -> Battle {
         Battle {
-            player1: Side {
-                user_id: Uuid::from_u128(1),
-                username: "one".into(),
-                active_index: 0,
-                team: vec![left], mega_used: false, tera_used: false,
-            },
-            player2: Side {
-                user_id: Uuid::from_u128(2),
-                username: "two".into(),
-                active_index: 0,
-                team: vec![right], mega_used: false, tera_used: false,
-            },
+            player1: side(1, "one", vec![left]),
+            player2: side(2, "two", vec![right]),
             events: vec![],
+            seed: Some(TEST_SEED.into()),
         }
+    }
+    /// A copy of a catalog move that never misses, for tests about what a hit does.
+    fn sure_hit(move_id: i64) -> Move {
+        let mut mv = catalog().moves[&move_id].clone();
+        mv.accuracy = 0;
+        mv
     }
 
     #[test]
@@ -1762,19 +2114,13 @@ mod tests {
 
         let mut sash_battle = battle(fighter(150, 63, None), fighter(10, 33, None));
         sash_battle.player2.team[0].held_tool = Some("focus-sash".into());
-        attack(
-            Uuid::nil(),
-            1,
-            &mut sash_battle,
-            true,
-            &catalog().moves[&63],
-        );
+        attack(&dice(1), &mut sash_battle, true, &sure_hit(63));
         assert_eq!(active(&sash_battle.player2).hp, 1);
 
         let mut orb_battle = battle(fighter(25, 33, None), fighter(10, 33, None));
         orb_battle.player1.team[0].held_tool = Some("life-orb".into());
         let before = active(&orb_battle.player1).hp;
-        attack(Uuid::nil(), 1, &mut orb_battle, true, &catalog().moves[&33]);
+        attack(&dice(1), &mut orb_battle, true, &catalog().moves[&33]);
         assert_eq!(
             active(&orb_battle.player1).hp,
             before - (active(&orb_battle.player1).max_hp / 10).max(1)
@@ -1799,7 +2145,7 @@ mod tests {
             let mut game = battle(fighter(4, move_id, None), fighter(defender, 33, None));
             game.player1.team[0].held_tool = tool.map(str::to_owned);
             let before = active(&game.player2).hp;
-            attack(Uuid::nil(), 1, &mut game, true, &catalog().moves[&move_id]);
+            attack(&dice(1), &mut game, true, &catalog().moves[&move_id]);
             before - active(&game.player2).hp
         };
         let ember = dealt(None, 52, 143);
@@ -1825,7 +2171,7 @@ mod tests {
 
         let mut vest = battle(fighter(143, 45, None), fighter(25, 33, None));
         vest.player1.team[0].held_tool = Some("assault-vest".into());
-        attack(Uuid::nil(), 1, &mut vest, true, &catalog().moves[&45]);
+        attack(&dice(1), &mut vest, true, &catalog().moves[&45]);
         assert!(active(&vest.player2).stages.get("attack").is_none_or(|stage| *stage == 0));
         assert!(vest.events.iter().any(|event| event.contains("돌격조끼")));
     }
@@ -1835,21 +2181,21 @@ mod tests {
         let mut balloon = battle(fighter(143, 89, None), fighter(143, 33, None));
         balloon.player2.team[0].held_tool = Some("air-balloon".into());
         let full = active(&balloon.player2).hp;
-        attack(Uuid::nil(), 1, &mut balloon, true, &catalog().moves[&89]);
+        attack(&dice(1), &mut balloon, true, &catalog().moves[&89]);
         assert_eq!(active(&balloon.player2).hp, full);
-        attack(Uuid::nil(), 2, &mut balloon, true, &catalog().moves[&33]);
+        attack(&dice(2), &mut balloon, true, &catalog().moves[&33]);
         assert!(active(&balloon.player2).held_tool_used);
         let mut loaded: Battle = serde_json::from_value(serde_json::to_value(&balloon).unwrap()).unwrap();
         let popped = active(&loaded.player2).hp;
-        attack(Uuid::nil(), 3, &mut loaded, true, &catalog().moves[&89]);
+        attack(&dice(3), &mut loaded, true, &catalog().moves[&89]);
         assert!(active(&loaded.player2).hp < popped);
 
         let mut policy = battle(fighter(7, 55, None), fighter(248, 33, None));
         policy.player2.team[0].held_tool = Some("weakness-policy".into());
-        attack(Uuid::nil(), 1, &mut policy, true, &catalog().moves[&55]);
+        attack(&dice(1), &mut policy, true, &catalog().moves[&55]);
         assert_eq!(active(&policy.player2).stages.get("attack"), Some(&2));
         assert_eq!(active(&policy.player2).stages.get("specialAttack"), Some(&2));
-        attack(Uuid::nil(), 2, &mut policy, true, &catalog().moves[&55]);
+        attack(&dice(2), &mut policy, true, &catalog().moves[&55]);
         assert_eq!(active(&policy.player2).stages.get("attack"), Some(&2));
 
         let mut sitrus = fighter(143, 33, None);
@@ -1901,18 +2247,18 @@ mod tests {
         let mut helmet = battle(fighter(143, 33, None), fighter(143, 33, None));
         helmet.player2.team[0].held_tool = Some("rocky-helmet".into());
         let max = active(&helmet.player1).max_hp;
-        attack(Uuid::nil(), 1, &mut helmet, true, &catalog().moves[&33]);
+        attack(&dice(1), &mut helmet, true, &catalog().moves[&33]);
         assert_eq!(active(&helmet.player1).hp, max - max / 6);
         let mut special = battle(fighter(4, 52, None), fighter(143, 33, None));
         special.player2.team[0].held_tool = Some("rocky-helmet".into());
-        attack(Uuid::nil(), 1, &mut special, true, &catalog().moves[&52]);
+        attack(&dice(1), &mut special, true, &catalog().moves[&52]);
         assert_eq!(active(&special.player1).hp, active(&special.player1).max_hp);
 
         let mut bell = battle(fighter(4, 52, None), fighter(143, 33, None));
         bell.player1.team[0].held_tool = Some("shell-bell".into());
         bell.player1.team[0].hp = 10;
         let before = active(&bell.player2).hp;
-        attack(Uuid::nil(), 1, &mut bell, true, &catalog().moves[&52]);
+        attack(&dice(1), &mut bell, true, &catalog().moves[&52]);
         assert_eq!(active(&bell.player1).hp, 10 + ((before - active(&bell.player2).hp) / 8).max(1));
 
         let mut quick_first = 0;
@@ -1927,7 +2273,7 @@ mod tests {
             }
             let mut band = battle(fighter(150, 94, None), fighter(1, 33, None));
             band.player2.team[0].held_tool = Some("focus-band".into());
-            attack(Uuid::nil(), turn, &mut band, true, &catalog().moves[&94]);
+            attack(&dice(turn), &mut band, true, &catalog().moves[&94]);
             if active(&band.player2).hp == 1 {
                 band_saves += 1;
             }
@@ -1993,8 +2339,8 @@ mod tests {
         let mut tera_lead = fighter(25, 85, None);
         tera_lead.preferred_transformation = Some(tera.clone());
         let game = initial_battle(
-            Side { user_id: Uuid::from_u128(1), username: "one".into(), active_index: 0, team: vec![lead, reserve], mega_used: false, tera_used: false },
-            Side { user_id: Uuid::from_u128(2), username: "two".into(), active_index: 0, team: vec![tera_lead], mega_used: false, tera_used: false },
+            side(1, "one", vec![lead, reserve]),
+            side(2, "two", vec![tera_lead]),
         );
 
         assert_eq!(active(&game.player1).transformation_kind.as_deref(), Some("mega"));
@@ -2019,11 +2365,11 @@ mod tests {
         let lead = fighter(25, 85, None);
         let mut manual_reserve = fighter(7, 55, None);
         manual_reserve.preferred_transformation = Some(tera.clone());
-        let mut side = Side { user_id: Uuid::nil(), username: "one".into(), active_index: 0, team: vec![lead, manual_reserve], mega_used: false, tera_used: false };
-        apply_switch(&mut side, 1).unwrap();
-        assert_eq!(active(&side).tera_type, None);
+        let mut manual_side = side(0, "one", vec![lead, manual_reserve]);
+        apply_switch(&mut manual_side, 1).unwrap();
+        assert_eq!(active(&manual_side).tera_type, None);
 
-        let mut faint_side = Side { user_id: Uuid::nil(), username: "two".into(), active_index: 0, team: vec![fighter(25, 85, None), fighter(7, 55, None)], mega_used: false, tera_used: false };
+        let mut faint_side = side(0, "two", vec![fighter(25, 85, None), fighter(7, 55, None)]);
         faint_side.team[0].hp = 0;
         faint_side.team[1].preferred_transformation = Some(tera);
         auto_switch(&mut faint_side);
@@ -2063,13 +2409,13 @@ mod tests {
         game.player1.team[0].moves.push(catalog().moves[&33].clone());
         game.player1.team.push(fighter(7, 33, None));
         game.player2.team[0].held_tool = Some("focus-sash".into());
-        attack(Uuid::nil(), 1, &mut game, true, &catalog().moves[&94]);
+        attack(&dice(1), &mut game, true, &catalog().moves[&94]);
         assert_eq!(active(&game.player2).hp, 1);
         let mut loaded: Battle = serde_json::from_value(serde_json::to_value(game).unwrap()).unwrap();
         assert!(active(&loaded.player2).held_tool_used);
         assert!(selected_move(&loaded.player1, 1).is_err());
         loaded.player2.team[0].hp = loaded.player2.team[0].max_hp;
-        attack(Uuid::nil(), 2, &mut loaded, true, &catalog().moves[&94]);
+        attack(&dice(2), &mut loaded, true, &catalog().moves[&94]);
         assert_eq!(active(&loaded.player2).hp, 0);
         apply_switch(&mut loaded.player1, 1).unwrap();
         apply_switch(&mut loaded.player1, 0).unwrap();
@@ -2079,17 +2425,17 @@ mod tests {
     #[test]
     fn status_healing_stages_and_residual_are_effective() {
         let mut poisoned = battle(fighter(25, 672, None), fighter(6, 53, None));
-        attack(Uuid::nil(), 1, &mut poisoned, true, &catalog().moves[&672]);
+        attack(&dice(1), &mut poisoned, true, &catalog().moves[&672]);
         assert_eq!(active(&poisoned.player2).status.as_deref(), Some("poison"));
         let hp = active(&poisoned.player2).hp;
         residual(&mut poisoned.player2, &mut poisoned.events);
         assert!(active(&poisoned.player2).hp < hp);
         let mut boosted = battle(fighter(25, 14, None), fighter(6, 53, None));
-        attack(Uuid::nil(), 1, &mut boosted, true, &catalog().moves[&14]);
+        attack(&dice(1), &mut boosted, true, &catalog().moves[&14]);
         assert_eq!(active(&boosted.player1).stages["attack"], 2);
         boosted.player1.team[0].hp = 1;
         boosted.player1.team[0].moves[0] = catalog().moves[&105].clone();
-        attack(Uuid::nil(), 2, &mut boosted, true, &catalog().moves[&105]);
+        attack(&dice(2), &mut boosted, true, &catalog().moves[&105]);
         assert!(active(&boosted.player1).hp > 1);
     }
 
@@ -2097,12 +2443,12 @@ mod tests {
     fn implemented_abilities_affect_server_damage() {
         let mut immune = battle(fighter(112, 89, None), fighter(479, 85, Some("levitate")));
         let hp = active(&immune.player2).hp;
-        attack(Uuid::nil(), 1, &mut immune, true, &catalog().moves[&89]);
+        attack(&dice(1), &mut immune, true, &catalog().moves[&89]);
         assert_eq!(active(&immune.player2).hp, hp);
         let mut sturdy = battle(fighter(150, 63, None), fighter(213, 89, Some("sturdy")));
         sturdy.player2.team[0].hp = 1;
         sturdy.player2.team[0].max_hp = 1;
-        attack(Uuid::nil(), 1, &mut sturdy, true, &catalog().moves[&63]);
+        attack(&dice(1), &mut sturdy, true, &catalog().moves[&63]);
         assert_eq!(active(&sturdy.player2).hp, 1);
     }
 
@@ -2116,17 +2462,17 @@ mod tests {
                 fighter(target_species, 33, None),
             );
             let before = active(&b.player2).hp;
-            attack(Uuid::nil(), 1, &mut b, true, &catalog().moves[&move_id]);
+            attack(&dice(1), &mut b, true, &catalog().moves[&move_id]);
             assert_eq!(before - active(&b.player2).hp, expected);
         }
         let mut b = battle(fighter(20, 162, None), fighter(143, 33, None));
         b.player2.team[0].hp = 55;
-        attack(Uuid::nil(), 1, &mut b, true, &catalog().moves[&162]);
+        attack(&dice(1), &mut b, true, &sure_hit(162));
         assert_eq!(active(&b.player2).hp, 28);
         b.player2.team[0].hp = 30;
         b.player2.team[0].max_hp = 30;
         b.player2.team[0].ability = Some("sturdy".into());
-        attack(Uuid::nil(), 1, &mut b, true, &catalog().moves[&69]);
+        attack(&dice(1), &mut b, true, &catalog().moves[&69]);
         assert_eq!(active(&b.player2).hp, 1);
     }
 
@@ -2135,26 +2481,20 @@ mod tests {
         let mut b = battle(fighter(143, 156, None), fighter(197, 33, None));
         b.player1.team[0].hp = 10;
         b.player1.team[0].status = Some("poison".into());
-        attack(Uuid::nil(), 1, &mut b, true, &catalog().moves[&156]);
+        attack(&dice(1), &mut b, true, &catalog().moves[&156]);
         assert_eq!(active(&b.player1).hp, active(&b.player1).max_hp);
         assert_eq!(active(&b.player1).status.as_deref(), Some("sleep"));
         let mut b: Battle = serde_json::from_value(serde_json::to_value(b).unwrap()).unwrap();
         for turn in 2..=3 {
-            assert!(!can_act(
-                Uuid::nil(),
-                turn,
-                true,
-                &mut b.player1,
-                &mut b.events
-            ));
+            assert!(!can_act(&dice(turn), true, &mut b.player1, &mut b.events));
         }
-        assert!(can_act(Uuid::nil(), 4, true, &mut b.player1, &mut b.events));
+        assert!(can_act(&dice(4), true, &mut b.player1, &mut b.events));
         assert!(active(&b.player1).status.is_none());
-        attack(Uuid::nil(), 5, &mut b, true, &catalog().moves[&156]);
+        attack(&dice(5), &mut b, true, &catalog().moves[&156]);
         assert!(active(&b.player1).status.is_none()); // full HP fails
         b.player1.team[0].hp = 10;
         b.player1.team[0].ability = Some("insomnia".into());
-        attack(Uuid::nil(), 6, &mut b, true, &catalog().moves[&156]);
+        attack(&dice(6), &mut b, true, &catalog().moves[&156]);
         assert_eq!(active(&b.player1).hp, 10);
         assert!(active(&b.player1).status.is_none());
     }
@@ -2167,21 +2507,19 @@ mod tests {
                 fighter(197, 33, Some("sap-sipper")),
             );
             b.player1.team[0].status = Some("burn".into());
+            b.player1.team[0].trap_turns = Some(3);
             let mut reserve = fighter(100, 33, Some("soundproof"));
             reserve.status = Some("sleep".into());
             reserve.status_turns = Some(3);
             b.player1.team.push(reserve);
-            let mut bound = fighter(7, 33, None);
-            bound.status = Some("trap".into());
-            b.player1.team.push(bound);
             b.player2.team[0].status = Some("poison".into());
-            attack(Uuid::nil(), 1, &mut b, true, &catalog().moves[&move_id]);
+            attack(&dice(1), &mut b, true, &catalog().moves[&move_id]);
             assert!(active(&b.player1).status.is_none());
             assert_eq!(
                 b.player1.team[1].status.as_deref(),
                 if move_id == 215 { Some("sleep") } else { None }
             );
-            assert_eq!(b.player1.team[2].status.as_deref(), Some("trap"));
+            assert_eq!(active(&b.player1).trap_turns, Some(3));
             assert_eq!(active(&b.player2).status.as_deref(), Some("poison"));
         }
     }
@@ -2191,13 +2529,13 @@ mod tests {
         let mut b = battle(fighter(143, 114, None), fighter(143, 33, None));
         b.player1.team[0].stages.insert("attack".into(), 2);
         b.player2.team[0].stages.insert("defense".into(), -3);
-        attack(Uuid::nil(), 1, &mut b, true, &catalog().moves[&114]);
+        attack(&dice(1), &mut b, true, &catalog().moves[&114]);
         assert!(active(&b.player1).stages.is_empty());
         assert!(active(&b.player2).stages.is_empty());
         for species in [143, 208] {
             let mut b = battle(fighter(143, 499, None), fighter(species, 33, None));
             b.player2.team[0].stages.insert("attack".into(), 4);
-            attack(Uuid::nil(), 1, &mut b, true, &catalog().moves[&499]);
+            attack(&dice(1), &mut b, true, &catalog().moves[&499]);
             assert_eq!(active(&b.player2).stages.is_empty(), species != 208);
         }
     }
@@ -2206,14 +2544,16 @@ mod tests {
     fn rapid_spin_effects_need_a_hit_and_switching_clears_stages() {
         for species in [143, 94] {
             let mut b = battle(fighter(143, 229, None), fighter(species, 33, None));
-            b.player1.team[0].status = Some("leech-seed".into());
-            attack(Uuid::nil(), 1, &mut b, true, &catalog().moves[&229]);
+            b.player1.team[0].seeded = true;
+            b.player1.team[0].trap_turns = Some(4);
+            attack(&dice(1), &mut b, true, &catalog().moves[&229]);
             assert_eq!(
                 active(&b.player1).stages.get("speed"),
                 if species == 94 { None } else { Some(&1) }
             );
             assert!(active(&b.player2).stages.is_empty());
-            assert_eq!(active(&b.player1).status.is_none(), species != 94);
+            let freed = !active(&b.player1).seeded && active(&b.player1).trap_turns.is_none();
+            assert_eq!(freed, species != 94);
             b.player1.team.push(fighter(7, 33, None));
             apply_switch(&mut b.player1, 1).unwrap();
             apply_switch(&mut b.player1, 0).unwrap();
@@ -2224,13 +2564,275 @@ mod tests {
     #[test]
     fn status_moves_ignore_damage_type_chart_but_immune_hits_do_not_debuff() {
         let mut b = battle(fighter(143, 14, None), fighter(94, 33, None));
-        attack(Uuid::nil(), 1, &mut b, true, &catalog().moves[&14]);
+        attack(&dice(1), &mut b, true, &catalog().moves[&14]);
         assert_eq!(active(&b.player1).stages["attack"], 2);
-        attack(Uuid::nil(), 1, &mut b, true, &catalog().moves[&39]);
+        attack(&dice(1), &mut b, true, &catalog().moves[&39]);
         assert_eq!(active(&b.player2).stages["defense"], -1);
         b.player2.team[0] = fighter(208, 33, None);
-        attack(Uuid::nil(), 1, &mut b, true, &catalog().moves[&491]); // Acid Spray vs Steel
+        attack(&dice(1), &mut b, true, &catalog().moves[&491]); // Acid Spray vs Steel
         assert!(active(&b.player2).stages.is_empty());
+    }
+
+    fn switch_action(index: usize) -> TurnAction {
+        TurnAction { turn: 1, move_index: None, switch_index: Some(index), surrender: false, transformation: None }
+    }
+
+    #[test]
+    fn rolls_come_from_a_secret_seed_and_are_independent() {
+        let seed = new_seed();
+        assert_eq!(seed.len(), 64);
+        assert_ne!(seed, new_seed());
+        assert_eq!(legacy_seed(Uuid::from_u128(7)), legacy_seed(Uuid::from_u128(7)));
+        assert_ne!(legacy_seed(Uuid::from_u128(7)), legacy_seed(Uuid::from_u128(8)));
+        assert_eq!(dice(3).draw(Roll::Accuracy, true, 0), dice(3).draw(Roll::Accuracy, true, 0));
+        let other = Dice { seed: "another-match".into(), turn: 3 };
+        assert!((0..8).any(|index| other.draw(Roll::Hits, true, index) != dice(3).draw(Roll::Hits, true, index)));
+        // Two 80% moves in one turn no longer share a result, and speed ties ignore turn parity.
+        let (mut split, mut parity) = (0, 0);
+        for turn in 1..=400 {
+            let dice = dice(turn);
+            split += ((dice.percent(Roll::Accuracy, true, 0) < 80) != (dice.percent(Roll::Accuracy, false, 0) < 80)) as i32;
+            parity += ((dice.draw(Roll::SpeedTie, true, 0) % 2 == 0) == (turn % 2 == 0)) as i32;
+        }
+        assert!((80..=180).contains(&split), "{split}");
+        assert!((150..=250).contains(&parity), "{parity}");
+    }
+
+    #[test]
+    fn legacy_matches_get_a_secret_seed_on_their_next_turn() {
+        let mut game = battle(fighter(143, 33, None), fighter(143, 33, None));
+        game.seed = None;
+        let mut game: Battle = serde_json::from_value(serde_json::to_value(game).unwrap()).unwrap();
+        assert!(game.seed.is_none());
+        let id = Uuid::from_u128(99);
+        resolve_turn(id, 1, &mut game, move_action(0), move_action(0)).unwrap();
+        assert_eq!(game.seed, Some(legacy_seed(id)));
+        let stored: Battle = serde_json::from_value(serde_json::to_value(&game).unwrap()).unwrap();
+        assert_eq!(stored.seed, game.seed);
+    }
+
+    #[test]
+    fn views_hide_the_seed_hidden_turns_and_the_opponents_details() {
+        let mut game = initial_battle(
+            side(1, "one", vec![fighter(6, 53, None), fighter(25, 85, None)]),
+            side(2, "two", vec![fighter(143, 33, None)]),
+        );
+        let seed = game.seed.clone().unwrap();
+        assert!(serde_json::to_string(&game).unwrap().contains(&seed));
+        let lead = &mut game.player1.team[0];
+        lead.held_tool = Some("choice-scarf".into());
+        lead.status = Some("sleep".into());
+        lead.status_turns = Some(3);
+        lead.confusion_turns = Some(4);
+        let own = own_side_view(&game.player1);
+        let opponent = opponent_view(&game.player1);
+        assert!(!own.to_string().contains(&seed) && !opponent.to_string().contains(&seed));
+        assert_eq!(own["team"].as_array().unwrap().len(), 2);
+        assert_eq!(own["team"][0]["heldTool"], "choice-scarf");
+        assert!(own["team"][0].get("statusTurns").is_none() && own["team"][0].get("confusionTurns").is_none());
+        assert_eq!((&opponent["userId"], &opponent["username"], &opponent["activeIndex"]), (&json!(Uuid::from_u128(1)), &json!("one"), &json!(0)));
+        assert_eq!(opponent["team"].as_array().unwrap().len(), 1);
+        let shown = opponent["team"][0].as_object().unwrap();
+        let mut fields: Vec<&str> = shown.keys().map(String::as_str).collect();
+        fields.sort_unstable();
+        assert_eq!(fields, ["hp", "level", "maxHp", "nickname", "regionalForm", "speciesId", "status", "types"]);
+        assert_eq!((&shown["speciesId"], &shown["status"]), (&json!(6), &json!("sleep")));
+    }
+
+    #[test]
+    fn mega_evolution_waits_for_the_turn_and_lapses_on_a_switch() {
+        let mut lead = fighter(6, 53, None);
+        lead.held_tool = Some("mega-stone:charizard-mega-x".into());
+        let mut game = battle(lead, fighter(143, 33, None));
+        game.player1.team.push(fighter(25, 85, None));
+        let mega = TransformationRequest { kind: "mega".into(), form_identifier: Some("charizard-mega-x".into()), tera_type: None };
+        request_transformation(&mut game.player1, &mega).unwrap();
+        let game: Battle = serde_json::from_value(serde_json::to_value(game).unwrap()).unwrap();
+        assert!(active(&game.player1).transformation_kind.is_none() && !game.player1.mega_used);
+        assert_eq!(opponent_view(&game.player1)["team"][0]["types"], json!(["fire", "flying"]));
+        let own = own_side_view(&game.player1);
+        assert_eq!((&own["team"][0]["transformationKind"], &own["megaUsed"]), (&json!("mega"), &json!(true)));
+        assert_eq!(own["team"][0]["types"], json!(["fire", "dragon"]));
+        assert_eq!(own["pendingTransformation"]["index"], 0);
+        assert!(request_transformation(&mut game.clone().player1, &mega).is_err());
+
+        let mut resolved = game.clone();
+        resolve_turn(Uuid::nil(), 1, &mut resolved, move_action(0), move_action(0)).unwrap();
+        assert_eq!(active(&resolved.player1).transformation_kind.as_deref(), Some("mega"));
+        assert!(resolved.player1.mega_used && resolved.player1.pending_transformation.is_none());
+
+        let mut switched = game.clone();
+        resolve_turn(Uuid::nil(), 1, &mut switched, switch_action(1), move_action(0)).unwrap();
+        assert!(switched.player1.team[0].transformation_kind.is_none());
+        assert!(!switched.player1.mega_used && switched.player1.pending_transformation.is_none());
+    }
+
+    #[test]
+    fn confusion_and_binding_wear_off_and_end_on_switching() {
+        let mut game = battle(fighter(94, 109, None), fighter(143, 33, None));
+        game.player2.team[0].status = Some("paralysis".into());
+        attack(&dice(1), &mut game, true, &catalog().moves[&109]);
+        let turns = active(&game.player2).confusion_turns.expect("confused");
+        assert!((2..=5).contains(&turns));
+        assert_eq!(active(&game.player2).status.as_deref(), Some("paralysis"));
+        let mut wave = battle(fighter(25, 86, None), fighter(143, 33, None));
+        wave.player2.team[0].confusion_turns = Some(3);
+        attack(&dice(1), &mut wave, true, &sure_hit(86));
+        assert_eq!(active(&wave.player2).status.as_deref(), Some("paralysis"));
+
+        let mut confused = side(1, "one", vec![fighter(143, 33, None)]);
+        confused.team[0].confusion_turns = Some(5);
+        for turn in 1..=5 {
+            can_act(&dice(turn), true, &mut confused, &mut vec![]);
+        }
+        assert!(confused.team[0].confusion_turns.is_none());
+        let mut self_hits = 0;
+        for turn in 1..=300 {
+            let mut confused = side(1, "one", vec![fighter(143, 33, None)]);
+            confused.team[0].confusion_turns = Some(3);
+            let (hp, max_hp) = (confused.team[0].hp, confused.team[0].max_hp);
+            if !can_act(&dice(turn), true, &mut confused, &mut vec![]) {
+                self_hits += 1;
+                assert_eq!(confused.team[0].hp, hp - max_hp / 8);
+            }
+        }
+        assert!((60..=140).contains(&self_hits), "{self_hits}");
+
+        let mut bind = battle(fighter(143, 20, None), fighter(143, 33, None));
+        attack(&dice(1), &mut bind, true, &sure_hit(20));
+        let turns = active(&bind.player2).trap_turns.expect("bound");
+        assert!((2..=5).contains(&turns) && active(&bind.player2).status.is_none());
+        let mut ticks = 0;
+        while active(&bind.player2).trap_turns.is_some() && ticks <= 5 {
+            let hp = active(&bind.player2).hp;
+            residual(&mut bind.player2, &mut vec![]);
+            assert_eq!(active(&bind.player2).hp, hp - active(&bind.player2).max_hp / 8);
+            ticks += 1;
+        }
+        assert_eq!(ticks, turns);
+        let hp = active(&bind.player2).hp;
+        residual(&mut bind.player2, &mut vec![]);
+        assert_eq!(active(&bind.player2).hp, hp);
+
+        let mut volatile = battle(fighter(143, 33, None), fighter(143, 33, None));
+        volatile.player1.team.push(fighter(25, 85, None));
+        let lead = &mut volatile.player1.team[0];
+        (lead.confusion_turns, lead.trap_turns, lead.seeded) = (Some(3), Some(3), true);
+        apply_switch(&mut volatile.player1, 1).unwrap();
+        let benched = &volatile.player1.team[0];
+        assert!(benched.confusion_turns.is_none() && benched.trap_turns.is_none() && !benched.seeded);
+
+        let mut lum = fighter(143, 33, None);
+        lum.held_tool = Some("lum-berry".into());
+        lum.confusion_turns = Some(3);
+        react_held_items(&mut lum, &mut vec![]);
+        assert!(lum.confusion_turns.is_none() && lum.held_tool_used);
+    }
+
+    #[test]
+    fn only_ailments_the_engine_carries_out_are_kept() {
+        // Protect, Detect and Ingrain leave nothing behind, so Toxic still lands afterwards.
+        for move_id in [182, 197, 275] {
+            let mut game = battle(fighter(143, move_id, None), fighter(143, 92, None));
+            attack(&dice(1), &mut game, true, &catalog().moves[&move_id]);
+            assert!(active(&game.player1).status.is_none(), "{move_id}");
+            assert!(game.events.iter().any(|event| event.contains("아무 일도 일어나지 않았습니다")));
+            attack(&dice(1), &mut game, false, &sure_hit(92));
+            assert_eq!(active(&game.player1).status.as_deref(), Some("poison"));
+        }
+        // Smack Down, Thousand Arrows, Throat Chop, Yawn, Attract and Torment leave no status.
+        for move_id in [479, 614, 675, 281, 213, 259] {
+            let mut game = battle(fighter(143, move_id, None), fighter(143, 33, None));
+            attack(&dice(1), &mut game, true, &sure_hit(move_id));
+            let target = active(&game.player2);
+            assert!(target.status.is_none() && target.confusion_turns.is_none() && target.trap_turns.is_none() && !target.seeded, "{move_id}");
+        }
+        // Tri Attack's 20% "unknown" ailment is a burn, paralysis or freeze.
+        let mut kinds = std::collections::BTreeSet::new();
+        for turn in 1..=300 {
+            let mut game = battle(fighter(137, 161, None), fighter(143, 33, None));
+            attack(&dice(turn), &mut game, true, &catalog().moves[&161]);
+            kinds.extend(active(&game.player2).status.clone());
+        }
+        assert_eq!(kinds.into_iter().collect::<Vec<_>>(), ["burn", "freeze", "paralysis"]);
+    }
+
+    #[test]
+    fn stored_battles_keep_only_statuses_the_engine_runs() {
+        let legacy = |status: &str| {
+            let mut value = serde_json::to_value(fighter(143, 33, None)).unwrap();
+            let object = value.as_object_mut().unwrap();
+            for key in ["confusionTurns", "trapTurns", "seeded"] {
+                object.remove(key);
+            }
+            object.insert("status".into(), json!(status));
+            serde_json::from_value::<Fighter>(value).unwrap()
+        };
+        for status in ["confusion", "trap", "leech-seed", "protect", "unknown", "burn"] {
+            let mut game = battle(legacy(status), legacy(status));
+            game.player1.team.push(legacy(status));
+            normalize_battle(&mut game);
+            let kept = (status == "burn").then_some("burn");
+            let (lead, benched) = (&game.player1.team[0], &game.player1.team[1]);
+            assert_eq!((lead.status.as_deref(), benched.status.as_deref()), (kept, kept), "{status}");
+            assert_eq!(lead.confusion_turns, (status == "confusion").then_some(2));
+            assert_eq!(lead.trap_turns, (status == "trap").then_some(2));
+            assert_eq!(lead.seeded, status == "leech-seed");
+            assert!(benched.confusion_turns.is_none() && benched.trap_turns.is_none() && !benched.seeded);
+        }
+    }
+
+    #[test]
+    fn one_hit_ko_moves_and_psywave_follow_the_client_rules() {
+        let ko = |move_id: i64, target: Fighter| {
+            let mut game = battle(fighter(143, move_id, None), target);
+            attack(&dice(1), &mut game, true, &sure_hit(move_id));
+            game
+        };
+        for move_id in [12, 32, 90] {
+            assert_eq!(active(&ko(move_id, fighter(143, 33, None)).player2).hp, 0, "{move_id}");
+        }
+        let flying = ko(90, fighter(16, 33, None));
+        assert_eq!(active(&flying.player2).hp, active(&flying.player2).max_hp);
+        let sturdy = ko(12, fighter(74, 33, Some("sturdy")));
+        assert_eq!(active(&sturdy.player2).hp, active(&sturdy.player2).max_hp);
+        assert!(sturdy.events.iter().any(|event| event.contains("특성이")));
+        let mut sash = fighter(143, 33, None);
+        sash.held_tool = Some("focus-sash".into());
+        let sashed = ko(32, sash);
+        assert_eq!(active(&sashed.player2).hp, 1);
+        assert!(active(&sashed.player2).held_tool_used);
+
+        let mut seen = std::collections::BTreeSet::new();
+        for turn in 1..=100 {
+            let mut game = battle(fighter(64, 149, None), fighter(143, 33, None));
+            let before = active(&game.player2).hp;
+            attack(&dice(turn), &mut game, true, &catalog().moves[&149]);
+            let dealt = before - active(&game.player2).hp;
+            assert!((25..=74).contains(&dealt), "{dealt}");
+            seen.insert(dealt);
+        }
+        assert!(seen.len() > 10);
+        let mut dark = battle(fighter(64, 149, None), fighter(197, 33, None));
+        attack(&dice(1), &mut dark, true, &catalog().moves[&149]);
+        assert_eq!(active(&dark.player2).hp, active(&dark.player2).max_hp);
+    }
+
+    #[test]
+    fn a_stale_choice_lock_never_blocks_every_move() {
+        let mut game = battle(fighter(143, 33, None), fighter(143, 33, None));
+        game.player1.team[0].moves.push(catalog().moves[&89].clone());
+        game.player1.team[0].held_tool = Some("choice-scarf".into());
+        game.player1.team[0].choice_move = Some(33);
+        assert!(selected_move(&game.player1, 1).is_err());
+        assert_eq!(own_side_view(&game.player1)["team"][0]["choiceMove"], 33);
+        // A lock on a move the fighter no longer knows, or without a Choice item, is ignored.
+        game.player1.team[0].choice_move = Some(94);
+        assert!(selected_move(&game.player1, 0).is_ok() && selected_move(&game.player1, 1).is_ok());
+        assert!(own_side_view(&game.player1)["team"][0]["choiceMove"].is_null());
+        game.player1.team[0].choice_move = Some(33);
+        game.player1.team[0].held_tool = None;
+        assert!(check_turn_action(&game.player1, &move_action(1)).is_ok());
     }
 
     fn test_save(species_id: i64, move_id: i64) -> Value {
