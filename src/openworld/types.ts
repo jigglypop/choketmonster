@@ -94,6 +94,8 @@ export type OpenWorldRenderSnapshot = {
   selectedWildId?: string | null;
   tick?: number;
   effects?: readonly WorldMoveEffect[];
+  /** Today's mass outbreak in this region, which townsfolk pass on. */
+  outbreak?: { locationId: string; speciesId: number };
 };
 
 export type WorldSample = {

@@ -38,8 +38,8 @@ const MAX_TRAIL_HALF_WIDTH = 2.05 * WORLD_SCALE;
 /** Clearance used for solid-looking props: arrival core, road corridor and building footprints. */
 export const TOWN_ARRIVAL_CORE = 7.5;
 export const SOLID_PATH_CLEARANCE = 3.25 * WORLD_SCALE;
-const BUILDING_HALF_X = 1.6 * WORLD_SCALE, BUILDING_HALF_Z = 1.3 * WORLD_SCALE;
-const SIGNBOARD = { x: 0, z: -6 * WORLD_SCALE };
+export const BUILDING_HALF_X = 1.6 * WORLD_SCALE, BUILDING_HALF_Z = 1.3 * WORLD_SCALE;
+export const SIGNBOARD = { x: 0, z: -6 * WORLD_SCALE };
 const TOWN_SLOTS = [[-5, -4], [5, -4], [-5, 4], [5, 4], [-6, 0], [6, 0], [0, -6], [0, 6]].map(([x, z]) => [x * WORLD_SCALE, z * WORLD_SCALE] as const);
 
 /** Visible road half-width. TrailAndWater and the verge share it so grass never covers the road. */

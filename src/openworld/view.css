@@ -260,3 +260,12 @@
 .ow-creature-label.ow-creature-label-legendary { background: linear-gradient(160deg, #6a5320f2, #4a3a17f2); border: 2px solid #e8c45c; box-shadow: 0 0 0 1px #fff3c455 inset, 0 .3rem .9rem rgba(74, 58, 23, .45); }
 .ow-creature-label.ow-creature-label-mythical { background: linear-gradient(160deg, #573474f2, #3a2150f2); border: 2px solid #dfa6ff; box-shadow: 0 0 0 1px #f6e2ff55 inset, 0 .3rem .9rem rgba(58, 33, 80, .45); }
 .ow-creature-label.ow-creature-label-self { border: 2px solid #ffffff; box-shadow: 0 0 0 1px rgba(8, 24, 18, .35), 0 .3rem .8rem rgba(14, 36, 29, .3); }
+/* Townsfolk speech: a white bubble whose tail points down at the speaker; a tap shows the next line. */
+.ow-npc-bubble { position: relative; display: grid; gap: 3px; width: max-content; max-width: min(240px, 62vw); padding: 9px 13px 10px; border: 2px solid #2f4a40; border-radius: 16px; background: #fffdf5; color: #1f332c; font: 400 13px/1.45 var(--ui-font-family, system-ui, sans-serif); text-align: left; cursor: pointer; box-shadow: 0 .35rem .9rem rgba(14, 36, 29, .28); animation: ow-npc-pop .18s ease-out; }
+.ow-npc-bubble::after { content: ''; position: absolute; left: 50%; bottom: -9px; width: 14px; height: 14px; background: #fffdf5; border-right: 2px solid #2f4a40; border-bottom: 2px solid #2f4a40; transform: translateX(-50%) rotate(45deg); }
+.ow-npc-bubble small { color: #6a7f75; font-size: 11px; font-weight: 700; letter-spacing: .02em; }
+.ow-npc-bubble span { animation: ow-npc-line .22s ease-out; }
+.ow-npc-bubble i { position: absolute; right: 9px; bottom: 5px; color: #9aab9f; font-size: 9px; font-style: normal; animation: ow-npc-more 1.2s ease-in-out infinite; }
+@keyframes ow-npc-pop { from { opacity: 0; transform: translateY(6px) scale(.92); } }
+@keyframes ow-npc-line { from { opacity: 0; } }
+@keyframes ow-npc-more { 50% { opacity: .3; } }

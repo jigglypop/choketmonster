@@ -950,6 +950,7 @@ export class OpenWorldPanel {
       hallTrainer: hallTrainer ? { name: hallTrainer.name, team: hallTrainer.team } : undefined,
       regionId: this.simulation.regionId,
       sceneId: this.simulation.sceneId,
+      outbreak: this.simulation.outbreak,
       player: { ...this.simulation.player, heading: this.simulation.player.heading as WorldHeading }, tick: this.simulation.tick, selectedWildId: this.simulation.selectedWildId, badges: getRegionalBadges(game, this.simulation.regionId),
       fieldItems: this.simulation.fieldPickups,
       foods: this.simulation.foods.map(food => ({ ...food, id: String(food.id) })),
