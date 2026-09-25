@@ -152,11 +152,12 @@
   body:has(.adventure) #toast { bottom: calc(var(--app-nav-height, 0px) + 20px + var(--world-lower-height, 104px)); }
 }
 
-/* The minimap is only the round map: a wheel or a pinch over it sets its size. In a battle that allows it, a run button sits under it. */
+/* The minimap is only the round map: a wheel or a pinch over it sets its size. In a battle that allows it, a run button floats
+   over the bottom of the circle, so showing it never moves the buttons below the map. */
 .adventure .world-radar.world-radar-round { --minimap-base: 144px; width: auto; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; touch-action: none; }
 .adventure .world-radar.world-radar-round #world-map-open { display: block; padding: 0; border: 0; border-radius: 50%; background: none; }
 .adventure .world-radar.world-radar-round canvas { display: block; width: calc(var(--minimap-base) * var(--minimap-scale, 1)); height: calc(var(--minimap-base) * var(--minimap-scale, 1)); border: 2px solid rgba(255, 255, 255, .72); box-shadow: 0 8px 24px rgba(6, 20, 15, .32); }
-.adventure .world-radar.world-radar-round .world-radar-run { display: block; width: 100%; min-height: 38px; margin-top: 8px; padding: 6px 8px; border: 1px solid rgba(255, 214, 196, .55); border-radius: 10px; background: #b4553d; color: #fff; font-weight: 700; }
+.adventure .world-radar.world-radar-round .world-radar-run { position: absolute; left: 50%; bottom: 8px; z-index: 2; transform: translateX(-50%); width: auto; min-height: 34px; margin: 0; padding: 5px 14px; border: 1px solid rgba(255, 214, 196, .55); border-radius: 999px; background: #b4553d; color: #fff; font-weight: 700; white-space: nowrap; box-shadow: 0 4px 12px rgba(6, 20, 15, .35); }
 .adventure .world-radar.world-radar-round .world-radar-run[hidden] { display: none; }
 @media (max-width: 720px) {
   .adventure .world-radar.world-radar-round { --minimap-base: 104px; padding: 0; }
