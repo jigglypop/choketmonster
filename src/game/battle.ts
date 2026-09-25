@@ -51,6 +51,14 @@ const effectiveness: Partial<Record<PokemonType, Partial<Record<PokemonType, num
   fairy: { fire: .5, fighting: 2, poison: .5, dragon: 2, dark: 2, steel: .5 },
 };
 
+/** Source ailments the engine resolves. Major ones persist; volatile ones end with a switch or the battle. */
+export const MAJOR_AILMENTS: ReadonlySet<string> = new Set(['sleep', 'freeze', 'paralysis', 'poison', 'burn']);
+export const VOLATILE_AILMENTS: ReadonlySet<string> = new Set(['confusion', 'trap', 'leech-seed']);
+/** Other source ailments (Protect, Disable, Attract...) have no local effect and are never stored. */
+export function implementedAilment(ailment: string | undefined): string | undefined {
+  return ailment && (MAJOR_AILMENTS.has(ailment) || VOLATILE_AILMENTS.has(ailment)) ? ailment : undefined;
+}
+
 export function typeMultiplier(attack: PokemonType, defenders: readonly PokemonType[]): number {
   return defenders.reduce((total, defense) => total * (effectiveness[attack]?.[defense] ?? 1), 1);
 }

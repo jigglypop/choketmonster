@@ -3,6 +3,7 @@ import { AuthSessionExpiredError, expiredAuthSession } from './auth-session';
 import { parseJson } from '../core/json';
 import { validateGame, type GameState } from './engine';
 import { BRAIN_MODEL } from './connectome';
+import { pruneServerBrains } from './server-brain';
 import { startPosition, tileAt, type MapPosition } from './map';
 import { FieldSimulation, type FieldSnapshot } from './field';
 import { OpenWorldSimulation, type OpenWorldSnapshot } from '../openworld/simulation';
@@ -33,13 +34,14 @@ export function unpackSave(input: unknown, expectedGraph?: Graph, internal?: { a
   const candidate = value.game as GameState;
   if (!candidate?.player || !Array.isArray(candidate.player.team) || !Array.isArray(candidate.player.box)) throw new Error('포켓몬 저장 목록이 올바르지 않습니다.');
   if (candidate.battle && (!Array.isArray(candidate.battle.enemy?.team) || !Array.isArray(candidate.battle.player?.team))) throw new Error('배틀 저장이 손상되었습니다.');
+  // Brains only read the graph, so every stored brain shares the one validated topology.
   for (const monster of monsters(candidate)) if (monster.brain) {
-    monster.brain.graph = structuredClone(graph);
+    monster.brain.graph = graph;
     if (monster.brain.sensoryBypass !== false) throw new Error('저장된 신경 모델이 맞지 않습니다.');
   }
   if (candidate.nursery !== undefined && !Array.isArray(candidate.nursery)) throw new Error('알 보관함이 손상되었습니다.');
   for (const egg of candidate.nursery ?? []) if (egg?.brain) {
-    egg.brain.graph = structuredClone(graph);
+    egg.brain.graph = graph;
     if (egg.brain.sensoryBypass !== false) throw new Error('저장된 알의 신경 모델이 맞지 않습니다.');
   }
   const game = validateGame(candidate);
@@ -76,7 +78,8 @@ export type SaveStorageStatus = { state: 'local' | 'synced' | 'error' | 'conflic
 // second ~1MB IndexedDB value. `save` remains optional for legacy outboxes.
 type SyncOutbox = { save?: SaveEnvelope; revision: number; requestId: string; localVersion: number };
 type SyncConflict = { remote: SaveEnvelope; remoteRevision: number };
-type SyncRecord = { profileId: string; serverRevision: number; localVersion: number; dirty: boolean; outbox?: SyncOutbox; conflict?: SyncConflict };
+/** `unconfirmed` holds digests of uploads sent at `serverRevision` whose replies never arrived. */
+type SyncRecord = { profileId: string; serverRevision: number; localVersion: number; dirty: boolean; outbox?: SyncOutbox; conflict?: SyncConflict; unconfirmed?: string[] };
 type TradeReceipt = { profileId: string; tradeId: string; revision: number; tradeEpoch: number };
 let storageStatus: SaveStorageStatus | undefined;
 let activeTradeEpoch = 0, tradeEpochReady = false;
@@ -113,7 +116,7 @@ async function updateSync(key: string, update: (value: SyncRecord | undefined) =
   return new Promise((resolve, reject) => {
     const tx = db.transaction(SYNC_STORE, 'readwrite'), store = tx.objectStore(SYNC_STORE), request = store.get(key);
     let result: SyncRecord | undefined;
-    request.onsuccess = () => { result = update(request.result as SyncRecord | undefined); if (result) store.put(structuredClone(result), key); };
+    request.onsuccess = () => { result = update(request.result as SyncRecord | undefined); if (result && result !== request.result) store.put(structuredClone(result), key); };
     tx.oncomplete = () => resolve(result); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
   });
 }
@@ -137,12 +140,76 @@ export class StaleTradeEpochError extends Error {
 const normalizeTradeEpoch = (value: unknown) => value === undefined ? 0
   : Number.isSafeInteger(value) && Number(value) >= 0 ? Number(value)
     : (() => { throw new Error('저장의 거래 버전이 올바르지 않습니다.'); })();
+export class SaveWriterLockedError extends Error {
+  constructor() { super('다른 탭에서 같은 모험을 진행 중이라 이 탭에서는 저장할 수 없습니다.'); this.name = 'SaveWriterLockedError'; }
+}
+// One tab owns a profile's saves. A second tab on the same profile would overwrite
+// newer progress with its older copy, so it stays read-only until it reloads.
+let writerLock: { name: string; held: Promise<boolean>; release: () => void } | undefined;
+function claimWriter(profile: SaveProfile): Promise<boolean> {
+  const name = `choketmon-save:${profile ? `account:${profile.id}` : 'device'}`;
+  if (writerLock?.name === name) return writerLock.held;
+  writerLock?.release();
+  const locks = typeof navigator === 'undefined' ? undefined : navigator.locks;
+  let release = () => {};
+  const held = !locks ? Promise.resolve(true) : new Promise<boolean>(resolve => {
+    locks.request(name, { ifAvailable: true }, lock => {
+      resolve(lock !== null);
+      return lock ? new Promise<void>(done => { release = done; }) : undefined;
+    }).catch(() => resolve(true));
+  });
+  writerLock = { name, held, release: () => release() };
+  return held;
+}
+async function assertWriter(profile: SaveProfile): Promise<void> {
+  if (await claimWriter(profile)) return;
+  const error = new SaveWriterLockedError();
+  announceStorage({ state: 'error', profileId: profile?.id ?? 'device', message: error.message });
+  throw error;
+}
+
+/** Each kind of full backup keeps only its newest copies per profile; every copy is about 1MB. */
+const BACKUPS_PER_KIND = 5;
+const stampOnly = (rest: string) => /^\d{13}$/.test(rest) ? rest : undefined;
+const stampThenId = (rest: string) => /^(\d{13})-[\w-]+$/.exec(rest)?.[1];
+const idThenStamp = (rest: string) => /^[\w-]+-(\d{13})$/.exec(rest)?.[1];
+function pruneBackups(saves: IDBObjectStore, kind: string, stamp: (rest: string) => string | undefined): void {
+  const request = saves.getAllKeys(IDBKeyRange.bound(`${kind}-`, `${kind}-\uffff`));
+  request.onsuccess = () => {
+    const copies = (request.result as IDBValidKey[]).flatMap(key => {
+      const time = typeof key === 'string' ? stamp(key.slice(kind.length + 1)) : undefined;
+      return time ? [{ key: key as string, time }] : [];
+    }).sort((a, b) => a.time.localeCompare(b.time) || a.key.localeCompare(b.key));
+    for (const { key } of copies.slice(0, Math.max(0, copies.length - BACKUPS_PER_KIND))) saves.delete(key);
+  };
+}
+
+/** Content digest of an upload, so a retry can recognize that a lost reply had in fact committed. */
+async function saveDigest(save: unknown): Promise<string | undefined> {
+  try {
+    const envelope = save as SaveEnvelope, text = canonicalJson({ ...envelope, tradeEpoch: normalizeTradeEpoch(envelope.tradeEpoch) });
+    return [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))].map(value => value.toString(16).padStart(2, '0')).join('');
+  } catch { return undefined; }
+}
+
+let brainCacheTidiedAt = 0;
+/** Every wild opponent leaves a large neural checkpoint; the current save lists the individuals still held. */
+function tidyBrainCache(save: SaveEnvelope, profile: SaveProfile): void {
+  const game = save.game as GameState | undefined, now = Date.now();
+  if (now - brainCacheTidiedAt < 60_000 || !game?.player || typeof game.seed !== 'string') return;
+  brainCacheTidiedAt = now;
+  const pending = (save.view?.openWorld?.serverFinalizations ?? []).flatMap(task => [task.self?.instanceId, task.other?.instanceId]);
+  const live = [...monsters(game).map(monster => monster?.instanceId), ...pending].filter((id): id is string => typeof id === 'string');
+  void pruneServerBrains(profile ? `account:${profile.id}:${game.seed}` : game.seed, live).catch(() => {});
+}
+
 export function writeSave(save: SaveEnvelope, key = 'current'): Promise<void> {
   const snapshot = structuredClone(save), profile = activeProfile, generation = profileGeneration,
     baseSlot = key === 'current' || /-\d{13}$/.test(key) ? key : `${key}-${Date.now()}`, slot = profileSlot(baseSlot, profile);
   snapshot.tradeEpoch = normalizeTradeEpoch(snapshot.tradeEpoch);
   const operation = localWriteQueue.catch(() => {}).then(async () => {
     if (generation !== profileGeneration || profile?.id !== activeProfile?.id) throw new Error('계정이 바뀌어 이전 저장 작업을 중단했습니다.');
+    await assertWriter(profile);
     const db = await database(); let retainedConflict: SyncConflict | undefined;
     await new Promise<void>((resolve, reject) => {
       const stores = profile ? [STORE, SYNC_STORE] : [STORE], tx = db.transaction(stores, 'readwrite');
@@ -151,6 +218,8 @@ export function writeSave(save: SaveEnvelope, key = 'current'): Promise<void> {
         const storedEpoch = validRemote(currentRequest?.result) ? normalizeTradeEpoch(currentRequest!.result.tradeEpoch) : 0;
         if (baseSlot === 'current' && normalizeTradeEpoch(snapshot.tradeEpoch) < storedEpoch) { tx.abort(); return; }
         saves.put(snapshot, slot);
+        const kind = baseSlot === 'current' ? undefined : /^(.*)-\d{13}$/.exec(slot)?.[1];
+        if (kind) pruneBackups(saves, kind, stampOnly);
       };
       if (currentRequest) currentRequest.onsuccess = apply; else apply();
       if (profile && baseSlot === 'current') {
@@ -158,7 +227,8 @@ export function writeSave(save: SaveEnvelope, key = 'current'): Promise<void> {
         request.onsuccess = () => {
           const prior = request.result as SyncRecord | undefined;
           retainedConflict = prior?.conflict;
-          syncStore.put({ profileId: profile.id, serverRevision: prior?.serverRevision ?? 0, localVersion: (prior?.localVersion ?? 0) + 1, dirty: true, conflict: prior?.conflict } satisfies SyncRecord, syncKey(profile.id));
+          // An unacknowledged upload stays recorded, so the next checkpoint can reuse or recognize it.
+          syncStore.put({ ...prior, profileId: profile.id, serverRevision: prior?.serverRevision ?? 0, localVersion: (prior?.localVersion ?? 0) + 1, dirty: true } satisfies SyncRecord, syncKey(profile.id));
         };
       }
       tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); tx.onabort = () => {
@@ -166,7 +236,7 @@ export function writeSave(save: SaveEnvelope, key = 'current'): Promise<void> {
         reject(normalizeTradeEpoch(snapshot.tradeEpoch) < storedEpoch ? new StaleTradeEpochError() : tx.error);
       };
     });
-    if (baseSlot === 'current') { activeTradeEpoch = normalizeTradeEpoch(snapshot.tradeEpoch); tradeEpochReady = true; }
+    if (baseSlot === 'current') { activeTradeEpoch = normalizeTradeEpoch(snapshot.tradeEpoch); tradeEpochReady = true; tidyBrainCache(snapshot, profile); }
     if (profile && retainedConflict) announceConflict(profile.id, snapshot, retainedConflict);
     else announceStorage({ state: 'local', profileId: profile?.id ?? 'device', message: profile ? '이 기기에 저장됨 · 서버 체크포인트 대기' : undefined });
   });
@@ -214,7 +284,15 @@ async function loadRemote(profileId: string): Promise<RemoteSave | undefined> {
   return { save: body.save, revision: Number(body.revision) };
 }
 
-async function reconcileRemote(profile: NonNullable<SaveProfile>, remote: RemoteSave | undefined): Promise<{ save?: unknown; upload: boolean }> {
+/** Stores both sides of a conflict for manual recovery, keeping the newest few pairs. */
+function backupConflict(saves: IDBObjectStore, profile: NonNullable<SaveProfile>, local: unknown, remote: SaveEnvelope): void {
+  const suffix = `${Date.now()}-${requestId()}`;
+  if (local !== undefined) saves.put(structuredClone(local), profileSlot(`backup-conflict-device-${suffix}`, profile));
+  saves.put(structuredClone(remote), profileSlot(`backup-conflict-server-${suffix}`, profile));
+  for (const side of ['device', 'server']) pruneBackups(saves, profileSlot(`backup-conflict-${side}`, profile), stampThenId);
+}
+
+async function reconcileRemote(profile: NonNullable<SaveProfile>, remote: RemoteSave | undefined, remoteDigest?: string): Promise<{ save?: unknown; upload: boolean }> {
   const db = await database(), key = syncKey(profile.id), localKey = profileSlot('current', profile), remoteRevision = remote?.revision ?? 0;
   return new Promise((resolve, reject) => {
     const tx = db.transaction([STORE, SYNC_STORE], 'readwrite'), saves = tx.objectStore(STORE), syncs = tx.objectStore(SYNC_STORE);
@@ -227,24 +305,30 @@ async function reconcileRemote(profile: NonNullable<SaveProfile>, remote: Remote
         syncs.put({ profileId: profile.id, serverRevision: remoteRevision, localVersion: prior?.localVersion ?? 1, dirty: false } satisfies SyncRecord, key);
         result = { save: remote.save, upload: false }; return;
       }
+      // The server holds this device's own upload whose reply was lost; later local progress simply uploads on top.
+      if (local !== undefined && remote && prior && !prior.conflict && remoteDigest !== undefined
+        && remoteRevision === prior.serverRevision + 1 && prior.unconfirmed?.includes(remoteDigest)) {
+        syncs.put({ ...prior, serverRevision: remoteRevision, dirty: true, outbox: undefined, unconfirmed: undefined } satisfies SyncRecord, key);
+        result = { save: local, upload: true }; return;
+      }
       if (local !== undefined && remote && !equivalentSave(local, remote.save)
         && (prior?.conflict || !prior || (prior.dirty && remoteRevision > prior.serverRevision))) {
         const conflict = prior?.conflict?.remoteRevision === remoteRevision ? prior.conflict : { remote: structuredClone(remote.save), remoteRevision };
-        if (!prior?.conflict || prior.conflict.remoteRevision !== remoteRevision) {
-          const suffix = `${Date.now()}-${requestId()}`;
-          saves.put(structuredClone(local), profileSlot(`backup-conflict-device-${suffix}`, profile));
-          saves.put(structuredClone(remote.save), profileSlot(`backup-conflict-server-${suffix}`, profile));
-        }
+        if (!prior?.conflict || prior.conflict.remoteRevision !== remoteRevision) backupConflict(saves, profile, local, remote.save);
         syncs.put({ profileId: profile.id, serverRevision: prior?.serverRevision ?? 0, localVersion: prior?.localVersion ?? 1, dirty: true, conflict } satisfies SyncRecord, key);
         result = { save: local, upload: false }; return;
       }
       if (local !== undefined && (!remote || prior?.dirty)) {
+        const sameBase = prior?.serverRevision === remoteRevision;
         const outbox = prior?.outbox?.revision === remoteRevision ? prior.outbox : undefined;
-        syncs.put({ profileId: profile.id, serverRevision: remoteRevision, localVersion: prior?.localVersion ?? 1, dirty: true, outbox } satisfies SyncRecord, key);
+        syncs.put({ profileId: profile.id, serverRevision: remoteRevision, localVersion: prior?.localVersion ?? 1, dirty: true, outbox, unconfirmed: sameBase ? prior?.unconfirmed : undefined } satisfies SyncRecord, key);
         result = { save: local, upload: true }; return;
       }
       if (remote) {
-        if (validRemote(local) && normalizeTradeEpoch(remote.save.tradeEpoch) > normalizeTradeEpoch(local.tradeEpoch)) saves.put(structuredClone(local), profileSlot(`backup-before-trade-recovery-${Date.now()}-${requestId()}`, profile));
+        if (validRemote(local) && normalizeTradeEpoch(remote.save.tradeEpoch) > normalizeTradeEpoch(local.tradeEpoch)) {
+          saves.put(structuredClone(local), profileSlot(`backup-before-trade-recovery-${Date.now()}-${requestId()}`, profile));
+          pruneBackups(saves, profileSlot('backup-before-trade-recovery', profile), stampThenId);
+        }
         saves.put(structuredClone(remote.save), localKey);
         syncs.put({ profileId: profile.id, serverRevision: remoteRevision, localVersion: (prior?.localVersion ?? 0) + 1, dirty: false } satisfies SyncRecord, key);
         result = { save: remote.save, upload: false }; return;
@@ -270,7 +354,7 @@ async function copyAccountToDevice(profile: NonNullable<SaveProfile>): Promise<u
       if (account.result === undefined) return;
       // Backup and replacement commit together. The account save and sync outbox
       // stay untouched, so neither a failed transaction nor logout loses progress.
-      if (device.result !== undefined) saves.put(device.result, backupKey);
+      if (device.result !== undefined) { saves.put(device.result, backupKey); pruneBackups(saves, 'backup-before-logout', idThenStamp); }
       saves.put(account.result, 'current');
     };
     account.onsuccess = copy; device.onsuccess = copy;
@@ -278,19 +362,26 @@ async function copyAccountToDevice(profile: NonNullable<SaveProfile>): Promise<u
   });
 }
 
+const announceLocked = (profileId: string) => announceStorage({ state: 'error', profileId, message: new SaveWriterLockedError().message });
 /** Switches the IndexedDB namespace and reconciles that account with PostgreSQL. */
 export async function activateSaveProfile(profile: SaveProfile, options: { continueLocally?: boolean } = {}): Promise<unknown | undefined> {
   await localWriteQueue.catch(() => {});
   const generation = ++profileGeneration;
   if (!profile && options.continueLocally && activeProfile) {
-    const save = await copyAccountToDevice(activeProfile);
+    // A tab that does not own the device save only reads it instead of replacing it.
+    const writer = await claimWriter(null);
+    const save = writer ? await copyAccountToDevice(activeProfile) : await readLocal('current');
     if (generation !== profileGeneration) return undefined;
     activeProfile = null; activeTradeEpoch = validRemote(save) ? normalizeTradeEpoch(save.tradeEpoch) : 0; tradeEpochReady = true;
-    announceStorage({ state: 'local', profileId: 'device' });
+    if (writer) announceStorage({ state: 'local', profileId: 'device' }); else announceLocked('device');
     return save;
   }
   activeProfile = profile ? { ...profile } : null; activeTradeEpoch = 0; tradeEpochReady = false;
-  if (!profile) { announceStorage({ state: 'local', profileId: 'device' }); const local = await readLocal('current'); activeTradeEpoch = validRemote(local) ? normalizeTradeEpoch(local.tradeEpoch) : 0; tradeEpochReady = true; return local; }
+  const writer = await claimWriter(activeProfile);
+  if (!profile) {
+    if (writer) announceStorage({ state: 'local', profileId: 'device' }); else announceLocked('device');
+    const local = await readLocal('current'); activeTradeEpoch = validRemote(local) ? normalizeTradeEpoch(local.tradeEpoch) : 0; tradeEpochReady = true; return local;
+  }
   let remote: RemoteSave | undefined;
   try { remote = await loadRemote(profile.id); }
   catch (error) {
@@ -303,7 +394,14 @@ export async function activateSaveProfile(profile: SaveProfile, options: { conti
     return local;
   }
   if (generation !== profileGeneration || activeProfile?.id !== profile.id) return undefined;
-  const reconciled = await reconcileRemote(profile, remote);
+  if (!writer) {
+    // Another tab owns this account's saves and uploads; show its progress without writing or reconciling.
+    const save = await readLocal(profileSlot('current', profile)) ?? remote?.save;
+    announceLocked(profile.id);
+    activeTradeEpoch = validRemote(save) ? normalizeTradeEpoch(save.tradeEpoch) : 0; tradeEpochReady = true;
+    return save;
+  }
+  const reconciled = await reconcileRemote(profile, remote, remote && await saveDigest(remote.save));
   if (generation !== profileGeneration || activeProfile?.id !== profile.id) return undefined;
   const reconciledSync = await readSync(syncKey(profile.id));
   if (reconciledSync?.conflict) announceConflict(profile.id, reconciled.save, reconciledSync.conflict);
@@ -331,7 +429,12 @@ async function prepareOutbox(profile: NonNullable<SaveProfile>): Promise<{ sync:
       const local = localRequest.result as SaveEnvelope | undefined;
       if (!local) return;
       const current = (syncRequest.result as SyncRecord | undefined) ?? { profileId: profile.id, serverRevision: 0, localVersion: 1, dirty: true };
-      const next = current.outbox || !current.dirty ? current : { ...current, dirty: true, outbox: { revision: current.serverRevision, requestId: proposedId, localVersion: current.localVersion } };
+      // The server replays a committed request ID only for identical content, so an ID is reused only
+      // while the local save it was prepared for is unchanged (legacy outboxes carry their own payload).
+      const outbox = current.outbox, reusable = outbox && (outbox.save !== undefined
+        || (outbox.localVersion === current.localVersion && outbox.revision === current.serverRevision));
+      const next = reusable || (!outbox && !current.dirty) ? current
+        : { ...current, dirty: true, outbox: { revision: current.serverRevision, requestId: proposedId, localVersion: current.localVersion } };
       result = { sync: next, save: next.outbox?.save ?? local };
       if (next !== current || !syncRequest.result) syncs.put(next, key);
     };
@@ -339,11 +442,39 @@ async function prepareOutbox(profile: NonNullable<SaveProfile>): Promise<{ sync:
     tx.oncomplete = () => resolve(result); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
   });
 }
+const UNCONFIRMED_UPLOADS = 8;
+/**
+ * A 409 after a lost reply usually means the server already committed this device's own upload.
+ * Adopts that revision (or any revision holding the same content) instead of reporting a conflict;
+ * returns true when the caller should retry.
+ */
+async function adoptOwnUpload(profile: NonNullable<SaveProfile>, baseRevision: number, remote: RemoteSave): Promise<boolean> {
+  const digest = await saveDigest(remote.save), db = await database(), key = syncKey(profile.id), localKey = profileSlot('current', profile);
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction([STORE, SYNC_STORE], 'readwrite'), saves = tx.objectStore(STORE), syncs = tx.objectStore(SYNC_STORE);
+    const localRequest = saves.get(localKey), syncRequest = syncs.get(key); let retry = false;
+    const decide = () => {
+      if (localRequest.readyState !== 'done' || syncRequest.readyState !== 'done') return;
+      const latest = syncRequest.result as SyncRecord | undefined;
+      if (!latest || latest.conflict) return;
+      // Another checkpoint already moved the base; the rejected request is simply stale.
+      if (latest.serverRevision !== baseRevision) { retry = true; return; }
+      const same = equivalentSave(localRequest.result, remote.save);
+      const own = remote.revision === baseRevision + 1 && digest !== undefined && Boolean(latest.unconfirmed?.includes(digest));
+      if (!same && !own) return;
+      syncs.put({ ...latest, serverRevision: remote.revision, dirty: !same, outbox: undefined, unconfirmed: undefined } satisfies SyncRecord, key);
+      retry = true;
+    };
+    localRequest.onsuccess = decide; syncRequest.onsuccess = decide;
+    tx.oncomplete = () => resolve(retry); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
+  });
+}
 async function performCheckpoint(reason: CheckpointReason, expectedProfile: SaveProfile, expectedGeneration: number): Promise<CheckpointResult> {
   await localWriteQueue.catch(() => {});
   const profile = activeProfile, generation = profileGeneration;
   if (generation !== expectedGeneration || profile?.id !== expectedProfile?.id) return { uploaded: false, reason };
   if (!profile) return { uploaded: false, reason };
+  await assertWriter(profile);
   const key = syncKey(profile.id), scopeValid = () => generation === profileGeneration && activeProfile?.id === profile.id;
   for (let attempt = 0; attempt < 3; attempt++) {
     if (!scopeValid()) return { uploaded: false, reason };
@@ -355,6 +486,11 @@ async function performCheckpoint(reason: CheckpointReason, expectedProfile: Save
     const pending = sync.outbox!;
     try {
       if (!scopeValid()) return { uploaded: false, reason };
+      // Recorded before sending: if the reply is lost after the server commits, a later 409 can be recognized as this upload.
+      const digest = await saveDigest(prepared!.save);
+      if (digest) await updateSync(key, latest => latest && latest.serverRevision === pending.revision && !latest.unconfirmed?.includes(digest)
+        ? { ...latest, unconfirmed: [...(latest.unconfirmed ?? []), digest].slice(-UNCONFIRMED_UPLOADS) } : latest);
+      if (!scopeValid()) return { uploaded: false, reason };
       const response = await fetch('/api/saves/current', { method: 'PUT', credentials: 'same-origin', headers: { 'content-type': 'application/json', ...profileHeaders(profile.id) }, body: JSON.stringify({ save: prepared!.save, revision: pending.revision, requestId: pending.requestId }), signal: AbortSignal.timeout(20000) });
       const body = await response.json().catch(() => ({})) as { revision?: number; message?: string };
       if (!scopeValid()) return { uploaded: false, reason };
@@ -363,6 +499,7 @@ async function performCheckpoint(reason: CheckpointReason, expectedProfile: Save
         const remote = await loadRemote(profile.id);
         if (!scopeValid()) return { uploaded: false, reason };
         if (!remote) throw new Error('서버 저장 충돌을 확인했지만 서버 저장을 다시 읽지 못했습니다.');
+        if (await adoptOwnUpload(profile, pending.revision, remote)) continue;
         const db = await database(), local = await readLocal(profileSlot('current', profile));
         await new Promise<void>((resolve, reject) => {
           const tx = db.transaction([STORE, SYNC_STORE], 'readwrite'), saves = tx.objectStore(STORE), syncs = tx.objectStore(SYNC_STORE);
@@ -371,9 +508,7 @@ async function performCheckpoint(reason: CheckpointReason, expectedProfile: Save
             const latest = request.result as SyncRecord | undefined;
             if (!latest) return;
             const conflict = { remote: structuredClone(remote.save), remoteRevision: remote.revision };
-            const suffix = `${Date.now()}-${requestId()}`;
-            if (local !== undefined) saves.put(structuredClone(local), profileSlot(`backup-conflict-device-${suffix}`, profile));
-            saves.put(structuredClone(remote.save), profileSlot(`backup-conflict-server-${suffix}`, profile));
+            backupConflict(saves, profile, local, remote.save);
             syncs.put({ ...latest, dirty: true, outbox: undefined, conflict }, key);
           };
           tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
@@ -384,10 +519,10 @@ async function performCheckpoint(reason: CheckpointReason, expectedProfile: Save
       if (!response.ok || !Number.isSafeInteger(body.revision)) throw new Error(body.message ?? '서버 체크포인트 저장에 실패했습니다.');
       const latest = await updateSync(key, latest => {
         if (!latest) return latest;
-        if (latest.outbox?.requestId === pending.requestId) return { ...latest, serverRevision: body.revision!, dirty: latest.localVersion !== pending.localVersion, outbox: undefined };
+        if (latest.outbox?.requestId === pending.requestId) return { ...latest, serverRevision: body.revision!, dirty: latest.localVersion !== pending.localVersion, outbox: undefined, unconfirmed: undefined };
         // A newer local write may have replaced this outbox while the request was in flight.
         // Keep that write dirty, but advance its base revision and rebuild its request body.
-        return body.revision! > latest.serverRevision ? { ...latest, serverRevision: body.revision!, dirty: true, outbox: undefined } : latest;
+        return body.revision! > latest.serverRevision ? { ...latest, serverRevision: body.revision!, dirty: true, outbox: undefined, unconfirmed: undefined } : latest;
       });
       if (latest?.dirty) continue;
       if (scopeValid()) announceStorage({ state: 'synced', profileId: profile.id, message: 'PostgreSQL 체크포인트 저장됨' });
@@ -406,6 +541,7 @@ export async function resolveSaveConflict(choice: 'device' | 'server'): Promise<
   await localWriteQueue.catch(() => {});
   const profile = activeProfile, generation = profileGeneration;
   if (!profile) throw new Error('계정 저장 충돌이 없습니다.');
+  await assertWriter(profile);
   const db = await database(), key = syncKey(profile.id), localKey = profileSlot('current', profile);
   const selected = await new Promise<SaveEnvelope>((resolve, reject) => {
     const tx = db.transaction([STORE, SYNC_STORE], 'readwrite'), saves = tx.objectStore(STORE), syncs = tx.objectStore(SYNC_STORE);
@@ -420,7 +556,7 @@ export async function resolveSaveConflict(choice: 'device' | 'server'): Promise<
         syncs.put({ profileId: profile.id, serverRevision: sync.conflict.remoteRevision, localVersion: sync.localVersion + 1, dirty: false } satisfies SyncRecord, key);
       } else {
         result = structuredClone(local);
-        syncs.put({ ...sync, serverRevision: sync.conflict.remoteRevision, dirty: true, outbox: undefined, conflict: undefined } satisfies SyncRecord, key);
+        syncs.put({ ...sync, serverRevision: sync.conflict.remoteRevision, dirty: true, outbox: undefined, conflict: undefined, unconfirmed: undefined } satisfies SyncRecord, key);
       }
     };
     localRequest.onsuccess = apply; syncRequest.onsuccess = apply;
@@ -462,6 +598,7 @@ export async function adoptTradeResult(result: TradeSaveResult, checkpoint: Trad
   await localWriteQueue.catch(() => {}); await checkpointQueue.catch(() => ({ uploaded: false, reason: 'manual' as const }));
   const profile = activeProfile;
   if (!profile || profile.id !== checkpoint.profileId || profileGeneration !== checkpoint.generation) throw new Error('거래를 시작한 계정이 더 이상 활성 상태가 아닙니다.');
+  await assertWriter(profile);
   if (!validRemote(result.save) || !Number.isSafeInteger(result.revision) || result.revision < 0) throw new Error('거래 결과 저장이 올바르지 않습니다.');
   const resultEpoch = normalizeTradeEpoch(result.tradeEpoch), envelopeEpoch = normalizeTradeEpoch(result.save.tradeEpoch);
   if (resultEpoch !== envelopeEpoch || ![checkpoint.tradeEpoch, checkpoint.tradeEpoch + 1].includes(resultEpoch) || computationalGraph(result.save.graph) !== checkpoint.graphIdentity) throw new Error('거래 결과의 저장 버전 또는 커넥톰이 올바르지 않습니다.');
@@ -491,6 +628,7 @@ export async function adoptTradeResult(result: TradeSaveResult, checkpoint: Trad
       if (!validRemote(local) || !sync || sync.localVersion !== checkpoint.localVersion || sync.serverRevision !== checkpoint.revision
         || sync.dirty || sync.outbox || sync.conflict || localEpoch !== checkpoint.tradeEpoch || local.savedAt !== checkpoint.savedAt) { tx.abort(); return; }
       saves.put(structuredClone(local), profileSlot(`backup-before-trade-${Date.now()}-${requestId()}`, profile));
+      pruneBackups(saves, profileSlot('backup-before-trade', profile), stampThenId);
       saves.put(adopted, localKey);
       syncs.put({ profileId: profile.id, serverRevision: result.revision, localVersion: sync.localVersion + 1, dirty: false } satisfies SyncRecord, key);
       if (receiptKey) syncs.put({ profileId: profile.id, tradeId: tradeId!, revision: result.revision, tradeEpoch: resultEpoch } satisfies TradeReceipt, receiptKey);

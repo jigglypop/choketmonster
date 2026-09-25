@@ -34,13 +34,19 @@ export function validateGraph(value: unknown): asserts value is Graph {
   if (!p || !['source', 'version', 'license', 'sha256', 'note'].every(k => typeof p[k as keyof typeof p] === 'string')) throw new Error('Missing graph provenance');
   if (g.kind === 'connectome-subset' && (!/^https:\/\//.test(p.source) || !/^[a-f0-9]{64}$/.test(p.sha256) || !p.version || !p.license || !p.note)) throw new Error('Connectome subset needs source URL, version, license, SHA-256 and modeling note');
 }
+/** Brains only read their graph, so it is shared topology; copies take the learned state alone. */
+function copyLearnedState(state: BrainState): BrainState {
+  const copy = structuredClone({ ...state, graph: undefined }) as unknown as BrainState;
+  copy.graph = state.graph;
+  return copy;
+}
 export class Brain {
   state: BrainState;
   constructor(seed: number, graph = syntheticGraph(seed)) {
     validateGraph(graph);
     const rng = new Random(seed ^ 0xabc123);
     const n = graph.nodes.length;
-    this.state = { schema: 1, seed, graph: structuredClone(graph),
+    this.state = { schema: 1, seed, graph,
       inputWeights: Array.from({ length: n }, () => Array.from({ length: INPUTS }, () => (rng.next() - 0.5) * 1.2)),
       readout: Array.from({ length: OUTPUTS }, () => Array.from({ length: INPUTS + n }, () => (rng.next() - 0.5) * 0.02)),
       activity: Array(n).fill(0), previous: null, action: 4, rng: rng.state, updates: 0 };
@@ -95,7 +101,7 @@ export class Brain {
     for (let i = 0; i < row.length; i++) row[i] = clamp(row[i] + 0.14 * delta * s.previous[i] / norm, -12, 12);
     s.updates++;
   }
-  snapshot(): BrainState { return structuredClone(this.state); }
+  snapshot(): BrainState { return copyLearnedState(this.state); }
   static restore(value: unknown): Brain {
     const s = value as BrainState;
     if (!s || s.schema !== 1) throw new Error('Unsupported brain checkpoint');
@@ -105,8 +111,9 @@ export class Brain {
     const vector = (v: unknown, size: number) => Array.isArray(v) && v.length === size && v.every(x => typeof x === 'number' && Number.isFinite(x) && Math.abs(x) <= 100);
     const matrix = (v: unknown, rows: number, cols: number) => Array.isArray(v) && v.length === rows && v.every(row => vector(row, cols));
     if (!matrix(s.inputWeights, n, INPUTS) || !matrix(s.readout, OUTPUTS, INPUTS + n) || !vector(s.activity, n) || (s.previous !== null && !vector(s.previous, INPUTS + n)) || !Number.isSafeInteger(s.seed) || s.seed < 0 || s.seed > 0xffffffff || !Number.isInteger(s.rng) || s.rng < 0 || s.rng > 0xffffffff || !Number.isInteger(s.action) || s.action < 0 || s.action >= OUTPUTS || !Number.isSafeInteger(s.updates) || s.updates < 0) throw new Error('Malformed brain checkpoint');
-    const brain = new Brain(s.seed, s.graph);
-    brain.state = structuredClone(s);
+    // The checkpoint replaces every initialized field, so skip the constructor's random weights.
+    const brain = Object.create(Brain.prototype) as Brain;
+    brain.state = copyLearnedState(s);
     return brain;
   }
 }

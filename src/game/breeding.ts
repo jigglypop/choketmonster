@@ -5,6 +5,7 @@ import { getVersionSpeciesIds } from '../data/pokemon-versions';
 import type { GameState, Monster } from './engine';
 import { initialEvolutionProgress } from './evolution-progress';
 import { createIndividualTraits, statsWithIndividualValues } from './individual-traits';
+import { isCampaignRegion } from './regional-policy';
 
 export type MonsterGender = 'male' | 'female' | 'genderless';
 
@@ -145,7 +146,10 @@ export function hatchEgg(state: GameState, eggId: string): Monster {
   const moves = species.moves.filter(move => move.level <= 1)
     .filter((move, moveIndex, entries) => entries.findIndex(other => other.moveId === move.moveId) === moveIndex).slice(-4)
     .map(move => ({ moveId: move.moveId, pp: getMove(move.moveId).pp }));
-  const monster: Monster = { instanceId, speciesId: egg.speciesId, nickname: species.name,
+  // Hatched where the partner walked; without a world region, the same default a reload would fill in.
+  const region = state.evolutionContext?.regionId;
+  const originRegion = isCampaignRegion(region) ? region : state.campaign?.startRegion ?? 'kanto';
+  const monster: Monster = { instanceId, speciesId: egg.speciesId, nickname: species.name, originRegion,
     gender: genderFor(egg.speciesId, egg.eggId), level: 1, xp: 0, hp: stats.hp, stats, moves, brain: egg.brain, ...traits };
   monster.evolutionProgress = initialEvolutionProgress(monster);
   monster.evolutionProgress.gender = monster.gender!;

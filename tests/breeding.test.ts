@@ -6,6 +6,7 @@ import { advanceEggProgress, breedingCompatibility, createEgg, hatchEgg } from '
 import { actBattle, createGame, createMonster, experienceAtLevel, mergeDuplicateMonsters, previewDuplicateMerge, releaseMonster, restoreGame, serializeGame, statsFor, validateGame } from '../src/game/engine';
 import { defaultView, packSave, unpackSave } from '../src/game/storage';
 import { evolutionProgress } from '../src/game/evolution-progress';
+import { monsterRegionalUseReason } from '../src/game/regional-policy';
 
 const graph = JSON.parse(readFileSync(new URL('../public/data/connectome.json', import.meta.url), 'utf8')) as Graph;
 
@@ -59,7 +60,22 @@ describe('교배, 알, 전투 중 컬렉션 규칙', () => {
     expect(child.brain?.seed).toBe(seed); expect(child.brain?.seed).not.toBe(first.brain?.seed);
     expect(restored.nursery).toEqual([]); expect(restored.dex.caught).toContain(1);
     expect(restored.versionCaught.red).toContain(1);
+    expect(child.originRegion).toBe('kanto');
     validateGame(restored);
+  });
+
+  it('records the hatching region so the hatchling is local there before any reload', () => {
+    const game = createGame(1, 'egg-origin'), first = game.player.team[0], second = createMonster(game, 1, 20);
+    first.gender = 'female'; second.gender = 'male'; game.player.box.push(second);
+    const [local, travelled] = [createEgg(game, first.instanceId, second.instanceId, graph), createEgg(game, first.instanceId, second.instanceId, graph)];
+    advanceEggProgress(game, Math.max(local.requiredSteps, travelled.requiredSteps));
+    const child = hatchEgg(game, local.eggId);
+    expect(child.originRegion).toBe('kanto');
+    expect(monsterRegionalUseReason(game, 'kanto', child)).toBeUndefined();
+    game.evolutionContext = { period: 'day', regionId: 'johto', locationId: 'route-29', raining: false, multiplayer: false };
+    const johto = hatchEgg(game, travelled.eggId);
+    expect(johto.originRegion).toBe('johto');
+    expect(restoreGame(serializeGame(game)).player.team.find(monster => monster.instanceId === johto.instanceId)?.originRegion).toBe('johto');
   });
 
   it('keeps the active identity and last healthy teammate safe during battle merges and releases', () => {

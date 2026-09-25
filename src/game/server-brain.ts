@@ -6,6 +6,12 @@ type ReplayStep = { requestId: string; episodeId: string; inputs: number[]; avai
 type LocalBrain = { checkpoint?: string; checkpointId?: string; history: ReplayStep[]; lastRequestId: string; lastChoiceId?: string; decision: ServerDecision };
 export type TransferableServerBrain = { schema: 1; graphId: string; gameScope: string; state: LocalBrain };
 const lastReceipts = new Map<string, ServerBrainReceipt>();
+/** Display hints for recent battlers; every wild opponent adds one, so keep the newest only. */
+const RECEIPT_LIMIT = 256;
+function rememberReceipt(id: string, receipt: ServerBrainReceipt) {
+  lastReceipts.delete(id); lastReceipts.set(id, receipt);
+  while (lastReceipts.size > RECEIPT_LIMIT) lastReceipts.delete(lastReceipts.keys().next().value!);
+}
 // Hints only: IndexedDB still owns the full durable checkpoint and replay log.
 const remoteHeads = new Map<string, string>();
 export const lastServerDecision = (id: string) => lastReceipts.get(id);
@@ -55,6 +61,8 @@ async function readBrains(keys: string[]): Promise<(LocalBrain | undefined)[]> {
     tx.oncomplete = () => resolve(requests.map(request => request.result)); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
   });
 }
+/** A small last-use stamp beside each checkpoint lets the cache be trimmed without reading the large records. */
+const touchKey = (key: string) => `touch:${key}`;
 async function saveBrains(entries: { key: string; previous?: string; state: LocalBrain }[]) {
   const db = await database();
   await new Promise<void>((resolve, reject) => {
@@ -63,7 +71,7 @@ async function saveBrains(entries: { key: string; previous?: string; state: Loca
       const read = store.get(entry.key);
       read.onsuccess = () => {
         if ((read.result as LocalBrain | undefined)?.lastRequestId !== entry.previous) { conflict = true; tx.abort(); }
-        else store.put(entry.state, entry.key);
+        else { store.put(entry.state, entry.key); store.put(Date.now(), touchKey(entry.key)); }
       };
     }
     tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error);
@@ -73,6 +81,26 @@ async function saveBrains(entries: { key: string; previous?: string; state: Loca
 const HASH = /^[a-f0-9]{64}$/;
 /** How long one neural batch keeps retrying through a busy server, timeouts and gateway errors before it fails. */
 const BATCH_RETRY_MS = 60_000;
+/** The server allows one neural computation per address at a time and answers 429 while busy. */
+const retryableStatus = (status: number) => status === 429 || status === 502 || status === 503 || status === 504;
+const retryPause = (attempt: number) => new Promise(resolve => setTimeout(resolve, Math.min(4000, 250 * 2 ** attempt)));
+/** Building a checkpoint is a pure computation from the sent lineage, so it is safe to resend while the server is busy. */
+async function postCheckpoint(payload: string) {
+  const deadline = Date.now() + BATCH_RETRY_MS;
+  for (let attempt = 0; ; attempt++) {
+    let response: Response;
+    try {
+      response = await fetch('/api/local-brains/checkpoint', { method: 'POST', credentials: 'omit', headers: { 'content-type': 'application/json' },
+        body: payload, signal: AbortSignal.timeout(20_000) });
+    } catch (error) {
+      if (Date.now() < deadline) { await retryPause(attempt); continue; }
+      throw error;
+    }
+    const body = await response.json().catch(() => ({})) as { checkpoint?: unknown; checkpointId?: unknown; message?: string };
+    if (retryableStatus(response.status) && Date.now() < deadline) { await retryPause(attempt); continue; }
+    return { response, body };
+  }
+}
 const scopeSeed = (value: string) => value.startsWith('account:') ? value.split(':').slice(2).join(':') : value;
 const validDecision = (value: unknown): value is ServerDecision => {
   const row = value as ServerDecision;
@@ -126,10 +154,8 @@ export function exportTransferableServerBrain(instanceId: string): Promise<Trans
     let state = validateLocalBrain(saved);
     assertCompleteLineage(state);
     if (!state.checkpoint || state.history.length) {
-      const response = await fetch('/api/local-brains/checkpoint', { method: 'POST', credentials: 'omit', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ clientId, creatureId: instanceId, lastRequestId: state.lastRequestId, checkpoint: state.checkpoint,
-          checkpointId: state.checkpointId, history: state.history }), signal: AbortSignal.timeout(20_000) });
-      const body = await response.json().catch(() => ({})) as { checkpoint?: unknown; checkpointId?: unknown; message?: string };
+      const { response, body } = await postCheckpoint(JSON.stringify({ clientId, creatureId: instanceId, lastRequestId: state.lastRequestId, checkpoint: state.checkpoint,
+        checkpointId: state.checkpointId, history: state.history }));
       if (!response.ok) throw new Error(body.message ?? `회로 기억 체크포인트를 만들지 못했습니다. (${response.status})`);
       if (typeof body.checkpoint !== 'string' || body.checkpoint.length > 2_100_000 || body.checkpointId !== state.lastRequestId) throw new Error('회로 기억 체크포인트 응답이 올바르지 않습니다.');
       const compacted = validateLocalBrain({ ...state, checkpoint: body.checkpoint, checkpointId: body.checkpointId, history: [] });
@@ -164,6 +190,8 @@ export function importTransferableServerBrain(instanceId: string, value: unknown
         const existing = brainRequest.result as LocalBrain | undefined;
         if (existing && JSON.stringify(existing) !== JSON.stringify(state)) { conflict = true; tx.abort(); return; }
         if (!existing) store.put(state, key);
+        // Stamp it now: the received individual joins the save only after the trade result is adopted.
+        store.put(Date.now(), touchKey(key));
         if (receiptKey) store.put({ instanceId }, receiptKey);
       };
       brainRequest.onsuccess = apply; if (receiptRequest) receiptRequest.onsuccess = apply;
@@ -184,21 +212,21 @@ async function sendBatch(fullBody: { clientId: string; steps: (ReplayStep & { cr
   let restored = false;
   // The server answers a repeated requestId with its committed response, so waiting and resending is safe.
   // A batch the client stopped waiting for keeps running there and makes this client busy (429) until it ends.
-  const deadline = Date.now() + BATCH_RETRY_MS, pause = (attempt: number) => new Promise(resolve => setTimeout(resolve, Math.min(4000, 250 * 2 ** attempt)));
+  const deadline = Date.now() + BATCH_RETRY_MS;
   for (let attempt = 0; ; attempt++) {
     let response: Response;
     try {
       response = await fetch('/api/local-brains/step-batch', { method: 'POST', credentials: 'omit',
         headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(30_000) });
     } catch (error) {
-      if (Date.now() < deadline) { await pause(attempt); continue; }
+      if (Date.now() < deadline) { await retryPause(attempt); continue; }
       throw error;
     }
     const value = await response.json().catch(() => ({}));
     if (response.status === 428 && !restored && fullBody.steps.some(step => step.checkpoint)) {
       body = fullBody; restored = true; continue;
     }
-    if ((response.status === 429 || response.status === 502 || response.status === 503 || response.status === 504) && Date.now() < deadline) { await pause(attempt); continue; }
+    if (retryableStatus(response.status) && Date.now() < deadline) { await retryPause(attempt); continue; }
     if (!response.ok) throw new Error(value.message ?? '서버 회로 오류 (' + response.status + ')');
     for (const step of fullBody.steps) {
       const key = fullBody.clientId + ':' + step.creatureId;
@@ -265,7 +293,7 @@ export function chooseServerBrains(controller: ConnectomeController, choices: Se
     }
     return choices.map((choice, index) => {
       const decision = saved[index]!.decision;
-      lastReceipts.set(choice.self.instanceId, { ...decision, turn: choice.turn, learning: choice.learning });
+      rememberReceipt(choice.self.instanceId, { ...decision, turn: choice.turn, learning: choice.learning });
       return decision;
     });
   });
@@ -274,4 +302,48 @@ export function chooseServerBrains(controller: ConnectomeController, choices: Se
 export function chooseServerBrain(controller: ConnectomeController, self: NeuralMonster, foe: NeuralMonster, turn: number,
   reward: number | null, learning: boolean, battleId: string, terminal = false, context?: BattleSenseContext): Promise<ServerDecision> {
   return chooseServerBrains(controller, [{ self, foe, turn, reward, learning, battleId, terminal, context }]).then(decisions => decisions[0]);
+}
+
+/** Checkpoint records are keyed `clientId:instanceId`; trade receipts and stamps have other shapes. */
+const BRAIN_RECORD = /^[a-f0-9]{64}:[^:]+$/;
+/** Records touched this recently are kept even when the save does not list them yet, such as a brain received by trade. */
+const BRAIN_GRACE_MS = 10 * 60_000;
+const MAX_BRAIN_RECORDS = 256;
+/**
+ * Removes checkpoints of individuals the current save no longer holds, such as wild opponents after their battle,
+ * then trims the least recently used records of other saves while the cache is over its cap.
+ * Individuals the save holds are never removed.
+ */
+export function pruneServerBrains(expectedScope: string, liveInstanceIds: Iterable<string>): Promise<number> {
+  const live = new Set(liveInstanceIds);
+  const operation = operationQueue.catch(() => {}).then(async () => {
+    if (!usesServerBrain() || !graphId || expectedScope !== scope) return 0;
+    for (const id of [...lastReceipts.keys()]) if (!live.has(id)) lastReceipts.delete(id);
+    const prefix = await digest(await deviceId() + ':' + scope + ':' + graphId) + ':', db = await database(), now = Date.now();
+    return new Promise<number>((resolve, reject) => {
+      const tx = db.transaction('brains', 'readwrite'), store = tx.objectStore('brains'), stamps = IDBKeyRange.bound('touch:', 'touch:\uffff');
+      const keysRequest = store.getAllKeys(), stampKeysRequest = store.getAllKeys(stamps), stampsRequest = store.getAll(stamps);
+      let removed = 0;
+      const decide = () => {
+        if ([keysRequest, stampKeysRequest, stampsRequest].some(request => request.readyState !== 'done')) return;
+        const touched = new Map((stampKeysRequest.result as string[]).map((key, index) => [key.slice('touch:'.length), Number(stampsRequest.result[index]) || 0]));
+        const records = (keysRequest.result as IDBValidKey[]).filter((key): key is string => typeof key === 'string' && BRAIN_RECORD.test(key));
+        const held = (key: string) => key.startsWith(prefix) && live.has(key.slice(prefix.length));
+        const idle = (key: string) => now - (touched.get(key) ?? 0) > BRAIN_GRACE_MS;
+        const doomed = new Set(records.filter(key => key.startsWith(prefix) && !held(key) && idle(key)));
+        const kept = records.filter(key => !doomed.has(key));
+        if (kept.length > MAX_BRAIN_RECORDS) {
+          const oldest = kept.filter(key => !held(key) && idle(key)).sort((a, b) => (touched.get(a) ?? 0) - (touched.get(b) ?? 0) || a.localeCompare(b));
+          for (const key of oldest.slice(0, kept.length - MAX_BRAIN_RECORDS)) doomed.add(key);
+        }
+        for (const key of doomed) { store.delete(key); store.delete(touchKey(key)); }
+        const present = new Set(records);
+        for (const key of touched.keys()) if (!present.has(key)) store.delete(touchKey(key));
+        removed = doomed.size;
+      };
+      keysRequest.onsuccess = decide; stampKeysRequest.onsuccess = decide; stampsRequest.onsuccess = decide;
+      tx.oncomplete = () => resolve(removed); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
+    });
+  });
+  operationQueue = operation; return operation;
 }

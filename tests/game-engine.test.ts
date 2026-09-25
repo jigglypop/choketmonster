@@ -294,7 +294,7 @@ describe('전체 포켓몬 로컬 게임 엔진', () => {
   it('회복·버프·상태 기술의 실제 효과를 기술 선택 학습용 텔레메트리로 반환한다', () => {
     const state = createGame(1, 'strategic-move-telemetry');
     const player = state.player.team[0];
-    player.moves = [105, 14, 50, 33].map(moveId => ({ moveId, pp: getMove(moveId).pp }));
+    player.moves = [105, 14, 109, 33].map(moveId => ({ moveId, pp: getMove(moveId).pp }));
     player.hp = Math.floor(player.stats.hp / 2);
     const battle = wildBattle(state, 4, 5);
 
@@ -307,7 +307,34 @@ describe('전체 포켓몬 로컬 게임 엔진', () => {
     expect(battle.statStages?.[player.instanceId]?.attack).toBe(2);
 
     const status = actBattle(state, { type: 'move', index: 2 }, 4).executedMoves[0];
-    expect(status).toMatchObject({ moveId: 50, category: 'status', ailmentApplied: true, strategicEffect: true });
+    expect(status).toMatchObject({ moveId: 109, category: 'status', ailmentApplied: true, strategicEffect: true });
+    expect(battle.enemy.team[0].status).toBe('confusion');
+  });
+
+  it('stores only ailments the engine resolves and ends volatile ones with a switch or the battle', () => {
+    const state = createGame(1, 'volatile-ailments'), player = state.player.team[0], reserve = createMonster(state, 4, 5);
+    state.player.team.push(reserve);
+    player.moves = [50, 182, 109].map(moveId => ({ moveId, pp: getMove(moveId).pp }));
+    const battle = wildBattle(state, 7, 5), foe = battle.enemy.team[0];
+    foe.moves = [{ moveId: 45, pp: getMove(45).pp }];
+    // Disable targets the foe and Protect the user; neither effect exists locally, so nothing is stored.
+    expect(actBattle(state, { type: 'move', index: 0 }, 4).executedMoves[0]).toMatchObject({ moveId: 50, ailmentApplied: false, strategicEffect: false });
+    expect(actBattle(state, { type: 'move', index: 1 }, 4).executedMoves[0]).toMatchObject({ moveId: 182, ailmentApplied: false });
+    expect(foe.status).toBeUndefined(); expect(player.status).toBeUndefined();
+
+    player.status = 'confusion'; player.statusTurns = 3;
+    actBattle(state, { type: 'switch', index: 1 }, 4);
+    expect(player.status).toBeUndefined(); expect(player.statusTurns).toBeUndefined();
+    reserve.status = 'trap'; reserve.statusTurns = 4; reserve.hp = reserve.stats.hp; foe.status = 'leech-seed';
+    battle.enemy.team[0].hp = 0;
+    expect(actBattle(state, { type: 'wait' }, 4).outcome).toBe('won');
+    expect(reserve.status).toBeUndefined(); expect(foe.status).toBeUndefined();
+
+    reserve.status = 'burn';
+    player.status = 'infatuation'; player.statusTurns = 2;
+    const loaded = restoreGame(serializeGame(state));
+    expect(loaded.player.team[1].status).toBe('burn');
+    expect(loaded.player.team[0].status).toBeUndefined(); expect(loaded.player.team[0].statusTurns).toBeUndefined();
   });
 
   it('기술별 학습 통계를 개체 저장과 함께 검증하고 복원한다', () => {

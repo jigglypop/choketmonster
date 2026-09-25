@@ -1,7 +1,7 @@
 import { Brain, validateGraph, type Graph } from '../core/brain';
 import { clamp } from '../core/random';
 import { getMove, getSpecies } from '../data/pokemon';
-import { typeMultiplier } from './battle';
+import { implementedAilment, typeMultiplier } from './battle';
 import type { PokemonType } from './contracts';
 import { getCombatForm } from '../data/pokemon-combat-forms';
 
@@ -47,9 +47,9 @@ export function automatedMoveMask(self: NeuralMonster, other: NeuralMonster, _tu
       const stage = stages?.[key] ?? 0;
       return change.change > 0 ? stage < 6 : stage > -6;
     }) ?? false;
-    const statusTarget = SELF_TARGETS.has(move.targetId ?? 10) ? self : other;
-    const ailment = !!move.ailment && move.ailment !== 'none' && !statusTarget.status
-      && !ailmentImmune(move.ailment, monsterTypes(statusTarget));
+    const statusTarget = SELF_TARGETS.has(move.targetId ?? 10) ? self : other, applied = implementedAilment(move.ailment);
+    // Ailments without a local effect never count as a strategic reason to use the move.
+    const ailment = !!applied && !statusTarget.status && !ailmentImmune(applied, monsterTypes(statusTarget));
     return healing || stageChange || ailment;
   });
   if (attacks.some(Boolean)) return attacks.concat(false) as [boolean, boolean, boolean, boolean, boolean];
@@ -100,10 +100,11 @@ export function battleMoveSenses(self: NeuralMonster, other: NeuralMonster, cont
       });
       signals.push(useful.reduce((sum, value) => sum + value, 0) / useful.length);
     }
-    if (move.ailment && move.ailment !== 'none') {
+    const ailment = implementedAilment(move.ailment);
+    if (ailment) {
       const targetSelf = SELF_TARGETS.has(move.targetId ?? 10), target = targetSelf ? self : other;
       const types = monsterTypes(target);
-      signals.push(target.status || ailmentImmune(move.ailment, types) ? -.9 : .55);
+      signals.push(target.status || ailmentImmune(ailment, types) ? -.9 : .55);
     }
     if (!signals.length) signals.push(move.damageClass === 'status' ? -.35 : 0);
     // Keep the original full-use input scale for existing 12-column checkpoints.
