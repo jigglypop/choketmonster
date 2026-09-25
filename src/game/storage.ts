@@ -88,19 +88,33 @@ export function getSaveStorageStatus() { return storageStatus; }
 export function onSaveStorageStatus(listener: (status: SaveStorageStatus) => void) { storageListeners.add(listener); if (storageStatus) listener(storageStatus); return () => { storageListeners.delete(listener); }; }
 const announceStorage = (status: SaveStorageStatus) => { storageStatus = status; for (const listener of storageListeners) listener(status); };
 let databasePromise: Promise<IDBDatabase> | undefined;
+/** Opening waits this long before it reports the store as stuck rather than waiting forever. */
+const DATABASE_OPEN_MS = 10_000;
+/** A save transaction that has not finished in this long is abandoned, so later saves are never held up behind it. */
+const TRANSACTION_MS = 20_000;
+const STUCK_STORAGE = '저장소(IndexedDB)가 응답하지 않습니다. 이 게임을 연 다른 탭을 닫고 새로고침해 주세요.';
 function database(): Promise<IDBDatabase> {
   if (databasePromise) return databasePromise;
   databasePromise = new Promise((resolve, reject) => {
     const request = indexedDB.open(DATABASE, 2);
+    let settled = false;
+    const fail = (error: unknown) => { if (settled) return; settled = true; clearTimeout(timer); databasePromise = undefined; reject(error); };
+    // A tab holding an older connection, or a store that never answers, would otherwise leave every save waiting.
+    const timer = setTimeout(() => fail(new Error(STUCK_STORAGE)), DATABASE_OPEN_MS);
+    request.onblocked = () => fail(new Error(STUCK_STORAGE));
     request.onupgradeneeded = () => {
       if (!request.result.objectStoreNames.contains(STORE)) request.result.createObjectStore(STORE);
       if (!request.result.objectStoreNames.contains(SYNC_STORE)) request.result.createObjectStore(SYNC_STORE);
     };
     request.onsuccess = () => {
-      request.result.onversionchange = () => { request.result.close(); databasePromise = undefined; };
-      resolve(request.result);
+      const db = request.result;
+      // Opened after it was reported stuck: let the next attempt open its own connection.
+      if (settled) { db.close(); return; }
+      settled = true; clearTimeout(timer);
+      db.onversionchange = () => { db.close(); databasePromise = undefined; };
+      resolve(db);
     };
-    request.onerror = () => { databasePromise = undefined; reject(request.error); };
+    request.onerror = () => fail(request.error);
   });
   return databasePromise;
 }
@@ -213,6 +227,7 @@ export function writeSave(save: SaveEnvelope, key = 'current'): Promise<void> {
     const db = await database(); let retainedConflict: SyncConflict | undefined;
     await new Promise<void>((resolve, reject) => {
       const stores = profile ? [STORE, SYNC_STORE] : [STORE], tx = db.transaction(stores, 'readwrite');
+      const watchdog = setTimeout(() => { try { tx.abort(); } catch { /* already finished */ } reject(new Error(STUCK_STORAGE)); }, TRANSACTION_MS);
       const saves = tx.objectStore(STORE), currentRequest = baseSlot === 'current' ? saves.get(slot) : undefined;
       const apply = () => {
         const storedEpoch = validRemote(currentRequest?.result) ? normalizeTradeEpoch(currentRequest!.result.tradeEpoch) : 0;
@@ -231,9 +246,14 @@ export function writeSave(save: SaveEnvelope, key = 'current'): Promise<void> {
           syncStore.put({ ...prior, profileId: profile.id, serverRevision: prior?.serverRevision ?? 0, localVersion: (prior?.localVersion ?? 0) + 1, dirty: true } satisfies SyncRecord, syncKey(profile.id));
         };
       }
-      tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); tx.onabort = () => {
-        const storedEpoch = validRemote(currentRequest?.result) ? normalizeTradeEpoch(currentRequest!.result.tradeEpoch) : 0;
-        reject(normalizeTradeEpoch(snapshot.tradeEpoch) < storedEpoch ? new StaleTradeEpochError() : tx.error);
+      tx.oncomplete = () => { clearTimeout(watchdog); resolve(); };
+      tx.onerror = () => { clearTimeout(watchdog); reject(tx.error); };
+      tx.onabort = () => {
+        clearTimeout(watchdog);
+        // A damaged stored epoch must still settle the save instead of leaving the queue waiting.
+        let stale = false;
+        try { stale = normalizeTradeEpoch(snapshot.tradeEpoch) < (validRemote(currentRequest?.result) ? normalizeTradeEpoch(currentRequest!.result.tradeEpoch) : 0); } catch { /* reported below */ }
+        reject(stale ? new StaleTradeEpochError() : tx.error ?? new Error(STUCK_STORAGE));
       };
     });
     if (baseSlot === 'current') { activeTradeEpoch = normalizeTradeEpoch(snapshot.tradeEpoch); tradeEpochReady = true; tidyBrainCache(snapshot, profile); }

@@ -78,7 +78,7 @@ describe('town shops', () => {
     const sold = new Set(Object.entries(TOWN_SHOPS).flatMap(([region, towns]) => Object.keys(towns).flatMap(town => townStock(region, town).map(entry => entry.id))));
     for (const item of ['fire-stone', 'water-stone', 'thunder-stone', 'leaf-stone', 'moon-stone', ...EXTRA_EVOLUTION_ITEM_IDS]) {
       if (['galarica-cuff', 'galarica-wreath', 'friendship-treat'].includes(item) || SHOP_ITEMS.includes(item as never)) continue;
-      expect(sold.has(item), item).toBe(true);
+      expect(sold.has(item as never), item).toBe(true);
     }
   });
 
