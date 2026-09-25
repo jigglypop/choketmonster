@@ -98,6 +98,12 @@ function TownNpcFigure({ npc, y, player, lines, talking, quiet, sampleWorld, pos
     if (!walking || !standing) return;
     if (talking) walking.crossFadeTo(standing, .25, false); else standing.crossFadeTo(walking, .25, false);
   }, [talking, figure]);
+  // A figure with no idle loop waves now and then while it waits, so it never stands frozen.
+  useEffect(() => {
+    if (talking || npc.patrol || !figure || !waves.length || gltf?.animations.some(clip => /^idle/i.test(clip.name))) return;
+    const timer = window.setInterval(() => greet(waves[Math.floor(Math.random() * waves.length)]), 9000 + (Math.abs(npc.x * 131 + npc.z * 71) % 7000));
+    return () => window.clearInterval(timer);
+  }, [talking, figure, waves]);
   useEffect(() => {
     if (!talking || lines.length < 2) return;
     const timer = window.setInterval(() => setLine(value => value + 1), LINE_MS);

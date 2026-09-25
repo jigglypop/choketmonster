@@ -9,8 +9,12 @@ import { DUNGEON_PLANS } from './dungeons';
 import type { KantoGym, KantoLocation } from './kanto';
 import { BUILDING_HALF_X, BUILDING_HALF_Z, SIGNBOARD } from './world-details';
 
-/** SD townsfolk, drawn from the owner's files as they are: a fire boy in red, a leaf girl in green and a doctor. */
-const npcModel = (name: 'red' | 'green' | 'docter' | 'police') => `/models/trainer/${name}.glb`;
+/**
+ * SD townsfolk from the owner's files: a fire boy in red, a leaf girl in green, a doctor and an officer. The red, doctor
+ * and officer files carry 8192 px colour maps that browsers fail to decode side by side, so they load from copies in
+ * `web/` whose maps alone are halved (colour 4096, normal and metallic-roughness 2048); mesh, rig and clips are untouched.
+ */
+const npcModel = (name: 'red' | 'green' | 'docter' | 'police') => name === 'green' ? `/models/trainer/${name}.glb` : `/models/trainer/web/${name}.glb`;
 
 /** Who stands where: beside the Pokémon Center, the mart, the gym, Pallet's houses and lab, or out on the plaza. */
 export type TownNpcRole = 'clinic' | 'shop' | 'gym' | 'lab' | 'home' | 'plaza' | 'police';

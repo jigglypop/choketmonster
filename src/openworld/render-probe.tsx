@@ -71,6 +71,14 @@ export function RenderProbe() {
               hasNameplate: !!object.getObjectByName('creature-nameplate') };
           }),
         nameplates: scene.getObjectsByProperty('name', 'creature-nameplate').length,
+        // Townsfolk: where each stands and one leg bone's rotation, which changes from frame to frame while a clip plays.
+        townNpcs: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('town-npc:')).map(object => {
+          let bone: Object3D | undefined;
+          object.traverse(child => { if (!bone && (child as Object3D & { isBone?: boolean }).isBone && /leg|thigh/i.test(child.name)) bone = child; });
+          const maps: string[] = [];
+          object.traverse(child => { if (!(child instanceof Mesh)) return; const material = child.material as MeshStandardMaterial; for (const key of ['map', 'normalMap', 'roughnessMap'] as const) maps.push(`${key}:${material[key] ? (material[key]!.image ? 'ok' : 'empty') : 'none'}`); });
+          return { id: object.name.slice('town-npc:'.length), position: object.position.toArray(), bone: bone?.name, boneQuaternion: bone?.quaternion.toArray(), maps };
+        }),
         fieldItems: scene.getObjectsByProperty('name', 'field-item-model').map(object => ({ id: object.parent?.name, itemId: object.parent?.userData.itemId, drawn: object.userData.drawn ?? 0 })),
         explorationSites: scene.getObjectsByProperty('type', 'Group').filter(object => /^(junction|rest|lookout|bridge):/.test(object.name)).map(object => ({ id: object.name, position: object.parent?.position.toArray() })),
         domNameplates: gl.domElement.parentElement?.querySelectorAll('.ow-creature-label').length ?? 0,
