@@ -1,7 +1,7 @@
 import { Html } from '@react-three/drei';
 import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { AnimationMixer, Box3, Color, LoopRepeat, Mesh, MeshStandardMaterial, SkinnedMesh, Vector3, type Group } from 'three';
+import { AnimationMixer, Box3, LoopRepeat, Mesh, SkinnedMesh, Vector3, type Group } from 'three';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { getSpecies } from '../data/pokemon';
@@ -22,28 +22,13 @@ const HOP_MS = 420, SPIN_MS = 700;
 const NPC_DRAW_RANGE = 46, TALK_RANGE = 6.5;
 const LINE_MS = 4500;
 
-/** Matte skin and cloth, lifted a little by their own colours so the faces stay bright in the shade. */
-function brighten(gltf: GLTF): void {
-  if (gltf.userData.npcLook) return;
-  gltf.userData.npcLook = true;
-  gltf.scene.traverse(child => {
-    if (!(child instanceof Mesh)) return;
-    for (const material of Array.isArray(child.material) ? child.material : [child.material]) {
-      if (!(material instanceof MeshStandardMaterial) || !material.map) continue;
-      material.metalness = 0; material.roughness = .85;
-      material.emissive = new Color('#ffffff'); material.emissiveMap = material.map; material.emissiveIntensity = .14;
-      material.needsUpdate = true;
-    }
-  });
-}
-
 function useNpcModel(url: string): GLTF | null {
   const [gltf, setGltf] = useState<GLTF | null>(null);
   useEffect(() => {
     let active = true;
     setGltf(null);
     const request = acquireModel(url);
-    request.promise.then(value => { if (active) { brighten(value); setGltf(value); } }, () => undefined);
+    request.promise.then(value => { if (active) setGltf(value); }, () => undefined);
     return () => { active = false; request.release(); };
   }, [url]);
   return gltf;
