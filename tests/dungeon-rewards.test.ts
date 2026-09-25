@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { Graph } from '../src/core/brain';
 import type { FieldPolicy } from '../src/game/field';
-import { buyTownStock, claimDungeonClear, createGame, restoreGame, serializeGame, townStock } from '../src/game/engine';
+import { buyTownStock, claimDungeonClear, createGame, restoreGame, serializeGame, SHOP_ITEMS, townStock } from '../src/game/engine';
+import { EXTRA_EVOLUTION_ITEM_IDS } from '../src/game/evolution-items';
 import { TOWN_SHOPS } from '../src/data/town-shops';
 import { getWorldAtlas } from '../src/openworld/atlas';
 import { CAVE_SCENES, dungeonFloors } from '../src/openworld/caves';
@@ -69,6 +70,15 @@ describe('town shops', () => {
         expect(stock.length, `${regionId}:${townId}`).toBe(shops.reduce((sum, shop) => sum + Object.keys(shop.machines ?? {}).length + (shop.items ?? []).length, 0));
         for (const entry of stock) expect(entry.price, `${regionId}:${townId}:${entry.id}`).toBeGreaterThan(0);
       }
+    }
+  });
+
+  it('keeps the general shop to medicine and stand-ins, and sells every stone and evolution item in some town', () => {
+    expect([...SHOP_ITEMS].sort()).toEqual(['affection-treat', 'beauty-treat', 'evolution-catalyst', 'link-cable', 'potion', 'super-potion']);
+    const sold = new Set(Object.entries(TOWN_SHOPS).flatMap(([region, towns]) => Object.keys(towns).flatMap(town => townStock(region, town).map(entry => entry.id))));
+    for (const item of ['fire-stone', 'water-stone', 'thunder-stone', 'leaf-stone', 'moon-stone', ...EXTRA_EVOLUTION_ITEM_IDS]) {
+      if (['galarica-cuff', 'galarica-wreath', 'friendship-treat'].includes(item) || SHOP_ITEMS.includes(item as never)) continue;
+      expect(sold.has(item), item).toBe(true);
     }
   });
 

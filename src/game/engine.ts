@@ -275,7 +275,13 @@ export const ITEM_LABELS: Readonly<Record<InventoryItem, string>> = {
   ...Object.fromEntries(MEGA_STONES.map(item => [item.id, item.name])) as Record<MegaStoneId, string>,
 };
 const INVENTORY_ITEMS = Object.keys(ITEM_PRICES) as InventoryItem[];
-export const SHOP_ITEMS: readonly InventoryItem[] = INVENTORY_ITEMS.filter(item => !['poke-ball', 'great-ball', 'ultra-ball', 'rare-candy', 'friendship-treat', 'galarica-cuff', 'galarica-wreath'].includes(item) && !EQUIPPABLE_ITEMS.includes(item as EquippableItem));
+/**
+ * What every shop sells: medicine, the treats and capsule that stand in for the games' special conditions, and the link
+ * cable that stands in for trading. Stones and evolution items are sold only in the towns that sell them in their
+ * games (data/town-shops.ts).
+ */
+export const SHOP_ITEMS: readonly InventoryItem[] = (['potion', 'super-potion', 'link-cable', 'evolution-catalyst', 'beauty-treat', 'affection-treat'] as const)
+  .filter(item => INVENTORY_ITEMS.includes(item));
 
 /** Legacy ball counts stay finite for save/server compatibility; one finite token represents unlimited basic balls. */
 export function normalizeBalls(state: GameState): void {

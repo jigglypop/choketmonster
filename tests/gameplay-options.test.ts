@@ -101,24 +101,29 @@ describe('transactional evolution purchases', () => {
     expect(() => evolve(game, cubone.instanceId)).toThrow();
     game.evolutionContext.period = 'night'; evolve(game, cubone.instanceId);
     expect(cubone.regionalForm).toBe('marowak-alola');
-    evolve(game, vulpix.instanceId, { item: 'fire-stone', autoBuyMissing: true });
+    game.inventory['fire-stone'] = 1; evolve(game, vulpix.instanceId, { item: 'fire-stone' });
     expect(vulpix.regionalForm).toBeUndefined();
   });
 
   it('quotes and buys a missing item in the same evolution transaction', () => {
-    const game = createGame(1, 'auto-buy'), onix = createMonster(game, 95, 30);
-    game.player.team = [onix]; game.player.money = ITEM_PRICES['metal-coat'];
-    const steelix = getSpecies(95).evolutions.find(item => item.target === 208)!;
-    expect(evolutionPurchaseQuote(game, onix, steelix, 'metal-coat')).toMatchObject({ ready: false, requiredItem: 'metal-coat', missing: 1, affordable: true });
-    evolve(game, onix.instanceId, { targetId: 208, item: 'metal-coat', autoBuyMissing: true });
-    expect(onix.speciesId).toBe(208); expect(game.player.money).toBe(0); expect(game.inventory['metal-coat']).toBe(0);
+    // Karrablast trades up with the link cable every shop sells.
+    const game = createGame(1, 'auto-buy'), karrablast = createMonster(game, 588, 30);
+    game.player.team = [karrablast]; game.player.money = ITEM_PRICES['link-cable'];
+    const escavalier = getSpecies(588).evolutions.find(item => item.target === 589)!;
+    expect(evolutionPurchaseQuote(game, karrablast, escavalier, 'link-cable')).toMatchObject({ ready: false, requiredItem: 'link-cable', missing: 1, affordable: true });
+    evolve(game, karrablast.instanceId, { targetId: 589, item: 'link-cable', autoBuyMissing: true });
+    expect(karrablast.speciesId).toBe(589); expect(game.player.money).toBe(0); expect(game.inventory['link-cable']).toBe(0);
   });
 
-  it('does not mutate money, stock, or identity when the automatic purchase is unaffordable', () => {
-    const game = createGame(1, 'auto-buy-fail'), onix = createMonster(game, 95, 30);
-    game.player.team = [onix]; game.player.money = ITEM_PRICES['metal-coat'] - 1;
+  it('does not mutate money, stock, or identity when the automatic purchase is unaffordable or the item is only sold in towns', () => {
+    const game = createGame(1, 'auto-buy-fail'), karrablast = createMonster(game, 588, 30), onix = createMonster(game, 95, 30);
+    game.player.team = [karrablast, onix]; game.player.money = ITEM_PRICES['link-cable'] - 1;
     const before = serializeGame(game);
+    expect(() => evolve(game, karrablast.instanceId, { targetId: 589, item: 'link-cable', autoBuyMissing: true })).toThrow();
+    // A Metal Coat is bought in its towns, never on the spot.
+    game.player.money = 99_999;
     expect(() => evolve(game, onix.instanceId, { targetId: 208, item: 'metal-coat', autoBuyMissing: true })).toThrow();
+    game.player.money = ITEM_PRICES['link-cable'] - 1;
     expect(serializeGame(game)).toBe(before);
   });
 });
@@ -293,11 +298,11 @@ describe('form and equipment continuity', () => {
     game.inventory['rare-candy'] = 1; useItem(game, 'rare-candy', alola.instanceId);
     const loaded = restoreGame(serializeGame(game)).player.box[1];
     expect(loaded.level).toBe(11); expect(loaded.ability!.slot).toBe(3);
-    game.player.money = ITEM_PRICES['ice-stone'];
-    expect(() => evolve(game, alola.instanceId, { targetId: 38, item: 'fire-stone', autoBuyMissing: true })).toThrow();
-    evolve(game, alola.instanceId, { targetId: 38, item: 'ice-stone', autoBuyMissing: true });
+    game.inventory['fire-stone'] = 1; game.inventory['ice-stone'] = 1;
+    expect(() => evolve(game, alola.instanceId, { targetId: 38, item: 'fire-stone' })).toThrow();
+    evolve(game, alola.instanceId, { targetId: 38, item: 'ice-stone' });
     expect(alola.regionalForm).toBe('ninetales-alola'); expect(alola.ability!.slot).toBe(3);
-    expect(game.player.money).toBe(0);
+    expect(game.inventory['ice-stone']).toBe(0);
   });
 
   it('senses the effective Alola and effective type instead of the base species type', () => {
