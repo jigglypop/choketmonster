@@ -231,8 +231,7 @@
 .ow-status-sleep { --status: #7d8aa0; } .ow-status-freeze { --status: #4fb0d6; } .ow-status-confusion { --status: #d66fa3; }
 .ow-status-trap { --status: #8a7a5c; } .ow-status-leech-seed { --status: #5aa35a; } .ow-status-infatuation { --status: #f06f9f; }
 @media (prefers-reduced-motion: reduce) { .ow-move-cue { animation: none; } }
-/* Type dots before a nameplate name, and legendary names in gold. */
+/* Type dots before a nameplate name. A legendary's plate is a warm bronze card in a gold frame, the name in plain white. */
 .ow-creature-label .ow-type-dot { display: inline-block; width: 8px; height: 8px; margin: 0 3px 1px 0; border-radius: 50%; vertical-align: middle; box-shadow: 0 0 0 1px #ffffff55; }
 .ow-creature-label .ow-type-dot:last-of-type { margin-right: 6px; }
-.ow-creature-label-legendary strong { color: #f3d27a; }
-.ow-creature-label-legendary { border-color: #d8b25a99; }
+.ow-creature-label-legendary { background: linear-gradient(160deg, #6a5320f2, #4a3a17f2); border: 2px solid #e8c45c; box-shadow: 0 0 0 1px #fff3c455 inset, 0 .3rem .9rem rgba(74, 58, 23, .45); }

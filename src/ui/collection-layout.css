@@ -85,8 +85,8 @@
 .collection-fold.item-use button { margin: 12px 0 6px; }
 .collection-fold.item-use small { display: block; color: var(--ui-muted); }
 .next-moves { margin-top: 10px; font-size: 12px; }
-.legendary-pokemon { border-color: #c9a64d !important; box-shadow: inset 0 0 0 1px #c9a64d55; }
-.legendary-pokemon :is(.monster-card-copy > strong, h2), .dex-card.legendary-pokemon > strong { color: #8e691a; }
+/* Legendary cards: a gold frame; the name keeps the normal text colour. */
+.legendary-pokemon { border: 2px solid #d8b24f !important; box-shadow: inset 0 0 0 1px #f3dc9255, 0 4px 14px #b8902f22; }
 .detail-title.legendary-pokemon { padding: 10px; border: 1px solid #c9a64d; border-radius: 10px; }
 
 .team-heading h1{font-size:28px;margin:0}
