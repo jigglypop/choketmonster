@@ -99,6 +99,8 @@ input[type=search], input[type=text], input[type=number], select, textarea { bac
 .ow-creature-label .ow-hp-track { height: 4px; margin-top: .35rem; border-radius: 99px; }
 .ow-creature-label { transition: opacity .16s ease; }
 .ow-creature-label.ow-label-covered { opacity: 0; }
+.ow-place-label { transition: opacity .16s ease; }
+.ow-place-label.ow-label-covered { opacity: 0; }
 .ow-place-label { background: var(--ui-hud-label); border-color: var(--glass-edge-dark); border-radius: 999px; }
 
 /* High contrast keeps opaque surfaces. */

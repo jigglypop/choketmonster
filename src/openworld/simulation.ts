@@ -1320,6 +1320,17 @@ export class OpenWorldSimulation {
     return start.kind === 'town' ? [start.id] : [];
   }
 
+  /**
+   * Water holds wild Pokémon only once the region's Surf is in reach, as in its games: Kanto's Soul Badge (5), Johto's
+   * Fog Badge (4), Hoenn's Balance Badge (5), Sinnoh's Fen Badge (5), Unova's Surf from Alder after the sixth gym,
+   * Kalos's Rumble Badge (4), Alola's Lapras after the first grand trial, Galar's Rotom Bike water mode after the
+   * sixth gym, Hisui's Basculegion and Paldea's swimming after the second.
+   */
+  private get waterOpen(): boolean {
+    const surf: Readonly<Record<string, number>> = { kanto: 5, johto: 4, hoenn: 5, sinnoh: 5, unova: 6, kalos: 4, alola: 1, galar: 6, hisui: 2, paldea: 2 };
+    return this.regionalBadges >= (surf[this.regionId] ?? 0);
+  }
+
   private localSpawnPosition(): { x: number; z: number } {
     // Inside a hall, wild Pokémon keep to the surface outside it: around its door, never on its floor, which is
     // rock or woods once the player walks back out.
@@ -1335,7 +1346,7 @@ export class OpenWorldSimulation {
       const x = center.x + Math.cos(angle) * radius, z = center.z + Math.sin(angle) * radius;
       const location = this.locationAt(x, z);
       const sample = ground(x, z);
-      if (!sample.blocked && !this.isSafeTown(x, z) && location.minLevel <= current.maxLevel + 4 && reachable({ x, z }, location.id)
+      if (!sample.blocked && (sample.biome !== 'lake' || this.waterOpen) && !this.isSafeTown(x, z) && location.minLevel <= current.maxLevel + 4 && reachable({ x, z }, location.id)
         && this.spawnPool(location.id, sample.biome).length && !this.entities.some(entity => distance(entity, { x, z }) < 2)) return { x, z };
     }
     // Surface locations are another coordinate space; a dungeon floor spawns only on itself.
@@ -1346,7 +1357,7 @@ export class OpenWorldSimulation {
       for (let radius = 0; radius <= 18; radius += 2) for (let step = 0; step < 16; step++) {
         const angle = step / 16 * Math.PI * 2, point = { x: location.x + Math.cos(angle) * radius, z: location.z + Math.sin(angle) * radius };
         const sample = ground(point.x, point.z);
-        if (this.locationAt(point.x, point.z).id === location.id && !sample.blocked && !this.isSafeTown(point.x, point.z) && (!strict || reachable(point, location.id))
+        if (this.locationAt(point.x, point.z).id === location.id && !sample.blocked && (sample.biome !== 'lake' || this.waterOpen || !strict) && !this.isSafeTown(point.x, point.z) && (!strict || reachable(point, location.id))
           && this.spawnPool(location.id, sample.biome).length && !this.entities.some(entity => distance(entity, point) < 2)) return point;
       }
     }

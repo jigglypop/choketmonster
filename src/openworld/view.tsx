@@ -850,6 +850,13 @@ function NameplateDeclutter({ order }: { order: readonly string[] }) {
       if (label.classList.contains('ow-label-covered') !== covered) label.classList.toggle('ow-label-covered', covered);
       if (!covered) kept.push(box);
     }
+    // A place name ("~마을", "~숲", a cave) gives way to an entrance, gym or gate button it would cover.
+    const buttons = [...root.querySelectorAll<HTMLElement>('.world-portal-label')].map(label => label.getBoundingClientRect());
+    for (const label of root.querySelectorAll<HTMLElement>('.ow-place-label')) {
+      const box = label.getBoundingClientRect();
+      const covered = buttons.some(other => box.left < other.right + 6 && box.right > other.left - 6 && box.top < other.bottom + 4 && box.bottom > other.top - 4);
+      if (label.classList.contains('ow-label-covered') !== covered) label.classList.toggle('ow-label-covered', covered);
+    }
   });
   return null;
 }
