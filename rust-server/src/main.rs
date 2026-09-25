@@ -43,6 +43,7 @@ async fn main() -> anyhow::Result<()> {
             None
         };
         let state = api::AppState::new(db, graph);
+        api::spawn_cleanup(state.db.clone());
         api::router(state)
     };
     let address = env::var("LISTEN_ADDR").unwrap_or_else(|_| "127.0.0.1:8080".into());

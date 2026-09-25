@@ -184,6 +184,8 @@ struct CacheEntry {
 struct Inner {
     entries: HashMap<(String, String), CacheEntry>,
     busy_clients: HashSet<String>,
+    /// Anyone can pick fresh client ids, so each caller address also runs one computation at a time.
+    busy_addresses: HashSet<String>,
 }
 
 #[derive(Default)]
@@ -209,6 +211,25 @@ impl LocalBrains {
     pub fn finish(&self, client_id: &str) {
         if let Ok(mut inner) = self.inner.lock() {
             inner.busy_clients.remove(client_id);
+        }
+    }
+
+    pub fn try_begin_address(&self, address: &str) -> Result<(), LocalError> {
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|error| LocalError::Internal(error.to_string()))?;
+        if !inner.busy_addresses.insert(address.to_owned()) {
+            return Err(LocalError::Busy(
+                "Neural computation is busy. Please retry shortly.",
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn finish_address(&self, address: &str) {
+        if let Ok(mut inner) = self.inner.lock() {
+            inner.busy_addresses.remove(address);
         }
     }
 

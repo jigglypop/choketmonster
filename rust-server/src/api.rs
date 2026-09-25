@@ -7,7 +7,7 @@ use argon2::{
 };
 use axum::{
     Json, Router,
-    extract::{DefaultBodyLimit, Path, Request, State},
+    extract::{DefaultBodyLimit, FromRequest, Path, Request, State},
     http::{HeaderMap, StatusCode, header},
     middleware::{self, Next},
     response::{IntoResponse, Response},
@@ -26,7 +26,7 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
-use tokio::sync::{Semaphore, broadcast};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, broadcast};
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -125,14 +125,79 @@ pub fn router(state: AppState) -> Router {
     api.merge(crate::realtime::router())
 }
 
-async fn local_neural_checkpoint(
-    State(state): State<AppState>,
-    Json(request): Json<crate::local::LocalCheckpointRequest>,
-) -> ApiResult<Json<crate::local::LocalCheckpointResponse>> {
+/// Local-brain requests admitted per address in the rate window. One player sends about one
+/// batch per battle turn and several players can share an address; a request refused because
+/// its address is busy is not counted, so retries while another player computes cost nothing.
+const LOCAL_BRAIN_REQUESTS: u32 = 1500;
+
+/// A local-brain request cleared before its body is read: the connectome is loaded, the address
+/// is within its window, and no other computation from that address is running.
+struct LocalAdmission {
+    graph: Arc<Connectome>,
+    address: LocalAddressGuard,
+}
+
+fn admit_local(state: &AppState, headers: &HeaderMap) -> ApiResult<LocalAdmission> {
     let graph = state.graph.clone().ok_or(ApiError(
         StatusCode::SERVICE_UNAVAILABLE,
         "The full connectome is not loaded.",
     ))?;
+    let address = admit_address(state, headers)?;
+    Ok(LocalAdmission { graph, address })
+}
+
+fn admit_address(state: &AppState, headers: &HeaderMap) -> ApiResult<LocalAddressGuard> {
+    let address = client_address(headers);
+    let key = format!("local-brains:{address}");
+    rate_exceeded(state, &key, LOCAL_BRAIN_REQUESTS)?;
+    state
+        .local_brains
+        .try_begin_address(&address)
+        .map_err(local_error)?;
+    let guard = LocalAddressGuard {
+        brains: state.local_brains.clone(),
+        address,
+    };
+    rate_record(state, key);
+    Ok(guard)
+}
+
+/// The API is anonymous by design, so the caller's address is admitted before the body is
+/// buffered and parsed.
+async fn read_local<T: serde::de::DeserializeOwned>(
+    state: &AppState,
+    request: Request,
+) -> Result<(LocalAdmission, T), Response> {
+    let admission = admit_local(state, request.headers()).map_err(IntoResponse::into_response)?;
+    let Json(body) = Json::<T>::from_request(request, state)
+        .await
+        .map_err(IntoResponse::into_response)?;
+    Ok((admission, body))
+}
+
+fn compute_permit(state: &AppState) -> ApiResult<OwnedSemaphorePermit> {
+    state.compute.clone().try_acquire_owned().map_err(|_| {
+        ApiError(
+            StatusCode::TOO_MANY_REQUESTS,
+            "Neural computation is busy. Please retry shortly.",
+        )
+    })
+}
+
+async fn local_neural_checkpoint(State(state): State<AppState>, request: Request) -> Response {
+    match read_local(&state, request).await {
+        Ok((admission, body)) => local_checkpoint(&state, admission, body)
+            .await
+            .into_response(),
+        Err(response) => response,
+    }
+}
+
+async fn local_checkpoint(
+    state: &AppState,
+    admission: LocalAdmission,
+    request: crate::local::LocalCheckpointRequest,
+) -> ApiResult<Json<crate::local::LocalCheckpointResponse>> {
     state
         .local_brains
         .try_begin(&request.client_id)
@@ -141,13 +206,10 @@ async fn local_neural_checkpoint(
         brains: state.local_brains.clone(),
         client_id: request.client_id.clone(),
     };
-    let permit = state.compute.clone().try_acquire_owned().map_err(|_| {
-        ApiError(
-            StatusCode::TOO_MANY_REQUESTS,
-            "Neural computation is busy. Please retry shortly.",
-        )
-    })?;
+    let permit = compute_permit(state)?;
+    let LocalAdmission { graph, address } = admission;
     let response = tokio::task::spawn_blocking(move || {
+        let _address = address;
         let _busy = busy;
         let _permit = permit;
         crate::local::materialize_checkpoint(&graph, request)
@@ -158,14 +220,18 @@ async fn local_neural_checkpoint(
     Ok(Json(response))
 }
 
-async fn local_neural_batch(
-    State(state): State<AppState>,
-    Json(batch): Json<LocalBatchRequest>,
+async fn local_neural_batch(State(state): State<AppState>, request: Request) -> Response {
+    match read_local(&state, request).await {
+        Ok((admission, batch)) => local_batch(&state, admission, batch).await.into_response(),
+        Err(response) => response,
+    }
+}
+
+async fn local_batch(
+    state: &AppState,
+    admission: LocalAdmission,
+    batch: LocalBatchRequest,
 ) -> ApiResult<Json<crate::local::LocalBatchResponse>> {
-    let graph = state.graph.clone().ok_or(ApiError(
-        StatusCode::SERVICE_UNAVAILABLE,
-        "The full connectome is not loaded.",
-    ))?;
     state
         .local_brains
         .try_begin(&batch.client_id)
@@ -174,16 +240,13 @@ async fn local_neural_batch(
         brains: state.local_brains.clone(),
         client_id: batch.client_id.clone(),
     };
-    let permit = state.compute.clone().try_acquire_owned().map_err(|_| {
-        ApiError(
-            StatusCode::TOO_MANY_REQUESTS,
-            "Neural computation is busy. Please retry shortly.",
-        )
-    })?;
+    let permit = compute_permit(state)?;
     let worker = busy.brains.clone();
-    // The worker owns the busy receipt. Dropping the HTTP future cannot unlock
-    // this client while its blocking graph step is still running.
+    let LocalAdmission { graph, address } = admission;
+    // The worker owns the busy receipts. Dropping the HTTP future cannot unlock
+    // this client or address while its blocking graph step is still running.
     let response = tokio::task::spawn_blocking(move || {
+        let _address = address;
         let _busy = busy;
         let _permit = permit;
         worker.process(&graph, batch)
@@ -202,6 +265,17 @@ struct LocalBusyGuard {
 impl Drop for LocalBusyGuard {
     fn drop(&mut self) {
         self.brains.finish(&self.client_id);
+    }
+}
+
+struct LocalAddressGuard {
+    brains: Arc<LocalBrains>,
+    address: String,
+}
+
+impl Drop for LocalAddressGuard {
+    fn drop(&mut self) {
+        self.brains.finish_address(&self.address);
     }
 }
 
@@ -224,6 +298,59 @@ mod local_busy_tests {
         }));
         brains.try_begin(&client_id).unwrap();
         brains.finish(&client_id);
+    }
+
+    #[test]
+    fn address_guard_allows_one_computation_per_address_until_the_worker_ends() {
+        let brains = Arc::new(LocalBrains::default());
+        brains.try_begin_address("203.0.113.7").unwrap();
+        let guard = LocalAddressGuard {
+            brains: brains.clone(),
+            address: "203.0.113.7".into(),
+        };
+        assert!(matches!(
+            brains.try_begin_address("203.0.113.7"),
+            Err(LocalError::Busy(_))
+        ));
+        brains.try_begin_address("198.51.100.2").unwrap();
+        brains.finish_address("198.51.100.2");
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = guard;
+            panic!("simulated blocking worker panic");
+        }));
+        brains.try_begin_address("203.0.113.7").unwrap();
+        brains.finish_address("203.0.113.7");
+    }
+
+    #[tokio::test]
+    async fn local_brain_addresses_take_turns_within_a_window_budget() {
+        let db = sqlx::postgres::PgPoolOptions::new()
+            .connect_lazy("postgres://unused@127.0.0.1/unused")
+            .unwrap();
+        let state = AppState::new(db, None);
+        let from = |address: &str| {
+            let mut headers = HeaderMap::new();
+            let forwarded = format!("192.0.2.1, {address}");
+            headers.insert("x-forwarded-for", forwarded.parse().unwrap());
+            headers
+        };
+        let status = |result: ApiResult<LocalAddressGuard>| result.err().map(|error| error.0);
+        let first = admit_address(&state, &from("203.0.113.7")).unwrap();
+        // Turns refused while the address computes are not counted.
+        for _ in 0..3 {
+            assert_eq!(
+                status(admit_address(&state, &from("203.0.113.7"))),
+                Some(StatusCode::TOO_MANY_REQUESTS)
+            );
+        }
+        drop(admit_address(&state, &from("198.51.100.2")).unwrap());
+        drop(first);
+        for _ in 1..LOCAL_BRAIN_REQUESTS {
+            drop(admit_address(&state, &from("203.0.113.7")).unwrap());
+        }
+        let spent = admit_address(&state, &from("203.0.113.7")).err().unwrap();
+        assert_eq!(spent.1, too_many().1);
+        drop(admit_address(&state, &from("198.51.100.2")).unwrap());
     }
 }
 
@@ -508,6 +635,54 @@ async fn session(state: &AppState, user: User) -> ApiResult<Response> {
     );
     Ok(([(header::SET_COOKIE, cookie)], Json(json!({"user":user}))).into_response())
 }
+/// Rows nothing reads any more: save receipts long after any retry, receipts of the retired
+/// account neural API, and sessions of players who never log in again. Deleting in batches keeps
+/// every statement short even when a backlog has built up.
+const CLEANUP: [(&str, &str); 3] = [
+    (
+        "save_requests",
+        "DELETE FROM save_requests WHERE (user_id,slot,request_id) IN (SELECT user_id,slot,request_id FROM save_requests WHERE created_at<now()-interval '1 day' LIMIT $1)",
+    ),
+    (
+        "neural_requests",
+        "DELETE FROM neural_requests WHERE (user_id,creature_id,request_id) IN (SELECT user_id,creature_id,request_id FROM neural_requests WHERE created_at<now()-interval '7 days' LIMIT $1)",
+    ),
+    (
+        "sessions",
+        "DELETE FROM sessions WHERE token_hash IN (SELECT token_hash FROM sessions WHERE expires_at<now() LIMIT $1)",
+    ),
+];
+const CLEANUP_INTERVAL: Duration = Duration::from_secs(600);
+const CLEANUP_BATCH: i64 = 5_000;
+const CLEANUP_BATCHES: usize = 20;
+/// Deletes those rows every ten minutes, the first pass a minute after start so it stays out of
+/// the deploy health checks. A failure is logged and the next pass tries again.
+pub fn spawn_cleanup(db: PgPool) {
+    tokio::spawn(async move {
+        let start = tokio::time::Instant::now() + Duration::from_secs(60);
+        let mut interval = tokio::time::interval_at(start, CLEANUP_INTERVAL);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            interval.tick().await;
+            for (table, statement) in CLEANUP {
+                for _ in 0..CLEANUP_BATCHES {
+                    match sqlx::query(statement)
+                        .bind(CLEANUP_BATCH)
+                        .execute(&db)
+                        .await
+                    {
+                        Ok(done) if done.rows_affected() < CLEANUP_BATCH as u64 => break,
+                        Ok(_) => {}
+                        Err(error) => {
+                            tracing::warn!(%error, table, "Periodic cleanup failed");
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
 async fn register(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -637,7 +812,9 @@ async fn realtime_ticket(
     headers: HeaderMap,
 ) -> ApiResult<Json<Value>> {
     let account = user(&state, &headers).await?;
-    rate_limit(&state, format!("realtime-ticket:{}", account.id), 30)?;
+    // Each tab renews every 40 seconds (15 per window) and again on every reconnect and return
+    // to the tab, so two tabs or a reconnect loop must still fit.
+    rate_limit(&state, format!("realtime-ticket:{}", account.id), 90)?;
     let (ticket, expires_at) = crate::realtime::issue_ticket(account.id, &account.username)
         .map_err(|message| {
             tracing::error!(message, "Realtime ticket unavailable");
