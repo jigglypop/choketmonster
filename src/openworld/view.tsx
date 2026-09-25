@@ -86,7 +86,7 @@ import { statusLabel } from '../game/status-labels';
 import { ExplorationLandmarks } from './exploration-landmarks';
 import { createOpenWorldRenderer } from './gpu-renderer';
 import { scenerySeed, townPavingCells, townStyle } from './town-style';
-import { DETAIL_KINDS, PAVING_CELL, detailNoise, isTownPaved, trailHalfWidth, type DetailKind } from './world-details';
+import { DETAIL_KINDS, PAVING_CELL, TALL_DETAIL_KINDS, detailNoise, isTownPaved, trailHalfWidth, type DetailKind } from './world-details';
 import { TownProps, createDetailGeometry, detailMaterial, regionalLandmarkGeometry, townPavingGeometry, useWorldDetails } from './town-details';
 import { THEME_BY_REGION } from './exploration-sites';
 import { FieldGrass } from './field-grass';
@@ -320,7 +320,7 @@ function Nature({ sampleWorld, player, atlas, isVisible, mobile = false }: { sam
         ...natureLayer(details?.framing[asset.id], NATURE_VISIBLE_RADIUS, 72, 3, 6)];
     }
     // Small procedural dressing streams in a tighter radius, smaller still on phones.
-    for (const kind of DETAIL_KINDS) layers[kind] = natureLayer(details?.ground[kind], kind === 'route-post' ? 70 : 46, kind === 'route-post' ? 50 : 30, .5, 2);
+    for (const kind of DETAIL_KINDS) { const far = kind === 'route-post' || TALL_DETAIL_KINDS.has(kind); layers[kind] = natureLayer(details?.ground[kind], far ? 70 : 46, far ? 50 : 30, .5, 2); }
     return layers;
   }, [placements, details]);
   const cellX = Math.round(player.x / 16) * 16, cellZ = Math.round(player.z / 16) * 16;

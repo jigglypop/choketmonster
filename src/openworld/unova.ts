@@ -53,6 +53,12 @@ export const UNOVA_SURFACE_CONNECTIONS=UNOVA_CONNECTIONS; export const UNOVA_GYM
  {locationId:'icirrus-city',badge:7,badgeName:'아이시클배지',name:'담죽',speciesId:614,level:39},
  {locationId:'opelucid-city',badge:8,badgeName:'레전드배지',name:'아이리스',speciesId:612,level:43},
 ];
-const runtime=createAuthoredRegionSampler({id:'unova',locations:UNOVA_LOCATIONS,connections:UNOVA_CONNECTIONS});
+const runtime=createAuthoredRegionSampler({id:'unova',locations:UNOVA_LOCATIONS,connections:UNOVA_CONNECTIONS,terrainFeatures:[
+  {locationId:'desert-resort',surface:'desert',radius:12,elevation:.35},
+  {locationId:'relic-castle',surface:'desert',radius:7,elevation:.25},
+  {locationId:'unova-route-4',surface:'desert',radius:9,elevation:.2},
+  {locationId:'moor-of-icirrus',surface:'marsh',radius:10,elevation:0},
+  {locationId:'unova-route-8',surface:'marsh',radius:8,elevation:0},
+]});
 export const UNOVA_GATES:readonly KantoGate[]=terrainProgressGates(UNOVA_LOCATIONS,UNOVA_CONNECTIONS,runtime.locationAt,UNOVA_GYMS,'배지');
 export const unovaLocationAt=runtime.locationAt,distanceToUnovaPath=runtime.distanceToPath,sampleUnovaWorld=runtime.sample,evaluateUnovaTraversal=runtime.evaluate,safeUnovaArrival=runtime.safeArrival,nearestUnovaWalkable=runtime.nearestWalkable,unovaBuildingOffsets=runtime.buildingOffsets;

@@ -89,10 +89,11 @@ export function createAuthoredRegionSampler(definition: AuthoredRegionDefinition
     if (![x, z].every(Number.isFinite) || Math.abs(x) > WORLD_MAX || Math.abs(z) > WORLD_MAX) return { height, biome: 'rock', blocked: true };
     const nearest = nearestLocation(x, z), path = nearestSegment(x, z), localDistance = Math.hypot(x - nearest.x, z - nearest.z);
     const town=towns.find(item=>Math.hypot(x-item.x,z-item.z)<AUTHORED_TOWN_RADIUS);
-    if(town){const blocked=buildingOffsets(town).some(([dx,dz])=>Math.abs(x-town.x-dx)<scaleWorldDistance(1.9)&&Math.abs(z-town.z-dz)<scaleWorldDistance(1.7));return{height:terrainPlateauHeight(height,x,z,plateaus),biome:'meadow',blocked};}
+    if(town){const blocked=buildingOffsets(town).some(([dx,dz])=>Math.abs(x-town.x-dx)<scaleWorldDistance(1.9)&&Math.abs(z-town.z-dz)<scaleWorldDistance(1.7));return{height:terrainPlateauHeight(height,x,z,plateaus),biome:'meadow',...(terrainFeature?{surface:terrainFeature.surface}:{}),blocked};}
     const radius = scaleWorldDistance(nearest.kind === 'town' ? 8 : nearest.kind === 'sea' ? 6 : nearest.kind === 'route' ? 4.5 : 5.5);
     const playable = path.distance < scaleWorldDistance(3) || localDistance < radius;
-    if (!playable) return { height: terrainPlateauHeight(height + (nearest.kind === 'cave' ? .65 : .22), x, z, plateaus), biome: nearest.kind === 'cave' ? 'rock' : 'forest', blocked: true };
+    // A snowfield, desert or marsh covers the woods and rock around its roads as well.
+    if (!playable) return { height: terrainPlateauHeight(height + (nearest.kind === 'cave' ? .65 : .22), x, z, plateaus), biome: nearest.kind === 'cave' ? 'rock' : 'forest', ...(terrainFeature ? { surface: terrainFeature.surface } : {}), blocked: true };
     const onPath = path.distance < scaleWorldDistance(3);
     const kind = onPath ? (path.t < .5 ? path.segment.from.kind : path.segment.to.kind) : nearest.kind;
     const biome = kind === 'sea' ? 'lake' : kind === 'cave' || kind === 'special' ? 'rock' : kind === 'forest' ? 'forest' : 'meadow';

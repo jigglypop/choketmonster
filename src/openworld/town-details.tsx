@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  BoxGeometry, BufferGeometry, Color, ConeGeometry, CylinderGeometry, Float32BufferAttribute, IcosahedronGeometry, Matrix3, Matrix4,
+  BoxGeometry, BufferGeometry, CircleGeometry, Color, ConeGeometry, CylinderGeometry, Float32BufferAttribute, IcosahedronGeometry, Matrix3, Matrix4,
   MeshStandardMaterial, OctahedronGeometry, Quaternion, SphereGeometry, TorusGeometry, Vector3,
 } from 'three';
 import type { WorldAtlas } from './atlas';
@@ -97,6 +97,46 @@ export function createDetailGeometry(kind: DetailKind, theme: ExplorationTheme):
   } else if (kind === 'pebbles') {
     [[0, 0, .22, '#8d8b80'], [.26, .12, .15, '#a19d8e'], [-.18, .2, .12, '#7b7a70']].forEach(([x, z, size, color]) =>
       builder.add(new IcosahedronGeometry(size as number, 0), color as string, at(x as number, (size as number) * .25, z as number, (x as number) * 9, 1, .55, 1)));
+  } else if (kind === 'cactus') {
+    // A saguaro as Route 111 and the Desert Resort draw it: a ribbed column with two raised arms.
+    const green = '#5a9a4e', deep = '#3f7641';
+    builder.add(new CylinderGeometry(.17, .2, 1.6, 8), deep, at(0, .8, 0), { top: green, height: 1.6 });
+    builder.add(new SphereGeometry(.17, 8, 6), green, at(0, 1.6, 0));
+    ([[1, .7, .34, .45], [-1, .95, .3, .38]] as const).forEach(([side, y, reach, rise]) => {
+      builder.add(new CylinderGeometry(.1, .1, reach, 6), deep, at(side * reach / 2, y, 0, 0, 1, 1, 1, 0, Math.PI / 2));
+      builder.add(new CylinderGeometry(.1, .1, rise, 6), deep, at(side * reach, y + rise / 2, 0), { top: green, height: rise });
+      builder.add(new SphereGeometry(.1, 6, 5), green, at(side * reach, y + rise, 0));
+    });
+  } else if (kind === 'dry-shrub') {
+    // Wiry desert scrub: thin dry stems fanning out from one root.
+    for (let stem = 0; stem < 9; stem++) {
+      const angle = stem / 9 * Math.PI * 2 + Math.sin(stem * 3.1) * .4, lean = .35 + (stem % 3) * .12, height = .42 + (stem % 4) * .08;
+      builder.add(new ConeGeometry(.025, height, 3, 1, true), '#8d7648', at(Math.cos(angle) * .08, height / 2, Math.sin(angle) * .08, angle, 1, 1, 1, Math.cos(angle) * lean, -Math.sin(angle) * lean), { top: '#c2a86e', height, soft: .4 });
+    }
+  } else if (kind === 'snow-fir') {
+    // A fir under snow, as on Route 216 and around Snowpoint: dark tiers, each capped white, over a short trunk.
+    builder.add(new CylinderGeometry(.11, .15, .5, 6), '#6b4a31', at(0, .25, 0));
+    ([[.95, 1.1, .9], [.74, .95, 1.55], [.5, .8, 2.15]] as const).forEach(([radius, height, y]) => {
+      builder.add(new ConeGeometry(radius, height, 8), '#2c5641', at(0, y, 0), { top: '#3d6e52', height });
+      builder.add(new ConeGeometry(radius * .74, height * .46, 8), '#f4f8fa', at(0, y + height * .31, 0));
+    });
+  } else if (kind === 'snow-drift') {
+    // Wind-shaped drifts: low, overlapping mounds.
+    builder.add(new SphereGeometry(.9, 12, 6), '#dfe9ef', at(0, 0, 0, 0, 1, .32, .72), { top: '#f7fafc', height: 1.8 });
+    builder.add(new SphereGeometry(.55, 10, 5), '#e6eef3', at(.62, 0, .3, .6, 1, .36, .8), { top: '#f7fafc', height: 1.1 });
+  } else if (kind === 'puddle') {
+    // A shallow mire pool, as in the Great Marsh: dark water inside a muddy rim, with a lily pad.
+    builder.add(new CircleGeometry(1.02, 18), '#5a4a33', at(0, .018, 0, 0, 1, 1, 1, -Math.PI / 2));
+    builder.add(new CircleGeometry(.86, 18), '#34524d', at(0, .026, 0, 0, 1, 1, 1, -Math.PI / 2));
+    builder.add(new CircleGeometry(.16, 8), '#5f9a45', at(.32, .032, -.18, 0, 1, 1, 1, -Math.PI / 2));
+  } else if (kind === 'reed') {
+    // Cattails: tall olive stems, a few with brown heads.
+    for (let stem = 0; stem < 8; stem++) {
+      const angle = stem / 8 * Math.PI * 2 + Math.sin(stem * 2.3) * .6, reach = .08 + (stem % 3) * .07, height = .85 + (stem % 4) * .14;
+      const x = Math.cos(angle) * reach, z = Math.sin(angle) * reach, tilt = .08 + (stem % 2) * .06;
+      builder.add(new ConeGeometry(.022, height, 3, 1, true), '#6f7f3f', at(x, height / 2, z, angle, 1, 1, 1, Math.cos(angle) * tilt, -Math.sin(angle) * tilt), { top: '#a3b35e', height, soft: .4 });
+      if (stem % 3 === 0) builder.add(new CylinderGeometry(.045, .045, .2, 6), '#6b4a2e', at(x * 1.1, height * .86, z * 1.1));
+    }
   } else {
     builder.add(new BoxGeometry(.14, 1.15, .14), colors.wood, at(0, .575, 0));
     builder.add(new BoxGeometry(.66, .38, .06), '#efe4c4', at(0, .98, .08));

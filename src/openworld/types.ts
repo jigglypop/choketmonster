@@ -100,7 +100,7 @@ export type WorldSample = {
   exactHeight?: boolean;
   biome: 'meadow' | 'forest' | 'lake' | 'rock';
   /** Visual landform layered over the encounter biome without changing spawn tables. */
-  surface?: 'mountain' | 'snow' | 'desert';
+  surface?: 'mountain' | 'snow' | 'desert' | 'marsh';
   blocked: boolean;
 };
 

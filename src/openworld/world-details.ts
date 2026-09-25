@@ -16,8 +16,10 @@ export { PAVING_CELL, isTownPaved };
  * spawning or simulation random state.
  */
 /** Grass itself is the streamed wind field (grass-field.ts); these are the static accents on top of it. */
-export type DetailKind = 'flower-patch' | 'pebbles' | 'route-post';
-export const DETAIL_KINDS: readonly DetailKind[] = ['flower-patch', 'pebbles', 'route-post'];
+export type DetailKind = 'flower-patch' | 'pebbles' | 'route-post' | 'cactus' | 'dry-shrub' | 'snow-fir' | 'snow-drift' | 'puddle' | 'reed';
+export const DETAIL_KINDS: readonly DetailKind[] = ['flower-patch', 'pebbles', 'route-post', 'cactus', 'dry-shrub', 'snow-fir', 'snow-drift', 'puddle', 'reed'];
+/** Tall kinds stay in view as far as trees do. */
+export const TALL_DETAIL_KINDS: ReadonlySet<DetailKind> = new Set(['cactus', 'snow-fir']);
 
 export type TownPropKind = 'curb' | 'lamp' | 'bench' | 'planter' | 'mailbox' | 'pillar' | 'fountain' | 'statue' | 'tree-bed' | 'flower-bed' | 'crop-plot';
 /** Town-local coordinates relative to the town group origin. */
@@ -81,7 +83,7 @@ function onPaving(context: Context, x: number, z: number): boolean {
   return false;
 }
 
-const emptyGround = (): Record<DetailKind, SceneryPlacement[]> => ({ 'flower-patch': [], pebbles: [], 'route-post': [] });
+const emptyGround = (): Record<DetailKind, SceneryPlacement[]> => ({ 'flower-patch': [], pebbles: [], 'route-post': [], cactus: [], 'dry-shrub': [], 'snow-fir': [], 'snow-drift': [], puddle: [], reed: [] });
 
 function push(target: Partial<Record<SceneryAssetId, SceneryPlacement[]>>, id: SceneryAssetId, placement: SceneryPlacement) {
   (target[id] ??= []).push(placement);
@@ -309,6 +311,35 @@ function dressRoute(context: Context, from: KantoLocation, to: KantoLocation, ha
   }
 }
 
+/**
+ * Snowfields, deserts and marshes get their own dressing, after the games' Snowpoint and Route 216, Route 111 and the
+ * Desert Resort, and the Great Marsh and Crimson Mirelands: snow-laden firs on the slopes and drifts along the path,
+ * saguaros and dry scrub on the sand, pools and cattails in the mire. The trail and town plazas stay clear.
+ */
+function dressSurfaces(context: Context, ground: WorldDetails['ground']): void {
+  const step = 3.4;
+  for (let gx = -240 + step / 2; gx < 240; gx += step) for (let gz = -240 + step / 2; gz < 240; gz += step) {
+    const x = gx + (detailNoise(gx, gz, 90) - .5) * step * .8, z = gz + (detailNoise(gx, gz, 91) - .5) * step * .8;
+    const point = context.sample(x, z), surface = point.surface;
+    if (!surface || surface === 'mountain' || point.biome === 'lake' || onPaving(context, x, z) || nearAny(context.gates, x, z, 4.5)) continue;
+    const path = context.atlas.distanceToPath(x, z), pick = detailNoise(x, z, 92);
+    // Beyond the widest trail, so nothing lands on a visible road surface.
+    if (path < 4.4) continue;
+    if (surface === 'snow') {
+      if (point.blocked) { if (pick < .5) ground['snow-fir'].push(placement(context, x, z, 93, .85, 1.35)); }
+      else if (pick < .18) ground['snow-drift'].push(placement(context, x, z, 94, .7, 1.4));
+    } else if (surface === 'desert') {
+      if (point.blocked) { if (pick < .28) ground.cactus.push(placement(context, x, z, 95, .8, 1.3)); else if (pick < .44) ground['dry-shrub'].push(placement(context, x, z, 96, .8, 1.3)); }
+      else if (pick < .18) ground['dry-shrub'].push(placement(context, x, z, 96, .7, 1.1));
+      else if (pick < .27 && path > 4) ground.cactus.push(placement(context, x, z, 95, .7, 1.05));
+      else if (pick < .34) ground.pebbles.push(placement(context, x, z, 97, .8, 1.3));
+    } else if (surface === 'marsh') {
+      if (pick < (point.blocked ? .3 : .22)) ground.reed.push(placement(context, x, z, 98, .75, 1.25));
+      else if (pick < (point.blocked ? .38 : .36) && path > 3) ground.puddle.push(placement(context, x, z, 99, .7, 1.4));
+    }
+  }
+}
+
 function build(sample: (x: number, z: number) => WorldSample, atlas: WorldAtlas, baseTrees: ReadonlyArray<{ x: number; z: number }>, skipTown: (id: string) => boolean): WorldDetails {
   const framing: WorldDetails['framing'] = {}, ground = emptyGround(), towns = new Map<string, TownLayout>();
   const byId = new Map(atlas.locations.map(item => [item.id, item]));
@@ -340,6 +371,7 @@ function build(sample: (x: number, z: number) => WorldSample, atlas: WorldAtlas,
     if (!from || !to || from.kind === 'sea' || to.kind === 'sea') continue;
     dressRoute(context, from, to, trailHalfWidth(fromId, toId), location => skipTown(location.id) ? 2 : townRadius(location), framing, ground);
   }
+  dressSurfaces(context, ground);
   return { framing, ground, towns };
 }
 

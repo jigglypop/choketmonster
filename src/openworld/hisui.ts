@@ -30,6 +30,13 @@ export const HISUI_GYMS:readonly KantoGym[]=[
   {locationId:'moonview-arena',badge:5,badgeName:'영월 조사증',name:'붐볼 진정',speciesId:101,level:48},{locationId:'alabaster-icelands',badge:6,badgeName:'동토 조사증',name:'순백 동토 조사',speciesId:903,level:53},
   {locationId:'icepeak-arena',badge:7,badgeName:'빙산 조사증',name:'크레베이스 진정',speciesId:713,level:58},{locationId:'temple-of-sinnoh',badge:8,badgeName:'신오 조사증',name:'신오신전 조사',speciesId:905,level:65},
 ];
-const runtime=createAuthoredRegionSampler({id:'hisui',locations:HISUI_LOCATIONS,connections:HISUI_CONNECTIONS});
+const runtime=createAuthoredRegionSampler({id:'hisui',locations:HISUI_LOCATIONS,connections:HISUI_CONNECTIONS,terrainFeatures:[
+  {locationId:'alabaster-icelands',surface:'snow',radius:16,elevation:.6},
+  {locationId:'icelands-camp',surface:'snow',radius:9,elevation:.35},
+  {locationId:'icepeak-arena',surface:'snow',radius:8,elevation:.5},
+  {locationId:'hisui-snowpoint-temple',surface:'snow',radius:7,elevation:.5},
+  {locationId:'crimson-mirelands',surface:'marsh',radius:16,elevation:0},
+  {locationId:'mirelands-camp',surface:'marsh',radius:9,elevation:0},
+]});
 export const HISUI_GATES = terrainProgressGates(HISUI_LOCATIONS, HISUI_CONNECTIONS, runtime.locationAt, HISUI_GYMS, '조사증');
 export const hisuiLocationAt=runtime.locationAt,distanceToHisuiPath=runtime.distanceToPath,sampleHisuiWorld=runtime.sample,evaluateHisuiTraversal=runtime.evaluate,safeHisuiArrival=runtime.safeArrival,nearestHisuiWalkable=runtime.nearestWalkable,hisuiBuildingOffsets=runtime.buildingOffsets;

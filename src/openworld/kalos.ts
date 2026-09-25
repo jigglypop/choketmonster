@@ -32,6 +32,10 @@ export const KALOS_GYMS:readonly KantoGym[]=[
   {locationId:'lumiose-city',badge:5,badgeName:'볼티지배지',name:'시트론',speciesId:695,level:37},{locationId:'laverre-city',badge:6,badgeName:'페어리배지',name:'마슈',speciesId:700,level:42},
   {locationId:'anistar-city',badge:7,badgeName:'사이킥배지',name:'고지카',speciesId:678,level:48},{locationId:'snowbelle-city',badge:8,badgeName:'아이스버그배지',name:'우르프',speciesId:713,level:59},
 ];
-const runtime=createAuthoredRegionSampler({id:'kalos',locations:KALOS_LOCATIONS,connections:KALOS_CONNECTIONS});
+const runtime=createAuthoredRegionSampler({id:'kalos',locations:KALOS_LOCATIONS,connections:KALOS_CONNECTIONS,terrainFeatures:[
+  {locationId:'snowbelle-city',surface:'snow',radius:10,elevation:.4},
+  {locationId:'frost-cavern',surface:'snow',radius:7,elevation:.5},
+  {locationId:'kalos-route-14',surface:'marsh',radius:9,elevation:0},
+]});
 export const KALOS_GATES:readonly KantoGate[]=terrainProgressGates(KALOS_LOCATIONS,KALOS_CONNECTIONS,runtime.locationAt,KALOS_GYMS,'배지');
 export const kalosLocationAt=runtime.locationAt,distanceToKalosPath=runtime.distanceToPath,sampleKalosWorld=runtime.sample,evaluateKalosTraversal=runtime.evaluate,safeKalosArrival=runtime.safeArrival,nearestKalosWalkable=runtime.nearestWalkable,kalosBuildingOffsets=runtime.buildingOffsets;

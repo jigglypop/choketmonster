@@ -34,15 +34,18 @@ export const fieldGrassColors = (atlas: WorldAtlas) => ({ lawn: new Color(atlas.
  * reads as a painted pastel lawn with only a light trace of the shared PBR textures. */
 export function worldSurfaceColor(atlas: WorldAtlas, sample: WorldSample, x: number, z: number): Color {
   if (sample.biome === 'lake') return new Color(atlas.palette.water);
-  if (sample.surface === 'snow') return new Color('#eef5f6').lerp(new Color('#c3d3d8'), .15);
-  if (sample.surface === 'desert') return new Color('#e6c890').lerp(new Color(atlas.palette.ground), .08);
+  const nearest = atlas.locationAt(x, z);
+  const landmarkDistance = Math.hypot(x - nearest.x, z - nearest.z);
+  // Only the plaza under the paving keeps the town tint; the lawn, or a snowy town's snow, runs right up to its curb.
+  if (nearest.kind === 'town' && landmarkDistance <= 8.5 * WORLD_SCALE && isTownPaved(x - nearest.x, z - nearest.z)) return new Color(townStyle(nearest.id).color).lerp(new Color('#e8dfc5'), .38);
+  // Broad drifts and dunes: the same slow wave the lawn uses, stronger on snow and sand.
+  const drift = Math.sin(x * .11 + Math.sin(z * .07) * 1.7) * Math.cos(z * .09 - x * .03);
+  if (sample.surface === 'snow') return new Color('#f2f7f8').lerp(new Color('#bfd0da'), .16 + drift * .1);
+  if (sample.surface === 'desert') return new Color('#e8cc92').lerp(new Color('#c9a468'), .22 + drift * .16);
+  if (sample.surface === 'marsh') return new Color('#7c8a55').lerp(new Color('#4f5e3a'), .35 + drift * .2);
   if (sample.surface === 'mountain') return new Color('#a09a88').lerp(new Color(atlas.palette.ground), .12);
   if (sample.biome === 'rock') return new Color(atlas.id === 'sinnoh' || atlas.id === 'hisui' ? '#b4b8b0' : BIOME_COLORS.rock);
   if (sample.biome === 'forest') return forestFloorColor(atlas);
-  const nearest = atlas.locationAt(x, z);
-  const landmarkDistance = Math.hypot(x - nearest.x, z - nearest.z);
-  // Only the plaza under the paving keeps the town tint; the lawn runs right up to its curb.
-  if (nearest.kind === 'town' && landmarkDistance <= 8.5 * WORLD_SCALE && isTownPaved(x - nearest.x, z - nearest.z)) return new Color(townStyle(nearest.id).color).lerp(new Color('#e8dfc5'), .38);
   // Bake broad variation once per terrain vertex instead of evaluating three
   // trigonometric functions for every grass fragment on every frame.
   const variation = Math.sin(x * .19 + Math.sin(z * .11)) * Math.cos(z * .17);

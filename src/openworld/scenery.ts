@@ -111,6 +111,8 @@ export function createSceneryPlacements(sampleWorld: (x: number, z: number) => W
       const pz = z + (noise(x, z, 2) - .5) * scaleWorldDistance(2.4);
       const sample = surfaceSample(sampleWorld, px, pz);
       if (atlas.distanceToPath(px, pz) < scaleWorldDistance(4.2) || clearingDistance(px, pz) < scaleWorldDistance(9)) continue;
+      // Snow and sand carry their own firs and saguaros (world-details.ts); only rock outcrops stay.
+      if ((sample.surface === 'snow' || sample.surface === 'desert') && sample.biome !== 'rock') continue;
       if (sample.biome === 'meadow' && sample.blocked) {
         // Open ground off the route: scattered tree stands and bushes frame the walkable corridor.
         const stand = noise(px, pz, 40);
@@ -140,6 +142,14 @@ export function createSceneryPlacements(sampleWorld: (x: number, z: number) => W
       // The trail itself stays clear; its verges get flowers and stones.
       if (atlas.distanceToPath(px, pz) < scaleWorldDistance(1.6) || clearingDistance(px, pz) < scaleWorldDistance(9)) continue;
       const selector = noise(px, pz, 12);
+      if (sample.surface === 'snow' || sample.surface === 'desert') { if (selector < .07) place(result, 'rock-small', px, pz, sample, .5, .95, 34); continue; }
+      if (sample.surface === 'marsh') {
+        if (selector < .22) place(result, 'fern', px, pz, sample, .7, 1.1, 35);
+        else if (selector < .38) place(result, 'grass-soft', px, pz, sample, .7, 1.1, 36);
+        else if (selector < .46) place(result, 'mushroom-cluster', px, pz, sample, .7, 1.05, 37);
+        else if (selector < .5) place(result, selector < .48 ? 'stump' : 'fallen-log', px, pz, sample, .8, 1.1, 38);
+        continue;
+      }
       if (sample.biome === 'meadow') {
         if (selector < .4) {
           place(result, selector < .2 ? 'grass-tuft' : 'grass-soft', px, pz, sample, .6, 1.12, 13);
@@ -187,6 +197,8 @@ export function createSceneryPlacements(sampleWorld: (x: number, z: number) => W
         // Only the paved town disc stays clear on the verges.
         if (sample.blocked || sample.biome === 'lake' || clearingDistance(px, pz) < scaleWorldDistance(8.75) || atlas.distanceToPath(px, pz) < scaleWorldDistance(1.6)) continue;
         const pick = noise(px, pz, 52 + lane);
+        if (sample.surface === 'snow' || sample.surface === 'desert') { if (pick < .06) place(result, 'rock-small', px, pz, sample, .45, .85, 61); continue; }
+        if (sample.surface === 'marsh') { if (pick < .2) place(result, 'fern', px, pz, sample, .65, 1.05, 62); else if (pick < .34) place(result, 'grass-soft', px, pz, sample, .6, 1, 63); continue; }
         if (sample.biome === 'meadow') {
           if (pick < .3) flowerCluster(pick < .13 ? 'flower-yellow' : pick < .23 ? 'flower-red' : 'flower-purple', px, pz, 53);
           else if (pick < .52) place(result, pick < .41 ? 'grass-tuft' : 'grass-soft', px, pz, sample, .6, 1.05, 54);

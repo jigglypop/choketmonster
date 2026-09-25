@@ -39,6 +39,12 @@ export const GALAR_GYMS: readonly KantoGym[] = [
   {locationId:'ballonlea',badge:5,badgeName:'페어리배지',name:'포플러',speciesId:869,level:38}, {locationId:'circhester',badge:6,badgeName:'바위배지',name:'마쿠와',speciesId:839,level:42},
   {locationId:'spikemuth',badge:7,badgeName:'악배지',name:'두송',speciesId:862,level:46}, {locationId:'hammerlocke',badge:8,badgeName:'드래곤배지',name:'금랑',speciesId:884,level:48},
 ];
-const runtime=createAuthoredRegionSampler({id:'galar',locations:GALAR_LOCATIONS,connections:GALAR_CONNECTIONS});
+const runtime=createAuthoredRegionSampler({id:'galar',locations:GALAR_LOCATIONS,connections:GALAR_CONNECTIONS,terrainFeatures:[
+  {locationId:'circhester',surface:'snow',radius:9,elevation:.35},
+  {locationId:'galar-route-8',surface:'snow',radius:7,elevation:.5},
+  {locationId:'galar-route-9',surface:'snow',radius:10,elevation:.4},
+  {locationId:'galar-route-6',surface:'desert',radius:10,elevation:.3},
+  {locationId:'stow-on-side',surface:'desert',radius:8,elevation:.3},
+]});
 export const GALAR_GATES: readonly KantoGate[] = terrainProgressGates(GALAR_LOCATIONS, GALAR_CONNECTIONS, runtime.locationAt, GALAR_GYMS, '배지');
 export const galarLocationAt=runtime.locationAt,distanceToGalarPath=runtime.distanceToPath,sampleGalarWorld=runtime.sample,evaluateGalarTraversal=runtime.evaluate,safeGalarArrival=runtime.safeArrival,nearestGalarWalkable=runtime.nearestWalkable,galarBuildingOffsets=runtime.buildingOffsets;

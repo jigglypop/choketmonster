@@ -12,6 +12,7 @@ export function atlasMapProjection(atlas: WorldAtlas) {
 function terrainBaseColor(sample: WorldSample): [number, number, number] {
   return sample.surface === 'snow' ? [221, 232, 226]
     : sample.surface === 'desert' ? [214, 190, 138]
+      : sample.surface === 'marsh' ? [112, 126, 82]
       : sample.surface === 'mountain' ? [143, 150, 133]
         : sample.biome === 'lake' ? [100, 169, 190]
           : sample.biome === 'forest' ? [115, 151, 111]

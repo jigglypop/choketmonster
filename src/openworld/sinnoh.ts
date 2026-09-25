@@ -58,6 +58,10 @@ const runtime = createAuthoredRegionSampler({ id:'sinnoh', locations:SINNOH_LOCA
   { locationId: 'mt-coronet', surface: 'mountain', radius: 14, elevation: .9 },
   { locationId: 'sinnoh-route-216', surface: 'snow', radius: 10, elevation: .75 },
   { locationId: 'sinnoh-route-217', surface: 'snow', radius: 12, elevation: 1.15 },
+  { locationId: 'snowpoint-city', surface: 'snow', radius: 11, elevation: .5 },
+  { locationId: 'lake-acuity', surface: 'snow', radius: 8, elevation: .5 },
+  // Route 212 turns to marsh on its way down to Pastoria and the Great Marsh.
+  { locationId: 'sinnoh-route-212', surface: 'marsh', radius: 10, elevation: 0 },
 ] });
 export const SINNOH_GATES: readonly KantoGate[] = terrainProgressGates(SINNOH_LOCATIONS, SINNOH_CONNECTIONS, runtime.locationAt, SINNOH_GYMS, '배지');
 export const sinnohLocationAt=runtime.locationAt, distanceToSinnohPath=runtime.distanceToPath, sampleSinnohWorld=runtime.sample, evaluateSinnohTraversal=runtime.evaluate, safeSinnohArrival=runtime.safeArrival,nearestSinnohWalkable=runtime.nearestWalkable,sinnohBuildingOffsets=runtime.buildingOffsets;
