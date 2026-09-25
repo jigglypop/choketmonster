@@ -1,6 +1,7 @@
 import type { GameState, Monster, PreferredTransformation } from '../game/engine';
 import { getMegaCombatForms } from '../data/pokemon-combat-forms';
 import { getPokemonFormModelSource } from '../data/pokemon-form-models';
+import { formDisplayName } from './pokemon-presentation';
 
 export function transformationSettingsHtml(monster: Monster, disabled: boolean, inventory?: GameState['inventory']): string {
   const preference = monster.preferredTransformation;
@@ -10,7 +11,7 @@ export function transformationSettingsHtml(monster: Monster, disabled: boolean, 
     ...getMegaCombatForms(monster.speciesId).filter(form => getPokemonFormModelSource(form.identifier)).map(form => {
       const stone = `mega-stone:${form.identifier}` as const;
       const available = monster.heldTool === stone || Boolean(inventory?.[stone]);
-      return { value: `mega:${form.identifier}`, label: `${form.name}${available ? '' : ' · 진화석 없음'}`, disabled: !available };
+      return { value: `mega:${form.identifier}`, label: `${formDisplayName(form)}${available ? '' : ' · 진화석 없음'}`, disabled: !available };
     }),
   ];
   return `<label class="equipment-field"><span>메가진화</span><select id="monster-transformation" ${disabled ? 'disabled' : ''}>${options.map(option => `<option value="${option.value}" ${option.value === selected ? 'selected' : ''} ${option.disabled ? 'disabled' : ''}>${option.label}</option>`).join('')}</select></label>`;

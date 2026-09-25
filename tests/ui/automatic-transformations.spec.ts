@@ -22,7 +22,7 @@ test('team setup saves Korean Mega choices without a battle click', async ({ pag
   await expect(page.locator('#toast')).toContainText('불러왔습니다');
   await page.locator('[data-tab="team"]').click();
   const select = page.locator('#monster-transformation');
-  await expect(select.locator('option[value="mega:charizard-mega-x"]')).toHaveText('메가리자몽 X');
+  await expect(select.locator('option[value="mega:charizard-mega-x"]')).toHaveText('Ⓜ리자몽 X');
   await expect(select.locator('option[value="mega:charizard-mega-y"]')).toHaveJSProperty('disabled', true);
   await expect(select.locator('option[value^="tera:"]')).toHaveCount(0);
   for (const value of ['mega:charizard-mega-x', '']) {

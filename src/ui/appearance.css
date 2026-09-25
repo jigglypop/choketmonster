@@ -354,3 +354,11 @@ input[type=search], input[type=text], select { border: 1px solid var(--ui-border
 .adventure :is(.world-explore-panel, .world-battle-hud, .social-dock, .world-radar) :is(small, p, label) { color: var(--ui-hud-muted); }
 .adventure #world-chat-input::placeholder { color: var(--ui-hud-muted); opacity: 1; }
 .topbar nav button { font-size: max(14px, calc(14px * var(--ui-font-scale, 1))); }
+/* Gym challenge: the leader's party as sprites with levels, the ace last. */
+.gym-challenge-dialog .gym-victory-emblem.is-league { background: linear-gradient(140deg,#e7c565,#b3802c); }
+.gym-challenge-team { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 0; margin: 18px 0 22px; list-style: none; }
+.gym-challenge-team li { display: grid; justify-items: center; gap: 2px; width: 72px; padding: 6px 4px; border: 1px solid var(--ui-border); border-radius: 12px; background: var(--ui-tint); }
+.gym-challenge-team li:last-child { border-color: var(--ui-accent); }
+.gym-challenge-team img { width: 56px; height: 56px; object-fit: contain; image-rendering: pixelated; }
+.gym-challenge-team span { font-size: calc(12px * var(--ui-font-scale)); color: var(--ui-muted); font-weight: 700; }
+.gym-challenge-dialog form { display: flex; gap: 8px; justify-content: center; }

@@ -34,7 +34,7 @@ test('Mega forms without 3D models are absent from battle choices and old saves'
     await expect(page.locator('[data-battle-transformation="mega"]')).toHaveCount(0);
     await expect(page.locator('[data-battle-transformation="tera"]')).toBeVisible();
     expect(await page.evaluate(() => (window as any).__renderProbe.read().pokemonForms)).not.toContain('pokemon-form:clefable-mega');
-    await expect(page.locator('body')).not.toContainText('메가픽시');
+    await expect(page.locator('body')).not.toContainText('Ⓜ픽시');
   }
   expect(errors).toEqual([]);
 });

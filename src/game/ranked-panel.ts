@@ -4,7 +4,7 @@ import { isLegendarySpecies } from './legendary';
 import { pokemonSpriteUrl } from './assets';
 import { getCombatForm, getMegaCombatForms } from '../data/pokemon-combat-forms';
 import { getPokemonFormModelSource } from '../data/pokemon-form-models';
-import { combatFormSprite, POKEMON_TYPE_LABELS } from '../ui/pokemon-presentation';
+import { combatFormSprite, formDisplayName, POKEMON_TYPE_LABELS } from '../ui/pokemon-presentation';
 import { confirmAction } from '../ui/confirm-action';
 import './ranked.css';
 
@@ -81,14 +81,14 @@ export function mountRankedPanel(options: RankedPanelOptions) {
   const fighterCard = (side: Side, self: boolean) => {
     const fighter = active(side), form = fighter.regionalForm ? getCombatForm(fighter.regionalForm) : undefined, hp = Math.max(0, Math.min(100, fighter.hp / fighter.maxHp * 100));
     return `<article class="ranked-fighter ${self ? 'is-self' : 'is-opponent'}">${trainerName(side, self)}
-      <img src="${(form && combatFormSprite(form)) ?? pokemonSpriteUrl(fighter.speciesId)}" alt=""><div><span>Lv.50</span><h3>${escape(form?.name ?? fighter.nickname)}</h3><small>${fighter.types.map(type => escape(POKEMON_TYPE_LABELS[type] ?? type)).join(' · ')}${fighter.status ? ` · ${escape(fighter.status)}` : ''}</small>
+      <img src="${(form && combatFormSprite(form)) ?? pokemonSpriteUrl(fighter.speciesId)}" alt=""><div><span>Lv.50</span><h3>${escape(form ? formDisplayName(form) : fighter.nickname)}</h3><small>${fighter.types.map(type => escape(POKEMON_TYPE_LABELS[type] ?? type)).join(' · ')}${fighter.status ? ` · ${escape(fighter.status)}` : ''}</small>
       <div class="ranked-hp"><i style="width:${hp}%"></i></div><b>HP ${fighter.hp} / ${fighter.maxHp}</b></div></article>`;
   };
   const transformations = (side: Side) => {
     const fighter = active(side);
     if (fighter.transformationKind) return '<div class="battle-transformation-active">메가진화</div>';
     const forms = getMegaCombatForms(fighter.speciesId).filter(form => getPokemonFormModelSource(form.identifier));
-    return forms.length && !side.megaUsed ? `<div class="battle-transformations"><div><select data-ranked-mega-form aria-label="메가진화 모습">${forms.map(form => `<option value="${escape(form.identifier)}">${escape(form.name)}</option>`).join('')}</select><button data-ranked-transform="mega">메가진화</button></div></div>` : '';
+    return forms.length && !side.megaUsed ? `<div class="battle-transformations"><div><select data-ranked-mega-form aria-label="메가진화 모습">${forms.map(form => `<option value="${escape(form.identifier)}">${escape(formDisplayName(form))}</option>`).join('')}</select><button data-ranked-transform="mega">메가진화</button></div></div>` : '';
   };
   const battle = (match: RankedMatch) => {
     const self = active(match.selfSide), completed = match.status !== 'active';

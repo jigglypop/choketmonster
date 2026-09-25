@@ -62,8 +62,9 @@ import { regionalSpeciesHabitats } from './data/regional-encounters';
 import { expansionSpeciesHabitats } from './data/expansion-spawns';
 import { evolutionSectionHtml } from './game/evolution-ui';
 import { legendaryClass } from './game/legendary';
+import { DEX_REGIONS, regionalDexSpeciesIds, type DexRegionId } from './game/regional-dex';
 import { searchPokemon } from './ui/pokemon-search';
-import { pokemonPresentation, battleTransformationsHtml } from './ui/pokemon-presentation';
+import { pokemonPresentation, battleTransformationsHtml, formDisplayName } from './ui/pokemon-presentation';
 import fieldItems from './data/field-items.json' with { type: 'json' };
 import { heldToolSelectHtml, itemSourceDetailsHtml } from './ui/item-sources';
 import { getAlolaCombatForm } from './data/pokemon-combat-forms';
@@ -93,6 +94,7 @@ let reauthenticationRequired = false;
 let trading = false, releaseTradeHold: (() => void) | undefined;
 let accountPanel: ReturnType<typeof mountAccountPanel> | undefined;
 let dexMode: 'all' | 'seen' | 'caught' = 'all';
+let dexRegion: DexRegionId | 'all' = 'all';
 let boxType = 'all', boxSort: 'number' | 'level' | 'name' | 'recent' = 'number', boxPage = 0;
 let toastTimer = 0, autosaveTimer = 0;
 let autoBattle = false, brainTurnPending = false, lastDecision = '회로 대기 중';
@@ -705,9 +707,12 @@ function renderTeam() {
 }
 
 const DEX_PAGE_SIZE = 60;
+function dexPool() {
+  return (dexRegion === 'all' ? getPlayableSpeciesIds() : regionalDexSpeciesIds(dexRegion).filter(isPlayableSpecies)).map(getSpecies);
+}
 function filteredDexSpecies() {
   if (!game) return [];
-  const pool = getPlayableSpeciesIds().map(getSpecies), caughtIds = game.dex.caught;
+  const pool = dexPool(), caughtIds = game.dex.caught;
   const q = dexQuery.trim().toLowerCase();
   return pool.filter(s => (!q || s.name.includes(q) || s.englishName.toLowerCase().includes(q) || String(s.id) === q || s.types.some(type => type.includes(q) || typeLabel[type].includes(q)))
     && (dexMode === 'all' || (dexMode === 'caught' ? caughtIds : game!.dex.seen).includes(s.id)));
@@ -715,7 +720,7 @@ function filteredDexSpecies() {
 function dexGridHtml(filtered: ReturnType<typeof filteredDexSpecies>) {
   return filtered.slice(dexPage * DEX_PAGE_SIZE, (dexPage + 1) * DEX_PAGE_SIZE).map(s => {
     const seen = game!.dex.seen.includes(s.id), caught = game!.dex.caught.includes(s.id);
-    return `<article class="dex-card${legendaryClass(s.id)}" data-species="${s.id}" tabindex="0" role="button" aria-label="${escapeHtml(s.name)} 상세 보기"><span>No.${String(s.id).padStart(3, '0')} · ${escapeHtml(s.englishName)}</span><img loading="lazy" src="${s.frontSprite}" alt="${escapeHtml(s.name)}"><strong>${escapeHtml(s.name)}</strong><div>${typesHtml(s.id)}</div><small>${caught ? '● 수집' : seen ? '○ 발견' : '미발견'} · 상세 보기</small></article>`;
+    return `<article class="dex-card${legendaryClass(s.id)} ${caught ? 'is-caught' : seen ? 'is-seen' : 'is-unseen'}" data-species="${s.id}" tabindex="0" role="button" aria-label="${escapeHtml(s.name)} 상세 보기"><span>No.${String(s.id).padStart(3, '0')} · ${escapeHtml(s.englishName)}</span><img loading="lazy" src="${s.frontSprite}" alt="${escapeHtml(s.name)}"><strong>${escapeHtml(s.name)}</strong><div>${typesHtml(s.id)}</div><small>${caught ? '● 수집' : seen ? '○ 발견' : '미발견'} · 상세 보기</small></article>`;
   }).join('') || '<p class="empty">검색 조건에 맞는 포켓몬이 없습니다.</p>';
 }
 function dexPaginationHtml(filteredCount: number, pages: number) {
@@ -739,15 +744,20 @@ function refreshDexResults() {
 function renderDex() {
   detachPokemonScene();
   if (!game) return;
-  const pool = getPlayableSpeciesIds().map(getSpecies), caughtIds = game.dex.caught;
+  const pool = dexPool(), caughtIds = game.dex.caught;
   const filtered = filteredDexSpecies(), pages = Math.max(1, Math.ceil(filtered.length / DEX_PAGE_SIZE)); dexPage = Math.max(0, Math.min(dexPage, pages - 1));
-  const versionName = '관동부터 팔데아까지 통합 도감';
-  $('#screen').innerHTML = `<div class="page dex-page"><section class="section-heading"><div><span class="kicker">POKÉDEX · COLLECTION</span><h1>${escapeHtml(versionName)}</h1><p>수록 ${pool.length}종 · 3D 지원 ${pool.filter(s => hasPokemonModel(s.id)).length}종 · 수집 ${caughtIds.filter(id => pool.some(s => s.id === id)).length}종</p></div>
+  const regionName = dexRegion === 'all' ? '전체' : DEX_REGIONS.find(region => region.id === dexRegion)!.name;
+  const caughtSet = new Set(caughtIds);
+  const tab = (id: DexRegionId | 'all', name: string, ids: readonly number[]) => `<button data-dex-region="${id}" class="${dexRegion === id ? 'active' : ''}" aria-pressed="${dexRegion === id}">${name}<small>${ids.filter(speciesId => caughtSet.has(speciesId)).length}/${ids.length}</small></button>`;
+  const tabs = [tab('all', '전체', getPlayableSpeciesIds()), ...DEX_REGIONS.map(region => tab(region.id, region.name, regionalDexSpeciesIds(region.id).filter(isPlayableSpecies)))].join('');
+  $('#screen').innerHTML = `<div class="page dex-page"><section class="section-heading"><div><span class="kicker">POKÉDEX · COLLECTION</span><h1>${escapeHtml(regionName)} 도감</h1><p>수록 ${pool.length}종 · 3D 지원 ${pool.filter(s => hasPokemonModel(s.id)).length}종 · 수집 ${caughtIds.filter(id => pool.some(s => s.id === id)).length}종</p></div>
     <div class="dex-tools"><input id="dex-search" type="search" aria-label="도감 검색" value="${escapeHtml(dexQuery)}" placeholder="이름, 번호, 타입 검색"><div>${(['all', 'seen', 'caught'] as const).map(mode => `<button data-dex-mode="${mode}" class="${dexMode === mode ? 'active' : ''}">${mode === 'all' ? '전체' : mode === 'seen' ? '발견' : '수집'}</button>`).join('')}</div></div></section>
+    <nav class="dex-regions" aria-label="지역 도감">${tabs}</nav>
     <section class="collection-note"><p>지역별 원본 출현표로 고정됩니다. 원본 분포와 희귀 추가 분포를 구분해 표시합니다.</p></section>
     <div class="dex-grid">${dexGridHtml(filtered)}</div>
     <nav class="box-pagination dex-pagination" aria-label="도감 페이지">${dexPaginationHtml(filtered.length, pages)}</nav></div>`;
   const search = $<HTMLInputElement>('#dex-search'); search.oninput = () => { dexQuery = search.value; dexPage = 0; refreshDexResults(); };
+  document.querySelectorAll<HTMLButtonElement>('[data-dex-region]').forEach(button => button.onclick = () => { dexRegion = button.dataset.dexRegion as typeof dexRegion; dexPage = 0; renderDex(); });
   document.querySelectorAll<HTMLButtonElement>('[data-dex-mode]').forEach(button => button.onclick = () => {
     dexMode = button.dataset.dexMode as typeof dexMode; dexPage = 0;
     document.querySelectorAll<HTMLButtonElement>('[data-dex-mode]').forEach(mode => mode.classList.toggle('active', mode.dataset.dexMode === dexMode));
@@ -820,7 +830,7 @@ function showModel(initialId: number, orderedIds = getPlayableSpeciesIds()) {
       <section class="dex-facts"><div class="dex-status"><strong>${caught ? '● 수집 완료' : seen ? '○ 발견' : '미발견'}</strong><span>보유 개체 ${ownedCount}마리</span></div><dl><div><dt>키</dt><dd>${species.heightMeters ? `${species.heightMeters} m` : '자료 없음'}</dd></div><div><dt>포획률</dt><dd>${species.catchRate}</dd></div><div><dt>기초 경험치</dt><dd>${species.baseExperience}</dd></div><div><dt>서식 환경</dt><dd>${escapeHtml(species.habitat || '자료 없음')}</dd></div></dl><div class="dex-base-stats">${Object.entries(species.baseStats).map(([key, value]) => `<span>${({ hp: 'HP', attack: '공격', defense: '방어', specialAttack: '특공', specialDefense: '특방', speed: '스피드' } as Record<string, string>)[key] ?? key}<b>${value}</b></span>`).join('')}</div></section></div>
       <section class="dex-detail-section"><h3>출현·입수</h3>${habitats.length ? `<ul>${habitats.map(habitat => `<li><strong>${escapeHtml(habitat.label)}</strong><span>${escapeHtml(habitat.detail)}</span></li>`).join('')}</ul>` : `<p>${escapeHtml(dexHabitatSummary(id))}</p>`}</section>
       <section class="dex-detail-section"><h3>진화 계보</h3><div class="dex-relatives">${[...parents.map(parent => ({ species: parent, relation: '진화 전' })), ...evolutions.map(target => ({ species: target, relation: '진화 후' }))].map(({ species: relative, relation }) => `<button data-related-species="${relative.id}"><img src="${relative.frontSprite}" alt=""><span><small>${relation}</small><strong>${escapeHtml(relative.name)}</strong></span></button>`).join('') || '<p>연결된 진화가 없습니다.</p>'}</div></section>
-      <details class="form-gallery"><summary>원본 폼 자료 ${forms.length}개</summary><p>폼 이미지 자료입니다. 현재 포획·능력치·개체 저장은 종의 기본 폼 기준입니다.</p><div>${forms.map(form => `<figure>${form.frontSprite ? `<img loading="lazy" src="${pokemonSpriteUrl(form.spriteKey)}" alt="${escapeHtml(form.name)}">` : '<span>원본 이미지 없음</span>'}<figcaption>${escapeHtml(form.formName || form.name || form.identifier)}${form.isBattleOnly ? ' · 배틀 전용' : ''}</figcaption></figure>`).join('')}</div></details>`;
+      <details class="form-gallery"><summary>원본 폼 자료 ${forms.length}개</summary><p>폼 이미지 자료입니다. 현재 포획·능력치·개체 저장은 종의 기본 폼 기준입니다.</p><div>${forms.map(form => `<figure>${form.frontSprite ? `<img loading="lazy" src="${pokemonSpriteUrl(form.spriteKey)}" alt="${escapeHtml(form.name)}">` : '<span>원본 이미지 없음</span>'}<figcaption>${escapeHtml(/-mega(?:-[xyz])?$/.test(form.identifier) ? formDisplayName(form) : form.formName || form.name || form.identifier)}${form.isBattleOnly ? ' · 배틀 전용' : ''}</figcaption></figure>`).join('')}</div></details>`;
     dialog.querySelector<HTMLButtonElement>('.model-close')!.onclick = () => dialog.close();
     dialog.querySelectorAll<HTMLButtonElement>('[data-dex-detail]').forEach(button => button.onclick = () => {
       const target = button.dataset.dexDetail === 'first' ? 0 : button.dataset.dexDetail === 'last' ? orderedIds.length - 1 : index + (button.dataset.dexDetail === 'prev' ? -1 : 1);

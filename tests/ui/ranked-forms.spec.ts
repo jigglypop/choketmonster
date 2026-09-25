@@ -50,7 +50,7 @@ test('real ranked applies preset Mega and Alola before the first move, then surv
     await expect(right.page.locator('.ranked-fighter.is-self h3')).toHaveText('알로라 라이츄');
     await expect(left.page.locator('.battle-transformation-active')).toHaveText('메가진화');
     await expect(left.page.locator('.ranked-fighter.is-self img')).toHaveAttribute('src', /10034/);
-    await expect(left.page.locator('.ranked-fighter.is-self h3')).toHaveText('메가리자몽 X');
+    await expect(left.page.locator('.ranked-fighter.is-self h3')).toHaveText('Ⓜ리자몽 X');
     await expect(right.page.locator('.battle-transformation-active')).toHaveCount(0);
     const status = async () => (await (await a.request.get(`${base}/api/ranked?league=standard`, { headers: left.headers })).json()).currentMatch;
     let match = await status();

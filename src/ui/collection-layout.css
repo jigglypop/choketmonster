@@ -124,3 +124,16 @@
 .shop-page .shop-purchase input{width:70px;min-width:0;min-height:42px;padding:8px;border:1px solid var(--ui-border);border-radius:9px;background:var(--ui-surface);color:var(--ui-text);font:inherit}
 .shop-page .shop-categories button{min-height:40px;padding:8px 13px;border:1px solid var(--ui-border);border-radius:10px;background:var(--ui-surface);color:var(--ui-text);font:inherit;font-size:13px;cursor:pointer}
 .shop-page .shop-categories button.active{background:var(--ui-accent);border-color:var(--ui-accent);color:white}
+/* Regional Pokédex tabs: one horizontal row that scrolls on its own on narrow screens. */
+.dex-page .dex-regions{display:flex;gap:6px;margin:0 0 14px;overflow-x:auto;scrollbar-width:thin;padding-bottom:4px}
+.dex-page .dex-regions button{display:grid;gap:1px;flex:0 0 auto;min-width:64px;padding:7px 12px;border:1px solid var(--ui-border);border-radius:10px;background:var(--ui-surface);color:var(--ui-text);font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+.dex-page .dex-regions button small{font-size:11px;font-weight:600;opacity:.65}
+.dex-page .dex-regions button.active{background:var(--ui-accent);border-color:var(--ui-accent);color:white}
+.dex-page .dex-regions button.active small{opacity:.85}
+/* Undiscovered entries stay readable but faint; caught ones are bright. */
+.dex-card.is-unseen{opacity:.42}
+.dex-card.is-unseen img{filter:grayscale(1) brightness(.85)}
+.dex-card.is-seen{opacity:.72}
+.dex-card.is-seen img{filter:saturate(.35)}
+.dex-card.is-caught{opacity:1}
+.dex-card.is-unseen:hover,.dex-card.is-seen:hover,.dex-card.is-unseen:focus-visible,.dex-card.is-seen:focus-visible{opacity:1}

@@ -23,6 +23,8 @@ import './world-bag.css';
 import './trainer-battles.css';
 import './regional-starter.css';
 import { showGymVictory } from '../ui/gym-victory';
+import { confirmGymChallenge, type GymChallenge } from '../ui/gym-challenge';
+import { GYM_TEAMS } from '../game/gym-teams';
 import { openMachineDialog } from '../ui/machine-dialog';
 import { statusLabel } from '../game/status-labels';
 import { pokemonWorldDisplayHeight } from './visual-scale';
@@ -35,7 +37,9 @@ import { getGymScene, gymSceneId, HALL_BATTLE_GAP, LEAGUE_LOCATION_IDS, leagueSc
 import { gymTeam } from '../game/gym-teams';
 import { technicalMachines } from '../game/technical-machines';
 import { nextDestinationGuide, regionalItinerary, type DestinationGuide } from './next-destination';
-import { pokemonPresentation, battleTransformationsHtml, combatFormSprite, fieldMegaForm } from '../ui/pokemon-presentation';
+import { pokemonPresentation, battleTransformationsHtml, combatFormSprite, fieldMegaForm, formDisplayName } from '../ui/pokemon-presentation';
+import { isLegendarySpecies } from '../game/legendary';
+import { TYPE_COLORS } from './type-colors';
 import { getAlolaCombatForm, getCombatForm } from '../data/pokemon-combat-forms';
 import { getPokemonFormModelSource } from '../data/pokemon-form-models';
 import { acquireModel } from '../three/model-cache';
@@ -106,6 +110,9 @@ export class OpenWorldPanel {
   private portalArmed = false;
   /** A gym or league location without a hall; arriving there starts the battle on the field. */
   private pendingFieldChallenge?: string;
+  /** A challenge question is open; a declined one is not asked again until the partner steps off the court. */
+  private challengePrompt = false;
+  private declinedChallenge?: string;
   private bagTab: 'tools' | 'machines' = 'tools';
   private previousBattle?: GameState['battle'];
   private guideCache?: { key: string; guide: DestinationGuide };
@@ -299,7 +306,7 @@ export class OpenWorldPanel {
       onGymEnter: locationId => this.enterHallFromWorld(gymSceneId(this.simulation.regionId, locationId)),
       onLeagueEnter: locationId => this.enterHallFromWorld(leagueSceneId(this.simulation.regionId, locationId)),
       onGymExit: () => { if (this.simulation.exitGym()) this.afterSceneChange(); },
-      onGymChallenge: () => this.challengeGymHall(),
+      onGymChallenge: () => { this.declinedChallenge = undefined; void this.challengeGymHall(); },
       onCameraHeading: heading => { this.cameraHeading = heading; this.updateMapOrientation(); this.minimap(); },
     });
     this.multiplayer = new MultiplayerSession(() => { if (this.host === host) this.renderRealtime(); });
@@ -496,6 +503,8 @@ export class OpenWorldPanel {
 
   /** The challenge notice: walk into the hall, or, where a region has no hall for it, fight on the field when you get there. */
   private startNextChallenge(): void {
+    // Asking again is the player's choice, so a challenge declined earlier is offered again.
+    this.declinedChallenge = undefined;
     const next = this.nextChallenge(), world = this.simulation, game = this.options.game, region = world.regionId;
     if (!next || game.battle || game.captureOffer || getCaveScene(world.sceneId) || getGymScene(world.sceneId)) return;
     const hall = getGymScene(next.kind === 'gym' ? gymSceneId(region, next.locationId) : LEAGUE_LOCATION_IDS[region] === next.locationId ? leagueSceneId(region, next.locationId) : '');
@@ -521,13 +530,48 @@ export class OpenWorldPanel {
   private fieldChallenge(next: NonNullable<ReturnType<OpenWorldPanel['nextChallenge']>>): boolean {
     const world = this.simulation;
     if (world.locationAt(world.player.x, world.player.z).id !== next.locationId) return false;
-    let started = false;
-    // A team the region does not allow is named here, and the walk there ends either way.
-    try { started = next.kind === 'gym' ? world.challengeLocalGym() : world.challengeLocalTrainer(); }
-    catch (error) { this.pendingFieldChallenge = undefined; this.options.notify(error instanceof Error ? error.message : String(error), true); return true; }
-    if (!started) return false;
-    this.pendingFieldChallenge = undefined; this.options.changed(); this.refresh();
+    // The walk there ends here either way; the battle waits for the answer.
+    this.pendingFieldChallenge = undefined;
+    void this.startFieldChallenge(next);
     return true;
+  }
+
+  private async startFieldChallenge(next: NonNullable<ReturnType<OpenWorldPanel['nextChallenge']>>): Promise<void> {
+    const world = this.simulation, game = this.options.game;
+    if (!await this.confirmChallenge(this.challengeAt(next.locationId, next.kind !== 'gym'))) return;
+    if (world.locationAt(world.player.x, world.player.z).id !== next.locationId || game.battle || game.captureOffer) return;
+    let started = false;
+    // A team the region does not allow is named here.
+    try { started = next.kind === 'gym' ? world.challengeLocalGym() : world.challengeLocalTrainer(); }
+    catch (error) { this.options.notify(error instanceof Error ? error.message : String(error), true); return; }
+    if (!started) return;
+    this.options.changed(); this.refresh();
+  }
+
+  /** The leader whose badge is next at this place, or the league trainer waiting there. */
+  private challengeAt(locationId: string, league: boolean): (GymChallenge & { key: string }) | undefined {
+    const world = this.simulation, game = this.options.game, region = world.regionId;
+    const place = world.atlas.locations.find(item => item.id === locationId)?.name ?? locationId;
+    if (league) {
+      const trainer = getNextCampaignTrainer(game, region);
+      return trainer?.locationId === locationId ? { key: `trainer:${trainer.id}`, kind: trainer.kind, name: trainer.name, place, team: trainer.team } : undefined;
+    }
+    const gym = getCampaignGyms(game, region).find(item => item.locationId === locationId);
+    if (!gym || gym.badge !== world.regionalBadges + 1) return undefined;
+    const team = GYM_TEAMS[region as CampaignRegion]?.[gym.badge] ?? [[gym.speciesId, gym.level] as const];
+    return { key: `gym:${region}:${gym.badge}`, kind: 'gym', name: gym.name, place, badge: { number: gym.badge, name: gym.badgeName }, team };
+  }
+
+  /** Asks before a leader or league battle. A declined question waits until the partner steps off the court or the player asks again. */
+  private async confirmChallenge(challenge: (GymChallenge & { key: string }) | undefined): Promise<boolean> {
+    if (!challenge) return true;
+    if (this.challengePrompt || this.declinedChallenge === challenge.key) return false;
+    this.challengePrompt = true;
+    try {
+      const accepted = await confirmGymChallenge(challenge);
+      if (!accepted) this.declinedChallenge = challenge.key;
+      return accepted;
+    } finally { this.challengePrompt = false; }
   }
 
   private arriveFieldChallenge(): void {
@@ -581,18 +625,24 @@ export class OpenWorldPanel {
   private enterHall(hall: GymScene): boolean {
     if (!(hall.kind === 'league' ? this.simulation.enterLeague() : this.simulation.enterGym(hall.locationId))) return false;
     this.afterSceneChange();
-    if (hall.kind === 'gym') this.challengeGymHall();
+    if (hall.kind === 'gym') void this.challengeGymHall();
     return true;
   }
 
-  /** Stepping onto the marked court starts the leader battle when the badge is next in order. */
+  /** Stepping onto the marked court offers the leader battle when the badge is next in order; stepping off re-arms the offer. */
   private enterGymCourt(): void {
     const hall = getGymScene(this.simulation.sceneId), game = this.options.game;
-    if (!hall || game.battle || game.captureOffer || !onGymCourt(hall, this.simulation.player.x, this.simulation.player.z)) return;
-    this.challengeGymHall();
+    if (!hall || game.battle || game.captureOffer) return;
+    if (!onGymCourt(hall, this.simulation.player.x, this.simulation.player.z)) { this.declinedChallenge = undefined; return; }
+    void this.challengeGymHall();
   }
 
-  private challengeGymHall(): void {
+  private async challengeGymHall(): Promise<void> {
+    const hall = getGymScene(this.simulation.sceneId), game = this.options.game;
+    if (!hall || game.battle || game.captureOffer) return;
+    if (!await this.confirmChallenge(this.challengeAt(hall.locationId, hall.kind === 'league'))) return;
+    // The partner may have left the hall while the question was open.
+    if (getGymScene(this.simulation.sceneId) !== hall || game.battle || game.captureOffer) return;
     try { if (!this.simulation.challengeGymHall()) return; }
     catch (error) { this.options.notify(error instanceof Error ? error.message : String(error), true); return; }
     this.manualMovementActive = false; this.options.changed(); this.refresh();
@@ -883,7 +933,7 @@ export class OpenWorldPanel {
         const formModel = getPokemonFormModelSource(formIdentifier);
         const stats = transformed?.stats ?? monster?.stats ?? statsFor(getSpecies(entity.speciesId), entity.level);
         const level = monster?.level ?? entity.level;
-        return { id: entity.id, speciesId, name: form?.name || getSpecies(speciesId).name, level, hp: monster?.hp ?? stats.hp, maxHp: stats.hp,
+        return { id: entity.id, speciesId, name: (form && formDisplayName(form)) || getSpecies(speciesId).name, level, hp: monster?.hp ?? stats.hp, maxHp: stats.hp,
           formIdentifier, formModelUrl: formModel?.url, formSpriteUrl: form ? combatFormSprite(form) : undefined,
           transformationKind: transformed?.kind === 'mega' ? transformed.kind : fieldMega ? 'mega' : undefined,
           x: entity.x, z: entity.z,
@@ -1198,7 +1248,7 @@ export class OpenWorldPanel {
     const xp = Math.min(100, Math.max(0, (lead.xp - xpStart) / Math.max(1, xpEnd - xpStart) * 100));
     const card = (mon: Monster, label: string) => {
       const info = pokemonPresentation(mon, battle);
-      return `<div class="world-combatant"><img src="${info.sprite}" alt="${escape(info.name)}"><div class="world-combatant-copy"><small>${label} · Lv.${mon.level}</small><strong>${escape(info.name)}</strong><div class="world-hp-row"><span>HP</span><b>${mon.hp} / ${info.stats.hp}</b>${statusLabel(mon.status) ? `<em>${statusLabel(mon.status)}</em>` : ''}</div><div class="world-hp" role="meter" aria-label="${escape(mon.nickname)} HP" aria-valuemin="0" aria-valuemax="${info.stats.hp}" aria-valuenow="${mon.hp}"><i style="width:${mon.hp / info.stats.hp * 100}%"></i></div><span class="world-combatant-meta">${info.types.map(type => types[type]).join(' · ')} · 스피드 ${info.stats.speed}</span></div></div>`;
+      return `<div class="world-combatant${isLegendarySpecies(mon.speciesId) ? ' is-legendary' : ''}"><img src="${info.sprite}" alt="${escape(info.name)}"><div class="world-combatant-copy"><small>${label} · Lv.${mon.level}</small><strong>${info.types.map(type => `<i class="world-type-dot" style="background:${TYPE_COLORS[type]}"></i>`).join('')}${escape(info.name)}</strong><div class="world-hp-row"><span>HP</span><b>${mon.hp} / ${info.stats.hp}</b>${statusLabel(mon.status) ? `<em>${statusLabel(mon.status)}</em>` : ''}</div><div class="world-hp" role="meter" aria-label="${escape(mon.nickname)} HP" aria-valuemin="0" aria-valuemax="${info.stats.hp}" aria-valuenow="${mon.hp}"><i style="width:${mon.hp / info.stats.hp * 100}%"></i></div><span class="world-combatant-meta">${info.types.map(type => types[type]).join(' · ')} · 스피드 ${info.stats.speed}</span></div></div>`;
     };
     const enemyParty = battle && battle.kind !== 'wild' ? `<ol class="world-enemy-party" aria-label="상대 포켓몬">${battle.enemy.team.map((monster, index) => `<li class="${monster.hp <= 0 ? 'fainted' : ''}${index === battle.enemy.activeIndex ? ' active' : ''}"><img src="${pokemonSpriteUrl(monster.speciesId)}" alt="${escape(monster.nickname)} Lv.${monster.level}" title="${escape(monster.nickname)} Lv.${monster.level}"></li>`).join('')}</ol>` : '';
     this.html('#world-combatants', `${card(lead, '파트너')}${enemy ? card(enemy, battle!.kind === 'wild' ? '야생' : campaignTrainer?.name ?? getCampaignGyms(game, battle!.campaignRegion ?? world.regionId).find(item => item.badge === battle!.gymBadge)?.name ?? '체육관') + enemyParty : `<div class="world-growth"><small>다음 레벨까지 ${Math.max(0, xpEnd - lead.xp)} EXP</small><div class="world-xp"><i style="width:${xp}%"></i></div><span>${species.moves.filter(move => move.level > lead.level).slice(0, 1).map(move => `Lv.${move.level} ${getMove(move.moveId).name} 습득`).join('') || '현재 레벨의 기술을 모두 익혔습니다.'}</span></div>`}`);
