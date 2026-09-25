@@ -3058,6 +3058,30 @@ fn validate_stat_stages<'a>(
 pub(crate) mod tests {
     use super::*;
 
+    /// Checks real saves before tightening validation, e.g. saves exported from a database:
+    /// `SAVE_FIXTURES=<dir of .json envelopes> cargo test saved_fixtures -- --ignored`.
+    #[test]
+    #[ignore]
+    fn saved_fixtures_pass_validation() {
+        let dir = std::env::var("SAVE_FIXTURES").expect("SAVE_FIXTURES must name a directory");
+        let mut checked = 0;
+        let mut failures = Vec::new();
+        for entry in std::fs::read_dir(dir).expect("fixture directory") {
+            let path = entry.expect("fixture entry").path();
+            if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
+                continue;
+            }
+            let value: Value =
+                serde_json::from_slice(&std::fs::read(&path).expect("fixture file")).expect("fixture JSON");
+            checked += 1;
+            if let Err(error) = validate_save(&value) {
+                failures.push(format!("{}: {error}", path.display()));
+            }
+        }
+        assert!(failures.is_empty(), "{} of {checked} saves rejected:\n{}", failures.len(), failures.join("\n"));
+        println!("{checked} saves passed");
+    }
+
     #[test]
     fn ability_effects_match_the_client_runtime_categories() {
         assert_eq!(ability_effect("overgrow"), "implemented");
