@@ -60,7 +60,7 @@ import { mountOriginalMusic } from './audio/original-music';
 import { bindBreedingPanel, breedingPanelHtml } from './game/breeding-ui';
 import { regionalSpeciesHabitats } from './data/regional-encounters';
 import { expansionSpeciesHabitats } from './data/expansion-spawns';
-import { evolutionSectionHtml, readyEvolutionTargets } from './game/evolution-ui';
+import { evolutionSectionHtml, readyEvolutions } from './game/evolution-ui';
 import { legendaryClass } from './game/legendary';
 import { DEX_REGIONS, regionalDexSpeciesIds, type DexRegionId } from './game/regional-dex';
 import { searchPokemon } from './ui/pokemon-search';
@@ -396,15 +396,17 @@ function boxCardsHtml(monsters: Monster[]) {
   return monsters.map(monster => monsterCard(monster, `<div class="card-actions"><button class="card-action" data-withdraw-id="${escapeHtml(monster.instanceId)}" ${game!.player.team.length >= 6 ? 'disabled' : ''}>데려오기</button>${cardEvolveHtml(monster)}</div>`, 'box-monster')).join('');
 }
 function cardEvolveHtml(monster: Monster) {
-  return game && readyEvolutionTargets(game, monster).length ? `<button class="card-action card-evolve" data-card-evolve="${escapeHtml(monster.instanceId)}">진화</button>` : '';
+  const ready = game ? readyEvolutions(game, monster) : [];
+  return ready.length ? `<button class="card-action card-evolve" data-card-evolve="${escapeHtml(monster.instanceId)}">${ready.every(item => item.capsule) ? '특수진화' : '진화'}</button>` : '';
 }
 function bindCardEvolve(root: ParentNode) {
   root.querySelectorAll<HTMLButtonElement>('[data-card-evolve]').forEach(button => button.onclick = () => {
     const monster = owned().find(item => item.instanceId === button.dataset.cardEvolve);
     if (!game || !monster) return;
-    const targets = readyEvolutionTargets(game, monster);
-    if (targets.length === 1) {
-      action(() => { evolve(game!, monster.instanceId, { targetId: targets[0] }); worldPanel?.simulation.reconcileTeamChange(); }, '진화가 완료됐습니다.');
+    const ready = readyEvolutions(game, monster);
+    if (ready.length === 1) {
+      const [{ target, capsule }] = ready;
+      action(() => { evolve(game!, monster.instanceId, { targetId: target, item: capsule ? 'evolution-catalyst' : undefined }); worldPanel?.simulation.reconcileTeamChange(); }, capsule ? '특수진화 캡슐로 진화했습니다.' : '진화가 완료됐습니다.');
       return;
     }
     // Several ready forms: open the choice in the detail panel.

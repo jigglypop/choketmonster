@@ -1,24 +1,24 @@
-/* Equipment list inside the minimap card. */
-.adventure .world-radar .world-bag { position: relative; margin-top: 6px; text-align: left; }
-.adventure .world-radar .world-bag > summary {
+/* Equipment list inside the explore panel; it opens in place. */
+.adventure .world-bag { position: relative; margin-top: 6px; text-align: left; }
+.adventure .world-bag > summary {
   display: flex; align-items: center; justify-content: space-between; gap: 6px;
   min-height: 32px; padding: 4px 8px 4px 10px; list-style: none; cursor: pointer;
   border: 1px solid var(--ui-hud-line); border-radius: 8px; background: #ffffff12; color: var(--ui-hud-text);
   font-size: calc(12px * var(--ui-font-scale));
 }
-.adventure .world-radar .world-bag > summary::-webkit-details-marker { display: none; }
-.adventure .world-radar .world-bag > summary span { display: inline; margin: 0; font-size: inherit; }
-.adventure .world-radar .world-bag > summary b {
+.adventure .world-bag > summary::-webkit-details-marker { display: none; }
+.adventure .world-bag > summary span { display: inline; margin: 0; font-size: inherit; }
+.adventure .world-bag > summary b {
   min-width: 24px; padding: 1px 7px; border-radius: 999px; text-align: center;
   background: #ffffff1c; color: var(--ui-hud-text); font-size: calc(11px * var(--ui-font-scale));
 }
-.adventure .world-radar .world-bag[data-nearby=true] > summary { border-color: #e9c35f; }
-.adventure .world-radar .world-bag[data-nearby=true] > summary b { background: #e9c35f; color: #2b2410; }
-.adventure .world-radar .world-bag[open] > summary { background: var(--ui-accent); border-color: var(--ui-focus); }
+.adventure .world-bag[data-nearby=true] > summary { border-color: #e9c35f; }
+.adventure .world-bag[data-nearby=true] > summary b { background: #e9c35f; color: #2b2410; }
+.adventure .world-bag[open] > summary { background: var(--ui-accent); border-color: var(--ui-focus); }
 
 .world-bag-panel {
-  position: absolute; z-index: 30; top: 0; right: calc(100% + 18px);
-  width: 264px; max-height: min(62dvh, 540px); overflow: auto; overscroll-behavior: contain;
+  position: static; margin-top: 6px;
+  width: auto; max-height: min(50dvh, 420px); overflow: auto; overscroll-behavior: contain;
   padding: 10px; display: grid; gap: 10px;
   background: var(--ui-hud); color: var(--ui-hud-text);
   border: 1px solid var(--ui-hud-line); border-radius: 12px; box-shadow: 0 10px 30px #0b221a55;
@@ -47,11 +47,7 @@
 .world-bag-panel .bag-empty { color: var(--ui-hud-muted); border: 0; }
 
 @media (max-width: 900px) {
-  .world-bag-panel { top: calc(100% + 6px); right: 0; width: min(272px, calc(100vw - 24px)); max-height: min(52dvh, 420px); }
-  .adventure .world-radar .world-bag > summary { min-height: 30px; padding: 3px 6px; }
-}
-@media (min-width: 901px) {
-  [data-battle-position=left] .world-bag-panel { right: auto; left: calc(100% + 18px); }
+  .adventure .world-bag > summary { min-height: 30px; padding: 3px 6px; }
 }
 
 .world-bag-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }

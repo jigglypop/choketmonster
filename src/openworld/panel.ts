@@ -90,7 +90,9 @@ export class OpenWorldPanel {
   private miniRegion?: string;
   private mapProjection?: (x: number, z: number) => { x: number; y: number };
   private terrainAtlas?: unknown;
-  private minimapSize: 'small' | 'medium' | 'large' = 'medium';
+  /** Minimap size relative to its base; a wheel or a pinch on the map changes it. */
+  private minimapScale = 1;
+  private minimapPinched = false;
   private cameraHeading = Math.PI;
   private mapView = { sceneId: '', zoom: 1, centerX: 120, centerY: 120 };
   private mapDrag?: { pointerId: number; x: number; y: number; moved: boolean };
@@ -190,6 +192,7 @@ export class OpenWorldPanel {
       <section class="world-hud-card" aria-label="탐험">
         <details class="world-explore-panel"><summary class="world-explore-toggle"><div><strong id="world-location-short">성도</strong><small id="world-explore-short">성도</small></div><i>⌄</i></summary><div class="world-explore-scroll">
         <div class="world-tools"><button id="world-trade-open" title="포켓몬 교환 · 게임 머니 거래">교환</button></div>
+        <details class="world-bag" id="world-bag"><summary aria-label="도구 목록"><span>도구</span><b id="world-bag-count">0</b></summary><div class="world-bag-panel" id="world-bag-content"></div></details>
         <button id="world-trainer-open" class="world-trainer-open">트레이너 배틀</button>
         <fieldset class="world-automation"><legend>자동 설정</legend><label><input id="world-auto-catch" type="checkbox" checked><span>자동 포획</span></label><label title="건강한 팀원 모두 같은 경험치"><input id="world-exp-share" type="checkbox" checked><span>팀 경험치 공유</span></label><label><input id="world-learning" type="checkbox" checked><span id="world-learning-label">기술 학습</span></label></fieldset>
         <div class="world-control-mode"><div class="world-control-copy"><strong id="world-control-title"></strong><small id="world-control-help"></small></div></div>
@@ -197,7 +200,7 @@ export class OpenWorldPanel {
         </div></details>
         <button id="world-next-guide" class="world-next-guide" aria-label="다음 목적지 길안내" aria-expanded="false"></button>
       </section>
-      <aside class="world-radar" data-size="${this.minimapSize}"><button id="world-map-open" aria-label="지역 전체 지도 열기"><span class="world-minimap-frame"><canvas id="world-minimap" width="180" height="180" aria-label="카메라 방향으로 회전하는 월드 지도"></canvas><b id="world-minimap-heading" aria-hidden="true">북</b></span></button><div class="world-minimap-controls" role="group" aria-label="미니맵 크기"><button id="world-minimap-smaller" type="button" aria-label="미니맵 축소" ${this.minimapSize === 'small' ? 'disabled' : ''}>−</button><span id="world-minimap-size">${this.minimapSize === 'small' ? '작게' : this.minimapSize === 'large' ? '크게' : '보통'}</span><button id="world-minimap-larger" type="button" aria-label="미니맵 확대" ${this.minimapSize === 'large' ? 'disabled' : ''}>＋</button></div><span id="world-position"></span><small id="world-map-caption">지역 지도 ↗</small><details class="world-bag" id="world-bag"><summary aria-label="도구 목록"><span>도구</span><b id="world-bag-count">0</b></summary><div class="world-bag-panel" id="world-bag-content"></div></details></aside>
+      <aside class="world-radar world-radar-round" style="--minimap-scale:${this.minimapScale}"><button id="world-map-open" aria-label="지역 전체 지도 열기"><span class="world-minimap-frame"><canvas id="world-minimap" width="180" height="180" aria-label="카메라 방향으로 회전하는 월드 지도"></canvas><b id="world-minimap-heading" aria-hidden="true">북</b></span></button><button id="world-radar-run" class="world-radar-run" type="button" hidden>도망가기</button></aside>
       <div class="world-quick-actions"><div class="world-mode-buttons" role="group" aria-label="조작 모드"><button id="world-mode-auto">자동</button><button id="world-mode-manual">수동</button></div><button id="world-heal" class="world-heal">캠프 회복</button><div id="world-cave-exits" class="world-cave-exits" hidden></div></div>
       <button id="world-gym-notice" class="world-gym-notice" hidden></button>
       <div class="world-lower-hud">
@@ -283,10 +286,7 @@ export class OpenWorldPanel {
         if (accepted && this.pendingFieldChallenge) this.arriveFieldChallenge();
         if (accepted) this.enterGymCourt();
         if (accepted) this.walkThroughPortal();
-        if (accepted && now - this.lastMovementRefresh >= 100) {
-          this.lastMovementRefresh = now;
-          this.html('#world-position', `${next.x.toFixed(0)}, ${next.z.toFixed(0)}`);
-        }
+        if (accepted && now - this.lastMovementRefresh >= 100) this.lastMovementRefresh = now;
         return accepted;
       },
       onSelect: id => {
@@ -363,7 +363,13 @@ export class OpenWorldPanel {
     });
     this.input('#world-map-search').oninput = event => { this.mapQuery = (event.target as HTMLInputElement).value; this.drawRegionMap(); };
     this.host.querySelector<HTMLSelectElement>('#world-map-filter')!.onchange = event => { this.mapFilter = (event.target as HTMLSelectElement).value as MapFilter; this.drawRegionMap(); };
-    this.button('#world-map-open').onclick = () => { this.drawRegionMap(); this.host!.querySelector<HTMLDialogElement>('#world-map-dialog')!.showModal(); };
+    this.button('#world-map-open').onclick = () => {
+      // The tap that ends a pinch does not open the map.
+      if (this.minimapPinched) { this.minimapPinched = false; return; }
+      this.drawRegionMap(); this.host!.querySelector<HTMLDialogElement>('#world-map-dialog')!.showModal();
+    };
+    this.bindMinimapZoom(this.host.querySelector<HTMLElement>('.world-radar')!);
+    this.button('#world-radar-run').onclick = () => { if (this.simulation.requestAction({ type: 'run' })) this.options.notify('다음 턴에 도망을 시도합니다.'); };
     const bag = this.host.querySelector<HTMLDetailsElement>('#world-bag')!;
     bag.addEventListener('toggle', () => this.renderBag());
     this.host.querySelector('#world-bag-content')!.addEventListener('click', event => {
@@ -380,8 +386,6 @@ export class OpenWorldPanel {
       }
       if (member && !member.disabled) this.options.editMoves?.(member.dataset.bagMember!);
     });
-    this.button('#world-minimap-smaller').onclick = () => this.resizeMinimap(-1);
-    this.button('#world-minimap-larger').onclick = () => this.resizeMinimap(1);
     this.button('#world-next-guide').onclick = () => {
       const guide = this.button('#world-next-guide');
       if (this.compactViewport.matches && guide.dataset.expanded !== 'true') {
@@ -1069,17 +1073,34 @@ export class OpenWorldPanel {
     this.html('#world-minimap-heading', compassLabel(current));
   }
 
-  private resizeMinimap(direction: -1 | 1): void {
-    const sizes = ['small', 'medium', 'large'] as const;
-    const next = Math.max(0, Math.min(sizes.length - 1, sizes.indexOf(this.minimapSize) + direction));
-    this.minimapSize = sizes[next];
-    const radar = this.host?.querySelector<HTMLElement>('.world-radar');
-    if (!radar) return;
-    radar.dataset.size = this.minimapSize;
-    const labels = { small: '작게', medium: '보통', large: '크게' } as const;
-    this.html('#world-minimap-size', labels[this.minimapSize]);
-    this.button('#world-minimap-smaller').disabled = next === 0;
-    this.button('#world-minimap-larger').disabled = next === sizes.length - 1;
+  /** Wheel over the minimap, or pinch it with two fingers, to make it larger or smaller. */
+  private bindMinimapZoom(radar: HTMLElement): void {
+    radar.addEventListener('wheel', event => { event.preventDefault(); event.stopPropagation(); this.scaleMinimap(this.minimapScale * (event.deltaY < 0 ? 1.12 : 1 / 1.12)); }, { passive: false });
+    const touches = new Map<number, { x: number; y: number }>();
+    let pinch: { distance: number; scale: number } | undefined;
+    const spread = () => { const [a, b] = [...touches.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+    radar.addEventListener('pointerdown', event => {
+      if (event.pointerType !== 'touch') return;
+      if (!touches.size) this.minimapPinched = false;
+      touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (touches.size === 2) pinch = { distance: Math.max(1, spread()), scale: this.minimapScale };
+    });
+    radar.addEventListener('pointermove', event => {
+      if (!touches.has(event.pointerId)) return;
+      touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (!pinch || touches.size < 2) return;
+      this.minimapPinched = true;
+      this.scaleMinimap(pinch.scale * spread() / pinch.distance);
+    });
+    const release = (event: PointerEvent) => { touches.delete(event.pointerId); if (touches.size < 2) pinch = undefined; };
+    radar.addEventListener('pointerup', release); radar.addEventListener('pointercancel', release);
+  }
+
+  private scaleMinimap(scale: number): void {
+    const next = Math.max(.6, Math.min(1.8, scale));
+    if (Math.abs(next - this.minimapScale) < .005) return;
+    this.minimapScale = next;
+    this.host?.querySelector<HTMLElement>('.world-radar')?.style.setProperty('--minimap-scale', next.toFixed(3));
     requestAnimationFrame(() => { this.syncMinimapResolution(); this.minimap(); });
   }
 
@@ -1234,7 +1255,6 @@ export class OpenWorldPanel {
     host.dataset.runtime = 'gaesup-world'; host.dataset.graphId = this.options.graph.id;
     host.dataset.region = world.regionId;
     this.text('#world-explore-short', world.atlas.name);
-    this.html('#world-map-caption', `${world.atlas.name} 지도 ↗`);
     this.html('#world-map-note', '지점을 선택해 출현 포켓몬·도구를 확인하세요. ◇ 길가 물품');
     for (const [id, value] of [['world-region', world.regionId]]) {
       const select = this.host.querySelector<HTMLSelectElement>(`#${id}`)!; if (select.value !== value) select.value = value;
@@ -1292,7 +1312,6 @@ export class OpenWorldPanel {
     }
     this.text('#world-location-short', location.name);
     host.dataset.scene = world.sceneId;
-    this.html('#world-position', `${world.player.x.toFixed(0)}, ${world.player.z.toFixed(0)}`);
     this.html('#world-feed', game.logs.slice(-3).map(log => `<p>${escape(log)}</p>`).join(''));
     this.html('#world-battle-state', game.captureOffer ? '승리! 포획 여부를 선택하세요' : battle ? `${battle.awaitingSwitch ? '교체할 포켓몬 선택' : world.escaping ? '도망 시도 중' : world.controlMode === 'manual' ? '기술 선택 대기' : '자동 배틀'} · 턴 ${battle.turn}` : world.controlMode === 'manual' ? '수동 탐험 · 배틀 버튼으로만 전투' : '가까운 포켓몬 추적 · 접근하면 배틀');
     this.button('#world-mode-auto').setAttribute('aria-pressed', String(world.controlMode === 'auto'));
@@ -1356,6 +1375,7 @@ export class OpenWorldPanel {
       button.title = `HP +${HEALING_ITEM_HP[item]}`;
     }
     this.button('#world-run').disabled = !battle?.canRun;
+    this.button('#world-radar-run').hidden = !battle?.canRun;
     this.button('#world-heal').disabled = Boolean(battle);
     this.button('#world-trainer-open').disabled = Boolean(battle || offer);
     this.input('#world-auto-catch').checked = world.autoCapture;
@@ -1520,7 +1540,7 @@ export class OpenWorldPanel {
   }
 
   /** World units from the player to the minimap rim. */
-  private get minimapRadius(): number { return this.minimapSize === 'small' ? 55 : this.minimapSize === 'large' ? 95 : 72; }
+  private get minimapRadius(): number { return 72 * this.minimapScale; }
 
   /** Keeps the minimap bitmap at the displayed size so it stays sharp on high-DPI screens. */
   private syncMinimapResolution(): void {

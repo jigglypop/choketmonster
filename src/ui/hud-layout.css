@@ -51,15 +51,6 @@
 .adventure .ow-camera-controls button { background: var(--ui-hud); color: var(--ui-hud-text); border-color: var(--ui-hud-line); }
 .adventure #world-nameplates[aria-pressed=true] { background: var(--ui-accent); color: var(--ui-hud-text); border-color: var(--ui-focus); }
 .adventure .world-radar { background: var(--ui-hud); }
-.adventure .world-radar[data-size=small] { width: 118px; }
-.adventure .world-radar[data-size=small] canvas { width: 98px; height: 98px; }
-.adventure .world-radar[data-size=medium] { width: 164px; }
-.adventure .world-radar[data-size=medium] canvas { width: 144px; height: 144px; }
-.adventure .world-radar[data-size=large] { width: 214px; }
-.adventure .world-radar[data-size=large] canvas { width: 194px; height: 194px; }
-.world-minimap-controls { display: grid; grid-template-columns: 30px minmax(0,1fr) 30px; align-items: center; gap: 4px; margin-top: 5px; }
-.world-minimap-controls button { min-height: 30px; padding: 2px; border: 1px solid var(--ui-hud-line); border-radius: 7px; color: var(--ui-hud-text); background: #ffffff12; }
-.world-minimap-controls #world-minimap-size { font-size: calc(11px * var(--ui-font-scale)); color: var(--ui-hud-muted); }
 .adventure .world-explore-scroll { max-height: max(90px, calc(100dvh - var(--app-header-height) - 340px)); }
 .adventure .world-explore-toggle :is(strong, small) { white-space: normal; }
 .adventure .world-explore-toggle strong { font-size: calc(14px * var(--ui-font-scale)); }
@@ -119,12 +110,6 @@
   .adventure .world-explore-scroll { max-height: max(70px, calc(100dvh - var(--app-header-height) - var(--app-nav-height) - var(--world-guide-height, 80px) - 245px)); }
   .adventure .world-radar { top: calc(var(--app-header-height) + 12px); right: 12px; left: auto; width: 86px; padding: 5px; }
   .adventure .world-radar canvas { width: 74px; height: 74px; }
-  .adventure .world-radar[data-size=small] { width: 86px; }
-  .adventure .world-radar[data-size=small] canvas { width: 74px; height: 74px; }
-  .adventure .world-radar[data-size=medium] { width: 126px; }
-  .adventure .world-radar[data-size=medium] canvas { width: 114px; height: 114px; }
-  .adventure .world-radar[data-size=large] { width: 166px; }
-  .adventure .world-radar[data-size=large] canvas { width: 154px; height: 154px; }
   .adventure .world-radar :is(span, small) { font-size: calc(10px * var(--ui-font-scale)); }
   .adventure .ow-camera-controls { top: calc(var(--app-header-height) + 20px + var(--world-radar-height, 125px)); right: 12px; left: auto; width: 86px; }
   .adventure .ow-camera-controls button { white-space: normal; min-height: 34px; font-size: calc(11px * var(--ui-font-scale)); }
@@ -146,7 +131,6 @@
   .adventure .world-explore-panel { width: 245px; right: auto; }
   .adventure .world-explore-scroll { max-height: max(35px, calc(100dvh - var(--app-header-height) - var(--app-nav-height) - var(--world-guide-height, 80px) - var(--world-explore-toggle-height, 60px) - 34px)); }
   .adventure .world-radar { left: 269px; right: auto; }
-  .adventure .world-radar #world-position { display: none; }
   .adventure .ow-camera-controls { left: 269px; right: auto; }
   .adventure .world-lower-hud { left: 367px; right: 10px; }
   .adventure .world-lower-hud > .world-battle-hud[open] .world-battle-deck { max-height: max(65px, calc(100dvh - var(--app-header-height) - var(--app-nav-height) - 125px)); }

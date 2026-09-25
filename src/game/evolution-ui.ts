@@ -34,11 +34,15 @@ function evolutionCard(state: GameState, monster: Monster, evolution: Evolution)
   return `<article class="evolution-route">${buttons.join('')}<details class="evolution-source"><summary>원본 진화 조건 ${descriptions.length}가지</summary>${descriptions.length ? `<ul>${descriptions.map(description => `<li>${escapeHtml(description)}</li>`).join('')}</ul>` : ''}</details></article>`;
 }
 
-/** Species this Pokémon can become right now without buying anything. */
-export function readyEvolutionTargets(state: GameState, monster: Monster): number[] {
-  const evolutions = getSpecies(monster.speciesId).evolutions;
-  if (!evolutions.length) return [];
-  return [...new Set(evolutions.filter(evolution => evolutionFormSupported(state, monster, evolution) && evolutionRoute(state, monster, evolution)).map(evolution => evolution.target))];
+/** Evolutions this Pokémon can take right now without buying anything; `capsule` marks one only the special-evolution capsule opens. */
+export function readyEvolutions(state: GameState, monster: Monster): Array<{ target: number; capsule: boolean }> {
+  const ready = new Map<number, boolean>();
+  for (const evolution of getSpecies(monster.speciesId).evolutions) {
+    if (!evolutionFormSupported(state, monster, evolution)) continue;
+    if (evolutionRoute(state, monster, evolution)) ready.set(evolution.target, false);
+    else if (!ready.has(evolution.target) && needsSpecialEvolution(monster.speciesId, evolution) && evolutionRoute(state, monster, evolution, 'evolution-catalyst')) ready.set(evolution.target, true);
+  }
+  return [...ready].map(([target, capsule]) => ({ target, capsule }));
 }
 
 export function evolutionSectionHtml(state: GameState, monster: Monster): string {

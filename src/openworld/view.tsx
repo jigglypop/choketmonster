@@ -810,10 +810,10 @@ function CreatureBillboard({ creature, hp, distance, emphasized }: { creature: W
   const remote = creature.remotePlayer;
   // A form keeps its own typing (Alolan Raichu, Mega Charizard X); each type shows as a small dot before the name.
   const types = remote ? [] : (creature.formIdentifier && getCombatForm(creature.formIdentifier)?.types) || getSpecies(creature.speciesId).types;
-  const legendary = !remote && isLegendarySpecies(creature.speciesId);
+  const legendary = !remote && isLegendarySpecies(creature.speciesId), self = creature.id.startsWith('companion:');
   return <group name="creature-nameplate" position={[0, (creature.displayHeight ?? 1.2) + .5, 0]}>
     <Html center zIndexRange={[2, 1]} style={{ pointerEvents: 'none' }}>
-      <div className={`ow-creature-label${emphasized ? ' ow-creature-label-selected' : ''}${legendary ? ' ow-creature-label-legendary' : ''}`} data-creature-id={creature.id}>
+      <div className={`ow-creature-label${emphasized ? ' ow-creature-label-selected' : ''}${legendary ? ' ow-creature-label-legendary' : ''}${self ? ' ow-creature-label-self' : ''}`} data-creature-id={creature.id}>
         {creature.cue && <b key={creature.cue.key} className={`ow-move-cue ow-move-${creature.cue.moveType}`}>{creature.cue.text}</b>}
         <strong>{types.map(type => <i key={type} className="ow-type-dot" style={{ background: TYPE_COLORS[type] }} />)}{remote ? remote.name : `${creature.name} · Lv.${creature.level}`}{statusLabel(creature.status) && <em className={`ow-status ow-status-${creature.status}`}>{statusLabel(creature.status)}</em>}</strong>
         {remote && <span>{remote.activity === 'battle' ? '배틀 중' : remote.activity === 'moving' ? '이동 중' : '대기'}</span>}

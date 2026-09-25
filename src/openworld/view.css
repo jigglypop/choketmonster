@@ -19,7 +19,7 @@
 
 .ow-creature-label {
   min-width: 7.5rem;
-  max-width: 11rem;
+  max-width: none;
   padding: .42rem .55rem;
   color: var(--ui-hud-text, #eff7f2);
   font: 400 14px/1.3 var(--ui-font-family, system-ui, sans-serif);
@@ -36,7 +36,7 @@
 }
 
 .ow-creature-label strong,
-.ow-creature-label span { display: block; overflow: hidden; text-overflow: ellipsis; }
+.ow-creature-label span { display: block; }
 .ow-creature-label strong { font-weight: 300; font-size: 15px; letter-spacing: 0; }
 
 .ow-place-label {
@@ -231,7 +231,8 @@
 .ow-status-sleep { --status: #7d8aa0; } .ow-status-freeze { --status: #4fb0d6; } .ow-status-confusion { --status: #d66fa3; }
 .ow-status-trap { --status: #8a7a5c; } .ow-status-leech-seed { --status: #5aa35a; } .ow-status-infatuation { --status: #f06f9f; }
 @media (prefers-reduced-motion: reduce) { .ow-move-cue { animation: none; } }
-/* Type dots before a nameplate name. A legendary's plate is a warm bronze card in a gold frame, the name in plain white. */
+/* Type dots before a nameplate name. A legendary's plate is a warm bronze card in a gold frame, the name in plain white; the player's own partner wears a white frame. */
 .ow-creature-label .ow-type-dot { display: inline-block; width: 8px; height: 8px; margin: 0 3px 1px 0; border-radius: 50%; vertical-align: middle; box-shadow: 0 0 0 1px #ffffff55; }
 .ow-creature-label .ow-type-dot:last-of-type { margin-right: 6px; }
-.ow-creature-label-legendary { background: linear-gradient(160deg, #6a5320f2, #4a3a17f2); border: 2px solid #e8c45c; box-shadow: 0 0 0 1px #fff3c455 inset, 0 .3rem .9rem rgba(74, 58, 23, .45); }
+.ow-creature-label.ow-creature-label-legendary { background: linear-gradient(160deg, #6a5320f2, #4a3a17f2); border: 2px solid #e8c45c; box-shadow: 0 0 0 1px #fff3c455 inset, 0 .3rem .9rem rgba(74, 58, 23, .45); }
+.ow-creature-label.ow-creature-label-self { border: 2px solid #ffffff; box-shadow: 0 0 0 1px rgba(8, 24, 18, .35), 0 .3rem .8rem rgba(14, 36, 29, .3); }
