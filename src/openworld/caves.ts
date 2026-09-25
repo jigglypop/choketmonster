@@ -78,6 +78,11 @@ export type CaveScene = {
   legendary?: readonly number[];
   /** Where the waiting legendary appears: the open spot farthest from every doorway on the lair floor. */
   altar?: ScenePoint;
+  /**
+   * Where a dungeon with one way in is cleared: on its lair floor or else the floor farthest from the entrance, the open
+   * spot farthest from that floor's doorways (the altar on a lair). A through dungeon is cleared by leaving at its far end.
+   */
+  goal?: ScenePoint;
   width: number;
   depth: number;
   legacyWidth: number;
@@ -289,6 +294,7 @@ function buildDungeon(plan: DungeonPlan): CaveScene[] {
   // Legendaries wait at the end of the dungeon: its last floor with wild Pokémon, whatever the rare-slot anchor.
   const lairFloor = wild.lastIndexOf(true);
   if (plan.legendary?.length && lairFloor < 0) throw new Error(`${plan.regionId}:${plan.id}: a legendary lair needs a wild floor`);
+  const goalFloor = plan.surfaceLocations.length !== 1 ? -1 : plan.legendary?.length ? lairFloor : entry > count - 1 - entry ? 0 : count - 1;
   // Roads that leave a cave at a narrow angle move both entrances farther out so they never overlap; the samplers'
   // cave hills (cave-passages.ts) reach exactly as far.
   let reach = scaleWorldDistance(2.2);
@@ -400,6 +406,7 @@ function buildDungeon(plan: DungeonPlan): CaveScene[] {
       levelShift: farthest <= 4 ? distance : Math.round(distance * 4 / farthest), encounters: encounter.encounters,
       ...(floor.areas ? { encounterAreas: floor.areas } : {}), wild: wild[index], supplemental: index === anchor && wild[index],
       ...(index === lairFloor && plan.legendary?.length ? { legendary: plan.legendary, altar: farthestOpenPoint(sample, points, width, depth) } : {}),
+      ...(index === goalFloor ? { goal: farthestOpenPoint(sample, points, width, depth) } : {}),
       width, depth, legacyWidth, legacyDepth, tileSize: TILE_SIZE, silhouette, outline, portals, stairs, wallSegments, relief, ...(room ? { room } : {}), ...(park ? { park } : {}), sample,
     };
   });

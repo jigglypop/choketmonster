@@ -16,12 +16,12 @@ const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
 const SAVE_KEYS: [&str; 8] = [
     "format", "version", "model", "savedAt", "graph", "game", "view", "tradeEpoch",
 ];
-const GAME_KEYS: [&str; 24] = [
+const GAME_KEYS: [&str; 25] = [
     "schemaVersion", "seed", "rngState", "nextInstanceId", "player", "nursery", "inventory",
     "dex", "regionId", "defeatedGyms", "defeatedFieldTrainers", "championDefeated", "campaign",
     "claimedRegionalStarters", "experienceShare", "autoMergeDuplicates", "adventureVersion",
-    "versionCaught", "ballRefillSeconds", "evolutionContext", "technicalMachines", "battle",
-    "captureOffer", "logs",
+    "versionCaught", "ballRefillSeconds", "evolutionContext", "technicalMachines",
+    "clearedDungeons", "battle", "captureOffer", "logs",
 ];
 const PLAYER_KEYS: [&str; 4] = ["money", "badges", "team", "box"];
 const DEX_KEYS: [&str; 2] = ["seen", "caught"];
@@ -2587,6 +2587,27 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
             integer(Some(amount), 0, 1_000_000_000)?;
         }
     }
+    if let Some(cleared) = game.get("clearedDungeons") {
+        let cleared = cleared
+            .as_array()
+            .filter(|items| items.len() <= 1024)
+            .ok_or("던전 클리어 기록이 올바르지 않습니다.")?;
+        let mut unique = HashSet::new();
+        for key in cleared {
+            // `region:dungeon`, the dungeon being one of the region's dungeon scenes.
+            let known = key.as_str().filter(|key| {
+                key.split_once(':').is_some_and(|(region, dungeon)| {
+                    dungeon_scenes()
+                        .get(region)
+                        .is_some_and(|ids| ids.contains(dungeon))
+                })
+            });
+            let key = known.ok_or("던전 클리어 기록이 올바르지 않습니다.")?;
+            if !unique.insert(key) {
+                return Err("던전 클리어 기록이 중복되었습니다.");
+            }
+        }
+    }
     validate_evolution_context(game)?;
     let defeated = array(game, "defeatedGyms")?;
     if defeated.len() != badges as usize
@@ -4337,6 +4358,24 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn validates_dungeon_clear_records() {
+        let mut save = valid_save();
+        save["game"]["clearedDungeons"] = serde_json::json!(["kanto:mt-moon", "johto:ice-path"]);
+        validate_save(&save).unwrap();
+        for cleared in [
+            serde_json::json!(["kanto:mt-moon", "kanto:mt-moon"]),
+            serde_json::json!(["kanto:nowhere"]),
+            serde_json::json!(["mt-moon"]),
+            serde_json::json!([1]),
+            serde_json::json!("kanto:mt-moon"),
+        ] {
+            let mut bad = valid_save();
+            bad["game"]["clearedDungeons"] = cleared;
+            assert!(validate_save(&bad).is_err());
+        }
+    }
+
+    #[test]
     fn validates_technical_machine_stock_and_taught_moves() {
         let mut save = valid_save();
         save["game"]["technicalMachines"] = serde_json::json!({"89": 2, "85": 0});
@@ -4696,6 +4735,7 @@ pub(crate) mod tests {
             ("versionCaught", serde_json::json!({"red":[1]})),
             ("ballRefillSeconds", Value::from(0)),
             ("technicalMachines", serde_json::json!({"412":1})),
+            ("clearedDungeons", serde_json::json!(["kanto:mt-moon"])),
             ("evolutionContext", serde_json::json!({"period":"day","regionId":"kanto","locationId":"pallet","raining":false,"multiplayer":false})),
         ] {
             game.insert(key.into(), value);

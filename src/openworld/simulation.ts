@@ -19,7 +19,9 @@ import { activateBattleTransformation, actBattle, availableEvolutions, battleMon
 import { monsterRegionalUseReason, needsRegionalStarter } from '../game/regional-policy';
 import { KANTO_START, KANTO_MAP_VERSION } from './kanto';
 import { WORLD_MIN, WORLD_MAX, WORLD_SCALE, migrateSurfaceSnapshotCoordinates, surfaceSceneId } from './world-space';
-import { CAVE_SCENES, caveLocation, cavePortalAtInterior, cavePortalAtSurface, caveStairsAt, getCaveScene, nearestCaveWalkable } from './caves';
+import { CAVE_SCENES, caveLocation, cavePortalAtInterior, cavePortalAtSurface, caveStairsAt, dungeonExits, getCaveScene, nearestCaveWalkable, type CaveScene } from './caves';
+import { claimDungeonClear as claimDungeonReward } from '../game/engine';
+import type { DungeonReward } from '../data/dungeon-rewards';
 import { getGymScene, gymSceneId, LEAGUE_LOCATION_IDS, leagueSceneId } from './gym-scenes';
 import { openDungeonExits, portalBadges, reachableLocations } from './dungeon-gates';
 import { regionalItinerary } from './next-destination';
@@ -488,7 +490,7 @@ export class OpenWorldSimulation {
     companion.x = position.x; companion.z = position.z; companion.heading = position.heading; companion.action = position.heading; companion.reward = 0;
     const brain = this.brain(companion.id); brain.state.previous = null;
     this.player = structuredClone(position); this.manualControlRemaining = MANUAL_CONTROL_HOLD; this.recordTownVisit();
-    this.collectNearbyFieldItems(); return true;
+    this.collectNearbyFieldItems(); this.reachDungeonGoal(); return true;
   }
 
   /** One step of a walking route: open ground the badges reach, never across a closed gate. */
@@ -678,6 +680,23 @@ export class OpenWorldSimulation {
     return portalBadges(scene, portal) <= this.regionalBadges;
   }
 
+  /** A dungeon finished since the last claim: left at its far end, or its goal reached. */
+  private finishedDungeon?: CaveScene;
+
+  /** Marks the dungeon finished when the partner stands at its goal. */
+  private reachDungeonGoal(): void {
+    const cave = getCaveScene(this.sceneId);
+    if (cave?.goal && distance(this.player, cave.goal) <= 3) this.finishedDungeon = cave;
+  }
+
+  /** The dungeon just finished, rewarded on its first clear only: its machines, items or prize money. */
+  claimDungeonClear(): { name: string; reward: DungeonReward } | undefined {
+    const cave = this.finishedDungeon; this.finishedDungeon = undefined;
+    if (!cave) return undefined;
+    const reward = claimDungeonReward(this.game, cave.regionId, cave.dungeonId, cave.maxLevel);
+    return reward && { name: cave.dungeonName, reward };
+  }
+
   /** An open dungeon entrance, exit or stairs under the player, within `radius`. */
   portalUnderfoot(radius = PORTAL_WALK_RADIUS): boolean {
     const { x, z } = this.player, cave = getCaveScene(this.sceneId);
@@ -697,6 +716,9 @@ export class OpenWorldSimulation {
       const exit = cavePortalAtInterior(this.sceneId, this.player.x, this.player.z, radius);
       if (exit) {
         if (!this.doorwayOpen(cave, exit)) return false;
+        // Walking out of a through dungeon at the other end from where it was entered clears it.
+        const entered = this.surfaceReturn;
+        if (entered && dungeonExits(cave).length > 1 && Math.hypot(entered.x - exit.surfaceArrival.x, entered.z - exit.surfaceArrival.z) > 1) this.finishedDungeon = cave;
         this.sceneId = exit.surfaceSceneId; this.surfaceReturn = undefined;
         this.resetScenePopulation(exit.surfaceArrival); return true;
       }
@@ -900,7 +922,7 @@ export class OpenWorldSimulation {
       this.advanceRespawns(deltaSeconds);
       if (this.controlMode === 'auto' && !this.selectionPinned) this.selectedWildId = this.nearestWildToCompanion()?.id;
       this.stepMovement(deltaSeconds, learning, epsilon, manualControlActive, events);
-      this.syncPlayerToCompanion(); this.recordTownVisit(); this.collectNearbyFieldItems();
+      this.syncPlayerToCompanion(); this.recordTownVisit(); this.collectNearbyFieldItems(); this.reachDungeonGoal();
       const selected = this.selectedWildId ? this.entities.find(entity => entity.id === this.selectedWildId) : undefined;
       const companion = this.entities.find(entity => entity.kind === 'companion');
       const selectedContact = selected && (!this.selectionPinned || this.trackingSelected) && this.canEngageWild(selected.id);

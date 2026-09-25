@@ -35,7 +35,7 @@ import { WORLD_MIN, WORLD_MAX } from './world-space';
 import { getCaveScene, cavePortalAtSurface, cavePortalAtInterior, caveStairsAt, dungeonEntrance } from './caves';
 import { getGymScene, gymSceneId, HALL_BATTLE_GAP, LEAGUE_LOCATION_IDS, leagueSceneId, onGymCourt, type GymScene } from './gym-scenes';
 import { gymTeam } from '../game/gym-teams';
-import { technicalMachines } from '../game/technical-machines';
+import { technicalMachines, getTechnicalMachine } from '../game/technical-machines';
 import { nextDestinationGuide, regionalItinerary, type DestinationGuide } from './next-destination';
 import { pokemonPresentation, battleTransformationsHtml, combatFormSprite, fieldMegaForm, formDisplayName } from '../ui/pokemon-presentation';
 import { isLegendarySpecies } from '../game/legendary';
@@ -288,6 +288,7 @@ export class OpenWorldPanel {
         if (accepted && this.pendingFieldChallenge) this.arriveFieldChallenge();
         if (accepted) this.enterGymCourt();
         if (accepted) this.walkThroughPortal();
+        if (accepted) this.rewardDungeonClear();
         if (accepted && now - this.lastMovementRefresh >= 100) this.lastMovementRefresh = now;
         return accepted;
       },
@@ -627,7 +628,17 @@ export class OpenWorldPanel {
     if (world.traverseCavePortal(PORTAL_WALK_RADIUS)) this.afterPortal();
   }
 
+  /** A dungeon's first clear pays out, and a note names what it gave. */
+  private rewardDungeonClear(): void {
+    const cleared = this.simulation.claimDungeonClear(); if (!cleared) return;
+    const { machines, items, money } = cleared.reward;
+    const parts = [...machines.map(id => getTechnicalMachine(id)?.name ?? ''), ...items.map(item => ITEM_LABELS[item]), ...(money ? [`₩${money.toLocaleString('ko-KR')}`] : [])].filter(Boolean);
+    this.options.notify(`${cleared.name} 보상 · ${parts.join(', ')}`); playGameSound('victory');
+    void Promise.resolve(this.options.changed(true)).catch(() => undefined);
+  }
+
   private afterPortal(): void {
+    this.rewardDungeonClear();
     this.portalCooldownUntil = performance.now() + 1200; this.pendingDungeonEntry = undefined; this.portalArmed = false;
     this.manualMovementActive = false; this.multiplayer?.join(this.presence()); this.options.changed(); this.refresh(); this.renderer?.update(); this.minimap();
   }
@@ -792,6 +803,7 @@ export class OpenWorldPanel {
     }
     const battlers = this.battlerPoints();
     const result = this.simulation.step({ deltaSeconds: .25, learning: this.options.learning() });
+    this.rewardDungeonClear();
     this.simulation.syncPlayerToCompanion();
     for (const event of result.events) {
       if (event.type === 'battle-turn') {

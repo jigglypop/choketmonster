@@ -24,7 +24,7 @@ import { getMove, getSpecies, POKEMON } from './data/pokemon';
 import { pokemonSpriteUrl } from './game/assets';
 import { drawBrain } from './render';
 import {
-  actBattle, battleMonsterMaxHp, battleMonsterView, buyItem, createGame, setAutoMergeDuplicates, previewCollectionMerge, mergeCollectionDuplicates,
+  actBattle, battleMonsterMaxHp, battleMonsterView, buyItem, buyTownStock, createGame, setAutoMergeDuplicates, previewCollectionMerge, mergeCollectionDuplicates,
   assignHeldTool, assignMonsterAbility, assignAlolaForm, assignPreferredTransformation, activateBattleTransformation, HEALING_ITEM_HP, monsterAbilities, type EquippableItem,
   depositMonster, evolve, heal, individualValues, isMonsterInBattle, monsterAbility, mergeDuplicateMonster, mergeDuplicateMonsters, previewDuplicateMerge, releaseMonster, reorderMonsterMoves, availableMonsterMoveIds, replaceMonsterMove, recoverableAttackMoveIds, recoverAttackMove, ITEM_LABELS, useItem, withdrawMonster,
   type BattleAction, type GameState, type InventoryItem, type Monster,
@@ -32,7 +32,7 @@ import {
 import { BRAIN_ASSUMPTIONS, ConnectomeController } from './game/connectome';
 import { chooseServerBrains, getServerConnectomeInfo, initializeServerBrain, lastServerDecision, setServerBrainScope, usesServerBrain } from './game/server-brain';
 import { startupLoading } from './ui/loading-screen';
-import { CAMPAIGN_TRAINERS } from './game/campaign';
+import { CAMPAIGN_TRAINERS, getRegionalBadges } from './game/campaign';
 import { isCampaignRegion, monsterRegionalUseReason, monsterRegionalUseTag, regionalLevelCap } from './game/regional-policy';
 import { defaultView, getSaveStorageStatus, onSaveStorageStatus, packSave, unpackSave, writeSave, type ViewState } from './game/storage';
 
@@ -70,7 +70,7 @@ import { heldToolSelectHtml, itemSourceDetailsHtml } from './ui/item-sources';
 import { getAlolaCombatForm } from './data/pokemon-combat-forms';
 import { EVOLUTION_TREAT_EFFECTS } from './game/evolution-conditions';
 import { evolutionProgress } from './game/evolution-progress';
-import { itemShopHtml, type ShopCategory } from './ui/item-shop';
+import { itemShopHtml, type ShopCategory, type ShopTown } from './ui/item-shop';
 
 type Tab = 'map' | 'team' | 'dex' | 'shop' | 'ranked' | 'lab';
 type PersistentView = ViewState & { rewards?: Record<string, number>; openWorld?: OpenWorldSnapshot };
@@ -793,9 +793,23 @@ function renderDex() {
   bindDexResults(filtered, pages);
 }
 let shopCategory: ShopCategory = 'all';
+/** The town the partner stands in on the surface, whose own counters the shop adds. */
+function shopTown(): ShopTown | undefined {
+  const world = worldPanel?.simulation;
+  if (!game || !world || world.sceneId !== world.atlas.surfaceSceneId) return undefined;
+  const town = world.atlas.townAt(world.player.x, world.player.z);
+  return town ? { regionId: world.regionId, townId: town.id, name: town.name, badges: getRegionalBadges(game, world.regionId) } : undefined;
+}
 function renderShop() {
   if (!game) return;
-  detachPokemonScene(); $('#screen').innerHTML = itemShopHtml(game, shopCategory);
+  const town = shopTown();
+  detachPokemonScene(); $('#screen').innerHTML = itemShopHtml(game, shopCategory, town);
+  document.querySelectorAll<HTMLButtonElement>('[data-town-buy]').forEach(button => button.onclick = () => {
+    if (!town) return;
+    const [kind, id] = button.dataset.townBuy!.split(/:(.*)/s) as ['machine' | 'item', string];
+    const quantity = Number(button.parentElement!.querySelector<HTMLInputElement>('[data-town-quantity]')?.value ?? 1);
+    action(() => buyTownStock(game!, town.regionId, town.townId, kind, kind === 'machine' ? Number(id) : id, quantity));
+  });
   document.querySelectorAll<HTMLButtonElement>('[data-shop-category]').forEach(button => button.onclick = () => {
     shopCategory = button.dataset.shopCategory as ShopCategory; renderShop();
   });

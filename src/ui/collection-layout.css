@@ -150,3 +150,9 @@
 .box-grid .card-actions .card-action{flex:1 1 0;min-width:0;margin-top:0}
 .team-page .card-action.card-evolve{color:#fff;border-color:var(--ui-accent);background:var(--ui-accent)}
 .team-page .card-action.card-evolve:not(:disabled):hover{color:#fff;filter:brightness(1.08)}
+
+/* A town's own counters sit above the general stock while the partner stands in that town. */
+.town-shop{margin:0 0 20px;padding:16px 18px;border:1px solid var(--ui-border);border-radius:16px;background:var(--ui-surface)}
+.town-shop h2{margin:0 0 12px;font-size:18px}
+.town-shop-counter+.town-shop-counter{margin-top:16px}
+.town-shop-counter h3{margin:0 0 8px;font-size:14px;font-weight:600;color:var(--ui-muted)}

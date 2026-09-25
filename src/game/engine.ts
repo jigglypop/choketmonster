@@ -17,6 +17,9 @@ import { EXTRA_EVOLUTION_ITEM_IDS, EXTRA_EVOLUTION_PRICES, EXTRA_EVOLUTION_LABEL
 import { initialEvolutionProgress, evolutionProgress, validateEvolutionProgress, validateEvolutionContext, type EvolutionProgress, type EvolutionContext } from './evolution-progress';
 import { evolutionFormSupported, feedEvolutionTreat, naturalEvolution, needsSpecialEvolution, sourceEvolutionItems, sourceEvolutionItemsForMonster, sourceEvolutionRules, specialEvolutionLevel } from './evolution-conditions';
 import { getFieldTrainer, type FieldTrainer } from '../data/field-trainers';
+import { dungeonReward, type DungeonReward } from '../data/dungeon-rewards';
+import { TOWN_SHOPS } from '../data/town-shops';
+import { DUNGEON_PLANS } from '../openworld/dungeons';
 import fieldItems from '../data/field-items.json' with { type: 'json' };
 import { genderFor, isValidGender, validateEgg, type Egg, type MonsterGender } from './breeding';
 import { abilityForSpecies, abilityImmunity, canonicalAbility, createIndividualTraits, hasSturdy, isValidIndividualValues, speciesAbilities,
@@ -198,6 +201,8 @@ export type GameState = {
   evolutionContext?: EvolutionContext;
   /** Technical machine counts by move ID. Absent in saves made before machines existed. */
   technicalMachines?: Record<string, number>;
+  /** Dungeons cleared once, as `region:dungeonId`; each gives its reward the first time. Absent until the first. */
+  clearedDungeons?: string[];
   battle?: BattleState;
   /** Open-world victory reward, held until the player catches or releases it. */
   captureOffer?: Monster;
@@ -412,6 +417,60 @@ export function grantTechnicalMachine(state: GameState, moveId: number, quantity
   if (stock + quantity > TECHNICAL_MACHINE_STOCK_LIMIT) return false;
   state.technicalMachines = { ...state.technicalMachines, [String(moveId)]: stock + quantity };
   return true;
+}
+
+const DUNGEON_KEYS = new Set(DUNGEON_PLANS.map(plan => `${plan.regionId}:${plan.id}`));
+const MONEY_LIMIT = 1_000_000_000_000;
+
+/**
+ * The first clear of a dungeon: its machines join the machine stock, its items the bag, or its prize money the wallet.
+ * Undefined when it was cleared before.
+ */
+export function claimDungeonClear(state: GameState, regionId: string, dungeonId: string, maxLevel: number): DungeonReward | undefined {
+  const key = `${regionId}:${dungeonId}`;
+  if (!DUNGEON_KEYS.has(key) || state.clearedDungeons?.includes(key)) return undefined;
+  const reward = dungeonReward(regionId, dungeonId, maxLevel);
+  state.clearedDungeons = [...state.clearedDungeons ?? [], key];
+  reward.machines = reward.machines.filter(moveId => grantTechnicalMachine(state, moveId));
+  for (const item of reward.items) state.inventory[item] = Math.min(1_000_000_000, (state.inventory[item] ?? 0) + 1);
+  state.player.money = Math.min(MONEY_LIMIT, state.player.money + reward.money);
+  return reward;
+}
+
+/** Badges a town's stronger stock waits for, as the roadside machines do. */
+const STOCK_BADGES: Readonly<Record<'common' | 'uncommon' | 'rare', number>> = { common: 0, uncommon: 2, rare: 4 };
+export type TownStockEntry = { shop: string; kind: 'machine' | 'item'; id: number | InventoryItem; name: string; price: number; requiredBadges: number };
+
+/** What only this town sells, counter by counter. */
+export function townStock(regionId: string, townId: string): TownStockEntry[] {
+  return (TOWN_SHOPS[regionId]?.[townId] ?? []).flatMap(shop => [
+    ...Object.entries(shop.machines ?? {}).flatMap(([move, price]) => {
+      const machine = getTechnicalMachine(Number(move));
+      return machine ? [{ shop: shop.name, kind: 'machine' as const, id: machine.moveId, name: machine.name, price, requiredBadges: STOCK_BADGES[machine.tier] }] : [];
+    }),
+    ...(shop.items ?? []).map(item => {
+      const tier = (HELD_TOOLS as readonly string[]).includes(item) ? HELD_TOOL_TIERS[item as HeldTool] : item.startsWith('mega-stone:') ? 'rare' : 'common';
+      return { shop: shop.name, kind: 'item' as const, id: item, name: ITEM_LABELS[item], price: shop.prices?.[item] ?? ITEM_PRICES[item], requiredBadges: STOCK_BADGES[tier] };
+    }),
+  ]);
+}
+
+/** Buys from a town's own stock; the caller passes the town the player stands in. */
+export function buyTownStock(state: GameState, regionId: string, townId: string, kind: 'machine' | 'item', id: number | string, quantity = 1): void {
+  const entry = townStock(regionId, townId).find(item => item.kind === kind && item.id === id);
+  if (!entry || !(entry.price > 0)) throw new Error('이 마을에서 팔지 않는 물건입니다.');
+  if (getRegionalBadges(state, regionId) < entry.requiredBadges) throw new Error(`배지 ${entry.requiredBadges}개부터 살 수 있습니다.`);
+  if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 99) throw new Error('수량은 1~99개입니다.');
+  const cost = entry.price * quantity;
+  if (state.player.money < cost) throw new Error('돈이 부족합니다.');
+  if (kind === 'machine') { if (!grantTechnicalMachine(state, entry.id as number, quantity)) throw new Error('기술머신을 더 보관할 수 없습니다.'); }
+  else {
+    const item = entry.id as InventoryItem;
+    if (state.inventory[item] + quantity > 1_000_000_000) throw new Error('구매 수량이 너무 많습니다.');
+    state.inventory[item] += quantity;
+  }
+  state.player.money -= cost;
+  addLog(state, `${entry.name} ${quantity}개를 샀다.`);
 }
 
 /** Machines are kept after use. The move joins the learnable list and fills an empty slot when one is free. */
@@ -2122,6 +2181,8 @@ export function validateGame(value: unknown): GameState {
     if (!allowed.length || !Array.isArray(ids) || ids.length !== new Set(ids).size || ids.some(id => !allowed.includes(id) || !state.dex?.caught?.includes(id))) throw new Error('버전별 수집 기록이 올바르지 않습니다.');
   }
   if (state.technicalMachines !== undefined) state.technicalMachines = validateTechnicalMachineStock(state.technicalMachines);
+  if (state.clearedDungeons !== undefined && (!Array.isArray(state.clearedDungeons) || state.clearedDungeons.length > 1024
+    || state.clearedDungeons.some((key, index, all) => typeof key !== 'string' || !DUNGEON_KEYS.has(key) || all.indexOf(key) !== index))) throw new Error('던전 클리어 기록이 손상되었습니다.');
   state.ballRefillSeconds ??= 0;
   if (!Number.isFinite(state.ballRefillSeconds) || state.ballRefillSeconds < 0 || state.ballRefillSeconds >= BALL_REFILL_INTERVAL) throw new Error('볼 보충 기록이 올바르지 않습니다.');
   if (typeof state.seed !== 'string' || !state.seed || state.seed.length > 200) throw new Error('시드가 손상되었습니다.');
