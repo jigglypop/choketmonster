@@ -10,23 +10,27 @@ import type { KantoGym, KantoLocation } from './kanto';
 import { BUILDING_HALF_X, BUILDING_HALF_Z, SIGNBOARD } from './world-details';
 
 /**
- * SD townsfolk from the owner's files: a fire boy in red, a leaf girl in green, a doctor and an officer. The red, doctor
- * and officer files carry 8192 px colour maps that browsers fail to decode side by side, so they load from copies in
- * `web/` whose maps alone are halved (colour 4096, normal and metallic-roughness 2048); mesh, rig and clips are untouched.
+ * SD townsfolk from the owner's files: a doctor, an officer, a mart clerk and a mountain man. The files carry 8192 px
+ * colour maps that browsers fail to decode side by side, so they load from copies in `web/` whose maps alone are halved
+ * (colour 4096, normal and metallic-roughness 2048); mesh, rig and clips are untouched.
  */
-const npcModel = (name: 'red' | 'green' | 'docter' | 'police') => name === 'green' ? `/models/trainer/${name}.glb` : `/models/trainer/web/${name}.glb`;
+const npcModel = (name: 'docter' | 'police' | 'man' | 'mountain') => `/models/trainer/web/${name}.glb`;
 
 /** Who stands where: beside the Pokémon Center, the mart, the gym, Pallet's houses and lab, or out on the plaza. */
 export type TownNpcRole = 'clinic' | 'shop' | 'gym' | 'lab' | 'home' | 'plaza' | 'police';
 /** A patrolling figure walks this ring (world centre and radius) instead of standing at (x, z). */
 export type TownPatrol = { x: number; z: number; radius: number };
-export type TownNpc = { id: string; townId: string; role: TownNpcRole; title: string; x: number; z: number; facing: number; model: string; patrol?: TownPatrol };
+/** A pacing figure goes from (x, z) to this far end and back, walking or jogging, with a breath at each end. */
+export type TownRoute = { x: number; z: number; gait: 'walk' | 'run' };
+export type TownNpc = { id: string; townId: string; role: TownNpcRole; title: string; x: number; z: number; facing: number; model: string; patrol?: TownPatrol; route?: TownRoute };
 
-/** The doctor keeps the Pokémon Center and the lab; the red boy the mart and gym; the green girl the plaza and home. */
+/** The doctor keeps the Pokémon Center and the lab, the clerk the mart and the plaza, the mountain man the gym and home. */
 const MODELS: Record<TownNpcRole, readonly string[]> = {
-  clinic: [npcModel('docter')], shop: [npcModel('red')], gym: [npcModel('red')], lab: [npcModel('docter')], home: [npcModel('green')], plaza: [npcModel('green')],
+  clinic: [npcModel('docter')], shop: [npcModel('man')], gym: [npcModel('mountain')], lab: [npcModel('docter')], home: [npcModel('mountain')], plaza: [npcModel('man')],
   police: [npcModel('police')],
 };
+/** Who paces rather than stands: the clerk and the mountain man; the plaza clerk jogs. */
+const GAITS: Partial<Record<TownNpcRole, TownRoute['gait']>> = { shop: 'walk', gym: 'walk', home: 'walk', plaza: 'run' };
 const TITLES: Record<TownNpcRole, string> = { clinic: '센터 도우미', shop: '상점 단골', gym: '체육관 안내원', lab: '연구소 조수', home: '이웃 주민', plaza: '소문난 주민', police: '순경' };
 
 function hash(text: string): number {
@@ -41,10 +45,31 @@ function hash(text: string): number {
  */
 export function planTownNpcs(atlas: WorldAtlas, town: KantoLocation, hasGym: boolean): TownNpc[] {
   const buildings = atlas.buildingOffsets(town), pallet = town.id === 'pallet', placed: TownNpc[] = [];
-  const open = (x: number, z: number) => !atlas.sample(town.x + x, town.z + z).blocked
-    && buildings.every(([bx, bz]) => Math.abs(x - bx) > BUILDING_HALF_X + .9 || Math.abs(z - bz) > BUILDING_HALF_Z + .9)
+  // Distance from a town-local point to a placed figure's ground: its spot, or the whole route it paces.
+  const reach = (npc: TownNpc, x: number, z: number) => {
+    const ax = npc.x - town.x, az = npc.z - town.z;
+    if (!npc.route) return Math.hypot(ax - x, az - z);
+    const bx = npc.route.x - town.x, bz = npc.route.z - town.z, dx = bx - ax, dz = bz - az;
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1)));
+    return Math.hypot(ax + dx * t - x, az + dz * t - z);
+  };
+  const ground = (x: number, z: number, margin: number) => !atlas.sample(town.x + x, town.z + z).blocked
+    && buildings.every(([bx, bz]) => Math.abs(x - bx) > BUILDING_HALF_X + margin || Math.abs(z - bz) > BUILDING_HALF_Z + margin);
+  const open = (x: number, z: number) => ground(x, z, .9)
     && Math.hypot(x - SIGNBOARD.x, z - SIGNBOARD.z) >= 2.6 && Math.hypot(x, z) >= 2.5
-    && placed.every(npc => Math.hypot(npc.x - town.x - x, npc.z - town.z - z) >= 3.5);
+    && placed.every(npc => reach(npc, x, z) >= 3.5);
+  /** A pacing line from a spot: along the building front first, then toward the square, as long as fits. */
+  const paceFrom = (x: number, z: number, directions: ReadonlyArray<readonly [number, number]>) => {
+    for (const length of [5, 4, 3]) for (const [dx, dz] of directions) {
+      const steps = Math.ceil(length / .5);
+      const clear = Array.from({ length: steps + 1 }, (_, step) => step / steps).every(t => {
+        const px = x + dx * length * t, pz = z + dz * length * t;
+        return ground(px, pz, .6) && Math.hypot(px - SIGNBOARD.x, pz - SIGNBOARD.z) >= 2 && placed.every(npc => reach(npc, px, pz) >= 1.6);
+      });
+      if (clear) return { x: x + dx * length, z: z + dz * length };
+    }
+    return undefined;
+  };
   const roles: Array<[TownNpcRole, number | undefined]> = buildings.map((_, index): [TownNpcRole, number] =>
     [pallet ? (index === 2 ? 'lab' : 'home') : index === 0 ? 'clinic' : index === 1 ? 'shop' : 'gym', index]);
   roles.push(['plaza', undefined]);
@@ -57,12 +82,15 @@ export function planTownNpcs(atlas: WorldAtlas, town: KantoLocation, hasGym: boo
       : Array.from({ length: 12 }, (_, step) => { const angle = (seed % 628) / 100 + step * Math.PI / 6; return [Math.cos(angle) * 5.4, Math.sin(angle) * 5.4]; });
     const spot = candidates.find(([x, z]) => open(x, z));
     if (!spot) continue;
-    const [x, z] = spot;
+    const [x, z] = spot, gait = GAITS[role];
+    const radial = Math.hypot(x, z) || 1;
+    const end = gait ? paceFrom(x, z, index !== undefined ? [[side, 0], [-side, 0], [0, 1]] : [[-z / radial, x / radial], [z / radial, -x / radial], [-x / radial, -z / radial]]) : undefined;
     placed.push({
       id: `${town.id}:${role}`, townId: town.id, role, title: TITLES[role], x: town.x + x, z: town.z + z,
       // Door-side folk look out over the plaza; the plaza one faces the town centre.
       facing: index !== undefined ? 0 : Math.atan2(-x, -z),
       model: MODELS[role][seed % MODELS[role].length],
+      ...(gait && end ? { route: { x: town.x + end.x, z: town.z + end.z, gait } } : {}),
     });
   }
   // The officer walks a ring round the square, clear of the buildings and the signboard and passing everyone standing by a
@@ -72,6 +100,7 @@ export function planTownNpcs(atlas: WorldAtlas, town: KantoLocation, hasGym: boo
     return !atlas.sample(town.x + x, town.z + z).blocked
       && buildings.every(([bx, bz]) => Math.abs(x - bx) > BUILDING_HALF_X + .6 || Math.abs(z - bz) > BUILDING_HALF_Z + .6)
       && Math.hypot(x - SIGNBOARD.x, z - SIGNBOARD.z) >= 2
+      // Pacers' lines may cross the ring; the officer only keeps a step from where each of them starts.
       && placed.every(npc => Math.hypot(npc.x - town.x - x, npc.z - town.z - z) >= 1.4);
   }));
   if (ring) {

@@ -14,12 +14,12 @@ import { isRegionalLeagueLocation } from './scene-landmarks';
 import { nearbyDungeon, npcLines, planTownNpcs, type NpcTalkContext, type TownNpc } from './town-npc-plan';
 import type { WorldSample } from './types';
 
-/** Townsfolk stand well above a 1 m Pokémon. */
-const NPC_HEIGHT = 3;
+/** Townsfolk stand a little shorter than a 1 m Pokémon on screen. */
+const NPC_HEIGHT = 1.9;
 /** A greeting hop, in milliseconds. */
 const HOP_MS = 420;
-/** A patrolling officer's pace, in units per second. */
-const PATROL_SPEED = 1;
+/** Walking and jogging paces, in units per second, and the breath a pacing figure takes at each end. */
+const PATROL_SPEED = 1, JOG_SPEED = 2.4, PACE_PAUSE = 1.6;
 /** Townsfolk are drawn in towns this close; the nearest one in talking range speaks. */
 const NPC_DRAW_RANGE = 46, TALK_RANGE = 6.5;
 const LINE_MS = 4500;
@@ -49,40 +49,46 @@ function TownNpcFigure({ npc, y, player, lines, talking, quiet, sampleWorld, pos
     object.scale.setScalar(NPC_HEIGHT / (new Box3().setFromObject(object).getSize(new Vector3()).y || 1));
     return object;
   }, [gltf]);
-  const hop = useRef(-1);
-  const mixer = useRef<AnimationMixer | null>(null), stance = useRef<AnimationAction | undefined>(undefined), stride = useRef<AnimationAction | undefined>(undefined);
-  const waves = useMemo(() => gltf?.animations.filter(clip => /wave/i.test(clip.name)) ?? [], [gltf]);
+  const clips = useMemo(() => {
+    const all = gltf?.animations ?? [];
+    return { idle: all.find(clip => /^idle/i.test(clip.name)), walk: all.find(clip => /^walk/i.test(clip.name)),
+      run: all.find(clip => /^run/i.test(clip.name)), waves: all.filter(clip => /wave/i.test(clip.name)) };
+  }, [gltf]);
+  const moves = Boolean(npc.patrol || npc.route);
+  const mixer = useRef<AnimationMixer | null>(null), current = useRef<AnimationAction | undefined>(undefined);
+  const standing = useRef<AnimationAction | undefined>(undefined), gait = useRef<AnimationAction | undefined>(undefined);
+  /**
+   * Blends into an action. A faded-out action is disabled, so it is always re-enabled from the start first; a held pose
+   * stays paused on its first frame. Every blend keeps the total weight at one, so the rig never drops to its T rest pose.
+   */
+  const blendTo = (next: AnimationAction | undefined, hold = false, seconds = .25) => {
+    if (!next || next === current.current) return;
+    next.reset(); next.play();
+    if (hold) { next.paused = true; next.time = 0; }
+    if (current.current) next.crossFadeFrom(current.current, seconds, false);
+    current.current = next;
+  };
   useEffect(() => {
     if (!figure || !gltf) return;
-    const next = new AnimationMixer(figure), idle = gltf.animations.find(clip => /^idle/i.test(clip.name)), walk = gltf.animations.find(clip => /^walk/i.test(clip.name));
-    mixer.current = next;
-    if (npc.patrol && walk) {
-      // A patrol walks; stopped, the walk's first frame is the officer standing with feet together.
-      const hold = next.clipAction(walk.clone()).play(); hold.paused = true; hold.time = 0; hold.setEffectiveWeight(0); stance.current = hold;
-      stride.current = next.clipAction(walk).setLoop(LoopRepeat, Infinity).play();
-    } else if (idle) {
-      // Each figure starts its idle loop at its own point, so neighbours never sway in step.
-      const action = next.clipAction(idle).setLoop(LoopRepeat, Infinity).play();
-      action.time = (npc.x * 7.3 + npc.z * 3.1) % idle.duration; stance.current = action;
-    } else if (waves[0]) {
-      // No idle loop: a wave's first frame is the figure standing with its arms down (its rest pose is a T).
-      const hold = next.clipAction(waves[0].clone()).play(); hold.paused = true; hold.time = 0; stance.current = hold;
-    }
+    const next = new AnimationMixer(figure);
+    mixer.current = next; current.current = undefined;
+    // The stance: an idle loop, or else the first frame of a wave or walk, which is the figure standing with its arms down
+    // (their rest pose is a T). A pacing figure's gait is its walk, or its run when it jogs.
+    const pose = clips.waves[0] ?? clips.walk;
+    standing.current = clips.idle ? next.clipAction(clips.idle).setLoop(LoopRepeat, Infinity) : pose ? next.clipAction(pose.clone()) : undefined;
+    const stride = npc.route?.gait === 'run' ? clips.run ?? clips.walk : clips.walk;
+    gait.current = moves && stride ? next.clipAction(stride).setLoop(LoopRepeat, Infinity) : undefined;
+    if (gait.current) blendTo(gait.current);
+    else if (clips.idle && standing.current) { blendTo(standing.current); standing.current.time = (npc.x * 7.3 + npc.z * 3.1) % clips.idle.duration; }
+    else blendTo(standing.current, true);
     // A finished wave hands back to the stance.
-    const settle = (event: { action: AnimationAction }) => {
-      const standing = stance.current; if (!standing || event.action === standing) return;
-      const paused = standing.paused; standing.reset().play(); standing.paused = paused; standing.crossFadeFrom(event.action, .3, false);
-    };
+    const settle = (event: { action: AnimationAction }) => { if (event.action === current.current) blendTo(standing.current, !clips.idle, .3); };
     next.addEventListener('finished', settle);
-    return () => { next.removeEventListener('finished', settle); next.stopAllAction(); next.uncacheRoot(figure); mixer.current = null; stance.current = undefined; stride.current = undefined; };
-  }, [figure, gltf, waves]);
-  /** Plays a wave once; a figure without one hops instead. */
-  const greet = (clip: AnimationClip | undefined) => {
-    if (!clip || !mixer.current) { hop.current = performance.now(); return; }
-    const action = mixer.current.clipAction(clip).reset().setLoop(LoopOnce, 1);
-    action.clampWhenFinished = true; action.play();
-    if (stance.current) action.crossFadeFrom(stance.current, .25, false);
-  };
+    return () => {
+      next.removeEventListener('finished', settle); next.stopAllAction(); next.uncacheRoot(figure);
+      mixer.current = null; current.current = standing.current = gait.current = undefined;
+    };
+  }, [figure, gltf, clips]);
   useEffect(() => () => {
     if (!figure) return;
     const skeletons = new Set<SkinnedMesh['skeleton']>();
@@ -90,20 +96,22 @@ function TownNpcFigure({ npc, y, player, lines, talking, quiet, sampleWorld, pos
     skeletons.forEach(skeleton => skeleton.dispose());
     releaseRenderObjects(figure);
   }, [figure]);
+  const hop = useRef(-1);
+  /** Plays a wave once; a standing figure without one hops instead. Moving figures just keep going. */
+  const greet = (clip: AnimationClip | undefined) => {
+    if (moves) return;
+    if (!clip || !mixer.current) { hop.current = performance.now(); return; }
+    blendTo(mixer.current.clipAction(clip).setLoop(LoopOnce, 1)); current.current!.clampWhenFinished = true;
+  };
   const [line, setLine] = useState(0), [turn, setTurn] = useState(0);
-  // Waves (or hops) when the player walks up; a patrol stops walking to talk and sets off again after.
+  // Waves (or hops) when the player walks up.
+  useEffect(() => { if (talking) greet(clips.waves.find(clip => /big/i.test(clip.name)) ?? clips.waves[0]); }, [talking, figure]);
+  // A standing figure with no idle loop waves now and then while it waits, so it never stands frozen.
   useEffect(() => {
-    if (talking) greet(waves.find(clip => /big/i.test(clip.name)) ?? waves[0]);
-    const walking = stride.current, standing = stance.current;
-    if (!walking || !standing) return;
-    if (talking) walking.crossFadeTo(standing, .25, false); else standing.crossFadeTo(walking, .25, false);
-  }, [talking, figure]);
-  // A figure with no idle loop waves now and then while it waits, so it never stands frozen.
-  useEffect(() => {
-    if (talking || npc.patrol || !figure || !waves.length || gltf?.animations.some(clip => /^idle/i.test(clip.name))) return;
-    const timer = window.setInterval(() => greet(waves[Math.floor(Math.random() * waves.length)]), 9000 + (Math.abs(npc.x * 131 + npc.z * 71) % 7000));
+    if (talking || moves || !figure || !clips.waves.length || clips.idle) return;
+    const timer = window.setInterval(() => greet(clips.waves[Math.floor(Math.random() * clips.waves.length)]), 9000 + (Math.abs(npc.x * 131 + npc.z * 71) % 7000));
     return () => window.clearInterval(timer);
-  }, [talking, figure, waves]);
+  }, [talking, figure, clips]);
   useEffect(() => {
     if (!talking || lines.length < 2) return;
     const timer = window.setInterval(() => setLine(value => value + 1), LINE_MS);
@@ -111,24 +119,36 @@ function TownNpcFigure({ npc, y, player, lines, talking, quiet, sampleWorld, pos
   }, [talking, lines.length, turn]);
   const facing = useRef(npc.facing), target = useRef({ x: player.x, z: player.z });
   target.current = { x: player.x, z: player.z };
-  const where = useRef({ x: npc.x, z: npc.z, angle: npc.patrol ? Math.atan2(npc.z - npc.patrol.z, npc.x - npc.patrol.x) : 0 });
+  const where = useRef({ x: npc.x, z: npc.z, angle: npc.patrol ? Math.atan2(npc.z - npc.patrol.z, npc.x - npc.patrol.x) : 0, clock: 0, heading: npc.facing });
   useFrame((_, delta) => {
-    const step = Math.min(delta, .05);
+    const step = Math.min(delta, .05), here = where.current;
     mixer.current?.update(step);
     if (!root.current) return;
-    const patrol = npc.patrol, here = where.current;
-    let heading = npc.facing;
-    if (patrol) {
-      // Counter-clockwise round the square; the ground height follows the paving.
-      if (!talking) here.angle += PATROL_SPEED / patrol.radius * step;
-      here.x = patrol.x + Math.cos(here.angle) * patrol.radius; here.z = patrol.z + Math.sin(here.angle) * patrol.radius;
-      heading = Math.atan2(-Math.sin(here.angle), Math.cos(here.angle));
+    let walking = false;
+    if (npc.patrol) {
+      // Counter-clockwise round the square without stopping; the ground height follows the paving.
+      here.angle += PATROL_SPEED / npc.patrol.radius * step;
+      here.x = npc.patrol.x + Math.cos(here.angle) * npc.patrol.radius; here.z = npc.patrol.z + Math.sin(here.angle) * npc.patrol.radius;
+      here.heading = Math.atan2(-Math.sin(here.angle), Math.cos(here.angle)); walking = true;
+    } else if (npc.route) {
+      // Out to the far end, a breath, back, a breath.
+      const dx = npc.route.x - npc.x, dz = npc.route.z - npc.z, length = Math.hypot(dx, dz) || 1;
+      const leg = length / (npc.route.gait === 'run' ? JOG_SPEED : PATROL_SPEED), cycle = 2 * leg + 2 * PACE_PAUSE;
+      here.clock = (here.clock + step) % cycle;
+      const t = here.clock, out = t < leg, back = t >= leg + PACE_PAUSE && t < 2 * leg + PACE_PAUSE;
+      const progress = out ? t / leg : back ? 1 - (t - leg - PACE_PAUSE) / leg : t < leg + PACE_PAUSE ? 1 : 0;
+      here.x = npc.x + dx * progress; here.z = npc.z + dz * progress;
+      if (out || back) { here.heading = out ? Math.atan2(dx, dz) : Math.atan2(-dx, -dz); walking = true; }
+    }
+    if (moves) {
       body.current?.position.set(here.x, terrainSurfaceHeight(sampleWorld, here.x, here.z), here.z);
       positions.set(npc.id, { x: here.x, z: here.z });
+      blendTo(walking ? gait.current : standing.current, !walking);
     }
-    const goal = talking ? Math.atan2(target.current.x - here.x, target.current.z - here.z) : heading;
+    // Standing figures turn to the player who talks to them; moving ones look where they go.
+    const goal = talking && !walking ? Math.atan2(target.current.x - here.x, target.current.z - here.z) : moves ? here.heading : npc.facing;
     const turnBy = Math.atan2(Math.sin(goal - facing.current), Math.cos(goal - facing.current));
-    facing.current += turnBy * Math.min(1, delta * 6);
+    facing.current += turnBy * Math.min(1, step * 6);
     const hopT = hop.current < 0 ? 1 : (performance.now() - hop.current) / HOP_MS;
     root.current.position.y = hopT < 1 ? Math.sin(hopT * Math.PI) * .3 : 0;
     root.current.rotation.y = facing.current;
@@ -137,7 +157,7 @@ function TownNpcFigure({ npc, y, player, lines, talking, quiet, sampleWorld, pos
     event?.stopPropagation();
     if ((event?.delta ?? 0) > 5) return;
     setLine(value => value + 1); setTurn(value => value + 1);
-    greet(waves.find(clip => !/big/i.test(clip.name)) ?? waves[0]);
+    greet(clips.waves.find(clip => !/big/i.test(clip.name)) ?? clips.waves[0]);
   };
   const text = lines.length ? lines[line % lines.length] : '';
   return <group ref={body} position={[npc.x, y, npc.z]} name={`town-npc:${npc.id}`}>
@@ -145,7 +165,7 @@ function TownNpcFigure({ npc, y, player, lines, talking, quiet, sampleWorld, pos
     {/* An invisible column is the click target, so a tap anywhere on the figure talks. */}
     <mesh position={[0, NPC_HEIGHT / 2, 0]} onClick={(event: ThreeEvent<MouseEvent>) => next(event)}
       onPointerOver={event => { event.stopPropagation(); document.body.style.cursor = 'pointer'; }} onPointerOut={() => { document.body.style.cursor = ''; }}>
-      <cylinderGeometry args={[.75, .75, NPC_HEIGHT, 10]} />
+      <cylinderGeometry args={[.5, .5, NPC_HEIGHT, 10]} />
       <meshBasicMaterial transparent opacity={0} depthWrite={false} />
     </mesh>
     {talking && !quiet && text && <Html center position={[0, NPC_HEIGHT + .8, 0]} zIndexRange={[6, 5]} style={{ pointerEvents: 'auto' }}>
