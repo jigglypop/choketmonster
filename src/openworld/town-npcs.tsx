@@ -14,10 +14,10 @@ import { isRegionalLeagueLocation } from './scene-landmarks';
 import { nearbyDungeon, npcLines, planTownNpcs, type NpcTalkContext, type TownNpc } from './town-npc-plan';
 import type { WorldSample } from './types';
 
-/** SD trainers stand a little taller than a 0.4 m Pokémon. */
-const NPC_HEIGHT = 1.5;
-/** A greeting hop and a click spin, in milliseconds. */
-const HOP_MS = 420, SPIN_MS = 700;
+/** Trainers stand a little taller than a 1 m Pokémon. */
+const NPC_HEIGHT = 2.3;
+/** A greeting hop, in milliseconds. */
+const HOP_MS = 420;
 /** Townsfolk are drawn in towns this close; the nearest one in talking range speaks. */
 const NPC_DRAW_RANGE = 46, TALK_RANGE = 6.5;
 const LINE_MS = 4500;
@@ -47,7 +47,7 @@ function TownNpcFigure({ npc, y, player, lines, talking, quiet }: { npc: TownNpc
   const mixer = useRef<AnimationMixer | null>(null);
   useEffect(() => {
     if (!figure || !gltf) return;
-    const next = new AnimationMixer(figure), clip = gltf.animations.find(item => item.name === 'idle');
+    const next = new AnimationMixer(figure), clip = gltf.animations.find(item => /^idle/i.test(item.name));
     mixer.current = next;
     // Each figure starts its idle loop at its own point, so neighbours never sway in step.
     if (clip) next.clipAction(clip).setLoop(LoopRepeat, Infinity).play().time = (npc.x * 7.3 + npc.z * 3.1) % clip.duration;
@@ -60,7 +60,7 @@ function TownNpcFigure({ npc, y, player, lines, talking, quiet }: { npc: TownNpc
     skeletons.forEach(skeleton => skeleton.dispose());
     releaseRenderObjects(figure);
   }, [figure]);
-  const hop = useRef(-1), spin = useRef(-1);
+  const hop = useRef(-1);
   const [line, setLine] = useState(0), [turn, setTurn] = useState(0);
   // Hops with joy when the player walks up.
   useEffect(() => { if (talking) hop.current = performance.now(); }, [talking]);
@@ -77,18 +77,15 @@ function TownNpcFigure({ npc, y, player, lines, talking, quiet }: { npc: TownNpc
     const goal = talking ? Math.atan2(target.current.x - npc.x, target.current.z - npc.z) : npc.facing;
     const turnBy = Math.atan2(Math.sin(goal - facing.current), Math.cos(goal - facing.current));
     facing.current += turnBy * Math.min(1, delta * 6);
-    const now = performance.now(), hopT = hop.current < 0 ? 1 : (now - hop.current) / HOP_MS, spinT = spin.current < 0 ? 1 : (now - spin.current) / SPIN_MS;
-    const lift = hopT < 1 ? Math.sin(hopT * Math.PI) : 0;
-    root.current.position.y = lift * .32;
-    // Squash on take-off and landing, stretch at the top.
-    root.current.scale.set(1 - lift * .05, 1 + lift * .08 - (hopT < 1 ? Math.max(0, Math.sin(hopT * Math.PI * 2 - Math.PI)) * .06 : 0), 1 - lift * .05);
-    root.current.rotation.y = facing.current + (spinT < 1 ? (1 - (1 - spinT) ** 3) * Math.PI * 2 : 0);
+    const hopT = hop.current < 0 ? 1 : (performance.now() - hop.current) / HOP_MS;
+    root.current.position.y = hopT < 1 ? Math.sin(hopT * Math.PI) * .3 : 0;
+    root.current.rotation.y = facing.current;
   });
   const next = (event?: { stopPropagation(): void; delta?: number }) => {
     event?.stopPropagation();
     if ((event?.delta ?? 0) > 5) return;
     setLine(value => value + 1); setTurn(value => value + 1);
-    if (line % 3 === 2) spin.current = performance.now(); else hop.current = performance.now();
+    hop.current = performance.now();
   };
   const text = lines.length ? lines[line % lines.length] : '';
   return <group position={[npc.x, y, npc.z]} name={`town-npc:${npc.id}`}>
@@ -96,7 +93,7 @@ function TownNpcFigure({ npc, y, player, lines, talking, quiet }: { npc: TownNpc
     {/* An invisible column is the click target, so a tap anywhere on the figure talks. */}
     <mesh position={[0, NPC_HEIGHT / 2, 0]} onClick={(event: ThreeEvent<MouseEvent>) => next(event)}
       onPointerOver={event => { event.stopPropagation(); document.body.style.cursor = 'pointer'; }} onPointerOut={() => { document.body.style.cursor = ''; }}>
-      <cylinderGeometry args={[.45, .45, NPC_HEIGHT, 10]} />
+      <cylinderGeometry args={[.6, .6, NPC_HEIGHT, 10]} />
       <meshBasicMaterial transparent opacity={0} depthWrite={false} />
     </mesh>
     {talking && !quiet && text && <Html center position={[0, NPC_HEIGHT + .8, 0]} zIndexRange={[6, 5]} style={{ pointerEvents: 'auto' }}>

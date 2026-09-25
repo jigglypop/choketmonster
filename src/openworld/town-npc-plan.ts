@@ -9,8 +9,8 @@ import { DUNGEON_PLANS } from './dungeons';
 import type { KantoGym, KantoLocation } from './kanto';
 import { BUILDING_HALF_X, BUILDING_HALF_Z, SIGNBOARD } from './world-details';
 
-/** Two SD trainers: a fire boy in red and a leaf girl in green. */
-const npcModel = (name: 'red' | 'green') => `/models/openworld/npc/trainer-${name}.glb`;
+/** Two SD trainers, drawn from the owner's files as they are: a fire boy in red and a leaf girl in green. */
+const npcModel = (name: 'red' | 'green') => `/models/trainer/${name}.glb`;
 
 /** Who stands where: beside the Pokémon Center, the mart, the gym, Pallet's houses and lab, or out on the plaza. */
 export type TownNpcRole = 'clinic' | 'shop' | 'gym' | 'lab' | 'home' | 'plaza';
