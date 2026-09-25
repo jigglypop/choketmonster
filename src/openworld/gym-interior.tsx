@@ -42,7 +42,8 @@ export function GymInterior({ hall, gym, party, badges, busy, player, spriteUrl,
     event.stopPropagation(); if (event.button === 0 && event.delta <= 5) onNavigate({ x: event.point.x, z: event.point.z });
   };
 
-  return <group name={`gym-interior:${hall.locationId}`} dispose={null}>
+  // No dispose={null}: R3F then disposes the inline geometries and the exit mat on unmount. Prop materials are disposed above.
+  return <group name={`gym-interior:${hall.locationId}`}>
     {/* Warm ceiling accents over the court. The angled indoor key light casts the shadows, so these stay soft. */}
     <pointLight position={[cx, y + 5.4, courtZ - courtDepth / 4]} color="#fff4dc" intensity={18} distance={22} decay={2} />
     <pointLight position={[cx, y + 5.4, courtZ + courtDepth / 3]} color="#fff4dc" intensity={18} distance={22} decay={2} />

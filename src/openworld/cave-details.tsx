@@ -10,6 +10,7 @@ import type { CaveScene } from './caves';
 import type { WorldPoint } from './types';
 import { contactShadowTexture, jitter, stainGeometry } from './interior-kit';
 import { LAIR_DAIS_RADIUS, caveCrystals, cavePuddles, sceneDoorways, type CrystalCluster } from './interior-layout';
+import { useReleasingRef } from '../three/render-objects';
 
 type Detail = { x: number; y: number; z: number; sx: number; sy: number; sz: number; rotationY?: number; upsideDown?: boolean };
 const variation = (index: number, seed: number) => { const n = Math.sin(index * 127.1 + seed * 311.7) * 43758.5453; return n - Math.floor(n); };
@@ -66,6 +67,8 @@ export function caveFormations(cave: CaveScene) {
 
 function Batch({ name, entries, material, pointed = false, castsShadow = true }: { name: string; entries: Detail[]; material: Material; pointed?: boolean; castsShadow?: boolean }) {
   const ref = useRef<InstancedMesh>(null);
+  // Fewer or more formations nearby rebuild the mesh around the cave's material; the old one frees its render objects.
+  const attach = useReleasingRef(ref);
   const geometry = useMemo(() => {
     const shape: BufferGeometry = pointed ? new ConeGeometry(1, 1, 7, 2) : new IcosahedronGeometry(1, 1);
     return shape;
@@ -82,7 +85,7 @@ function Batch({ name, entries, material, pointed = false, castsShadow = true }:
     mesh.count = entries.length; mesh.instanceMatrix.needsUpdate = true; mesh.computeBoundingSphere();
   }, [entries]);
   useLayoutEffect(() => () => geometry.dispose(), [geometry]);
-  return <instancedMesh ref={ref} name={name} args={[geometry, material, Math.max(1, entries.length)]} dispose={null} receiveShadow castShadow={castsShadow} />;
+  return <instancedMesh ref={attach} name={name} args={[geometry, material, Math.max(1, entries.length)]} dispose={null} receiveShadow castShadow={castsShadow} />;
 }
 
 function ContactShadows({ cave, entries }: { cave: CaveScene; entries: Detail[] }) {

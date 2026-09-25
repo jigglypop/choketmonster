@@ -1,5 +1,6 @@
 import type { WebGLRenderer } from 'three';
 import { WebGPURenderer } from 'three/webgpu';
+import { detachRendererTextures, trackRenderObjects } from '../three/render-objects';
 
 export type OpenWorldRendererBackend = 'webgpu' | 'webgl2-fallback';
 export type OpenWorldRendererInfo = {
@@ -43,6 +44,7 @@ export async function createOpenWorldRenderer(
     options.onDeviceLost?.();
   };
   await renderer.init();
+  trackRenderObjects(renderer);
   const backend: OpenWorldRendererBackend = (renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend === true ? 'webgpu' : 'webgl2-fallback';
   const initializedAt = performance.now();
   rendererInfo.set(renderer, { backend, initializedAt });
@@ -52,6 +54,7 @@ export async function createOpenWorldRenderer(
   // the oldest one: the team portrait. three ignores a 'destroyed' device loss.
   Object.assign(renderer, { forceContextLoss: () => {
     const device = (renderer.backend as { device?: { destroy(): void } }).device;
+    detachRendererTextures(renderer);
     renderer.dispose();
     device?.destroy();
   } });

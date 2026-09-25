@@ -171,7 +171,8 @@ export function DungeonInterior({ scene, onNavigate }: { scene: CaveScene; onNav
     return [...byKind.entries()].map(([key, props]) => ({ key, kind: props[0].kind, props }));
   }, [room]);
   const stone = useMemo(() => `#${new Color(look.wall).lerp(new Color(look.floor), .35).getHexString()}`, [look]);
-  return <group name={`dungeon-interior:${scene.id}`} dispose={null}>
+  // No dispose={null}: R3F then disposes the stairs' inline geometries on unmount. Props stay with their owners.
+  return <group name={`dungeon-interior:${scene.id}`}>
     <mesh name="dungeon-floor" geometry={floor} material={materials.floor} receiveShadow
       onClick={event => { event.stopPropagation(); if (event.button === 0 && event.delta <= 5) onNavigate({ x: event.point.x, z: event.point.z }); }} />
     {walls.map((wall, index) => <group key={index} position={[wall.x, 0, wall.z]} rotation={[0, wall.rotationY, 0]}>
@@ -186,14 +187,18 @@ export function DungeonInterior({ scene, onNavigate }: { scene: CaveScene; onNav
 }
 
 type PartProps = { shape: 'box' | 'cylinder' | 'cone' | 'sphere'; size: readonly number[]; at: readonly [number, number, number]; color: string; rotation?: readonly [number, number, number]; glow?: boolean };
-const materialCache = new Map<string, Material>();
-function partMaterial(color: string, glow = false): Material {
-  const key = `${color}:${glow}`; let material = materialCache.get(key);
-  if (!material) { material = new MeshStandardMaterial({ name: 'dungeon-landmark', color, roughness: .82, emissive: glow ? color : '#000000', emissiveIntensity: glow ? .8 : 0, side: DoubleSide }); materialCache.set(key, material); }
-  return material;
+const partKey = (part: Pick<PartProps, 'color' | 'glow'>) => `${part.color}:${part.glow ?? false}`;
+/** One material per colour of a landmark, owned by it: a module-wide cache kept the render objects of every landmark ever shown. */
+function partMaterials(parts: readonly PartProps[]): Map<string, Material> {
+  const materials = new Map<string, Material>();
+  for (const { color, glow = false } of parts) {
+    const key = partKey({ color, glow });
+    if (!materials.has(key)) materials.set(key, new MeshStandardMaterial({ name: 'dungeon-landmark', color, roughness: .82, emissive: glow ? color : '#000000', emissiveIntensity: glow ? .8 : 0, side: DoubleSide }));
+  }
+  return materials;
 }
-function Part({ shape, size, at, color, rotation, glow }: PartProps) {
-  return <mesh position={at as [number, number, number]} rotation={rotation as [number, number, number] | undefined} material={partMaterial(color, glow)} castShadow receiveShadow>
+function Part({ shape, size, at, rotation, material }: PartProps & { material: Material }) {
+  return <mesh position={at as [number, number, number]} rotation={rotation as [number, number, number] | undefined} material={material} castShadow receiveShadow>
     {shape === 'box' ? <boxGeometry args={size as [number, number, number]} />
       : shape === 'cylinder' ? <cylinderGeometry args={[size[0], size[1], size[2], 16]} />
       : shape === 'cone' ? <coneGeometry args={[size[0], size[1], size[2] ?? 4]} />
@@ -289,6 +294,8 @@ function DungeonLandmark({ scene, portal, y, onEnter }: { scene: CaveScene; port
   const [hovered, setHovered] = useState(false);
   useEffect(() => () => { if (hovered) document.body.style.cursor = ''; }, [hovered]);
   const parts = useMemo(() => landmarkParts(scene.style), [scene.style]);
+  const materials = useMemo(() => partMaterials(parts), [parts]);
+  useEffect(() => () => materials.forEach(material => material.dispose()), [materials]);
   const landmark = portal.landmark!;
   const pointer = onEnter ? {
     onPointerOver: (event: { stopPropagation(): void }) => { event.stopPropagation(); setHovered(true); document.body.style.cursor = 'pointer'; },
@@ -296,7 +303,7 @@ function DungeonLandmark({ scene, portal, y, onEnter }: { scene: CaveScene; port
     onClick: (event: { stopPropagation(): void; delta: number }) => { event.stopPropagation(); if (event.delta <= 5) onEnter(); },
   } : {};
   return <group name={`dungeon-entrance:${scene.dungeonId}`} position={[landmark.x, y, landmark.z]} rotation={[0, landmark.rotationY, 0]}>
-    <group {...pointer}>{parts.map((part, index) => <Part key={index} {...part} />)}</group>
+    <group {...pointer}>{parts.map((part, index) => <Part key={index} {...part} material={materials.get(partKey(part))!} />)}</group>
     {hovered && <mesh position={[0, .08, 0]} rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[3.7, 4.1, 48]} /><meshBasicMaterial color="#ffe27a" transparent opacity={.85} depthWrite={false} /></mesh>}
   </group>;
 }

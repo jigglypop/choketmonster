@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { BoxGeometry, Group, Mesh, MeshStandardMaterial } from 'three';
 
 const loading = vi.hoisted(() => ({ load: vi.fn() }));
-vi.mock('../src/three/gltf-loader', () => ({ createGLTFLoader: () => ({ loadAsync: loading.load }) }));
+vi.mock('../src/three/gltf-loader', () => ({ createGLTFLoader: (options?: { signal?: AbortSignal }) => ({ loadAsync: (url: string) => loading.load(url, options?.signal) }) }));
 import { acquireModel, modelCacheStats, retryFailedModels } from '../src/three/model-cache';
 
 describe('shared model cache ownership', () => {
@@ -51,6 +51,38 @@ describe('shared model cache ownership', () => {
       expect(disposed).toHaveBeenCalledTimes(1);
     } finally { lease.release(); vi.useRealTimers(); loading.load.mockClear(); }
   });
+  it('aborts a timed-out load, so its download and preparation stop instead of running beside a retry', async () => {
+    vi.useFakeTimers();
+    let signal: AbortSignal | undefined;
+    loading.load.mockImplementationOnce((_url: string, given?: AbortSignal) => { signal = given; return new Promise(() => undefined); });
+    const lease = acquireModel('/test/aborted.glb');
+    const rejected = expect(lease.promise).rejects.toThrow('timed out');
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(signal?.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(45_001); await rejected;
+      expect(signal?.aborted).toBe(true);
+      expect(modelCacheStats().activeLoads).toBe(0);
+    } finally { lease.release(); vi.useRealTimers(); loading.load.mockClear(); retryFailedModels(); }
+  });
+
+  it('counts only visible time toward the load deadline', async () => {
+    vi.useFakeTimers();
+    const listeners = new Set<() => void>();
+    const page = { hidden: true, addEventListener: (_: string, listener: () => void) => listeners.add(listener), removeEventListener: (_: string, listener: () => void) => listeners.delete(listener) };
+    vi.stubGlobal('document', page);
+    loading.load.mockImplementationOnce(() => new Promise(() => undefined));
+    const lease = acquireModel('/test/hidden.glb'), settled = vi.fn();
+    lease.promise.then(settled, settled);
+    try {
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      expect(settled).not.toHaveBeenCalled();
+      page.hidden = false; listeners.forEach(listener => listener());
+      await vi.advanceTimersByTimeAsync(45_001);
+      expect(settled).toHaveBeenCalledTimes(1);
+    } finally { lease.release(); vi.unstubAllGlobals(); vi.useRealTimers(); loading.load.mockClear(); retryFailedModels(); }
+  });
+
   it('deduplicates simultaneous viewers, retains active geometry, and evicts only released models', async () => {
     loading.load.mockImplementation(async () => {
       const scene = new Group(); scene.add(new Mesh(new BoxGeometry(), new MeshStandardMaterial()));

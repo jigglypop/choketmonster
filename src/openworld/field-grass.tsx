@@ -17,6 +17,7 @@ import {
   grassBudgetScale, grassCellsNear, grassField, grassLodWeight, grassSegmentTier, type GrassBudget, type GrassCell, type GrassLayer, type GrassSegmentTier,
 } from './grass-field';
 import { fieldGrassColors } from './materials';
+import { useReleasingRef } from '../three/render-objects';
 
 type GrassManager = ReturnType<typeof useGrassManager>;
 type BudgetState = { requested: Map<number, number>; scale: number };
@@ -183,6 +184,8 @@ function layerGeometries(cell: GrassCell, layer: GrassLayer, profile: GrassProfi
 type LayerProps = { cell: GrassCell; layer: GrassLayer; profile: GrassProfile; grass: ReturnType<typeof createFieldGrassMaterial>; manager: GrassManager; budget: GrassBudget; density: number; state: BudgetState; camera: Camera; tiers: readonly GrassSegmentTier[] };
 const GrassLayerMesh = memo(function GrassLayerMesh({ cell, layer, profile, grass, manager, budget, density, state, camera, tiers }: LayerProps) {
   const mesh = useRef<Mesh>(null);
+  // The field's grass material outlives every cell; a cell that streams out frees its render objects.
+  const attach = useReleasingRef(mesh);
   const top = layer.maxY + (profile === 'tall' ? 1.3 : .7);
   const geometries = useMemo(() => layerGeometries(cell, layer, profile, top, tiers), [cell, layer, profile, top, tiers]);
   useEffect(() => () => geometries.forEach(geometry => geometry.dispose()), [geometries]);
@@ -211,7 +214,7 @@ const GrassLayerMesh = memo(function GrassLayerMesh({ cell, layer, profile, gras
     });
     return () => { manager.unregister(tile.id); state.requested.delete(cell.key); };
   }, [budget, camera, cell, density, geometries, grass, layer, manager, profile, state, tiers, top]);
-  return <mesh ref={mesh} name={`${profile === 'tall' ? 'tall-grass' : 'field-grass'}:${cell.ix}:${cell.iz}`} geometry={geometries[0]} material={grass.material} receiveShadow dispose={null} />;
+  return <mesh ref={attach} name={`${profile === 'tall' ? 'tall-grass' : 'field-grass'}:${cell.ix}:${cell.iz}`} geometry={geometries[0]} material={grass.material} receiveShadow dispose={null} />;
 });
 
 const total = (state: BudgetState) => { let sum = 0; for (const count of state.requested.values()) sum += count; return sum; };

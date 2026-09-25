@@ -49,7 +49,8 @@ function PokemonStatue({ speciesId, url, height, material }: { speciesId: number
       if (!active) return;
       const model = cloneSkinned(gltf.scene);
       const idle = selectPokemonMotionClip(gltf.animations, 'idle').clip;
-      if (idle) { const mixer = new AnimationMixer(model); mixer.clipAction(idle).play(); mixer.update(0); mixer.stopAllAction(); }
+      // Hold the idle's first frame. Stopping the mixer would restore the bind pose (a T-pose) before the statue is sized and drawn.
+      if (idle) { const mixer = new AnimationMixer(model); mixer.clipAction(idle).play(); mixer.update(0); }
       model.traverse(object => { if (object instanceof Mesh) { object.material = material; object.castShadow = true; object.receiveShadow = true; object.frustumCulled = false; } });
       model.updateMatrixWorld(true);
       const bounds = new Box3().setFromObject(model, true), size = bounds.getSize(new Vector3()), center = bounds.getCenter(new Vector3());
@@ -114,7 +115,8 @@ export function LeagueInterior({ hall, trainer, busy, player, spriteUrl, modelUr
     event.stopPropagation(); if (event.button === 0 && event.delta <= 5) onNavigate({ x: event.point.x, z: event.point.z });
   };
 
-  return <group name={`league-interior:${hall.locationId}`} dispose={null}>
+  // No dispose={null}: R3F then disposes the inline geometries on unmount. Prop materials are disposed by useLeagueMaterials.
+  return <group name={`league-interior:${hall.locationId}`}>
     {/* Warm accents over the arena and gallery; the angled indoor key light casts the shadows, so these stay soft. */}
     <pointLight position={[cx, y + 7, courtZ]} color="#fff0cf" intensity={30} distance={30} decay={2} />
     <pointLight position={[cx, y + 6, galleryStart + 4]} color="#ffe6b8" intensity={20} distance={24} decay={2} />

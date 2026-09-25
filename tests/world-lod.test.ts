@@ -31,6 +31,26 @@ describe('visible world streaming budgets', () => {
       .toEqual([['companion:saved-mon', false]]);
   });
 
+  it('keeps both sides of a battle drawn off screen and beyond the model radius, ahead of nearer wilds', () => {
+    const opponent = { ...creature('wild-opponent', -40, 0), inBattle: true };
+    const crowd = Array.from({ length: 10 }, (_, i) => creature(`wild-${i}`, 2 + i, 0));
+    const visible = creatureLods([...crowd, opponent, { ...creature('companion:mon-1', -3, 0), inBattle: true }], { x: 0, z: 0 }, x => x >= 0, true);
+    expect(visible.map(item => item.creature.id).slice(0, 2)).toEqual(['companion:mon-1', 'wild-opponent']);
+    expect(visible).toHaveLength(4);
+    expect(visible.find(item => item.creature.id === 'wild-opponent')?.model).toBe(true);
+  });
+
+  it('keeps shown chunks in range while the camera turns away, and drops them once out of range', () => {
+    const player = { x: -68, z: 82 };
+    const all = terrainChunks(player, () => true), hidden = terrainChunks(player, () => false);
+    const kept = terrainChunks(player, () => false, new Set(all.map(chunk => chunk.key)));
+    const layout = (chunks: typeof all) => chunks.map(chunk => `${chunk.key}:${chunk.segments}`);
+    expect(layout(kept)).toEqual(layout(all));
+    expect(hidden.length).toBeLessThan(kept.length);
+    const far = terrainChunks({ x: 100, z: -100 }, () => false, new Set(all.map(chunk => chunk.key)));
+    expect(far.some(chunk => all.some(previous => previous.key === chunk.key))).toBe(false);
+  });
+
   it('keeps local ground while clipping other chunks and changes detail with distance', () => {
     const player = { x: -68, z: 82 };
     const hidden = terrainChunks(player, () => false), all = terrainChunks(player, () => true);

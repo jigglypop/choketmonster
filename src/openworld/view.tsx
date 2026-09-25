@@ -64,6 +64,8 @@ import { AdaptiveResolution } from './adaptive-resolution';
 import { MAX_CAMERA_DISTANCE, MIN_CAMERA_DISTANCE } from './camera-navigation';
 import { findWorldPath, headingForStep } from './navigation';
 import { onRenderSuspension, renderingSuspended } from '../three/render-budget';
+import { releaseOnDetach, releaseRenderObjects, useReleasingRef } from '../three/render-objects';
+import { visibleTimeout } from '../three/visible-time';
 
 import { WORLD_MIN, WORLD_MAX, WORLD_SCALE, surfaceSceneId } from './world-space';
 import { getCaveScene, hasDungeonLandmark } from './caves';
@@ -193,12 +195,13 @@ const Terrain = memo(function Terrain({ sampleWorld, chunk, atlas, material, wat
   const { geometry, skirt } = useMemo(() => createTerrainSurface(chunk, sampleWorld, atlas),
     [chunk.x, chunk.z, chunk.segments, sampleWorld, atlas]);
   useEffect(() => () => { geometry.dispose(); skirt.dispose(); }, [geometry, skirt]);
-  const surface = <mesh geometry={geometry} material={geometry.userData.waterVertices ? waterMaterial : material} dispose={null} receiveShadow name={`terrain-chunk:${chunk.key}:${chunk.segments}`} onClick={event => {
+  // The terrain materials outlive every chunk; each mesh lets go of its render objects when it leaves.
+  const surface = <mesh ref={releaseOnDetach} geometry={geometry} material={geometry.userData.waterVertices ? waterMaterial : material} dispose={null} receiveShadow name={`terrain-chunk:${chunk.key}:${chunk.segments}`} onClick={event => {
     event.stopPropagation(); if (event.button === 0 && event.delta <= 5) onNavigate?.({ x: event.point.x, z: event.point.z });
   }} />;
   return <group>
     {surface}
-    <mesh geometry={skirt} material={material} dispose={null} />
+    <mesh ref={releaseOnDetach} geometry={skirt} material={material} dispose={null} />
   </group>;
 }, (before, after) => before.chunk.key === after.chunk.key && before.chunk.segments === after.chunk.segments
   && before.sampleWorld === after.sampleWorld && before.atlas === after.atlas && before.material === after.material && before.waterMaterial === after.waterMaterial && before.onNavigate === after.onNavigate);
@@ -215,6 +218,8 @@ function InstancedPart({ geometry, material, sourceMatrix, placements, shadows, 
   scale?: number;
 }) {
   const mesh = useRef<InstancedMesh>(null);
+  // A larger capacity rebuilds the mesh; the old one frees its render objects on the shared material.
+  const attach = useReleasingRef(mesh);
   // Reuse GPU buffers when visibility changes the active instance count.
   const capacity = useRef(64);
   capacity.current = Math.max(capacity.current, 2 ** Math.ceil(Math.log2(Math.max(1, placements.length))));
@@ -233,7 +238,7 @@ function InstancedPart({ geometry, material, sourceMatrix, placements, shadows, 
     mesh.current.instanceMatrix.needsUpdate = true;
     mesh.current.computeBoundingSphere();
   }, [placements, sourceMatrix, scale]);
-  return <instancedMesh ref={mesh} args={[geometry, material, capacity.current]} count={placements.length} castShadow={shadows} receiveShadow dispose={null} />;
+  return <instancedMesh ref={attach} args={[geometry, material, capacity.current]} count={placements.length} castShadow={shadows} receiveShadow dispose={null} />;
 }
 
 function InstancedAsset({ url, placements, shadows = false, scale = 1 }: { url: string; placements: readonly SceneryPlacement[]; shadows?: boolean; scale?: number }) {
@@ -380,18 +385,20 @@ function TownPaving({ townId }: { townId: string }) {
   </instancedMesh>;
 }
 
-const outlineMaterial = new MeshBasicMaterial({ color: '#ffe27a', side: BackSide, depthWrite: false });
-
-/** An inverted hull around a building: its meshes drawn back-faced, slightly enlarged about their centre. Geometry stays shared. */
-function buildingOutline(model: Object3D): Object3D {
+/**
+ * An inverted hull around a building: its meshes drawn back-faced, slightly enlarged about their centre. Geometry stays
+ * shared; the hull owns its material, so disposing that frees the hull's render objects.
+ */
+function buildingOutline(model: Object3D): { object: Object3D; material: Material } {
+  const material = new MeshBasicMaterial({ color: '#ffe27a', side: BackSide, depthWrite: false });
   const object = model.clone(true);
   object.updateMatrixWorld(true);
   const center = new Box3().setFromObject(object).getCenter(new Vector3());
-  object.traverse(child => { if (child instanceof Mesh) { child.material = outlineMaterial; child.castShadow = false; child.receiveShadow = false; child.raycast = () => undefined; } });
+  object.traverse(child => { if (child instanceof Mesh) { child.material = material; child.castShadow = false; child.receiveShadow = false; child.raycast = () => undefined; } });
   const pivot = new Group(); pivot.name = 'gym-hover-outline';
   pivot.position.copy(center); pivot.scale.setScalar(1.06); object.position.sub(center);
   pivot.add(object);
-  return pivot;
+  return { object: pivot, material };
 }
 
 function TownBuilding({ townId, townColor, index, gym, badges, showGymLabel, onGymEnter }: { townId: string; townColor: string; index: number; gym?: WorldAtlas['gyms'][number]; badges: number; showGymLabel: boolean; onGymEnter?: (locationId: string) => void }) {
@@ -429,11 +436,14 @@ function TownBuilding({ townId, townColor, index, gym, badges, showGymLabel, onG
     owned.forEach(material => material.dispose());
   }, [model]);
   const enterable = index === 2 && gym && onGymEnter ? gym : undefined;
-  const [hovered, setHovered] = useState(false);
+  const [hovered, setHovered] = useState(false), [outlineUsed, setOutlineUsed] = useState(false);
   useEffect(() => () => { if (hovered) document.body.style.cursor = ''; }, [hovered]);
-  const outline = useMemo(() => enterable && model && hovered ? buildingOutline(model) : null, [enterable, hovered, model]);
+  // Built on the first hover and then only shown or hidden, so hovering never clones the building again.
+  const outlined = Boolean(enterable) && outlineUsed;
+  const outline = useMemo(() => outlined && model ? buildingOutline(model) : null, [outlined, model]);
+  useEffect(() => () => outline?.material.dispose(), [outline]);
   const pointer = enterable ? {
-    onPointerOver: (event: { stopPropagation(): void }) => { event.stopPropagation(); setHovered(true); document.body.style.cursor = 'pointer'; },
+    onPointerOver: (event: { stopPropagation(): void }) => { event.stopPropagation(); setHovered(true); setOutlineUsed(true); document.body.style.cursor = 'pointer'; },
     onPointerOut: () => { setHovered(false); document.body.style.cursor = ''; },
     onClick: (event: { stopPropagation(): void; delta: number }) => { event.stopPropagation(); if (event.delta <= 5) onGymEnter!(enterable.locationId); },
   } : {};
@@ -443,7 +453,7 @@ function TownBuilding({ townId, townColor, index, gym, badges, showGymLabel, onG
         ? <primitive object={model} dispose={null} />
         : <mesh position={[0, 1.05, 0]} castShadow><boxGeometry args={[3.1, 2.1, 2.5]} /><meshStandardMaterial color="#e8dfc7" roughness={.9} /></mesh>}
     </group>
-    {outline && <primitive object={outline} dispose={null} />}
+    {outline && <primitive object={outline.object} visible={hovered} dispose={null} />}
     <BuildingSign text={role} color={accent} />
     {index === 2 && gym && <GymEntranceStatus gym={gym} badges={badges} showLabel={showGymLabel} />}
   </group>;
@@ -458,7 +468,7 @@ function WorldLabel({ name, x, y, z }: { name: string; x: number; y: number; z: 
 
 function RegionalLandmark({ region, x, y, z }: { region: string; x: number; y: number; z: number }) {
   return <group name={`regional-landmark:${region}`} position={[x, y, z]}>
-    <mesh geometry={regionalLandmarkGeometry(region)} material={detailMaterial()} castShadow receiveShadow dispose={null} />
+    <mesh ref={releaseOnDetach} geometry={regionalLandmarkGeometry(region)} material={detailMaterial()} castShadow receiveShadow dispose={null} />
   </group>;
 }
 
@@ -540,7 +550,9 @@ function TrailAndWater({ sampleWorld, player, badges, atlas, visible, gyms = atl
       {atlas.id !== 'kanto' && atlas.locations.filter(item => item.kind === 'special' && !isRegionalLeagueLocation(atlas.id, item.id) && !hasDungeonLandmark(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) < 70 && visible(item.x, 5, item.z, 10)).map(item => <RegionalLandmark key={item.id} region={atlas.id} x={item.x} y={terrainSurfaceHeight(sampleWorld, item.x, item.z)} z={item.z} />)}
       {atlas.locations.filter(item => isRegionalLeagueLocation(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) < 100)
         .map(item => <RegionalLeagueLandmark key={item.id} region={atlas.id} x={item.x} y={terrainSurfaceHeight(sampleWorld, item.x, item.z)} z={item.z} onEnter={onLeagueEnter && badges >= 8 ? () => onLeagueEnter(item.id) : undefined} />)}
-      {atlas.locations.filter(item => item.kind === 'town' && !isRegionalLeagueLocation(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) <= 85 && visible(item.x, 3, item.z, 14 * WORLD_SCALE)).map(town => <group key={town.id} name={`town:${town.id}`} position={[town.x, terrainSurfaceHeight(sampleWorld, town.x, town.z) + .05, town.z]}>
+      {/* Towns stay mounted while in range: the renderer culls them off screen, and turning the camera
+          never clones their buildings, materials and sign textures again. */}
+      {atlas.locations.filter(item => item.kind === 'town' && !isRegionalLeagueLocation(atlas.id, item.id) && Math.hypot(item.x - player.x, item.z - player.z) <= 85).map(town => <group key={town.id} name={`town:${town.id}`} position={[town.x, terrainSurfaceHeight(sampleWorld, town.x, town.z) + .05, town.z]}>
         <TownPaving townId={town.id} />
         {details?.towns.get(town.id) && <TownProps layout={details.towns.get(town.id)!} color={townStyle(town.id).color} />}
         {atlas.buildingOffsets(town).map(([x, z], index) => <group key={index} position={[x, 0, z]} scale={WORLD_SCALE}>
@@ -555,7 +567,7 @@ function TrailAndWater({ sampleWorld, player, badges, atlas, visible, gyms = atl
       {/* Gyms away from towns (trial sites, arenas) stand at their place's edge and open the same hall. */}
       {gyms.filter(gym => locations.get(gym.locationId)?.kind !== 'town').map(gym => {
         const point = gymBuildingPoint(atlas.id, gym.locationId);
-        if (!point || Math.hypot(point.x - player.x, point.z - player.z) > 85 || !visible(point.x, 3, point.z, 8)) return null;
+        if (!point || Math.hypot(point.x - player.x, point.z - player.z) > 85) return null;
         return <group key={gym.locationId} name={`field-gym:${gym.locationId}`} position={[point.x, terrainSurfaceHeight(sampleWorld, point.x, point.z), point.z]} scale={WORLD_SCALE}>
           <TownBuilding townId={gym.locationId} townColor={townStyle(gym.locationId).color} index={2} gym={gym} badges={badges} showGymLabel={Math.hypot(point.x - player.x, point.z - player.z) <= 14 * WORLD_SCALE} onGymEnter={onGymEnter} />
         </group>;
@@ -580,6 +592,8 @@ function TrailAndWater({ sampleWorld, player, badges, atlas, visible, gyms = atl
 function StaticModel({ item }: { item: OpenWorldProp }) {
   const gltf = useCachedModel(item.url);
   const object = useMemo(() => gltf ? cloneSkinned(gltf.scene) : null, [gltf]);
+  // The clone draws with the cached asset's materials, which outlive it.
+  useEffect(() => () => releaseRenderObjects(object), [object]);
   if (!object) return null;
   const visual = <primitive object={object} castShadow receiveShadow />;
   const transform = {
@@ -629,7 +643,8 @@ function PokemonModel({ creature, url, onStatus }: { creature: WorldCreature; ur
     setRenderFailed(!!gltf && !normalized);
     if (!normalized) return;
     let active = true, drawn = false;
-    const deadline = window.setTimeout(() => { if (active && !drawn) setRenderFailed(true); }, 45_000);
+    // Only visible time counts toward the first draw: a hidden tab draws nothing at all.
+    const cancelDeadline = visibleTimeout(() => { if (active && !drawn) setRenderFailed(true); }, 45_000);
     const restore: Array<() => void> = [];
     normalized.visual.traverse(object => {
       if (!(object instanceof Mesh)) return;
@@ -638,11 +653,12 @@ function PokemonModel({ creature, url, onStatus }: { creature: WorldCreature; ur
         previous.apply(this, args);
         if (!active) return;
         object.userData.pokemonDrawCount = (object.userData.pokemonDrawCount ?? 0) + 1;
-        if (!drawn) { drawn = true; clearTimeout(deadline); setRenderFailed(false); setDrawnModel(normalized.visual); }
+        // A first draw after the deadline clears that failure too.
+        if (!drawn) { drawn = true; cancelDeadline(); setRenderFailed(false); setDrawnModel(normalized.visual); }
       };
       restore.push(() => { object.onAfterRender = previous; });
     });
-    return () => { active = false; clearTimeout(deadline); restore.forEach(reset => reset()); };
+    return () => { active = false; cancelDeadline(); restore.forEach(reset => reset()); };
   }, [gltf, normalized]);
   useFrame(({ clock, camera }, delta) => {
     mixer.current?.update(Math.min(delta, .05) * (creature.action === 'walk' ? walkCycleRate(creature.movementSpeed, creature.displayHeight, activeAction.current && clipGroundSpeed(activeAction.current.getClip())) : 1));
@@ -652,24 +668,28 @@ function PokemonModel({ creature, url, onStatus }: { creature: WorldCreature; ur
     root.current.position.y = 0;
     const pulse = creature.action === 'attack' ? 1 + Math.max(0, Math.sin(phase * 1.8)) * .12 : 1;
     root.current.scale.set(pulse, creature.action === 'hurt' ? .88 : 1, pulse);
-    root.current.rotation.z = creature.action === 'fainted' ? Math.PI / 2 : creature.action === 'hurt' ? Math.sin(clock.elapsedTime * 55) * .09
-      : !gltf?.animations.length && creature.action === 'walk' ? Math.sin(phase) * .045 : 0;
+    // The hurt shake is cosmetic: the floor fit sees the upright pose, which stays within the support-set tilt.
+    const tilt = creature.action === 'fainted' ? Math.PI / 2 : !gltf?.animations.length && creature.action === 'walk' ? Math.sin(phase) * .045 : 0;
+    root.current.rotation.z = tilt;
     if (!ground.current && normalized) ground.current = createGrounding(normalized.visual, root.current, normalized.grounding);
     const animated = !!gltf?.animations.length;
     // Grounding skins the support vertices on the CPU, so clip playback stays at
     // the display rate while the floor fit runs at 30 Hz near the camera, 10 Hz
     // far away, and 4 Hz while a fainted body lies still (full vertex scan).
-    // The procedural walk bounce is re-applied every frame below.
-    if (creature.action === 'attack' || clock.elapsedTime >= nextGroundingAt.current || groundedAction.current !== creature.action) {
+    // The procedural walk bounce is re-applied every frame below. Its schedule uses
+    // performance time: R3F restarts its clock at zero whenever the frameloop changes.
+    const now = performance.now() / 1000;
+    if (creature.action === 'attack' || now >= nextGroundingAt.current || groundedAction.current !== creature.action) {
       root.current.parent?.getWorldPosition(worldPosition.current);
       ground.current?.(worldPosition.current.y);
       groundingOffset.current = root.current.position.y;
       const far = camera.position.distanceTo(worldPosition.current) > 30;
-      nextGroundingAt.current = clock.elapsedTime + (creature.action === 'fainted' ? 1 / 4 : far ? 1 / 10 : 1 / 30);
+      nextGroundingAt.current = now + (creature.action === 'fainted' ? 1 / 4 : far ? 1 / 10 : 1 / 30);
       groundedAction.current = creature.action;
     }
     root.current.position.y = groundingOffset.current;
     if (!animated && creature.action === 'walk') root.current.position.y += Math.abs(Math.sin(phase)) * .07;
+    if (creature.action === 'hurt') root.current.rotation.z = Math.sin(clock.elapsedTime * 55) * .09;
   }, -1);
   useEffect(() => {
     ground.current = undefined;
@@ -680,6 +700,8 @@ function PokemonModel({ creature, url, onStatus }: { creature: WorldCreature; ur
   useEffect(() => () => {
     if (!normalized) return;
     disposeNormalizedPokemonMaterials(normalized.animatedRoot);
+    // Uncorrected surfaces are the cached asset's own materials; they keep this clone's render objects otherwise.
+    releaseRenderObjects(normalized.visual);
     const skeletons = new Set<SkinnedMesh['skeleton']>();
     normalized.animatedRoot.traverse(object => { if (object instanceof SkinnedMesh) skeletons.add(object.skeleton); });
     skeletons.forEach(skeleton => skeleton.dispose());
@@ -715,10 +737,14 @@ function PokemonModel({ creature, url, onStatus }: { creature: WorldCreature; ur
     activeAction.current = next;
   }, [creature.action, creature.displayHeight, creature.movementSpeed, gltf, normalized]);
 
-  if (!normalized || renderFailed) return <ModelStatus name={status === 'failed' ? '모델 오류' : ''} />;
-  return <group ref={root} name={`pokemon-model:${creature.speciesId}`} userData={{ formIdentifier: creature.formIdentifier, sourceUrl: url }} dispose={null}>
-    <primitive object={normalized.visual} />
-  </group>;
+  if (!normalized) return <ModelStatus name={status === 'failed' ? '모델 오류' : ''} />;
+  // Past its draw deadline the model stays in the scene, so a later draw can still clear the failure.
+  return <>
+    {renderFailed && <ModelStatus name="모델 오류" />}
+    <group ref={root} name={`pokemon-model:${creature.speciesId}`} userData={{ formIdentifier: creature.formIdentifier, sourceUrl: url }} dispose={null}>
+      <primitive object={normalized.visual} />
+    </group>
+  </>;
 }
 
 function ModelStatus({ name }: { name: string }) {
@@ -794,9 +820,11 @@ function CreatureBillboard({ creature, hp, distance, emphasized }: { creature: W
 /** Hides a nameplate while it covers one with higher priority on screen (selected, partner, battle, then nearest). */
 function NameplateDeclutter({ order }: { order: readonly string[] }) {
   const gl = useThree(state => state.gl), nextCheck = useRef(0);
-  useFrame(({ clock }) => {
-    if (clock.elapsedTime < nextCheck.current) return;
-    nextCheck.current = clock.elapsedTime + .12;
+  useFrame(() => {
+    // Performance time: R3F restarts its clock at zero whenever the frameloop changes (saves pause it).
+    const now = performance.now();
+    if (now < nextCheck.current) return;
+    nextCheck.current = now + 120;
     const root = gl.domElement.parentElement; if (!root) return;
     const labels = new Map([...root.querySelectorAll<HTMLElement>('.ow-creature-label')].map(label => [label.dataset.creatureId, label]));
     const kept: DOMRect[] = [];
@@ -829,11 +857,15 @@ function Creature({ creature, selected, distance, options, showLabels, model }: 
   const modelReady = model && modelState.modelKey === modelKey && modelState.status === 'ready';
   const modelUrl = creature.formModelUrl ?? (supportedModel && !creature.formIdentifier ? (options.modelUrl ?? (id => `/models/pokemon/${id}.glb`))(creature.speciesId) : undefined);
   // The last model that finished loading stands in while a new form or species loads (Mega Evolution, evolution),
-  // so the creature never vanishes for the length of a download.
-  const [shown, setShown] = useState<{ key: string; url: string; speciesId: number } | null>(null);
-  useEffect(() => { if (modelReady && modelUrl) setShown({ key: modelKey, url: modelUrl, speciesId: creature.speciesId }); }, [creature.speciesId, modelKey, modelReady, modelUrl]);
+  // so the creature never vanishes for the length of a download. Both share one keyed list, so the previous model
+  // keeps its instance, clone and animation instead of being rebuilt, at the size it was drawn with.
+  const [shown, setShown] = useState<{ key: string; url: string; speciesId: number; displayHeight?: number } | null>(null);
+  useEffect(() => {
+    if (modelReady && modelUrl) setShown({ key: modelKey, url: modelUrl, speciesId: creature.speciesId, displayHeight: creature.displayHeight });
+  }, [creature.displayHeight, creature.speciesId, modelKey, modelReady, modelUrl]);
   const standIn = model && shown && shown.key !== modelKey && !modelReady ? shown : undefined;
-  const standInCreature = useMemo(() => standIn ? { ...creature, speciesId: standIn.speciesId, formIdentifier: undefined, formModelUrl: undefined } : undefined, [creature, standIn]);
+  const standInCreature = useMemo(() => standIn
+    ? { ...creature, speciesId: standIn.speciesId, displayHeight: standIn.displayHeight, formIdentifier: undefined, formModelUrl: undefined } : undefined, [creature, standIn]);
   useEffect(() => {
     if (supportedModel || creature.formIdentifier) return;
     options.onModelStatus?.(creature.id, 'failed', creature.speciesId);
@@ -861,8 +893,8 @@ function Creature({ creature, selected, distance, options, showLabels, model }: 
   useFrame((_, delta) => {
     if (!root.current) return;
     // Remote-player snapshots also move independently of our simulation gate.
-    // Do not interpolate an empty actor while its model is still unavailable.
-    if (!modelReady) return;
+    // Do not interpolate an empty actor while its model is still unavailable; a stand-in keeps moving.
+    if (!modelReady && !standIn) return;
     const remaining = visual.current.distanceTo(target.current);
     const speed = MathUtils.clamp(creature.movementSpeed ?? 2.4, .5, 16);
     const step = Math.max(speed * Math.min(delta, .05) * 1.2, remaining * Math.min(1, delta * 4));
@@ -881,14 +913,11 @@ function Creature({ creature, selected, distance, options, showLabels, model }: 
       onClick={event => { event.stopPropagation(); if (!creature.remotePlayer) options.onSelect(creature.id); }}
       onDoubleClick={event => { event.stopPropagation(); if (!creature.remotePlayer) options.onInteract?.(creature.id); }}
     >
-      {standIn && standInCreature && <PokemonModel key={`stand-in:${standIn.key}`} creature={standInCreature} url={standIn.url} />}
-      {model && creature.formModelUrl
-        ? <PokemonModel key={modelKey} creature={creature} url={creature.formModelUrl} onStatus={onModelStatus} />
-        : model && creature.formIdentifier
-        ? <PokemonFormUnavailable creature={creature} onStatus={onModelStatus} />
-        : model && supportedModel
-        ? <PokemonModel creature={creature} url={(options.modelUrl ?? (id => `/models/pokemon/${id}.glb`))(creature.speciesId)} onStatus={onModelStatus} />
-        : !supportedModel ? <ModelStatus name="3D 미지원 · 이동 중지" /> : null}
+      {[
+        standIn && standInCreature ? <PokemonModel key={standIn.key} creature={standInCreature} url={standIn.url} /> : null,
+        model && modelUrl ? <PokemonModel key={modelKey} creature={creature} url={modelUrl} onStatus={onModelStatus} /> : null,
+      ]}
+      {!(model && modelUrl) && !supportedModel && <ModelStatus name="3D 미지원 · 이동 중지" />}
       <TransformationEffect creature={creature} />
       {(selected || creature.inBattle) && <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, .04, 0]}><ringGeometry args={[1.1, 1.34, 40]} /><meshBasicMaterial color={creature.inBattle ? '#f09155' : '#f6dd67'} transparent opacity={.86} /></mesh>}
       <AttackEffect active={modelReady && creature.action === 'attack'} moveType={creature.moveType} />
@@ -1108,6 +1137,8 @@ function Sunlight({ player, mobile, color = '#fff3da', intensity = 2.55 }: { pla
 
 function FoodInstances({ foods, sampleWorld }: { foods: OpenWorldRenderSnapshot['foods']; sampleWorld: (x: number, z: number) => WorldSample }) {
   const ref = useRef<InstancedMesh>(null);
+  // A new count rebuilds the mesh around the same material; the replaced mesh frees its render objects.
+  const attach = useReleasingRef(ref);
   useLayoutEffect(() => {
     if (!ref.current) return;
     const transform = new Matrix4();
@@ -1116,7 +1147,7 @@ function FoodInstances({ foods, sampleWorld }: { foods: OpenWorldRenderSnapshot[
     ref.current.computeBoundingSphere();
   }, [foods, sampleWorld]);
   if (!foods?.length) return null;
-  return <instancedMesh ref={ref} args={[undefined, undefined, foods.length]}><icosahedronGeometry args={[.24, 1]} /><meshStandardMaterial color="#efca58" emissive="#785e16" emissiveIntensity={.35} /></instancedMesh>;
+  return <instancedMesh ref={attach} args={[undefined, undefined, foods.length]}><icosahedronGeometry args={[.24, 1]} /><meshStandardMaterial color="#efca58" emissive="#785e16" emissiveIntensity={.35} /></instancedMesh>;
 }
 
 function useViewWindow() {
@@ -1161,7 +1192,13 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
   const skyColor = useMemo(() => new Color(look ? look.sky : gymHall?.kind === 'league' ? '#2c2618' : gymHall ? '#2a2f33' : '#b2e1f4'), [look, gymHall]);
   const worldOptions = useMemo(() => ({ ...options, sampleWorld: sample }), [options, sample]);
   const windowState = useViewWindow();
-  const chunks = useMemo(() => terrainChunks(snapshot.player, windowState.visible), [snapshot.player.x, snapshot.player.z, windowState.visible]);
+  // Ground once shown stays mounted while in range; only walking away or a detail change replaces a chunk.
+  const shownChunks = useRef<ReadonlySet<string>>(new Set());
+  const chunks = useMemo(() => {
+    const next = terrainChunks(snapshot.player, windowState.visible, shownChunks.current);
+    shownChunks.current = new Set(next.map(chunk => chunk.key));
+    return next;
+  }, [snapshot.player.x, snapshot.player.z, windowState.visible]);
   const visible = useMemo(() => creatureLods(gymHall ? snapshot.entities.filter(creature => !creature.id.startsWith('wild-') && gymHall.contains(creature.x, creature.z)) : snapshot.entities,
     snapshot.player, windowState.visible, windowState.mobile, snapshot.selectedWildId),
     [gymHall, snapshot.entities, snapshot.player.x, snapshot.player.z, snapshot.selectedWildId, windowState.mobile, windowState.visible]);

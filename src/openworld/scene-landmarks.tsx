@@ -251,7 +251,8 @@ export function CaveInterior({ cave, player, mobile, onNavigate }: { cave: CaveS
   const walls = useMemo(() => createCaveWalls(cave, interiorSurface('strata').tile), [cave]);
   useEffect(() => () => { floorMaterial.dispose(); wallMaterial.dispose(); formationMaterial.dispose(); }, [floorMaterial, formationMaterial, wallMaterial]);
   useEffect(() => () => { floor.dispose(); walls.dispose(); }, [floor, walls]);
-  return <group name={`cave-interior:${cave.id}`} dispose={null}>
+  // No dispose={null}: R3F then disposes the inline geometries on unmount. Props and primitives stay with their owners.
+  return <group name={`cave-interior:${cave.id}`}>
     <mesh name="cave-floor" geometry={floor} material={floorMaterial} receiveShadow onClick={event => { event.stopPropagation(); if (event.button === 0 && event.delta <= 5) onNavigate({ x: event.point.x, z: event.point.z }); }}>
     </mesh>
     <mesh name="cave-wall:outline" geometry={walls} material={wallMaterial} receiveShadow castShadow />

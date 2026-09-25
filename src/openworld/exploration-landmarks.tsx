@@ -9,6 +9,7 @@ import { terrainSurfaceHeight } from './grounding';
 import { THEME_COLORS, buildExplorationSites, buildRouteEdgeMarkers, nearbyExplorationSites, type ExplorationSite, type ExplorationTheme, type RouteEdgeMarker } from './exploration-sites';
 import { bridgeGeometry, edgeMarkerGeometry, lookoutGeometry, restSpotGeometry, signpostGeometry } from './landmark-geometry';
 import { detailMaterial } from './town-details';
+import { releaseOnDetach, useReleasingRef } from '../three/render-objects';
 
 export { THEME_COLORS };
 
@@ -53,7 +54,7 @@ function SignBoard({ name, color, onNavigate }: { name: string; color: string; o
 function Signpost({ site, directions, onNavigate, showLabel }: { site: ExplorationSite; directions: Array<WorldPoint & { name: string }>; onNavigate: (point: WorldPoint) => void; showLabel: boolean }) {
   const colors = THEME_COLORS[site.theme], arms = Math.min(3, directions.length);
   return <group name={site.id} rotation={[0, site.yaw, 0]} onClick={clickTo(site, onNavigate)}>
-    <mesh geometry={signpostGeometry(site.theme)} material={detailMaterial()} castShadow dispose={null} />
+    <mesh ref={releaseOnDetach} geometry={signpostGeometry(site.theme)} material={detailMaterial()} castShadow dispose={null} />
     {directions.slice(0, arms).map((direction, index) => <group key={index} position={[(index % 2 ? -1 : 1) * .72, 2.2 - index * .43, 0]}>
       <SignBoard name={direction.name} color={index === 0 ? colors.accent : colors.wood} onNavigate={() => onNavigate(direction)} />
     </group>)}
@@ -70,14 +71,14 @@ function awayFromRoad(atlas: WorldAtlas, site: ExplorationSite): number {
 
 function RestSpot({ site, rotation, onNavigate, showLabel }: { site: ExplorationSite; rotation: number; onNavigate: (point: WorldPoint) => void; showLabel: boolean }) {
   return <group name={site.id} rotation={[0, rotation, 0]} onClick={clickTo(site, onNavigate)}>
-    <mesh geometry={restSpotGeometry(site.theme)} material={detailMaterial()} castShadow receiveShadow dispose={null} />
+    <mesh ref={releaseOnDetach} geometry={restSpotGeometry(site.theme)} material={detailMaterial()} castShadow receiveShadow dispose={null} />
     {showLabel && <NearbyLabel site={site} />}
   </group>;
 }
 
 function Lookout({ site, rotation, onNavigate, showLabel }: { site: ExplorationSite; rotation: number; onNavigate: (point: WorldPoint) => void; showLabel: boolean }) {
   return <group name={site.id} rotation={[0, rotation, 0]} onClick={clickTo(site, onNavigate)}>
-    <mesh geometry={lookoutGeometry(site.theme)} material={detailMaterial()} castShadow receiveShadow dispose={null} />
+    <mesh ref={releaseOnDetach} geometry={lookoutGeometry(site.theme)} material={detailMaterial()} castShadow receiveShadow dispose={null} />
     {showLabel && <NearbyLabel site={site} />}
   </group>;
 }
@@ -93,39 +94,67 @@ function Bridge({ site, sampleWorld, onNavigate, showLabel }: { site: Exploratio
   // GPU buffers go when the bridge streams out; the CPU copy stays cached for re-entry.
   useEffect(() => () => geometry.dispose(), [geometry]);
   return <group name={site.id} rotation={[0, site.yaw, 0]} onClick={clickTo(site, onNavigate)}>
-    <mesh geometry={geometry} material={detailMaterial()} castShadow receiveShadow dispose={null} />
+    <mesh ref={releaseOnDetach} geometry={geometry} material={detailMaterial()} castShadow receiveShadow dispose={null} />
     {showLabel && <NearbyLabel site={site} />}
   </group>;
 }
 
+const markerScratch = { matrix: new Matrix4(), rotation: new Quaternion(), position: new Vector3(), scale: new Vector3(), up: new Vector3(0, 1, 0) };
+
 function EdgeMarkerInstances({ markers, sampleWorld, theme, water }: { markers: readonly RouteEdgeMarker[]; sampleWorld: (x: number, z: number) => WorldSample; theme: ExplorationTheme; water: boolean }) {
-  const ref = useRef<InstancedMesh>(null), matrix = useMemo(() => new Matrix4(), []), rotation = useMemo(() => new Quaternion(), []);
+  const ref = useRef<InstancedMesh>(null);
+  // A larger capacity rebuilds the mesh around the shared material; the old one frees its render objects.
+  const attach = useReleasingRef(ref);
   const geometry = useMemo(() => edgeMarkerGeometry(theme, water), [theme, water]);
   useEffect(() => () => geometry.dispose(), [geometry]);
+  // The instance buffer is sized by the count at its first draw, so the count stays at a capacity that only grows
+  // and unused slots are scaled to nothing at the first marker. A changing marker count reuses the mesh.
+  const grown = useRef(8);
+  const capacity = grown.current = Math.max(grown.current, 2 ** Math.ceil(Math.log2(Math.max(1, markers.length))));
   useLayoutEffect(() => {
-    if (!ref.current) return;
+    const mesh = ref.current; if (!mesh) return;
+    const { matrix, rotation, position, scale, up } = markerScratch;
     markers.forEach((marker, index) => {
-      rotation.setFromAxisAngle(new Vector3(0, 1, 0), marker.yaw);
-      matrix.compose(new Vector3(marker.x, terrainSurfaceHeight(sampleWorld, marker.x, marker.z), marker.z), rotation, new Vector3(1, marker.biome === 'rock' ? 1.15 : 1, 1));
-      ref.current!.setMatrixAt(index, matrix);
+      rotation.setFromAxisAngle(up, marker.yaw);
+      matrix.compose(position.set(marker.x, terrainSurfaceHeight(sampleWorld, marker.x, marker.z), marker.z), rotation, scale.set(1, marker.biome === 'rock' ? 1.15 : 1, 1));
+      mesh.setMatrixAt(index, matrix);
     });
-    ref.current.count = markers.length; ref.current.instanceMatrix.needsUpdate = true; ref.current.computeBoundingSphere();
-  }, [markers, sampleWorld, matrix, rotation]);
-  return <instancedMesh ref={ref} args={[geometry, detailMaterial(), markers.length]} castShadow={!water} frustumCulled dispose={null} />;
+    const first = markers[0];
+    matrix.makeScale(0, 0, 0);
+    if (first) matrix.setPosition(first.x, terrainSurfaceHeight(sampleWorld, first.x, first.z), first.z);
+    for (let index = markers.length; index < capacity; index++) mesh.setMatrixAt(index, matrix);
+    mesh.instanceMatrix.needsUpdate = true; mesh.computeBoundingSphere();
+  }, [markers, sampleWorld, capacity]);
+  return <instancedMesh ref={attach} args={[geometry, detailMaterial(), capacity]} castShadow={!water} frustumCulled dispose={null} />;
 }
+
+type MarkerGroup = { key: string; theme: ExplorationTheme; water: boolean; items: RouteEdgeMarker[] };
 
 /** 3D roadside landmarks derived from the active atlas. TrailAndWater remains the sole road-surface owner. */
 export function ExplorationLandmarks({ atlas, sampleWorld, player, visibility, onNavigate, badges }: ExplorationLandmarksProps) {
   const sites = useMemo(() => buildExplorationSites(atlas, sampleWorld, badges), [atlas, sampleWorld, badges]);
   const markers = useMemo(() => buildRouteEdgeMarkers(atlas, sampleWorld, badges), [atlas, sampleWorld, badges]);
   const nearbySites = nearbyExplorationSites(sites, player, 92).filter(site => visibility(site.x, sampleWorld(site.x, site.z).height + 2, site.z, Math.max(7, (site.span ?? 0) / 2 + 2)));
-  const nearbyMarkers = nearbyExplorationSites(markers, player, 82).filter(marker => visibility(marker.x, sampleWorld(marker.x, marker.z).height + 1, marker.z, 2));
-  const markerGroups = [...new Map(nearbyMarkers.map(marker => {
-    const water = marker.biome === 'lake';
-    return [`${marker.theme}:${water}`, { theme: marker.theme, water, items: nearbyMarkers.filter(item => item.theme === marker.theme && (item.biome === 'lake') === water) }];
-  })).entries()];
+  // Grouped in one pass. A group whose markers are unchanged keeps its array, so its instances are not rebuilt.
+  const previousGroups = useRef(new Map<string, MarkerGroup>());
+  const markerGroups = useMemo(() => {
+    const groups = new Map<string, MarkerGroup>();
+    for (const marker of nearbyExplorationSites(markers, player, 82)) {
+      if (!visibility(marker.x, sampleWorld(marker.x, marker.z).height + 1, marker.z, 2)) continue;
+      const water = marker.biome === 'lake', key = `${marker.theme}:${water}`;
+      let group = groups.get(key);
+      if (!group) groups.set(key, group = { key, theme: marker.theme, water, items: [] });
+      group.items.push(marker);
+    }
+    for (const [key, group] of groups) {
+      const previous = previousGroups.current.get(key);
+      if (previous && previous.items.length === group.items.length && previous.items.every((item, index) => item === group.items[index])) groups.set(key, previous);
+    }
+    previousGroups.current = groups;
+    return [...groups.values()];
+  }, [markers, player.x, player.z, visibility, sampleWorld]);
   return <group name={`exploration-landmarks:${atlas.id}`} userData={{ gaesupWorldObject: 'exploration-landmarks' }}>
-    {markerGroups.map(([key, group]) => <EdgeMarkerInstances key={`${key}:${group.items.length}`} markers={group.items} sampleWorld={sampleWorld} theme={group.theme} water={group.water} />)}
+    {markerGroups.map(group => <EdgeMarkerInstances key={group.key} markers={group.items} sampleWorld={sampleWorld} theme={group.theme} water={group.water} />)}
     {nearbySites.map(site => {
       const y = terrainSurfaceHeight(sampleWorld, site.x, site.z), showLabel = Math.hypot(site.x - player.x, site.z - player.z) <= 15;
       return <group key={site.id} position={[site.x, y, site.z]}>

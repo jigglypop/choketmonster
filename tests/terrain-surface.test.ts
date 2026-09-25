@@ -28,6 +28,25 @@ describe('continuous shoreline terrain', () => {
     geometry.dispose(); skirt.dispose();
   });
 
+  it('builds a chunk once and hands each mount its own geometry over the cached arrays', () => {
+    let samples = 0;
+    const counted = (x: number, z: number) => { samples++; return sample(x, z); };
+    const chunk = { key: 'cached', x: 40, z: 0, segments: 12, distance: 10 };
+    const first = createTerrainSurface(chunk, counted, atlas), built = samples;
+    const second = createTerrainSurface(chunk, counted, atlas);
+    expect(samples).toBe(built);
+    expect(second.geometry).not.toBe(first.geometry);
+    for (const name of ['position', 'normal', 'color', 'uv', 'waterCoverage']) {
+      expect(second.geometry.getAttribute(name).array).toBe(first.geometry.getAttribute(name).array);
+    }
+    expect(second.skirt.getAttribute('normal').array).toBe(first.skirt.getAttribute('normal').array);
+    expect(second.geometry.userData).toEqual(first.geometry.userData);
+    first.geometry.dispose(); first.skirt.dispose();
+    expect(createTerrainSurface({ ...chunk, segments: 4, distance: 60 }, counted, atlas).geometry.getAttribute('position').count).toBeLessThan(first.geometry.getAttribute('position').count);
+    expect(samples).toBeGreaterThan(built);
+    for (const surface of [second]) { surface.geometry.dispose(); surface.skirt.dispose(); }
+  });
+
   it('matches normals across neighboring chunks with different LODs', () => {
     const left = createTerrainSurface({ key: 'left', x: -20, z: 0, segments: 12, distance: 20 }, sample, atlas);
     const right = createTerrainSurface({ key: 'right', x: 20, z: 0, segments: 4, distance: 70 }, sample, atlas);

@@ -3,6 +3,7 @@ import { BufferGeometry, Color, Float32BufferAttribute, Mesh, MeshStandardMateri
 import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { acquireModel } from '../three/model-cache';
+import { releaseOnDetach } from '../three/render-objects';
 import type { WorldAtlas } from './atlas';
 import { caveMouths, type CaveMouth } from './caves';
 import { terrainSurfaceHeight } from './grounding';
@@ -84,7 +85,8 @@ export function CaveMouths({ atlas, sampleWorld, player, visible }: {
     {placed.filter(({ mouth, y }) => Math.hypot(mouth.x - player.x, mouth.z - player.z) <= 80 && visible(mouth.x, y + mouth.height / 2, mouth.z, Math.hypot(mouth.width, mouth.height, mouth.depth) / 2)).map(({ mouth, y }) => {
       // `rotationY` turns local -Z to face out of the cave; the model's doorway faces +Z, so it turns half a circle more.
       const outX = -Math.sin(mouth.rotationY), outZ = -Math.cos(mouth.rotationY);
-      return <mesh key={mouth.id} name={`cave-mouth:${mouth.id}`} geometry={model.geometry} material={material}
+      // The mound material outlives the meshes that come and go with the view, so each frees its render objects.
+      return <mesh key={mouth.id} ref={releaseOnDetach} name={`cave-mouth:${mouth.id}`} geometry={model.geometry} material={material}
         position={[mouth.x + outX * mouth.depth / 2, y, mouth.z + outZ * mouth.depth / 2]} rotation={[0, mouth.rotationY + Math.PI, 0]}
         scale={[mouth.width / model.size.x, (mouth.height + .2) / model.size.y, mouth.depth / model.size.z]} castShadow receiveShadow dispose={null} />;
     })}

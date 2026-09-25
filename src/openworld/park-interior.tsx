@@ -11,6 +11,7 @@ import type { WorldPoint, WorldSample } from './types';
 import { FieldGrass } from './field-grass';
 import { createWaterNodeMaterial, forestFloorColor, normalizeStandardMaterial, regionTrailColor, useSurfaceMaterial } from './materials';
 import { acquireModel } from '../three/model-cache';
+import { releaseOnDetach, useReleasingRef } from '../three/render-objects';
 import { SCENERY_ASSETS, type SceneryAssetId } from './scenery';
 import { MergedBuilder, at, detailMaterial } from './town-details';
 import { detailNoise, trailHalfWidth } from './world-details';
@@ -202,6 +203,8 @@ const scratch = { placement: new Matrix4(), result: new Matrix4(), position: new
 
 function PlantPart({ geometry, material, matrix, placements, scale, shadows }: { geometry: BufferGeometry; material: Material | Material[]; matrix: Matrix4; placements: readonly Placement[]; scale: number; shadows: boolean }) {
   const mesh = useRef<InstancedMesh>(null);
+  // A larger capacity remounts the mesh on the same materials; the old one frees its render objects.
+  const attach = useReleasingRef(mesh);
   // Capacity only grows, so walking past the rim woods reuses the instance buffer.
   const grown = useRef(8);
   const capacity = grown.current = Math.max(grown.current, 2 ** Math.ceil(Math.log2(Math.max(1, placements.length))));
@@ -215,7 +218,7 @@ function PlantPart({ geometry, material, matrix, placements, scale, shadows }: {
     });
     target.count = placements.length; target.instanceMatrix.needsUpdate = true; target.computeBoundingSphere();
   }, [placements, matrix, scale, capacity]);
-  return <instancedMesh key={capacity} ref={mesh} args={[geometry, material, capacity]} count={placements.length} castShadow={shadows} receiveShadow dispose={null} />;
+  return <instancedMesh key={capacity} ref={attach} args={[geometry, material, capacity]} count={placements.length} castShadow={shadows} receiveShadow dispose={null} />;
 }
 
 /** One shared nature model drawn at every placement, one instanced draw per material. */
@@ -281,16 +284,18 @@ export function ParkInterior({ scene, atlas, player, mobile, onNavigate }: { sce
   useEffect(() => () => { water.pools.forEach(material => material.dispose()); water.basin?.dispose(); }, [water]);
   const grassAtlas = useMemo(() => parkGrassAtlas(atlas, scene), [atlas, scene]);
   const fountainY = park.fountain ? sample(park.fountain.x, park.fountain.z).height : 0;
-  return <group name={`park-interior:${scene.id}`} dispose={null}>
+  // No dispose={null}: R3F then disposes the fountain water's inline geometry on unmount. Props stay with their owners.
+  return <group name={`park-interior:${scene.id}`}>
     <mesh name="park-ground" geometry={geometries.ground} material={groundMaterial} receiveShadow
       onClick={event => { event.stopPropagation(); if (event.button === 0 && event.delta <= 5) onNavigate({ x: event.point.x, z: event.point.z }); }} />
     <mesh name="park-horizon" geometry={geometries.horizon} material={groundMaterial} receiveShadow />
     <mesh name="park-trails" geometry={geometries.trail} material={pathMaterial} receiveShadow />
     {geometries.ponds.map((geometry, index) => <mesh key={index} name={`park-pond:${index}`} geometry={geometry} material={water.pools[index]} receiveShadow />)}
-    <mesh name="park-hedge" geometry={geometries.hedge} material={detailMaterial()} castShadow receiveShadow />
-    <mesh name="park-gates" geometry={geometries.gates} material={detailMaterial()} castShadow receiveShadow />
+    {/* The shared detail material outlives the park, so these meshes free their own render objects. */}
+    <mesh ref={releaseOnDetach} name="park-hedge" geometry={geometries.hedge} material={detailMaterial()} castShadow receiveShadow />
+    <mesh ref={releaseOnDetach} name="park-gates" geometry={geometries.gates} material={detailMaterial()} castShadow receiveShadow />
     {geometries.fountain && <>
-      <mesh name="park-fountain" geometry={geometries.fountain} material={detailMaterial()} castShadow receiveShadow />
+      <mesh ref={releaseOnDetach} name="park-fountain" geometry={geometries.fountain} material={detailMaterial()} castShadow receiveShadow />
       <mesh name="park-fountain-water" position={[park.fountain!.x, fountainY + .34, park.fountain!.z]} rotation={[-Math.PI / 2, 0, 0]} material={water.basin}>
         <circleGeometry args={[park.fountain!.radius - .25, 32]} />
       </mesh>

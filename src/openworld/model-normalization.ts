@@ -35,8 +35,8 @@ function assertVisibleGeometry(model: Object3D): void {
   if (!renderable) throw new Error('Pokemon model has no visible geometry');
 }
 
-/** Prepare each cached asset once, yielding between poses so new models do not stall input. */
-export function preparePokemonModel(source: Object3D, animations: readonly AnimationClip[]): Promise<void> {
+/** Prepare each cached asset once, yielding between poses so new models do not stall input. An aborted load stops at the next pose. */
+export function preparePokemonModel(source: Object3D, animations: readonly AnimationClip[], signal?: AbortSignal): Promise<void> {
   try { assertVisibleGeometry(source); } catch (error) { return Promise.reject(error); }
   if (profiles.has(source)) return Promise.resolve();
   const pending = preparing.get(source);
@@ -48,6 +48,7 @@ export function preparePokemonModel(source: Object3D, animations: readonly Anima
       let step = iterator.next();
       while (!step.done) {
         await new Promise<void>(resolve => setTimeout(resolve, 0));
+        if (signal?.aborted) throw signal.reason ?? new Error('Model load aborted');
         step = iterator.next();
       }
       profiles.set(source, step.value);

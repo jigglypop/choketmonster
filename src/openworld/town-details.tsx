@@ -8,6 +8,7 @@ import type { WorldSample } from './types';
 import { THEME_COLORS, type ExplorationTheme } from './exploration-sites';
 import { cachedSceneryPlacements } from './scenery';
 import { PAVING_CELL, createWorldDetails, type DetailKind, type TownLayout, type TownProp, type WorldDetails } from './world-details';
+import { releaseOnDetach } from '../three/render-objects';
 
 type Tint = string | Color;
 const scratch = { position: new Vector3(), normal: new Vector3(), color: new Color(), axis: new Vector3() };
@@ -58,7 +59,8 @@ const shade = (value: Tint, amount: number) => new Color(value).multiplyScalar(a
 const mixed = (a: Tint, b: Tint, t: number) => new Color(a).lerp(new Color(b), t);
 
 let sharedMaterial: MeshStandardMaterial | undefined;
-/** One vertex-coloured material shared by every procedural detail kind. */
+/** One vertex-coloured material shared by every procedural detail kind. It is never disposed, so every mesh
+ * drawn with it frees its own render objects when it unmounts (see render-objects). */
 export function detailMaterial(): MeshStandardMaterial {
   return sharedMaterial ??= new MeshStandardMaterial({ vertexColors: true, roughness: .86, metalness: 0 });
 }
@@ -261,7 +263,8 @@ export function TownProps({ layout, color }: { layout: TownLayout; color: string
   const geometry = useMemo(() => townGeometry(layout, color), [layout, color]);
   // Release GPU buffers when the town streams out; the CPU copy stays cached for re-entry.
   useEffect(() => () => geometry.dispose(), [geometry]);
-  return <mesh name={`town-detail:${layout.id}`} geometry={geometry} material={detailMaterial()} receiveShadow dispose={null} />;
+  // The shared detail material outlives the mesh, so the mesh frees its own render objects.
+  return <mesh ref={releaseOnDetach} name={`town-detail:${layout.id}`} geometry={geometry} material={detailMaterial()} receiveShadow dispose={null} />;
 }
 
 let pavingGeometry: BufferGeometry | undefined;
