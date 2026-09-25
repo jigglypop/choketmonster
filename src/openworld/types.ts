@@ -36,7 +36,7 @@ export type WorldCreature = WorldPoint & {
   /** Move just used, shown above the nameplate with the damage it dealt; the key restarts its animation. */
   cue?: { key: string; text: string; moveType: string; damage?: number };
   /** A held or used item's effect this turn, shown beside the nameplate. */
-  note?: { key: string; text: string };
+  note?: { key: string; text: string; detail?: string };
   /** Engine ailment id (poison, burn, sleep…). */
   status?: string;
   /** Ephemeral same-region presence. Never participates in simulation selection or saves. */

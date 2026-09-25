@@ -3,7 +3,7 @@ import { getMove, getSpecies } from '../data/pokemon';
 import { fieldTrainersAt, getFieldTrainer } from '../data/field-trainers';
 import { pokemonModelUrl, pokemonSpriteUrl } from '../game/assets';
 import { getMoveLayout } from '../game/move-layout';
-import { battleMonsterMaxHp, battleMoveView, experienceAtLevel, FIELD_ITEMS, firstUsableRegionalTeamIndex, heal, HEALING_ITEM_HP, HELD_TOOL_DESCRIPTIONS, ITEM_LABELS, statsFor, type BattleTurnResult, type GameState, type HeldTool, type Monster } from '../game/engine';
+import { battleMonsterMaxHp, battleMoveView, experienceAtLevel, FIELD_ITEMS, firstUsableRegionalTeamIndex, heal, HEALING_ITEM_HP, HELD_TOOL_DESCRIPTIONS, HELD_TOOLS, ITEM_LABELS, statsFor, type BattleTurnResult, type GameState, type HeldTool, type Monster } from '../game/engine';
 import { isCampaignRegion, monsterRegionalUseReason, REGIONAL_STARTERS } from '../game/regional-policy';
 import { CAMPAIGN_TRAINERS, campaignEntryReason, campaignTravelReason, getCampaignGyms, getNextCampaignTrainer, getRegionalBadges, type CampaignRegion } from '../game/campaign';
 import { getWorldAtlas } from './atlas';
@@ -67,7 +67,7 @@ export class OpenWorldPanel {
   /** Move names above nameplates, target flinches and move effects, keyed by battler instance. */
   private cues = new Map<string, { key: string; text: string; moveType: string; damage?: number; start: number; end: number }>();
   /** Item effects of the last turns, by Pokémon, shown beside its nameplate. */
-  private notes = new Map<string, { key: string; text: string; start: number; end: number }>();
+  private notes = new Map<string, { key: string; text: string; detail?: string; start: number; end: number }>();
   private hurts = new Map<string, { start: number; end: number }>();
   private effects: WorldMoveEffect[] = [];
   private cueSerial = 0;
@@ -830,7 +830,12 @@ export class OpenWorldPanel {
         // Item effects follow the moves; several on one Pokémon in a turn share its note.
         const noted = new Map<string, string[]>();
         for (const entry of event.result.events) if (entry.cue) noted.set(entry.cue.instanceId, [...noted.get(entry.cue.instanceId) ?? [], entry.cue.text]);
-        for (const [id, texts] of noted) { const start = now + executed.length * 300; this.notes.set(id, { key: String(++this.cueSerial), text: texts.join(' · '), start, end: start + 2200 }); }
+        for (const [id, texts] of noted) {
+          // The cue starts with the item's name; a held tool also says what it does.
+          const tool = HELD_TOOLS.find(candidate => texts.some(text => text.startsWith(ITEM_LABELS[candidate])));
+          const start = now + executed.length * 300, detail = tool ? HELD_TOOL_DESCRIPTIONS[tool] : undefined;
+          this.notes.set(id, { key: String(++this.cueSerial), text: texts.join(' · '), detail, start, end: start + (detail ? 3600 : 2200) });
+        }
         if (event.result.battleEnded && !event.result.gymVictory) this.options.notify(event.result.outcome === 'won' ? '승리! 경험치와 보상을 받았습니다.' : event.result.outcome === 'caught' ? '포획 성공! 팀과 도감에 등록했습니다.' : event.result.outcome === 'lost' ? '파트너가 쓰러졌습니다. 회복한 뒤 다시 탐험하세요.' : '배틀에서 벗어났습니다.');
         // A finished battle, with its capture, rewards and evolutions, is saved at once so it never replays on reload;
         // a turn in between rides the queued save. The fixed-step world never waits for either.
@@ -932,7 +937,7 @@ export class OpenWorldPanel {
     const attacking = (id?: string) => { const attack = id ? this.attacks.get(id) : undefined; return attack && now >= attack.start && now < attack.end ? attack : undefined; };
     const hurting = (id?: string) => { const hurt = id ? this.hurts.get(id) : undefined; return Boolean(hurt && now >= hurt.start && now < hurt.end); };
     const cue = (id?: string) => { const shown = id ? this.cues.get(id) : undefined; return shown && now >= shown.start && now < shown.end ? { key: shown.key, text: shown.text, moveType: shown.moveType, damage: shown.damage } : undefined; };
-    const note = (id?: string) => { const shown = id ? this.notes.get(id) : undefined; return shown && now >= shown.start && now < shown.end ? { key: shown.key, text: shown.text } : undefined; };
+    const note = (id?: string) => { const shown = id ? this.notes.get(id) : undefined; return shown && now >= shown.start && now < shown.end ? { key: shown.key, text: shown.text, detail: shown.detail } : undefined; };
     const ally = battle ? battle.player.team[battle.player.activeIndex] : game.player.team[firstUsableRegionalTeamIndex(game, this.simulation.regionId)] ?? game.player.team[0];
     const enemy = battle?.enemy.team[battle.enemy.activeIndex];
     this.preloadMegaModel(battle ? ally : undefined);

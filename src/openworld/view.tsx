@@ -824,7 +824,7 @@ function CreatureBillboard({ creature, hp, distance, emphasized }: { creature: W
     <Html center zIndexRange={[2, 1]} style={{ pointerEvents: 'none' }}>
       <div className={`ow-creature-label${emphasized ? ' ow-creature-label-selected' : ''}${mythical ? ' ow-creature-label-mythical' : legendary ? ' ow-creature-label-legendary' : ''}${self ? ' ow-creature-label-self' : ''}`} data-creature-id={creature.id}>
         {creature.cue && <b key={creature.cue.key} className={`ow-move-cue ow-move-${creature.cue.moveType}`}>{creature.cue.damage ? <i className="ow-cue-damage">{creature.cue.damage}</i> : null}{creature.cue.text}</b>}
-        {creature.note && <b key={creature.note.key} className="ow-item-cue">{creature.note.text}</b>}
+        {creature.note && <b key={creature.note.key} className={`ow-item-cue${creature.note.detail ? ' ow-item-cue-long' : ''}`}>{creature.note.text}{creature.note.detail && <small>{creature.note.detail}</small>}</b>}
         <strong>{types.map(type => <i key={type} className="ow-type-dot" style={{ background: TYPE_COLORS[type] }} />)}{remote ? remote.name : `${creature.name} · Lv.${creature.level}`}{statusLabel(creature.status) && <em className={`ow-status ow-status-${creature.status}`}>{statusLabel(creature.status)}</em>}</strong>
         {remote && <span>{remote.activity === 'battle' ? '배틀 중' : remote.activity === 'moving' ? '이동 중' : '대기'}</span>}
         {!remote && <div className="ow-hp-track"><i className="ow-hp-fill" style={{ width: `${Math.max(0, Math.min(1, hp)) * 100}%`, background: hp > .45 ? '#82d179' : hp > .2 ? '#e5ca55' : '#e56f59' }} /></div>}

@@ -48,6 +48,7 @@ import './ui/auth-glass.css';
 import './ui/hud-card.css';
 import './ui/hud-social.css';
 import './ui/team-detail.css';
+import { bindItemBag, giveItem, itemBagHtml } from './ui/item-bag';
 import { openMachineDialog } from './ui/machine-dialog';
 import { statusLabel } from './game/status-labels';
 import { mountInterfaceSettings } from './ui/settings';
@@ -73,7 +74,7 @@ import { EVOLUTION_TREAT_EFFECTS } from './game/evolution-conditions';
 import { evolutionProgress } from './game/evolution-progress';
 import { itemShopHtml, type ShopCategory, type ShopTown } from './ui/item-shop';
 
-type Tab = 'map' | 'team' | 'dex' | 'shop' | 'ranked' | 'lab';
+type Tab = 'map' | 'team' | 'items' | 'dex' | 'shop' | 'ranked' | 'lab';
 type PersistentView = ViewState & { rewards?: Record<string, number>; openWorld?: OpenWorldSnapshot };
 const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 const app = $('#app');
@@ -103,7 +104,7 @@ let serverConnectome: { available: boolean; graphId?: string; kind?: string; nod
 
 app.innerHTML = `
   <header class="topbar"><a class="brand" href="#" aria-label="초켓몬스터 홈" title="초켓몬스터"></a>
-    <nav aria-label="주 메뉴"><button data-tab="map" class="active">모험</button><button data-tab="team">팀 · 박스</button><button data-tab="dex">도감</button><button data-tab="shop">상점</button><button data-tab="ranked">랭크전</button></nav>
+    <nav aria-label="주 메뉴"><button data-tab="map" class="active">모험</button><button data-tab="team">팀 · 박스</button><button data-tab="items">물품</button><button data-tab="dex">도감</button><button data-tab="shop">상점</button><button data-tab="ranked">랭크전</button></nav>
     <div class="trainer-summary"><span id="money">₩0</span><span id="badges">도감 0/${PLAYABLE_SPECIES_IDS.length}</span><button id="open-interface-settings" class="interface-settings-trigger" aria-label="화면 설정" title="화면 설정"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3" fill="var(--ui-surface, white)"/><circle cx="15" cy="17" r="3" fill="var(--ui-surface, white)"/></svg><span>화면 설정</span></button><details class="account-menu"><summary aria-label="계정·저장" title="계정·저장"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="8.5" r="3.6"/><path d="M4.8 20c.9-3.8 3.7-5.8 7.2-5.8s6.3 2 7.2 5.8"/></svg><i class="account-menu-dot" aria-hidden="true"></i></summary><div class="account-menu-panel"><span id="save-state" class="save-state" data-state="local" aria-live="polite"><i></i> 이 기기에 저장됨</span><button id="save-now" class="quiet">지금 저장</button><span class="device-storage">이 기기에 저장</span><span id="account-controls"></span></div></details></div></header>
   <main id="screen" tabindex="-1"></main>
   <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true" popover="manual" hidden></div><input id="import-file" type="file" accept="application/json" hidden>
@@ -300,7 +301,7 @@ function render() {
   if (tab !== 'ranked') rankedPanel.unmount();
   if (game.battle && !worldPanel && tab !== 'team' && tab !== 'shop') { renderBattle(); return; }
   if (tab === 'map') renderMap();
-  else { worldPanel?.unmount(); if (tab === 'team') renderTeam(); else if (tab === 'dex') renderDex(); else if (tab === 'shop') renderShop(); else if (tab === 'ranked') rankedPanel.mount($('#screen')); else renderLab(); }
+  else { worldPanel?.unmount(); if (tab === 'team') renderTeam(); else if (tab === 'items') renderItems(); else if (tab === 'dex') renderDex(); else if (tab === 'shop') renderShop(); else if (tab === 'ranked') rankedPanel.mount($('#screen')); else renderLab(); }
 }
 
 function renderMap() {
@@ -742,6 +743,22 @@ function renderTeam() {
   renderSelectedDetail();
 }
 
+function renderItems() {
+  detachPokemonScene();
+  if (!game) return;
+  $('#screen').innerHTML = itemBagHtml(game);
+  bindItemBag($('#screen'), {
+    rerender: renderItems,
+    give: (item, instanceId) => action(() => {
+      const monster = game!.player.team.find(candidate => candidate.instanceId === instanceId);
+      if (!monster) throw new Error('팀에서 포켓몬을 찾지 못했습니다.');
+      notify(giveItem(game!, item, monster, currentCollectionRegion()));
+      worldPanel?.simulation.reconcileTeamChange();
+    }),
+    unequip: instanceId => action(() => { assignHeldTool(game!, instanceId, undefined); worldPanel?.simulation.reconcileTeamChange(); }),
+  });
+}
+
 const DEX_PAGE_SIZE = 60;
 function dexPool() {
   return (dexRegion === 'all' ? getPlayableSpeciesIds() : regionalDexSpeciesIds(dexRegion).filter(isPlayableSpecies)).map(getSpecies);
@@ -909,7 +926,7 @@ document.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b => b.onclic
   const next = b.dataset.tab as Tab;
   if (tab === 'ranked' && next !== 'ranked' && rankedPanel.hasActiveSession()) { notify(RANKED_SESSION_MESSAGE); return; }
   if (game?.battle && !worldPanel && next !== 'team' && next !== 'shop') { notify('배틀 중에는 팀·박스와 상점만 열 수 있습니다.'); return; }
-  const panel = worldPanel, editing = next === 'team' || next === 'shop';
+  const panel = worldPanel, editing = next === 'team' || next === 'items' || next === 'shop';
   changingTab = true;
   document.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(button => { button.disabled = true; });
   let release: (() => void) | undefined;

@@ -1,0 +1,56 @@
+/* The bag: items on the left, the team to hand them to and the picked item's card on the right. */
+.bag-page .bag-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 400px); gap: 20px; align-items: start; }
+.bag-panel { padding: 18px; }
+.bag-side { position: sticky; top: calc(var(--app-header-height, 70px) + 16px); display: grid; gap: 14px; }
+.bag-filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.bag-filters button { min-height: 36px; padding: 6px 14px; border: 1px solid var(--ui-border); border-radius: 999px; background: var(--ui-surface); color: var(--ui-muted); font-weight: 600; }
+.bag-filters button[aria-pressed=true] { border-color: transparent; background: var(--ui-accent); color: #fff; }
+.bag-group + .bag-group { margin-top: 16px; }
+.bag-group h2 { margin: 0 0 8px; color: var(--ui-muted); font-size: 12px; font-weight: 700; letter-spacing: .02em; }
+.bag-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.bag-item { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 48px; padding: 8px 12px; border: 1px solid var(--ui-border); border-radius: 14px; background: var(--ui-surface); color: var(--ui-text); text-align: left; cursor: grab; user-select: none; transition: transform .12s, box-shadow .12s, border-color .12s; }
+.bag-item:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(98, 84, 170, .12); }
+.bag-item:active { cursor: grabbing; }
+.bag-item.is-selected { border-color: var(--ui-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-accent) 20%, transparent); }
+.bag-item.is-empty { cursor: pointer; opacity: .55; }
+.bag-item strong { overflow: hidden; font-size: 13px; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
+.bag-item span { min-width: 24px; padding: 2px 8px; border-radius: 999px; background: var(--ui-surface-soft); color: var(--ui-muted); font-size: 12px; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
+.bag-item > i, .bag-dot { width: 10px; height: 10px; border-radius: 50%; background: #c9bdf5; }
+.bag-item.bag-kind-held > i, .bag-dot.bag-kind-held { background: #b3a3ff; }
+.bag-item.bag-kind-mega > i, .bag-dot.bag-kind-mega { background: #f5a8cf; }
+.bag-item.bag-kind-recovery > i, .bag-dot.bag-kind-recovery { background: #8fd8c3; }
+.bag-item.bag-kind-growth > i, .bag-dot.bag-kind-growth { background: #ffd08a; }
+.bag-item.bag-kind-evolution > i, .bag-dot.bag-kind-evolution { background: #9cc9ff; }
+.bag-empty { margin: 24px 0; color: var(--ui-muted); text-align: center; }
+
+.bag-team, .bag-detail { padding: 16px; }
+.bag-team h2 { margin: 0 0 10px; font-size: 14px; }
+.bag-team-list { display: grid; gap: 8px; }
+.bag-target { display: grid; grid-template-columns: 52px minmax(0, 1fr); align-items: center; gap: 10px; padding: 8px 10px; border: 1.5px dashed transparent; border-radius: 14px; background: var(--ui-surface-soft); cursor: pointer; transition: border-color .12s, background .12s, transform .12s; }
+.bag-target img { width: 52px; height: 52px; object-fit: contain; image-rendering: pixelated; }
+.bag-target strong { display: block; font-size: 14px; }
+.bag-target small { color: var(--ui-muted); font-size: 12px; }
+.bag-dragging .bag-target { border-color: color-mix(in srgb, var(--ui-accent) 45%, transparent); }
+.bag-target.is-over { border-style: solid; border-color: var(--ui-accent); background: var(--ui-accent-soft); transform: scale(1.02); }
+.bag-held { display: inline-flex; align-items: center; gap: 4px; margin-top: 5px; padding: 2px 4px 2px 10px; border-radius: 999px; background: var(--ui-surface); font-size: 12px; font-weight: 600; }
+.bag-held em { font-style: normal; }
+.bag-held button { width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--ui-muted); line-height: 1; }
+.bag-held button:hover { background: var(--ui-surface-soft); color: var(--ui-text); }
+
+.bag-detail header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.bag-detail header .bag-dot { width: 14px; height: 14px; }
+.bag-detail h2 { margin: 0; font-size: 18px; }
+.bag-detail header small { color: var(--ui-muted); font-size: 12px; }
+.bag-detail h3 { margin: 12px 0 6px; color: var(--ui-muted); font-size: 12px; font-weight: 700; }
+.bag-detail p { margin: 0; font-size: 13px; line-height: 1.55; }
+.bag-source { padding: 8px 10px; border-radius: 12px; background: var(--ui-surface-soft); }
+.bag-source + .bag-source { margin-top: 6px; }
+.bag-source b { display: block; margin-bottom: 2px; font-size: 12px; }
+.bag-source p { color: var(--ui-muted); font-size: 12px; }
+
+.bag-ghost { position: fixed; left: 0; top: 0; z-index: 1000; width: 170px; pointer-events: none; opacity: .92; box-shadow: 0 14px 34px rgba(60, 48, 120, .28); }
+
+@media (max-width: 1000px) {
+  .bag-page .bag-layout { grid-template-columns: minmax(0, 1fr); }
+  .bag-side { position: static; order: -1; }
+}

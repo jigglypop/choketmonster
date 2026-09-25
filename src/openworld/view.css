@@ -247,6 +247,8 @@
   transform: translateY(-50%);
   animation: ow-item-cue 2.2s ease both;
 }
+.ow-item-cue-long { display: grid; gap: 2px; width: max-content; max-width: 220px; border-radius: 12px; white-space: normal; animation-duration: 3.6s; }
+.ow-item-cue small { color: #6b5a2c; font-size: 11px; font-weight: 600; line-height: 1.35; }
 @keyframes ow-item-cue {
   0% { opacity: 0; transform: translate(-6px, -50%); }
   12% { opacity: 1; transform: translate(0, -50%); }
