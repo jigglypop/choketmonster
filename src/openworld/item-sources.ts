@@ -6,7 +6,8 @@ import { captureItemChances, fieldItemCatalog, HELD_TOOL_PICKUP_WEIGHTS, HELD_TO
 import { isPlayableWorldRegion } from './availability';
 import { surfaceSceneId } from './world-space';
 import { surfaceBadges } from './dungeon-gates';
-import { technicalMachines, type TechnicalMachine } from '../game/technical-machines';
+import { getTechnicalMachine, type TechnicalMachine } from '../game/technical-machines';
+import { TECHNICAL_MACHINE_LOCATIONS } from '../data/technical-machine-locations';
 
 export type FieldItemLocation = { regionId: WorldRegionId; locationId: string; name: string; requiredBadges: number };
 export type FieldItemSource = {
@@ -73,15 +74,20 @@ export function getFieldItemSources(itemId: string): FieldItemSource | undefined
   const source = sources.get(itemId); return source ? structuredClone(source) : undefined;
 }
 export function allFieldItemSources(): readonly FieldItemSource[] { return [...sources.values()].map(source => structuredClone(source)); }
-const locationSources = new Map<string, FieldItemSource[]>();
-export function fieldItemsAtLocation(regionId: WorldRegionId, locationId: string): readonly FieldItemSource[] {
+/** What a place offers: catalog items, and the technical machines its version finds there. */
+export type LocationItemSource = Omit<FieldItemSource, 'item'> & { item: RoadsideItem };
+const locationSources = new Map<string, LocationItemSource[]>();
+export function fieldItemsAtLocation(regionId: WorldRegionId, locationId: string): readonly LocationItemSource[] {
   const key = `${regionId}:${locationId}`;
   if (!locationSources.has(key)) {
     const here = (place: FieldItemLocation) => place.regionId === regionId && place.locationId === locationId;
-    locationSources.set(key, [...sources.values()].map(source => ({ ...source,
+    const place = getWorldAtlas(regionId).locations.find(item => item.id === locationId);
+    const machines: LocationItemSource[] = place ? (machinesByRoadside(regionId).get(locationId) ?? []).map(machine => ({ item: { ...machine, kind: 'technical-machine' as const }, captures: [],
+      roadside: [{ regionId, locationId, name: place.name, requiredBadges: place.requiredBadges }] })) : [];
+    locationSources.set(key, [...[...sources.values()].map(source => ({ ...source,
       captures: source.captures.filter(capture => capture.locations.some(here)).map(capture => ({ ...capture, locations: capture.locations.filter(here) })),
       roadside: source.roadside.filter(here),
-    })).filter(source => source.roadside.length || source.captures.length));
+    })).filter(source => source.roadside.length || source.captures.length), ...machines]);
   }
   return locationSources.get(key)!;
 }
@@ -117,8 +123,30 @@ const activePickupCache = new Map<string, FieldItemPickup[]>();
 const roadsideLocations = (regionId: WorldRegionId): FieldItemLocation[] => getWorldAtlas(regionId).locations
   .filter(place => ['route', 'forest', 'cave'].includes(place.kind))
   .map(place => ({ regionId, locationId: place.id, name: place.name, requiredBadges: place.requiredBadges }));
-/** Stronger machines wait for later roads. */
+/** Stronger machines wait for more badges wherever their place is. */
 const MACHINE_BADGES: Readonly<Record<TechnicalMachine['tier'], number>> = { common: 0, uncommon: 2, rare: 4 };
+const ROADSIDE_KINDS: ReadonlySet<string> = new Set(['route', 'forest', 'cave']);
+const machineRoadsideCache = new Map<WorldRegionId, ReadonlyMap<string, readonly TechnicalMachine[]>>();
+/**
+ * Machines by roadside place: each machine lies where its version finds it. A town, site or sea route standing for a
+ * shop, gym or gift passes its machines to the two nearest roads, forests or caves.
+ */
+function machinesByRoadside(regionId: WorldRegionId): ReadonlyMap<string, readonly TechnicalMachine[]> {
+  const cached = machineRoadsideCache.get(regionId); if (cached) return cached;
+  const atlas = getWorldAtlas(regionId), roadsides = atlas.locations.filter(place => ROADSIDE_KINDS.has(place.kind));
+  const result = new Map<string, TechnicalMachine[]>();
+  for (const [move, places] of Object.entries(TECHNICAL_MACHINE_LOCATIONS[regionId] ?? {})) {
+    const machine = getTechnicalMachine(Number(move)); if (!machine) continue;
+    const targets = new Set<string>();
+    for (const id of places) {
+      const place = atlas.locations.find(item => item.id === id); if (!place) continue;
+      if (ROADSIDE_KINDS.has(place.kind)) { targets.add(place.id); continue; }
+      for (const road of [...roadsides].sort((a, b) => Math.hypot(a.x - place.x, a.z - place.z) - Math.hypot(b.x - place.x, b.z - place.z)).slice(0, 2)) targets.add(road.id);
+    }
+    for (const id of targets) result.set(id, [...result.get(id) ?? [], machine]);
+  }
+  machineRoadsideCache.set(regionId, result); return result;
+}
 /** Active items keep this far apart, as roadside spots of one place do; spots closer than this share a slot. */
 const SLOT_SITE_SPACING = 5;
 /** Fewest badges that open the way to a roadside place, gates on the road there included. */
@@ -170,7 +198,7 @@ function candidatesFor(regionId: WorldRegionId, seed: number): RegionCandidates 
     }
     for (const location of roadsideLocations(regionId)) for (const point of pointsAt(location.locationId)) {
       spots.push({ location, point });
-      for (const machine of technicalMachines()) if (location.requiredBadges >= MACHINE_BADGES[machine.tier]) items.push({ item: { ...machine, kind: 'technical-machine' }, location, point });
+      for (const machine of machinesByRoadside(regionId).get(location.locationId) ?? []) items.push({ item: { ...machine, kind: 'technical-machine' }, location, point });
     }
     if (pickupCandidates.size > 20) pickupCandidates.clear();
     pickupCandidates.set(key, { items, spots, owners: slotOwners(seed, items, spots) });
@@ -192,6 +220,7 @@ function eligiblePickups(regionId: WorldRegionId, seed: number, badges: number, 
   // Walked to from the region's start: through no closed gate and into no place that needs more badges.
   const reachable = (row: RoadsideSpot) => {
     if (placeBadges(row.location) > badges) return false;
+    if ('item' in row && (row as Candidate).item.kind === 'technical-machine' && badges < MACHINE_BADGES[((row as Candidate).item as TechnicalMachine).tier]) return false;
     let allowed = traversable.get(row.point);
     if (allowed === undefined) traversable.set(row.point, allowed = atlas.evaluateTraversal(row.point, row.point, badges).allowed);
     return allowed;

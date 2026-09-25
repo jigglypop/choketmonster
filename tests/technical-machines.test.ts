@@ -53,7 +53,10 @@ describe('technical machines', () => {
   });
 
   it('picks technical machines up from the roadside into the machine stock', () => {
-    const game = createGame(1, 'tm-roadside'), world = new OpenWorldSimulation(graph, game, 517);
+    // Machines lie where Red/Blue finds them, along roads that open with badges.
+    const game = createGame(1, 'tm-roadside');
+    game.defeatedGyms = [1, 2, 3, 4, 5, 6, 7, 8]; game.player.badges = 8;
+    const world = new OpenWorldSimulation(graph, game, 517);
     world.setControlMode('manual'); world.setAutoHunt(false);
     const pickup = world.fieldPickups.find(item => item.kind === 'technical-machine')!;
     expect(pickup).toBeDefined();
