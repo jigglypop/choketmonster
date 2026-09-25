@@ -24,11 +24,15 @@ async fn main() -> anyhow::Result<()> {
     } else {
         let database_url = env::var("DATABASE_URL").context("DATABASE_URL is required")?;
         let db = PgPoolOptions::new()
-            .max_connections(6)
+            .max_connections(12)
             .acquire_timeout(std::time::Duration::from_secs(10))
             .connect(&database_url)
             .await?;
-        sqlx::migrate!("./migrations").run(&db).await?;
+        let mut migrator = sqlx::migrate!("./migrations");
+        // A rollback restores the previous binary but not the schema, so an older release must
+        // start on a database that a newer release already migrated. Migrations stay additive.
+        migrator.set_ignore_missing(true);
+        migrator.run(&db).await?;
         let graph = if let Ok(dir) = env::var("CONNECTOME_DIR") {
             let graph = connectome::Connectome::load(Path::new(&dir))
                 .context("Cannot load the configured full connectome; refusing silent fallback")?;
@@ -45,9 +49,31 @@ async fn main() -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(&address).await?;
     tracing::info!(%address, "Rust API ready");
     axum::serve(listener, app)
-        .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
-        })
+        .with_graceful_shutdown(shutdown_signal())
         .await?;
     Ok(())
+}
+
+/// systemd stops the service with SIGTERM; Ctrl+C covers local runs. Either one lets in-flight
+/// requests finish before the process exits.
+async fn shutdown_signal() {
+    let interrupt = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut signal) => {
+                signal.recv().await;
+            }
+            Err(_) => std::future::pending::<()>().await,
+        }
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+    tokio::select! {
+        _ = interrupt => {}
+        _ = terminate => {}
+    }
+    tracing::info!("Shutdown signal received");
 }

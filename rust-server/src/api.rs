@@ -35,7 +35,8 @@ pub struct AppState {
     graph: Option<Arc<Connectome>>,
     compute: Arc<Semaphore>,
     local_brains: Arc<LocalBrains>,
-    attempts: Arc<Mutex<HashMap<String, (Instant, u32)>>>,
+    attempts: Arc<Mutex<RateTable>>,
+    save_parsing: Arc<Semaphore>,
     pub(crate) origin: String,
     secure: bool,
     pub(crate) trade_events: broadcast::Sender<Uuid>,
@@ -49,6 +50,7 @@ impl AppState {
             compute: Arc::new(Semaphore::new(2)),
             local_brains: Arc::new(LocalBrains::default()),
             attempts: Default::default(),
+            save_parsing: Arc::new(Semaphore::new(SAVE_PARSE_MEGABYTES as usize)),
             origin: env::var("APP_ORIGIN").unwrap_or_else(|_| "http://127.0.0.1:5173".into()),
             secure: env::var("COOKIE_SECURE")
                 .map(|s| s != "false")
@@ -328,24 +330,82 @@ pub(crate) async fn profile_user(state: &AppState, headers: &HeaderMap) -> ApiRe
     }
     Ok(account)
 }
-pub(crate) fn rate_limit(state: &AppState, key: String, max: u32) -> ApiResult<()> {
-    let mut attempts = state.attempts.lock().map_err(internal)?;
-    attempts.retain(|_, (time, _)| time.elapsed() < Duration::from_secs(600));
-    if attempts.len() >= 10000 {
-        return Err(ApiError(
-            StatusCode::TOO_MANY_REQUESTS,
-            "잠시 후 다시 시도해 주세요.",
-        ));
+const RATE_WINDOW: Duration = Duration::from_secs(600);
+const RATE_KEYS: usize = 50_000;
+/// Fixed ten-minute windows per key. Expired windows are swept at most every thirty seconds, and
+/// a full table drops its oldest windows: a flood of new keys must never refuse existing callers.
+#[derive(Default)]
+pub(crate) struct RateTable {
+    windows: HashMap<String, (Instant, u32)>,
+    swept: Option<Instant>,
+}
+impl RateTable {
+    fn sweep(&mut self, now: Instant) {
+        if self.swept.is_none_or(|at| now.duration_since(at) >= Duration::from_secs(30)) {
+            self.windows.retain(|_, (start, _)| now.duration_since(*start) < RATE_WINDOW);
+            self.swept = Some(now);
+        }
     }
-    let entry = attempts.entry(key).or_insert((Instant::now(), 0));
-    entry.1 += 1;
-    if entry.1 > max {
-        return Err(ApiError(
-            StatusCode::TOO_MANY_REQUESTS,
-            "시도가 너무 많습니다. 10분 후 다시 시도해 주세요.",
-        ));
+    fn count(&mut self, key: &str) -> u32 {
+        let now = Instant::now();
+        self.sweep(now);
+        self.windows
+            .get(key)
+            .filter(|(start, _)| now.duration_since(*start) < RATE_WINDOW)
+            .map_or(0, |(_, count)| *count)
+    }
+    fn record(&mut self, key: String) -> u32 {
+        let now = Instant::now();
+        self.sweep(now);
+        if self.windows.len() >= RATE_KEYS && !self.windows.contains_key(&key) {
+            let mut starts: Vec<Instant> = self.windows.values().map(|(start, _)| *start).collect();
+            starts.sort_unstable();
+            let cutoff = starts[starts.len() / 10];
+            self.windows.retain(|_, (start, _)| *start > cutoff);
+        }
+        let entry = self.windows.entry(key).or_insert((now, 0));
+        if now.duration_since(entry.0) >= RATE_WINDOW {
+            *entry = (now, 0);
+        }
+        entry.1 = entry.1.saturating_add(1);
+        entry.1
+    }
+}
+fn too_many() -> ApiError {
+    ApiError(
+        StatusCode::TOO_MANY_REQUESTS,
+        "시도가 너무 많습니다. 10분 후 다시 시도해 주세요.",
+    )
+}
+pub(crate) fn rate_limit(state: &AppState, key: String, max: u32) -> ApiResult<()> {
+    let count = state.attempts.lock().map_err(internal)?.record(key);
+    if count > max {
+        return Err(too_many());
     }
     Ok(())
+}
+/// Refuses once `max` events were recorded in the window, without recording one.
+fn rate_exceeded(state: &AppState, key: &str, max: u32) -> ApiResult<()> {
+    if state.attempts.lock().map_err(internal)?.count(key) >= max {
+        return Err(too_many());
+    }
+    Ok(())
+}
+fn rate_record(state: &AppState, key: String) {
+    if let Ok(mut table) = state.attempts.lock() {
+        table.record(key);
+    }
+}
+/// The viewer address CloudFront appended to X-Forwarded-For. Earlier entries come from the
+/// client and are ignored; without the header (local development) every caller shares one key.
+fn client_address(headers: &HeaderMap) -> String {
+    headers
+        .get("x-forwarded-for")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.rsplit(',').next())
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty() && value.len() <= 64)
+        .unwrap_or_else(|| "local".into())
 }
 #[derive(Deserialize)]
 struct Credentials {
@@ -450,11 +510,15 @@ async fn session(state: &AppState, user: User) -> ApiResult<Response> {
 }
 async fn register(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(body): Json<Credentials>,
 ) -> ApiResult<Response> {
     let (username, password) = register_credentials(body)?;
-    rate_limit(&state, "register:global".into(), 300)?;
+    // Attempts are limited per address; the site-wide cap counts only created accounts, so
+    // rejected requests cannot close sign-up for everyone.
+    rate_limit(&state, format!("register-address:{}", client_address(&headers)), 20)?;
     rate_limit(&state, format!("register:{username}"), 5)?;
+    rate_exceeded(&state, "register-created", 600)?;
     let permit = state
         .compute
         .clone()
@@ -484,15 +548,21 @@ async fn register(
             "이미 사용 중인 아이디입니다.",
         ));
     }
+    rate_record(&state, "register-created".into());
     session(&state, account).await
 }
 async fn login(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(body): Json<Credentials>,
 ) -> ApiResult<Response> {
     let (username, password) = login_credentials(body)?;
-    rate_limit(&state, "login:global".into(), 300)?;
-    rate_limit(&state, format!("login:{username}"), 20)?;
+    // Only wrong passwords count, per address and per account. A limit shared by every player
+    // would let one client lock everyone out.
+    let address_key = format!("login-failed-address:{}", client_address(&headers));
+    let user_key = format!("login-failed:{username}");
+    rate_exceeded(&state, &address_key, 30)?;
+    rate_exceeded(&state, &user_key, 50)?;
     let row = sqlx::query("SELECT id,username,password_hash FROM users WHERE username=$1")
         .bind(&username)
         .fetch_optional(&state.db)
@@ -521,6 +591,8 @@ async fn login(
     .await
     .map_err(internal)?;
     if !valid {
+        rate_record(&state, address_key);
+        rate_record(&state, user_key);
         return Err(ApiError(
             StatusCode::UNAUTHORIZED,
             "아이디 또는 비밀번호가 올바르지 않습니다.",
@@ -635,7 +707,7 @@ async fn load_save(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(slot): Path<String>,
-) -> ApiResult<Json<Value>> {
+) -> ApiResult<Response> {
     identifier(&slot)?;
     let user = profile_user(&state, &headers).await?;
     let row =
@@ -646,11 +718,53 @@ async fn load_save(
             .await?
             .ok_or(ApiError(StatusCode::NOT_FOUND, "저장된 모험이 없습니다."))?;
     let bytes: Vec<u8> = row.get("payload");
-    let mut payload: Value = serde_json::from_slice(&decompress(&bytes)?).map_err(internal)?;
-    payload["tradeEpoch"] = json!(row.get::<i64, _>("trade_epoch"));
-    Ok(Json(
-        json!({"save":payload,"revision":row.get::<i64,_>("revision")}),
-    ))
+    let (epoch, revision) = (row.get::<i64, _>("trade_epoch"), row.get::<i64, _>("revision"));
+    // Decompressing and re-encoding a large save stays off the async workers.
+    let body = tokio::task::spawn_blocking(move || -> ApiResult<Vec<u8>> {
+        let mut payload: Value = serde_json::from_slice(&decompress(&bytes)?).map_err(internal)?;
+        payload["tradeEpoch"] = json!(epoch);
+        serde_json::to_vec(&json!({"save":payload,"revision":revision})).map_err(internal)
+    })
+    .await
+    .map_err(internal)??;
+    Ok(([(header::CONTENT_TYPE, "application/json")], body).into_response())
+}
+const SAVE_BODY_BYTES: usize = 20_000_000;
+/// Megabytes of save bodies parsed at once. JSON grows many times its size while it parses, so
+/// large bodies wait for each other instead of exhausting memory together.
+const SAVE_PARSE_MEGABYTES: u32 = 24;
+/// Object and value counts a save body may carry; real saves stay far below both.
+const SAVE_JSON_OBJECTS: usize = 400_000;
+const SAVE_JSON_VALUES: usize = 3_000_000;
+/// Counts objects and values outside strings before parsing, so a body made of tiny values cannot
+/// expand past the parse budget.
+fn json_within_budget(bytes: &[u8]) -> ApiResult<()> {
+    let (mut objects, mut values, mut in_string, mut escaped) = (0usize, 1usize, false, false);
+    for &byte in bytes {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if byte == b'\\' {
+                escaped = true;
+            } else if byte == b'"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match byte {
+            b'"' => in_string = true,
+            b'{' => {
+                objects += 1;
+                values += 1;
+            }
+            b'[' | b',' => values += 1,
+            _ => {}
+        }
+    }
+    if objects > SAVE_JSON_OBJECTS || values > SAVE_JSON_VALUES {
+        return Err(ApiError(StatusCode::PAYLOAD_TOO_LARGE, "저장 데이터가 너무 큽니다."));
+    }
+    Ok(())
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -659,22 +773,81 @@ struct SaveRequest {
     revision: i64,
     request_id: String,
 }
+struct PreparedSave {
+    request_id: String,
+    revision: i64,
+    epoch: i64,
+    payload_hash: String,
+    payload: Vec<u8>,
+}
+/// Parses, validates, hashes and compresses a save body on a blocking thread.
+fn prepare_save(bytes: &[u8]) -> ApiResult<PreparedSave> {
+    json_within_budget(bytes)?;
+    let body: SaveRequest = serde_json::from_slice(bytes)
+        .map_err(|_| bad("저장 요청 형식이 올바르지 않습니다."))?;
+    identifier(&body.request_id)?;
+    if body.revision < 0 {
+        return Err(bad("저장 리비전이 올바르지 않습니다."));
+    }
+    validate_save(&body.save).map_err(bad)?;
+    if body
+        .save
+        .get("tradeEpoch")
+        .is_some_and(|epoch| epoch.as_i64().is_none_or(|value| value < 0))
+    {
+        return Err(bad("거래 저장 세대가 올바르지 않습니다."));
+    }
+    let epoch = body.save.get("tradeEpoch").and_then(Value::as_i64).unwrap_or(0);
+    let payload_hash = hex::encode(Sha256::digest(
+        serde_json::to_vec(&body.save).map_err(internal)?,
+    ));
+    // The stored copy carries the epoch; `save` accepts it only when the database agrees.
+    let mut stored = body.save;
+    stored["tradeEpoch"] = json!(epoch);
+    let payload = compress(&serde_json::to_vec(&stored).map_err(internal)?)?;
+    Ok(PreparedSave {
+        request_id: body.request_id,
+        revision: body.revision,
+        epoch,
+        payload_hash,
+        payload,
+    })
+}
 async fn save(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(slot): Path<String>,
-    Json(body): Json<SaveRequest>,
+    request: Request,
 ) -> ApiResult<Json<Value>> {
     identifier(&slot)?;
-    identifier(&body.request_id)?;
+    // Authenticate before reading the body: an anonymous caller must not make the server buffer
+    // or parse up to twenty megabytes.
     let user = profile_user(&state, &headers).await?;
     rate_limit(&state, format!("save:{}", user.id), 600)?;
-    let value = &body.save;
-    if body.revision < 0 {
-        return Err(bad("저장 리비전이 올바르지 않습니다."));
-    }
-    validate_save(value).map_err(bad)?;
+    let body = axum::body::to_bytes(request.into_body(), SAVE_BODY_BYTES)
+        .await
+        .map_err(|_| ApiError(StatusCode::PAYLOAD_TOO_LARGE, "저장 데이터가 너무 큽니다."))?;
+    let megabytes = u32::try_from(body.len() / 1_000_000 + 1)
+        .unwrap_or(u32::MAX)
+        .min(SAVE_PARSE_MEGABYTES);
+    let permit = state
+        .save_parsing
+        .clone()
+        .acquire_many_owned(megabytes)
+        .await
+        .map_err(internal)?;
+    let prepared = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        prepare_save(&body)
+    })
+    .await
+    .map_err(internal)??;
     let mut tx = state.db.begin().await?;
+    // A save queued behind another save of the same account gives its pooled connection back
+    // after five seconds instead of holding it until that save ends.
+    sqlx::query("SET LOCAL lock_timeout = '5s'")
+        .execute(&mut *tx)
+        .await?;
     sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
         .bind(format!("save:{}", user.id))
         .execute(&mut *tx)
@@ -697,24 +870,15 @@ async fn save(
         .as_ref()
         .map(|r| r.get::<i64, _>("revision"))
         .unwrap_or(0);
-    if value
-        .get("tradeEpoch")
-        .is_some_and(|epoch| epoch.as_i64().is_none_or(|value| value < 0))
-    {
-        return Err(bad("거래 저장 세대가 올바르지 않습니다."));
-    }
-    let incoming_epoch = value.get("tradeEpoch").and_then(Value::as_i64).unwrap_or(0);
-    if incoming_epoch != authoritative_epoch {
+    if prepared.epoch != authoritative_epoch {
         return Err(ApiError(
             StatusCode::CONFLICT,
             "거래 전 저장은 현재 계정 저장을 덮어쓸 수 없습니다.",
         ));
     }
-    let raw = serde_json::to_vec(value).map_err(internal)?;
-    let payload_hash = hex::encode(Sha256::digest(&raw));
     if let Some(receipt) = sqlx::query("SELECT revision,payload_hash FROM save_requests WHERE user_id=$1 AND slot=$2 AND request_id=$3")
-        .bind(user.id).bind(&slot).bind(&body.request_id).fetch_optional(&mut *tx).await? {
-        if receipt.get::<String, _>("payload_hash") != payload_hash {
+        .bind(user.id).bind(&slot).bind(&prepared.request_id).fetch_optional(&mut *tx).await? {
+        if receipt.get::<String, _>("payload_hash") != prepared.payload_hash {
             return Err(ApiError(
                 StatusCode::CONFLICT,
                 "같은 요청 ID의 저장 내용이 다릅니다.",
@@ -722,19 +886,15 @@ async fn save(
         }
         return Ok(Json(json!({"revision":receipt.get::<i64,_>("revision")})));
     }
-    if revision != body.revision {
+    if revision != prepared.revision {
         return Err(ApiError(
             StatusCode::CONFLICT,
             "다른 기기의 저장이 있습니다. 현재 진행은 이 기기에 보존됐습니다. 새로고침 전에 내보내기로 백업해 주세요.",
         ));
     }
-    let mut stored = value.clone();
-    stored["tradeEpoch"] = json!(authoritative_epoch);
-    let stored_raw = serde_json::to_vec(&stored).map_err(internal)?;
-    let bytes = compress(&stored_raw)?;
     let quota=sqlx::query("SELECT count(*)::bigint AS slots,COALESCE(sum(octet_length(payload)),0)::bigint AS bytes FROM saves WHERE user_id=$1 AND slot<>$2").bind(user.id).bind(&slot).fetch_one(&mut *tx).await?;
     if quota.get::<i64, _>("slots") >= 128
-        || quota.get::<i64, _>("bytes") + bytes.len() as i64 > 64_000_000
+        || quota.get::<i64, _>("bytes") + prepared.payload.len() as i64 > 64_000_000
     {
         return Err(ApiError(
             StatusCode::PAYLOAD_TOO_LARGE,
@@ -742,9 +902,9 @@ async fn save(
         ));
     }
     sqlx::query("INSERT INTO saves(user_id,slot,revision,request_id,payload,payload_hash,trade_epoch) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(user_id,slot) DO UPDATE SET revision=excluded.revision,request_id=excluded.request_id,payload=excluded.payload,payload_hash=excluded.payload_hash,trade_epoch=excluded.trade_epoch,updated_at=now()")
-        .bind(user.id).bind(&slot).bind(revision+1).bind(&body.request_id).bind(bytes).bind(&payload_hash).bind(authoritative_epoch).execute(&mut *tx).await?;
+        .bind(user.id).bind(&slot).bind(revision+1).bind(&prepared.request_id).bind(&prepared.payload).bind(&prepared.payload_hash).bind(authoritative_epoch).execute(&mut *tx).await?;
     sqlx::query("INSERT INTO save_requests(user_id,slot,request_id,payload_hash,revision) VALUES($1,$2,$3,$4,$5)")
-        .bind(user.id).bind(&slot).bind(&body.request_id).bind(&payload_hash).bind(revision+1).execute(&mut *tx).await?;
+        .bind(user.id).bind(&slot).bind(&prepared.request_id).bind(&prepared.payload_hash).bind(revision+1).execute(&mut *tx).await?;
     sqlx::query("DELETE FROM save_requests WHERE user_id=$1 AND created_at<now()-interval '1 day'")
         .bind(user.id)
         .execute(&mut *tx)
@@ -753,11 +913,11 @@ async fn save(
     Ok(Json(json!({"revision":revision+1})))
 }
 
+// The retired routes never read their bodies, so nothing is buffered or parsed for them.
 async fn retired_neural_step(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(creature): Path<String>,
-    Json(_body): Json<Value>,
 ) -> ApiResult<Response> {
     identifier(&creature)?;
     let _ = user(&state, &headers).await?;
@@ -770,7 +930,6 @@ async fn retired_neural_step(
 async fn retired_neural_batch(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(_body): Json<Value>,
 ) -> ApiResult<Response> {
     let _ = user(&state, &headers).await?;
     Ok((StatusCode::GONE, Json(json!({

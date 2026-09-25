@@ -251,6 +251,7 @@ fn normalized_stats_from_base(base: Stats, monster: &Value) -> Stats {
         speed: normal(base.speed, iv(monster, "speed")),
     }
 }
+#[cfg(test)]
 fn normalized_stats(species: &Species, monster: &Value) -> Stats {
     normalized_stats_from_base(species.base_stats, monster)
 }
@@ -598,9 +599,23 @@ async fn action(
         tx.commit().await?;
         return Ok(Json(json!({"match":match_value(&state,id,account.id).await?})));
     }
-    if let Some(index) = input.move_index {
-        let SqlJson(current): SqlJson<Battle> = row.get("state");
-        selected_move(if account.id == p1 { &current.player1 } else { &current.player2 }, index)?;
+    let SqlJson(current): SqlJson<Battle> = row.get("state");
+    let (own_side, other_side, other) = if account.id == p1 {
+        (&current.player1, &current.player2, p2)
+    } else {
+        (&current.player2, &current.player1, p1)
+    };
+    check_turn_action(own_side, &input)?;
+    // Resolution must never fail on the opponent's stored choice: that would roll back every
+    // submission until the deadline handed the win to whoever stored it. A stale or invalid
+    // stored choice is dropped, so its sender has to choose again before the deadline.
+    let other_key = other.to_string();
+    let stale = map.get(&other_key).is_some_and(|stored| {
+        !serde_json::from_value::<TurnAction>(stored.clone())
+            .is_ok_and(|action| check_turn_action(other_side, &action).is_ok())
+    });
+    if stale {
+        map.remove(&other_key);
     }
     map.insert(key.clone(), serde_json::to_value(&input).unwrap());
     if input.surrender {
@@ -654,6 +669,19 @@ async fn action(
     ))
 }
 
+/// The move or switch a player chose must be usable in the current state. Checked when the
+/// choice is stored, so turn resolution cannot fail on it later.
+fn check_turn_action(side: &Side, action: &TurnAction) -> Result<(), ApiError> {
+    if let Some(index) = action.move_index {
+        selected_move(side, index)?;
+    }
+    if let Some(index) = action.switch_index {
+        if index >= side.team.len() || side.team[index].hp <= 0 || index == side.active_index {
+            return Err(invalid("교체할 수 없는 포켓몬입니다."));
+        }
+    }
+    Ok(())
+}
 fn validate_action_shape(a: &TurnAction) -> Result<(), ApiError> {
     let choices =
         (a.move_index.is_some() as u8) + (a.switch_index.is_some() as u8) + (a.surrender as u8) + (a.transformation.is_some() as u8);
@@ -1010,8 +1038,17 @@ fn low_hp_power(monster: &Fighter, move_type: &str) -> f64 {
 fn self_target(mv: &Move) -> bool {
     matches!(mv.target_id.unwrap_or(10), 4 | 7 | 13 | 15)
 }
+/// Rapid Spin, Tera Blast, Spin Out, Torch Song, Aqua Step, Make It Rain, Armor Cannon and
+/// Electro Shot: moves that change the user's stats but carry no PokeAPI meta category.
+const USER_STAT_MOVES: [i64; 8] = [229, 851, 859, 871, 872, 874, 890, 905];
 fn self_stat_target(mv: &Move) -> bool {
-    self_target(mv) || mv.meta_category == Some(8) || mv.id == 229
+    // Meta category 7 (damage+raise) changes the user's stats whether it raises them (Flame
+    // Charge) or lowers them (Close Combat, Overheat); 6 (damage+lower) changes the target's.
+    match mv.meta_category {
+        Some(7) => true,
+        Some(6) => false,
+        _ => USER_STAT_MOVES.contains(&mv.id) || self_target(mv),
+    }
 }
 fn roll(id: Uuid, turn: i32, salt: u8) -> i64 {
     (deterministic(id, turn, salt) % 100) as i64

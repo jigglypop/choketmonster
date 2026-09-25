@@ -788,6 +788,8 @@ function event(battle: BattleState, text: string, kind: BattleLogEntry['kind'] =
 }
 
 const SELF_TARGETS = new Set([4, 7, 13, 15]);
+/** Rapid Spin, Tera Blast, Spin Out, Torch Song, Aqua Step, Make It Rain, Armor Cannon and Electro Shot. */
+const USER_STAT_MOVES = new Set([229, 851, 859, 871, 872, 874, 890, 905]);
 function battleStat(name: string): BattleStat | undefined {
   return ({ attack: 'attack', defense: 'defense', 'special-attack': 'specialAttack', specialAttack: 'specialAttack', 'special-defense': 'specialDefense', specialDefense: 'specialDefense', speed: 'speed', accuracy: 'accuracy', evasion: 'evasion' } as Record<string, BattleStat>)[name];
 }
@@ -1041,8 +1043,11 @@ function performMoveAction(state: GameState, battle: BattleState, attacker: Mons
     events.push(event(battle, `${attacker.nickname}은(는) 속박에서 벗어났다.`, 'status'));
   }
 
-  const selfByCategory = move.metaCategory === 8 || move.id === 229;
-  const foeByCategory = move.metaCategory === 7;
+  // PokeAPI meta category 7 (damage+raise) changes the user's stats, whether it raises them (Flame Charge)
+  // or lowers them (Close Combat, Overheat); 6 (damage+lower) changes the target's. Newer moves carry no
+  // meta category, so the ones that change the user's stats are listed.
+  const selfByCategory = move.metaCategory === 7 || USER_STAT_MOVES.has(move.id);
+  const foeByCategory = move.metaCategory === 6;
   const stageTarget = selfByCategory ? attacker : foeByCategory ? defender : SELF_TARGETS.has(move.targetId ?? 10) ? attacker : defender;
   const statChance = move.statChance && move.statChance > 0 ? move.statChance : move.damageClass === 'status' ? 100 : move.effectChance ?? 100;
   if ((multiplier > 0 || (!damagingMove && stageTarget === attacker)) && move.statChanges?.length && random(state) * 100 < statChance) for (const change of move.statChanges) {

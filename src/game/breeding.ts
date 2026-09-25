@@ -7,6 +7,12 @@ import { initialEvolutionProgress } from './evolution-progress';
 import { createIndividualTraits, statsWithIndividualValues } from './individual-traits';
 
 export type MonsterGender = 'male' | 'female' | 'genderless';
+
+/** Logs keep the newest 200 entries, the most a save may hold. */
+function pushLog(state: GameState, text: string): void {
+  state.logs.push(text);
+  if (state.logs.length > 200) state.logs.splice(0, state.logs.length - 200);
+}
 export type Egg = {
   eggId: string;
   speciesId: number;
@@ -111,7 +117,7 @@ export function createEgg(state: GameState, firstId: string, secondId: string, g
   const egg: Egg = { eggId, speciesId: offspringSpeciesId, parentIds: [firstId, secondId], steps: 0, requiredSteps,
     brain: offspringBrain.snapshot(), createdAtStep: state.nextInstanceId };
   state.nursery.push(egg);
-  state.logs.push(`${getSpecies(egg.speciesId).name}의 알을 받았습니다.`);
+  pushLog(state, `${getSpecies(egg.speciesId).name}의 알을 받았습니다.`);
   return egg;
 }
 
@@ -150,6 +156,6 @@ export function hatchEgg(state: GameState, eggId: string): Monster {
   const version = state.adventureVersion ?? 'red';
   state.versionCaught ??= {};
   if (getVersionSpeciesIds(version).includes(monster.speciesId)) state.versionCaught[version] = [...new Set([...(state.versionCaught[version] ?? []), monster.speciesId])].sort((a, b) => a - b);
-  state.logs.push(`${monster.nickname}이(가) 알에서 태어났습니다. 개체별 새 회로 상태를 가집니다.`);
+  pushLog(state, `${monster.nickname}이(가) 알에서 태어났습니다. 개체별 새 회로 상태를 가집니다.`);
   return monster;
 }
