@@ -807,7 +807,7 @@ export class OpenWorldSimulation {
     return true;
   }
 
-  /** Inside a hall: walk out to the court centre and battle. Gym leaders fight automatically; league trainers by hand. */
+  /** Inside a hall: walk out to the court centre and battle. Gym leaders and league trainers alike fight automatically. */
   challengeGymHall(): boolean {
     const gym = getGymScene(this.sceneId);
     if (!gym || this.game.battle || this.game.captureOffer) return false;
@@ -818,7 +818,7 @@ export class OpenWorldSimulation {
     try { started = gym.kind === 'league' ? this.challengeLocalTrainer() : this.challengeLocalGym(); }
     finally { if (!started) this.placeInsideScene(previous, previous.heading); }
     if (!started) return false;
-    if (gym.kind === 'gym') this.controlMode = 'auto';
+    this.controlMode = 'auto';
     return true;
   }
 

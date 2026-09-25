@@ -126,8 +126,8 @@ describe('gym hall', () => {
     const restored = new OpenWorldSimulation(graph, game, world.seed, world.snapshot(), policy);
     expect(restored.sceneId).toBe(hall.sceneId);
     expect(world.challengeGymHall()).toBe(true);
-    // League trainers are fought by hand, one at a time.
-    expect(world.controlMode).toBe('manual');
+    // League trainers are fought one at a time, automatically like gym leaders.
+    expect(world.controlMode).toBe('auto');
     expect(world.player.heading).toBe(2);
     expect(game.battle).toMatchObject({ kind: 'elite', trainerId: 'kanto-lorelei' });
   });

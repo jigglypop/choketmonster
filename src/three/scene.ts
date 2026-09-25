@@ -13,6 +13,24 @@ import { disposeNormalizedPokemonMaterials, normalizePokemonMaterials } from '..
 
 type Actor = { group: THREE.Group; model: THREE.Object3D; mixer: THREE.AnimationMixer; clips: THREE.AnimationClip[]; action?: THREE.AnimationAction; target: THREE.Vector3; heading: number; restingY: number; id: number; url: string };
 type SceneMode = 'map' | 'battle' | 'specimen';
+
+/**
+ * The open world's WebGPU renderer widens unnormalized 8- and 16-bit attributes (skin joint indices) of the shared
+ * cached model to 32-bit integers in place. WebGL then binds them as integers against its float shader input and
+ * draws nothing, so this viewer draws such a mesh from its own copy with 16-bit values.
+ */
+function webglGeometry(source: THREE.BufferGeometry): THREE.BufferGeometry {
+  const widened = (attribute: THREE.BufferAttribute | THREE.InterleavedBufferAttribute) => !attribute.normalized && !('isInterleavedBufferAttribute' in attribute)
+    && (attribute.array instanceof Uint32Array || attribute.array instanceof Int32Array);
+  if (!Object.values(source.attributes).some(widened)) return source;
+  const geometry = source.clone(); geometry.userData.webglCopy = true;
+  for (const [name, attribute] of Object.entries(geometry.attributes)) {
+    if (!widened(attribute)) continue;
+    const array = attribute.array instanceof Uint32Array ? new Uint16Array(attribute.array) : new Int16Array(attribute.array as Int32Array);
+    geometry.setAttribute(name, new THREE.BufferAttribute(array, attribute.itemSize));
+  }
+  return geometry;
+}
 export type FieldScene = {
   entities: readonly { id: string; speciesId: number; x: number; y: number; action: number }[];
   foods: readonly { x: number; y: number }[];
@@ -43,6 +61,8 @@ export class PokemonScene {
     return lease.promise;
   }
   private arena = new THREE.Group();
+  private readonly sky = new THREE.Color('#dce8dd');
+  private readonly haze = new THREE.Fog('#dce8dd', 38, 85);
   private actors = new Map<string, Actor>();
   private pending = new Map<string, { token: number; url: string }>();
   private desired = new Map<string, { id: number; url: string; position: THREE.Vector3; heading: number; height: number }>();
@@ -72,13 +92,12 @@ export class PokemonScene {
     this.canvas = document.createElement('canvas'); this.canvas.className = 'game-webgl';
     this.canvas.setAttribute('aria-label', '3D 포켓몬 장면. 드래그해 회전하고 휠이나 두 손가락으로 확대합니다.');
     this.canvas.tabIndex = 0;
-    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, alpha: false, powerPreference: 'high-performance', preserveDrawingBuffer: true });
+    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, alpha: true, powerPreference: 'high-performance', preserveDrawingBuffer: true });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.6));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.35;
     this.renderer.shadowMap.enabled = true; this.renderer.shadowMap.type = THREE.PCFShadowMap;
-    this.scene.background = new THREE.Color('#dce8dd');
-    this.scene.fog = new THREE.Fog('#dce8dd', 38, 85);
+    this.scene.background = this.sky; this.scene.fog = this.haze;
     this.scene.add(new THREE.HemisphereLight('#fff6de', '#5e8064', 2.2));
     const sun = new THREE.DirectionalLight('#fff2d8', 3.1); sun.position.set(-12, 22, 14); sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048); sun.shadow.camera.left = -18; sun.shadow.camera.right = 18; sun.shadow.camera.top = 18; sun.shadow.camera.bottom = -18; sun.shadow.camera.near = 1; sun.shadow.camera.far = 65; sun.shadow.bias = -.00035; sun.shadow.normalBias = .04;
@@ -123,6 +142,8 @@ export class PokemonScene {
       else { this.camera.position.set(3.4, 2.1, 4.7); this.controls.target.set(0, .95, 0); this.controls.minDistance = 2.6; this.controls.maxDistance = 10; }
       this.controls.update();
     }
+    // A specimen stands on its pedestal over the page's own backdrop; map and battle keep their sky.
+    this.scene.background = mode === 'specimen' ? null : this.sky; this.scene.fog = mode === 'specimen' ? null : this.haze;
     this.arena.visible = mode !== 'map'; this.marker.visible = mode === 'map'; if (this.world) this.world.visible = mode === 'map';
     this.foodGroup.visible = mode === 'map' && !!this.field;
     this.resize();
@@ -220,6 +241,7 @@ export class PokemonScene {
       void this.load(url).then(asset => {
         if (this.disposed || this.pending.get(key)?.token !== token || this.desired.get(key)?.url !== spec.url) { this.trimCache(); return; }
         const model = clone(asset.scene), group = new THREE.Group(); group.add(model);
+        model.traverse(object => { if (object instanceof THREE.Mesh) object.geometry = webglGeometry(object.geometry); });
         if (spec.id) normalizePokemonMaterials(model, { speciesId: spec.id, types: getSpecies(spec.id).types });
         model.traverse(obj => { if (obj instanceof THREE.Mesh) { obj.castShadow = true; obj.receiveShadow = true; obj.frustumCulled = false; } });
         const mixer = new THREE.AnimationMixer(model);
@@ -299,6 +321,7 @@ export class PokemonScene {
     const skeletons = new Set<THREE.Skeleton>();
     actor.model.traverse(object => { if (object instanceof THREE.SkinnedMesh) skeletons.add(object.skeleton); });
     for (const skeleton of skeletons) skeleton.dispose();
+    actor.model.traverse(object => { if (object instanceof THREE.Mesh && object.geometry.userData.webglCopy) object.geometry.dispose(); });
   }
   private clearActors() { for (const actor of this.actors.values()) this.removeActor(actor); this.actors.clear(); }
   private trimCache() {

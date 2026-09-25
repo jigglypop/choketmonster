@@ -1,0 +1,82 @@
+/* Team and box: the collection on the left, the selected Pokémon in a panel that stays in view on the right. */
+.team-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 420px); gap: 20px; align-items: start; }
+.team-main { min-width: 0; }
+.team-main > .team-layout { display: block; }
+.team-columns > #team-detail { position: sticky; top: calc(var(--app-header-height, 70px) + 16px); max-height: calc(100dvh - var(--app-header-height, 70px) - 32px); margin: 0; }
+@media (max-width: 1000px) {
+  .team-columns { display: flex; flex-direction: column; gap: 12px; }
+  .team-main { display: contents; }
+  .team-main > .team-rack { order: 1; }
+  .team-columns > #team-detail { order: 2; position: static; max-height: none; }
+  .team-main > .breeding-fold { order: 3; }
+  .team-main > .team-layout { order: 4; }
+  .team-main > *, .team-columns > #team-detail { width: 100%; }
+}
+[data-team-layout=stack] .team-columns { display: flex; flex-direction: column; }
+[data-team-layout=stack] .team-columns > #team-detail { position: static; max-height: none; width: 100%; }
+
+/* Panel shell */
+.team-page #team-detail.detail-card { border-radius: 18px; }
+.team-page .detail-card > .detail-navigator { padding: 8px 12px; }
+.team-page .detail-navigator > span { padding: 4px 10px; border-radius: 999px; background: var(--ui-surface-soft); color: var(--ui-muted); font-size: 12px; font-weight: 700; }
+.team-page .detail-navigator > div { gap: 4px; }
+.team-page .detail-navigator button { min-width: 36px; min-height: 36px; padding: 0; border-radius: 10px; font-size: 18px; line-height: 1; }
+.team-page .detail-card > .detail-body { display: flex; flex-direction: column; gap: 12px; padding: 14px 16px 18px; }
+/* The body scrolls, so its cards keep their height instead of shrinking to fit. */
+.team-page .detail-body > * { flex-shrink: 0; margin: 0; }
+
+/* Hero: the 3D portrait over a tint of the first type, then name, level and types. */
+.detail-hero { --hero-tint: #e7f1ea; overflow: hidden; border: 1px solid var(--ui-border); border-radius: 16px; background: linear-gradient(180deg, var(--hero-tint), color-mix(in srgb, var(--hero-tint) 35%, var(--ui-surface))); }
+.detail-hero .detail-portrait, .detail-hero .detail-portrait.has-webgl { height: 230px; min-height: 230px; margin: 0; border: 0; border-radius: 0; background: transparent; }
+.detail-hero .detail-portrait > span { position: absolute; z-index: 2; top: 10px; left: 12px; padding: 3px 9px; border-radius: 999px; background: rgba(255, 255, 255, .78); color: var(--ui-muted); font-size: 11px; font-weight: 700; }
+.detail-hero .detail-title { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 10px; padding: 12px 16px 14px; border: 0; }
+.detail-hero .detail-title h2 { grid-column: 1; margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -.03em; overflow-wrap: anywhere; }
+.detail-hero .detail-title p { grid-column: 2; grid-row: 1; margin: 0; padding: 4px 10px; border-radius: 999px; background: rgba(255, 255, 255, .72); color: var(--ui-text); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.detail-hero .detail-types { grid-column: 1 / -1; display: flex; gap: 4px; }
+.detail-hero .detail-types .type { margin: 0; padding: 3px 10px; }
+.detail-hero .detail-title > :is(small, .regional-use-reason) { grid-column: 1 / -1; }
+.detail-hero .detail-title.legendary-pokemon { margin: 0 10px 10px; border: 2px solid #d9b650; border-radius: 12px; }
+.detail-hero[data-type=normal] { --hero-tint: #f0ebe0; }
+.detail-hero[data-type=fire] { --hero-tint: #ffe3d8; }
+.detail-hero[data-type=water] { --hero-tint: #dcecfb; }
+.detail-hero[data-type=electric] { --hero-tint: #fff4c9; }
+.detail-hero[data-type=grass] { --hero-tint: #e0f3d6; }
+.detail-hero[data-type=ice] { --hero-tint: #ddf5f8; }
+.detail-hero[data-type=fighting] { --hero-tint: #f7ded7; }
+.detail-hero[data-type=poison] { --hero-tint: #f0e0f5; }
+.detail-hero[data-type=ground] { --hero-tint: #f5ead3; }
+.detail-hero[data-type=flying] { --hero-tint: #e3ecfb; }
+.detail-hero[data-type=psychic] { --hero-tint: #fde0ec; }
+.detail-hero[data-type=bug] { --hero-tint: #eaf2cf; }
+.detail-hero[data-type=rock] { --hero-tint: #eee6d2; }
+.detail-hero[data-type=ghost] { --hero-tint: #e6e0f3; }
+.detail-hero[data-type=dragon] { --hero-tint: #e1defb; }
+.detail-hero[data-type=dark] { --hero-tint: #e6e1dd; }
+.detail-hero[data-type=steel] { --hero-tint: #e4eaee; }
+.detail-hero[data-type=fairy] { --hero-tint: #fde4f1; }
+
+/* Stats: HP against its maximum, the others against this Pokémon's best stat. */
+.detail-stats { display: grid; gap: 7px; padding: 12px 14px; border: 1px solid var(--ui-border); border-radius: 14px; background: var(--ui-surface); }
+.stat-bar { display: grid; grid-template-columns: 52px 64px minmax(0, 1fr); align-items: center; gap: 8px; font-size: 12px; }
+.stat-bar > span { color: var(--ui-muted); font-weight: 600; }
+.stat-bar > b { font-size: 13px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.stat-bar > i { position: relative; height: 8px; border-radius: 999px; background: var(--ui-surface-soft); overflow: hidden; }
+.stat-bar > i::after { content: ''; position: absolute; inset: 0 auto 0 0; width: calc(var(--ratio, 0) * 100%); border-radius: inherit; background: linear-gradient(90deg, #7fc6a4, #3f9a73); }
+.stat-bar.stat-hp > i::after { background: linear-gradient(90deg, #6fd18f, #2fa760); }
+.stat-bar.stat-hp.is-mid > i::after { background: linear-gradient(90deg, #f3d36b, #e0a92f); }
+.stat-bar.stat-hp.is-low > i::after { background: linear-gradient(90deg, #f19a8a, #d9534a); }
+.stat-extra { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.stat-extra > span { display: inline-flex; align-items: baseline; gap: 6px; padding: 5px 10px; border-radius: 999px; background: var(--ui-surface-soft); color: var(--ui-muted); font-size: 12px; }
+.stat-extra b { color: var(--ui-text); font-size: 12px; font-weight: 700; }
+
+/* Sections read as one set of soft cards. */
+.team-page .detail-body > :is(.collection-fold, .detail-quick-actions, .compact-moves, .individual-traits, .collection-actions) { padding: 12px 14px; border: 1px solid var(--ui-border); border-radius: 14px; background: var(--ui-surface); }
+.team-page .detail-body > .collection-fold > summary, .team-page .compact-moves .collection-fold > summary { font-size: 13px; font-weight: 700; }
+.team-page .detail-body > .evolution-panel[open] { background: color-mix(in srgb, var(--ui-accent-soft) 60%, var(--ui-surface)); }
+.team-page .compact-moves { display: grid; gap: 8px; }
+.team-page .compact-moves .collection-fold { margin: 0; padding: 8px 0 0; }
+.team-page .compact-move-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.team-page .compact-move-summary > span { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 7px 10px; border-radius: 10px; background: var(--ui-surface-soft); font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.team-page .compact-move-summary > span > i { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; }
+:where(.team-page .compact-move-summary > span > i) { background: #a8b5ad; }
+.team-page .detail-body > .collection-actions { border-color: transparent; background: transparent; padding: 0; }
