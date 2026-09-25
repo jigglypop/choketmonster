@@ -89,6 +89,7 @@ import { createOpenWorldRenderer } from './gpu-renderer';
 import { scenerySeed, townPavingCells, townStyle } from './town-style';
 import { DETAIL_KINDS, PAVING_CELL, TALL_DETAIL_KINDS, detailNoise, isTownPaved, trailHalfWidth, type DetailKind } from './world-details';
 import { TownNpcs } from './town-npcs';
+import { RoadTrainers } from './road-trainer-figures';
 import { TownProps, createDetailGeometry, detailMaterial, regionalLandmarkGeometry, townPavingGeometry, useWorldDetails } from './town-details';
 import { THEME_BY_REGION } from './exploration-sites';
 import { FieldGrass } from './field-grass';
@@ -1292,6 +1293,7 @@ function Scene({ snapshot, options, showLabels, destination, onNavigate, onDesti
       </Physics>
       {snapshot.guide && !gymHall && <DestinationPointer guide={snapshot.guide} sample={sample} />}
       <TargetRoute snapshot={snapshot} destination={destination} sample={sample} />
+      {!cave && !gymHall && snapshot.trainers?.length ? <RoadTrainers trainers={snapshot.trainers} sampleWorld={sample} player={snapshot.player} busy={Boolean(snapshot.busy)} onChallenge={options.onTrainerChallenge} /> : null}
       {!cave && !gymHall && <TownNpcs atlas={atlas} sampleWorld={sample} player={snapshot.player} gyms={snapshot.gyms} badges={snapshot.badges ?? 0} busy={Boolean(snapshot.busy)}
         outbreak={snapshot.outbreak} partnerName={snapshot.entities.find(entity => entity.id.startsWith('companion:'))?.name} />}
       {!gymHall && <ScenePortals sceneId={sceneId} regionId={atlas.id} player={snapshot.player} badges={snapshot.badges ?? 0} sample={sample} onNavigate={onNavigate} onPortal={() => options.onPortal?.('nearest')} />}

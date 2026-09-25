@@ -21,6 +21,8 @@ describe('town townsfolk', () => {
         for (const pacer of npcs.filter(npc => npc.route)) for (let step = 0; step <= 10; step++) {
           const x = pacer.x + (pacer.route!.x - pacer.x) * step / 10, z = pacer.z + (pacer.route!.z - pacer.z) * step / 10;
           expect(atlas.sample(x, z).blocked, `${region}:${pacer.id}`).toBe(false);
+          // Never across the officer's ring.
+          for (const officer of npcs.filter(npc => npc.patrol)) expect(Math.abs(Math.hypot(x - officer.patrol!.x, z - officer.patrol!.z) - officer.patrol!.radius), `${region}:${pacer.id}`).toBeGreaterThanOrEqual(1.5);
         }
         // An officer's whole ring is open ground that passes no one standing.
         for (const officer of npcs.filter(npc => npc.patrol)) for (let step = 0; step < 36; step++) {

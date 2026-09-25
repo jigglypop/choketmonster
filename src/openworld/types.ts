@@ -66,7 +66,7 @@ export type WorldFieldItemPickup = WorldPoint & {
   locationId: string;
 };
 
-export type WorldTrainer = WorldPoint & { id: string; name: string; trainerClass: string; locationId: string };
+export type WorldTrainer = WorldPoint & { id: string; name: string; trainerClass: string; locationId: string; facing?: number; model?: string; defeated?: boolean };
 export type WorldPortal = WorldPoint & { id: string; label: string; targetSceneId: string };
 
 export type OpenWorldRenderSnapshot = {
@@ -140,6 +140,8 @@ export type OpenWorldViewOptions = {
   onLeagueEnter?: (locationId: string) => void;
   onGymExit?: () => void;
   onGymChallenge?: () => void;
+  /** A road trainer the partner walked up to challenges it. */
+  onTrainerChallenge?: (id: string) => void;
   /** Lets the simulation quarantine a visible creature until its real model is usable. */
   onModelStatus?: (creatureId: string, status: WorldModelStatus, speciesId: number) => void;
   modelUrl?: (speciesId: number) => string;

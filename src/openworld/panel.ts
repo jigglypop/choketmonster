@@ -1,6 +1,8 @@
 import type { Graph } from '../core/brain';
 import { getMove, getSpecies } from '../data/pokemon';
 import { fieldTrainersAt, getFieldTrainer } from '../data/field-trainers';
+import { roadTrainers, trainerClassLabel, trainerNameLabel } from './road-trainers';
+import { particle } from './town-npc-plan';
 import { pokemonModelUrl, pokemonSpriteUrl } from '../game/assets';
 import { getMoveLayout } from '../game/move-layout';
 import { battleMonsterMaxHp, battleMoveView, experienceAtLevel, FIELD_ITEMS, firstUsableRegionalTeamIndex, heal, HEALING_ITEM_HP, HELD_TOOL_DESCRIPTIONS, HELD_TOOLS, ITEM_LABELS, statsFor, type BattleTurnResult, type GameState, type HeldTool, type Monster } from '../game/engine';
@@ -31,7 +33,7 @@ import { pokemonWorldDisplayHeight } from './visual-scale';
 import { MultiplayerSession } from './multiplayer';
 import { playGameSound } from '../audio';
 import { currentAccount } from '../game/account';
-import { WORLD_MIN, WORLD_MAX } from './world-space';
+import { WORLD_MIN, WORLD_MAX, surfaceSceneId } from './world-space';
 import { getCaveScene, cavePortalAtSurface, cavePortalAtInterior, caveStairsAt, dungeonEntrance } from './caves';
 import { getGymScene, gymSceneId, HALL_BATTLE_GAP, LEAGUE_LOCATION_IDS, leagueSceneId, onGymCourt, type GymScene } from './gym-scenes';
 import { gymTeam } from '../game/gym-teams';
@@ -311,6 +313,12 @@ export class OpenWorldPanel {
       onLeagueEnter: locationId => this.enterHallFromWorld(leagueSceneId(this.simulation.regionId, locationId)),
       onGymExit: () => { if (this.simulation.exitGym()) this.afterSceneChange(); },
       onGymChallenge: () => { this.declinedChallenge = undefined; void this.challengeGymHall(); },
+      onTrainerChallenge: id => {
+        const trainer = getFieldTrainer(id);
+        if (!trainer || !this.simulation.challengeRoadTrainer(id)) return;
+        this.options.notify(`${trainerClassLabel(trainer.trainerClass)} ${particle(trainerNameLabel(trainer.name), '이', '가')} 승부를 걸어왔다!`);
+        this.manualMovementActive = false; this.options.changed(); this.refresh();
+      },
       onCameraHeading: heading => { this.cameraHeading = heading; this.updateMapOrientation(); this.minimap(); },
     });
     this.multiplayer = new MultiplayerSession(() => { if (this.host === host) this.renderRealtime(); });
@@ -956,6 +964,10 @@ export class OpenWorldPanel {
       regionId: this.simulation.regionId,
       sceneId: this.simulation.sceneId,
       outbreak: this.simulation.outbreak,
+      trainers: hall || this.simulation.sceneId !== surfaceSceneId(this.simulation.regionId) ? [] : roadTrainers(this.simulation.atlas)
+        .filter(entry => Math.hypot(entry.x - this.simulation.player.x, entry.z - this.simulation.player.z) < 60)
+        .map(entry => ({ id: entry.trainer.id, name: trainerNameLabel(entry.trainer.name), trainerClass: trainerClassLabel(entry.trainer.trainerClass), locationId: entry.trainer.locationId,
+          x: entry.x, y: 0, z: entry.z, facing: entry.facing, model: entry.model, defeated: Boolean(game.defeatedFieldTrainers?.includes(entry.trainer.id)) })),
       player: { ...this.simulation.player, heading: this.simulation.player.heading as WorldHeading }, tick: this.simulation.tick, selectedWildId: this.simulation.selectedWildId, badges: getRegionalBadges(game, this.simulation.regionId),
       fieldItems: this.simulation.fieldPickups,
       foods: this.simulation.foods.map(food => ({ ...food, id: String(food.id) })),

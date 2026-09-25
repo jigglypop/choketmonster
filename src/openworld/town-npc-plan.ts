@@ -14,7 +14,7 @@ import { BUILDING_HALF_X, BUILDING_HALF_Z, SIGNBOARD } from './world-details';
  * colour maps that browsers fail to decode side by side, so they load from copies in `web/` whose maps alone are halved
  * (colour 4096, normal and metallic-roughness 2048); mesh, rig and clips are untouched.
  */
-const npcModel = (name: 'docter' | 'police' | 'man' | 'mountain') => `/models/trainer/web/${name}.glb`;
+const npcModel = (name: 'docter' | 'police' | 'man' | 'mountain' | 'nurse') => `/models/trainer/web/${name}.glb`;
 
 /** Who stands where: beside the Pokémon Center, the mart, the gym, Pallet's houses and lab, or out on the plaza. */
 export type TownNpcRole = 'clinic' | 'shop' | 'gym' | 'lab' | 'home' | 'plaza' | 'police';
@@ -26,7 +26,7 @@ export type TownNpc = { id: string; townId: string; role: TownNpcRole; title: st
 
 /** The doctor keeps the Pokémon Center and the lab, the clerk the mart and the plaza, the mountain man the gym and home. */
 const MODELS: Record<TownNpcRole, readonly string[]> = {
-  clinic: [npcModel('docter')], shop: [npcModel('man')], gym: [npcModel('mountain')], lab: [npcModel('docter')], home: [npcModel('mountain')], plaza: [npcModel('man')],
+  clinic: [npcModel('nurse')], shop: [npcModel('man')], gym: [npcModel('mountain')], lab: [npcModel('docter')], home: [npcModel('mountain')], plaza: [npcModel('man')],
   police: [npcModel('police')],
 };
 /** Who paces rather than stands: the clerk and the mountain man; the plaza clerk jogs. */
@@ -40,8 +40,10 @@ function hash(text: string): number {
 }
 
 /**
- * A few townsfolk per town: one beside each building's door (doors face +z) and one on the plaza. Spots stay on open
- * ground, off the buildings, the signboard and the arrival point, and apart from each other.
+ * A few townsfolk per town: one beside each building's door (doors face +z), one on the plaza and an officer on patrol.
+ * Spots are chosen first, on open ground off the buildings, the signboard and the arrival point and apart from each
+ * other; then the officer's ring, passing each spot by a step; then the pacing lines, which keep clear of the ring and of
+ * every other spot and line, so no two figures ever walk through each other.
  */
 export function planTownNpcs(atlas: WorldAtlas, town: KantoLocation, hasGym: boolean): TownNpc[] {
   const buildings = atlas.buildingOffsets(town), pallet = town.id === 'pallet', placed: TownNpc[] = [];
@@ -58,13 +60,16 @@ export function planTownNpcs(atlas: WorldAtlas, town: KantoLocation, hasGym: boo
   const open = (x: number, z: number) => ground(x, z, .9)
     && Math.hypot(x - SIGNBOARD.x, z - SIGNBOARD.z) >= 2.6 && Math.hypot(x, z) >= 2.5
     && placed.every(npc => reach(npc, x, z) >= 3.5);
+  let ring: number | undefined;
   /** A pacing line from a spot: along the building front first, then toward the square, as long as fits. */
-  const paceFrom = (x: number, z: number, directions: ReadonlyArray<readonly [number, number]>) => {
+  const paceFrom = (self: TownNpc, x: number, z: number, directions: ReadonlyArray<readonly [number, number]>) => {
     for (const length of [5, 4, 3]) for (const [dx, dz] of directions) {
       const steps = Math.ceil(length / .5);
       const clear = Array.from({ length: steps + 1 }, (_, step) => step / steps).every(t => {
         const px = x + dx * length * t, pz = z + dz * length * t;
-        return ground(px, pz, .6) && Math.hypot(px - SIGNBOARD.x, pz - SIGNBOARD.z) >= 2 && placed.every(npc => reach(npc, px, pz) >= 1.6);
+        return ground(px, pz, .6) && Math.hypot(px - SIGNBOARD.x, pz - SIGNBOARD.z) >= 2
+          && (ring === undefined || Math.abs(Math.hypot(px, pz) - ring) >= 1.6)
+          && placed.every(npc => npc === self || npc.patrol || reach(npc, px, pz) >= 1.6);
       });
       if (clear) return { x: x + dx * length, z: z + dz * length };
     }
@@ -82,25 +87,21 @@ export function planTownNpcs(atlas: WorldAtlas, town: KantoLocation, hasGym: boo
       : Array.from({ length: 12 }, (_, step) => { const angle = (seed % 628) / 100 + step * Math.PI / 6; return [Math.cos(angle) * 5.4, Math.sin(angle) * 5.4]; });
     const spot = candidates.find(([x, z]) => open(x, z));
     if (!spot) continue;
-    const [x, z] = spot, gait = GAITS[role];
-    const radial = Math.hypot(x, z) || 1;
-    const end = gait ? paceFrom(x, z, index !== undefined ? [[side, 0], [-side, 0], [0, 1]] : [[-z / radial, x / radial], [z / radial, -x / radial], [-x / radial, -z / radial]]) : undefined;
+    const [x, z] = spot;
     placed.push({
       id: `${town.id}:${role}`, townId: town.id, role, title: TITLES[role], x: town.x + x, z: town.z + z,
       // Door-side folk look out over the plaza; the plaza one faces the town centre.
       facing: index !== undefined ? 0 : Math.atan2(-x, -z),
       model: MODELS[role][seed % MODELS[role].length],
-      ...(gait && end ? { route: { x: town.x + end.x, z: town.z + end.z, gait } } : {}),
     });
   }
   // The officer walks a ring round the square, clear of the buildings and the signboard and passing everyone standing by a
   // step; the widest ring that fits is walked, down to a small beat round the arrival point.
-  const ring = [7.5, 6.6, 8.3, 5.6, 4.4, 3.4].find(radius => Array.from({ length: 40 }, (_, step) => step / 40 * Math.PI * 2).every(angle => {
+  ring = [7.5, 6.6, 8.3, 5.6, 4.4, 3.4].find(radius => Array.from({ length: 40 }, (_, step) => step / 40 * Math.PI * 2).every(angle => {
     const x = Math.cos(angle) * radius, z = Math.sin(angle) * radius;
     return !atlas.sample(town.x + x, town.z + z).blocked
       && buildings.every(([bx, bz]) => Math.abs(x - bx) > BUILDING_HALF_X + .6 || Math.abs(z - bz) > BUILDING_HALF_Z + .6)
       && Math.hypot(x - SIGNBOARD.x, z - SIGNBOARD.z) >= 2
-      // Pacers' lines may cross the ring; the officer only keeps a step from where each of them starts.
       && placed.every(npc => Math.hypot(npc.x - town.x - x, npc.z - town.z - z) >= 1.4);
   }));
   if (ring) {
@@ -110,6 +111,15 @@ export function planTownNpcs(atlas: WorldAtlas, town: KantoLocation, hasGym: boo
       x: town.x + Math.cos(angle) * ring, z: town.z + Math.sin(angle) * ring, facing: Math.atan2(-Math.sin(angle), Math.cos(angle)),
       model: MODELS.police[0], patrol: { x: town.x, z: town.z, radius: ring },
     });
+  }
+  // Pacing lines last, one by one, each clear of the ring and of the lines already drawn.
+  for (const npc of placed) {
+    const gait = GAITS[npc.role]; if (!gait || npc.patrol) continue;
+    const x = npc.x - town.x, z = npc.z - town.z, radial = Math.hypot(x, z) || 1, side = hash(`${atlas.id}:${town.id}:${npc.role}`) & 1 ? 1 : -1;
+    const directions: ReadonlyArray<readonly [number, number]> = npc.role === 'plaza'
+      ? [[-z / radial, x / radial], [z / radial, -x / radial], [-x / radial, -z / radial]] : [[side, 0], [-side, 0], [0, 1]];
+    const end = paceFrom(npc, x, z, directions);
+    if (end) npc.route = { x: town.x + end.x, z: town.z + end.z, gait };
   }
   return placed;
 }

@@ -8,7 +8,7 @@ import { POKEMON, getMove, getSpecies } from '../data/pokemon';
 import { getVersionSpeciesIds } from '../data/pokemon-versions';
 import { battleMonsterMaxHp, applyPreferredBattleTransformation, leaveWildBattle, replenishBalls, challengeCampaignGym, challengeCampaignTrainer, challengeFieldTrainer, claimRegionalStarter as claimStarter } from '../game/engine';
 import { CAMPAIGN_REGIONS, getRegionalBadges, getCampaignGyms, getNextCampaignTrainer, campaignEntryReason, campaignTravelReason, regionalWildLevels, type CampaignRegion } from '../game/campaign';
-import { availableFieldTrainer, fieldTrainersAt, type FieldTrainer } from '../data/field-trainers';
+import { availableFieldTrainer, fieldTrainersAt, getFieldTrainer, type FieldTrainer } from '../data/field-trainers';
 import { chooseRegionalEncounter, encounterPeriodAt, regionalRuntimePools, regionalSupplementalRules, supplementalEncounterRules, type EncounterFloor, type EncounterPeriod } from '../data/regional-encounters';
 import { chooseExpansionEncounter, expansionEncounterSpecies, isExpansionRegion } from '../data/expansion-spawns';
 import { gameplayHabitat } from '../game/habitat';
@@ -672,6 +672,16 @@ export class OpenWorldSimulation {
     const trainer = fieldTrainersAt(this.regionId, this.locationAt(this.player.x, this.player.z).id)
       .find(item => item.id === id && !this.game.defeatedFieldTrainers?.includes(id));
     if (!trainer || campaignTravelReason(this.game, trainer.region)) return false;
+    challengeFieldTrainer(this.game, trainer);
+    this.battleWildId = `trainer:${trainer.id}`; this.resetTrainerTurn(); this.controlMode = 'auto';
+    return true;
+  }
+
+  /** A trainer standing by the road challenges the partner who walks up; its place need not be the partner's. */
+  challengeRoadTrainer(id: string): boolean {
+    if (this.game.battle || this.game.captureOffer || !this.game.player.team.some(monster => monster.hp > 0) || this.game.defeatedFieldTrainers?.includes(id)) return false;
+    const trainer = getFieldTrainer(id);
+    if (!trainer || trainer.region !== this.regionId || campaignTravelReason(this.game, trainer.region)) return false;
     challengeFieldTrainer(this.game, trainer);
     this.battleWildId = `trainer:${trainer.id}`; this.resetTrainerTurn(); this.controlMode = 'auto';
     return true;

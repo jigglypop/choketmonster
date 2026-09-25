@@ -15,7 +15,7 @@ import { nearbyDungeon, npcLines, planTownNpcs, type NpcTalkContext, type TownNp
 import type { WorldSample } from './types';
 
 /** Townsfolk stand a little shorter than a 1 m Pokémon on screen. */
-const NPC_HEIGHT = 1.9;
+export const NPC_HEIGHT = 1.9;
 /** A greeting hop, in milliseconds. */
 const HOP_MS = 420;
 /** Walking and jogging paces, in units per second, and the breath a pacing figure takes at each end. */
@@ -24,7 +24,7 @@ const PATROL_SPEED = 1, JOG_SPEED = 2.4, PACE_PAUSE = 1.6;
 const NPC_DRAW_RANGE = 46, TALK_RANGE = 6.5;
 const LINE_MS = 4500;
 
-function useNpcModel(url: string): GLTF | null {
+export function useNpcModel(url: string): GLTF | null {
   const [gltf, setGltf] = useState<GLTF | null>(null);
   useEffect(() => {
     let active = true;

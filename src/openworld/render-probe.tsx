@@ -72,7 +72,7 @@ export function RenderProbe() {
           }),
         nameplates: scene.getObjectsByProperty('name', 'creature-nameplate').length,
         // Townsfolk: where each stands and one leg bone's rotation, which changes from frame to frame while a clip plays.
-        townNpcs: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('town-npc:')).map(object => {
+        townNpcs: scene.getObjectsByProperty('type', 'Group').filter(object => object.name.startsWith('town-npc:') || object.name.startsWith('road-trainer:')).map(object => {
           let bone: Object3D | undefined;
           object.traverse(child => { if (!bone && (child as Object3D & { isBone?: boolean }).isBone && /leg|thigh/i.test(child.name)) bone = child; });
           const maps: string[] = [];
@@ -81,7 +81,7 @@ export function RenderProbe() {
           let arm: Object3D | undefined, forearm: Object3D | undefined;
           object.traverse(child => { if (/LeftArm$/.test(child.name)) arm = child; if (/LeftForeArm$/.test(child.name)) forearm = child; });
           const armDrop = arm && forearm ? (() => { const a = arm.getWorldPosition(new Vector3()), b = forearm.getWorldPosition(new Vector3()); return (b.y - a.y) / (a.distanceTo(b) || 1); })() : undefined;
-          return { id: object.name.slice('town-npc:'.length), position: object.position.toArray(), bone: bone?.name, boneQuaternion: bone?.quaternion.toArray(), maps, armDrop };
+          return { id: object.name.replace(/^(town-npc|road-trainer):/, ''), kind: object.name.startsWith('road-trainer:') ? 'trainer' : 'townsfolk', position: object.position.toArray(), bone: bone?.name, boneQuaternion: bone?.quaternion.toArray(), maps, armDrop };
         }),
         fieldItems: scene.getObjectsByProperty('name', 'field-item-model').map(object => ({ id: object.parent?.name, itemId: object.parent?.userData.itemId, drawn: object.userData.drawn ?? 0 })),
         explorationSites: scene.getObjectsByProperty('type', 'Group').filter(object => /^(junction|rest|lookout|bridge):/.test(object.name)).map(object => ({ id: object.name, position: object.parent?.position.toArray() })),
