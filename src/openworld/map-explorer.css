@@ -5,3 +5,32 @@
 @media(max-width:720px){.world-map-searchbar{gap:5px}.world-map-searchbar select{max-width:118px;padding-inline:6px}.world-map-searchbar input{font-size:12px}#world-map-content{grid-template-columns:1fr;gap:12px}#world-map-content svg{position:static;max-height:42dvh}.world-map-explorer{max-height:none;overflow:visible}.map-location-detail{padding:10px}.world-map-explorer .kanto-zone-list{max-height:35dvh;overflow:auto}.world-campaign-guide{padding:9px;margin:9px 0}.world-campaign-guide p{font-size:11px}#world-travel{max-height:52px}}
 @media(max-width:720px){.kanto-map-dialog{padding:15px;max-height:94dvh}.world-map-toolbar{display:grid;grid-template-columns:1fr 1.25fr;gap:7px;align-items:end}.world-map-toolbar .world-region-picker{min-width:0}.world-map-toolbar .world-region-picker label{display:none}.world-map-toolbar .world-region-picker select{width:100%;min-width:0;margin:0;padding:8px}.world-map-toolbar #world-map-orientation{width:auto;gap:2px;padding:3px}.world-map-toolbar #world-map-orientation legend{font-size:9px}.world-map-toolbar #world-map-orientation button{min-width:0;padding:7px 5px;font-size:11px}.world-map-toolbar .world-map-zoom{grid-column:1/-1;width:auto;justify-content:flex-end}.world-map-toolbar .world-map-zoom button{flex:0 0 auto;padding:5px 10px;min-height:30px;min-width:32px;font-size:11px}.world-campaign-guide{grid-template-columns:84px 1fr;gap:4px 8px}.world-campaign-guide div{grid-row:1/3}.world-campaign-guide strong{font-size:18px}.world-campaign-guide p{font-size:10px}.world-map-searchbar{margin:8px 0}.kanto-map-dialog h2{font-size:20px}}
 .world-map-pickup.kind-mega-stone path{fill:#c494ff}.world-map-pickup.kind-technical-machine path{fill:#7fb6e8}.adventure .world-radar canvas{border-radius:50%;background:#a9c29c}.world-map-player{fill:#e04f45;stroke:#fff;stroke-width:1.2px}
+/* Large map: the map fills the left, the guide, search and results share the right column, and only that column scrolls. */
+#world-map-dialog.kanto-map-dialog[open]{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,380px);grid-template-rows:auto auto auto auto auto auto minmax(0,1fr);column-gap:18px;width:min(1480px,97vw);height:94dvh;max-height:94dvh;overflow:hidden;padding:16px 18px}
+#world-map-dialog>header,#world-map-dialog>.world-map-toolbar{grid-column:1/-1}
+#world-map-dialog>.world-map-toolbar{margin:8px 0 10px}
+#world-map-dialog>#world-map-content{display:contents}
+#world-map-dialog>#world-map-content>svg{grid-column:1;grid-row:3/-1;position:static;width:100%;height:100%;min-height:0;border-radius:12px}
+#world-map-dialog>:is(#world-campaign-guide,#world-map-note,.map-travel-fold,#world-map-searchbar,#world-map-content>.world-map-explorer){grid-column:2}
+#world-map-dialog>#world-campaign-guide{grid-row:3;margin-top:0}
+#world-map-dialog>#world-map-note{grid-row:4}
+#world-map-dialog>.map-travel-fold{grid-row:5}
+#world-map-dialog>#world-map-searchbar{grid-row:6;margin:6px 0 10px}
+#world-map-dialog>#world-map-content>.world-map-explorer{grid-row:7;min-height:0;max-height:none;overflow:auto;overscroll-behavior:contain}
+#world-map-dialog :is(.map-species-list,.map-item-sources,#world-travel){max-height:none;overflow:visible}
+/* Rotate and zoom sit on the map itself. */
+#world-map-dialog>.world-map-overlay{grid-column:1;grid-row:3;align-self:start;justify-self:end;z-index:2;display:flex;flex-direction:column;align-items:flex-end;gap:6px;margin:10px}
+#world-map-dialog>.world-map-overlay>button,#world-map-dialog>.world-map-overlay .world-map-zoom button{min-width:40px;min-height:40px;padding:6px 10px;border:1px solid #aac0ad;border-radius:10px;background:#f7f4e8ee;color:#234936;font-size:17px;box-shadow:0 3px 10px #10261b30}
+#world-map-dialog>.world-map-overlay .world-map-zoom{display:flex;flex-direction:column;gap:6px;width:auto}
+#world-map-dialog>.world-map-overlay #world-map-reset{font-size:12px}
+@media(max-width:720px){
+  /* Phones: one scroll for the whole dialog, in the order map controls, map, search, results, guide. */
+  #world-map-dialog.kanto-map-dialog[open]{display:flex;flex-direction:column;height:auto;max-height:94dvh;overflow:auto;width:97vw;padding:12px}
+  #world-map-dialog>header{order:0}#world-map-dialog>.world-map-toolbar{order:1}#world-map-dialog>.world-map-overlay{order:2}
+  #world-map-dialog>#world-map-content>svg{order:3;flex:none;height:52dvh;width:100%}
+  #world-map-dialog>#world-map-searchbar{order:4}#world-map-dialog>#world-map-content>.world-map-explorer{order:5}
+  #world-map-dialog>#world-campaign-guide{order:6}#world-map-dialog>#world-map-note{order:7}#world-map-dialog>.map-travel-fold{order:8}
+  #world-map-dialog>#world-map-content>.world-map-explorer,#world-map-dialog .world-map-explorer .kanto-zone-list{max-height:none;overflow:visible}
+  #world-map-dialog>.world-map-overlay{align-self:flex-end;flex-direction:row;margin:0 0 6px}
+  #world-map-dialog>.world-map-overlay .world-map-zoom{flex-direction:row}
+}

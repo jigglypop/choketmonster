@@ -54,7 +54,7 @@ describe('streamed wind grass placement', () => {
   it('keeps each budget prefix spread across the whole cell', () => {
     const atlas = getWorldAtlas('johto');
     const field = grassField(atlas.sample, atlas, skip('johto'));
-    const cells = grassCellsNear(atlas.start, 60).map(slot => buildGrassCell(field, slot.ix, slot.iz)).filter(cell => cell && cell.count > 2000);
+    const cells = grassCellsNear(atlas.start, 60).map(slot => buildGrassCell(field, slot.ix, slot.iz)).filter(cell => cell && cell.count > 1000);
     expect(cells.length).toBeGreaterThan(0);
     for (const cell of cells.slice(0, 4)) {
       const prefix = grassCellCapacity(cell!, GRASS_BUDGETS.mobile), quadrants = [0, 0, 0, 0];
@@ -87,7 +87,7 @@ describe('streamed wind grass placement', () => {
         }
       }
     }
-    expect(grassBudgetScale(90_000, GRASS_BUDGETS.desktop)).toBeCloseTo(2 / 3);
+    expect(grassBudgetScale(90_000, GRASS_BUDGETS.desktop)).toBeCloseTo(28_000 / 90_000);
     expect(grassBudgetScale(10_000, GRASS_BUDGETS.mobile)).toBe(1);
     expect(GRASS_BUDGETS.mobile.radius).toBeLessThan(GRASS_BUDGETS.desktop.radius);
     expect(grassCellsNear({ x: 0, z: 0 }, GRASS_BUDGETS.desktop.radius).every(slot => slot.distance <= GRASS_BUDGETS.desktop.radius)).toBe(true);

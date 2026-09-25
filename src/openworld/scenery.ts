@@ -90,6 +90,18 @@ function surfaceSample(sampleWorld: (x: number, z: number) => WorldSample, x: nu
 
 export function createSceneryPlacements(sampleWorld: (x: number, z: number) => WorldSample, atlas: WorldAtlas = getWorldAtlas('kanto')): Record<SceneryAssetId, SceneryPlacement[]> {
   const result = emptyPlacements();
+  // Towns, cave mouths and special sites keep their squares clear; routes and forests are dressed right up to the trail.
+  const clearings = atlas.locations.filter(item => item.kind === 'town' || item.kind === 'cave' || item.kind === 'special');
+  const clearingDistance = (x: number, z: number) => clearings.reduce((nearest, item) => Math.min(nearest, Math.hypot(x - item.x, z - item.z)), Infinity);
+  /** A few flowers of one colour, the way wildflowers grow. */
+  const flowerCluster = (id: SceneryAssetId, x: number, z: number, salt: number) => {
+    const count = 2 + Math.floor(noise(x, z, salt) * 3);
+    for (let index = 0; index < count; index++) {
+      const angle = noise(x, z, salt + index * 3 + 1) * Math.PI * 2, radius = .35 + noise(x, z, salt + index * 3 + 2) * .9;
+      const fx = x + Math.cos(angle) * radius, fz = z + Math.sin(angle) * radius, sample = surfaceSample(sampleWorld, fx, fz);
+      if (!sample.blocked && sample.biome !== 'lake') place(result, id, fx, fz, sample, .7, 1.15, salt + index * 5);
+    }
+  };
 
   // Large silhouettes sit on the exact simulation obstacle samples so the
   // visible forest and highland barriers explain why a route is blocked.
@@ -98,9 +110,14 @@ export function createSceneryPlacements(sampleWorld: (x: number, z: number) => W
       const px = x + (noise(x, z, 1) - .5) * scaleWorldDistance(2.4);
       const pz = z + (noise(x, z, 2) - .5) * scaleWorldDistance(2.4);
       const sample = surfaceSample(sampleWorld, px, pz);
-      const landmarkDistance = Math.min(...atlas.locations.map(item => Math.hypot(px - item.x, pz - item.z)));
-      if (atlas.distanceToPath(px, pz) < scaleWorldDistance(4.7) || landmarkDistance < scaleWorldDistance(9)) continue;
-      if (sample.biome === 'forest' && sample.blocked) {
+      if (atlas.distanceToPath(px, pz) < scaleWorldDistance(4.2) || clearingDistance(px, pz) < scaleWorldDistance(9)) continue;
+      if (sample.biome === 'meadow' && sample.blocked) {
+        // Open ground off the route: scattered tree stands and bushes frame the walkable corridor.
+        const stand = noise(px, pz, 40);
+        if (stand < .34) place(result, stand < .12 ? 'tree-round' : stand < .22 ? 'tree-oak' : 'tree-fat', px, pz, sample, .78, 1.1, 41);
+        else if (stand < .5) place(result, 'bush', px, pz, sample, .9, 1.35, 42);
+        else if (stand < .56) place(result, 'rock-moss', px, pz, sample, .7, 1.05, 43);
+      } else if (sample.biome === 'forest' && sample.blocked) {
         const selector = noise(px, pz, 3);
         place(result, selector < .24 ? 'tree-round' : selector < .5 ? 'tree-oak' : selector < .7 ? 'tree-fat' : selector < .88 ? 'tree-thin' : 'tree-pine', px, pz, sample, .82, 1.16, 4);
         if (noise(px, pz, 5) > .5) place(result, 'fern', px + .75, pz - .55, surfaceSample(sampleWorld, px + .75, pz - .55), .85, 1.35, 6);
@@ -120,21 +137,24 @@ export function createSceneryPlacements(sampleWorld: (x: number, z: number) => W
       const pz = z + (noise(x, z, 11) - .5) * scaleWorldDistance(2.2);
       const sample = surfaceSample(sampleWorld, px, pz);
       if (sample.blocked || sample.biome === 'lake') continue;
-      const landmarkDistance = Math.min(...atlas.locations.map(item => Math.hypot(px - item.x, pz - item.z)));
-      if (atlas.distanceToPath(px, pz) < scaleWorldDistance(4.7) || landmarkDistance < scaleWorldDistance(9)) continue;
+      // The trail itself stays clear; its verges get flowers and stones.
+      if (atlas.distanceToPath(px, pz) < scaleWorldDistance(1.6) || clearingDistance(px, pz) < scaleWorldDistance(9)) continue;
       const selector = noise(px, pz, 12);
       if (sample.biome === 'meadow') {
-        if (selector < .62) {
-          place(result, selector < .31 ? 'grass-tuft' : 'grass-soft', px, pz, sample, .6, 1.12, 13);
+        if (selector < .4) {
+          place(result, selector < .2 ? 'grass-tuft' : 'grass-soft', px, pz, sample, .6, 1.12, 13);
           if (noise(px, pz, 14) < .38) {
             const gx = px + (noise(px, pz, 15) - .5) * 1.15, gz = pz + (noise(px, pz, 16) - .5) * 1.15;
             place(result, 'grass-soft', gx, gz, surfaceSample(sampleWorld, gx, gz), .5, .88, 17);
           }
-        } else if (selector < .73) place(result, 'flower-yellow', px, pz, sample, .78, 1.18, 18);
-        else if (selector < .82) place(result, 'flower-red', px, pz, sample, .82, 1.22, 19);
-        else if (selector < .89) place(result, 'flower-purple', px, pz, sample, .78, 1.18, 20);
-        else if (selector < .92) place(result, 'moss-stone', px, pz, sample, .5, .85, 21);
-        else if (selector < .97) place(result, 'fern', px, pz, sample, .7, 1.12, 29);
+        } else if (selector < .56) flowerCluster('flower-yellow', px, pz, 18);
+        else if (selector < .68) flowerCluster('flower-red', px, pz, 19);
+        else if (selector < .78) flowerCluster('flower-purple', px, pz, 20);
+        else if (selector < .83) place(result, 'moss-stone', px, pz, sample, .5, .85, 21);
+        else if (selector < .87) place(result, 'rock-small', px, pz, sample, .55, .95, 31);
+        else if (selector < .92) place(result, 'fern', px, pz, sample, .7, 1.12, 29);
+        else if (selector < .95) place(result, 'bush', px, pz, sample, .55, .8, 32);
+        else if (selector < .965) place(result, 'stump', px, pz, sample, .75, 1, 33);
       } else if (sample.biome === 'forest') {
         if (selector < .12) place(result, 'moss-stone', px, pz, sample, .65, .95, 30);
         else if (selector < .32) place(result, 'fern', px, pz, sample, .72, 1.15, 22);
@@ -149,9 +169,41 @@ export function createSceneryPlacements(sampleWorld: (x: number, z: number) => W
     }
   }
 
+  const locations = new Map(atlas.locations.map(item => [item.id, item]));
+  // Route verges, where the player walks most: wildflowers, tufts and stones beside every land route, ferns and
+  // mushrooms along woodland trails. The trail itself stays clear.
+  for (const [fromId, toId] of atlas.surfaceConnections) {
+    const from = locations.get(fromId)!, to = locations.get(toId)!;
+    if (from.kind === 'sea' || to.kind === 'sea') continue;
+    const dx = to.x - from.x, dz = to.z - from.z, length = Math.hypot(dx, dz);
+    if (length < scaleWorldDistance(6)) continue;
+    const nx = -dz / length, nz = dx / length;
+    for (let along = scaleWorldDistance(3); along <= length - scaleWorldDistance(3); along += scaleWorldDistance(1.2)) {
+      const t = along / length, cx = from.x + dx * t, cz = from.z + dz * t;
+      // Two lanes per side: one hugging the trail, one toward the verge's outer edge.
+      for (const [side, lane] of [[-1, 0], [-1, 1], [1, 0], [1, 1]]) {
+        const offset = scaleWorldDistance(1.7 + lane * 1.1 + noise(cx, cz, 50 + side + lane * 7) * 1.1);
+        const px = cx + nx * offset * side, pz = cz + nz * offset * side, sample = surfaceSample(sampleWorld, px, pz);
+        // Only the paved town disc stays clear on the verges.
+        if (sample.blocked || sample.biome === 'lake' || clearingDistance(px, pz) < scaleWorldDistance(8.75) || atlas.distanceToPath(px, pz) < scaleWorldDistance(1.6)) continue;
+        const pick = noise(px, pz, 52 + lane);
+        if (sample.biome === 'meadow') {
+          if (pick < .3) flowerCluster(pick < .13 ? 'flower-yellow' : pick < .23 ? 'flower-red' : 'flower-purple', px, pz, 53);
+          else if (pick < .52) place(result, pick < .41 ? 'grass-tuft' : 'grass-soft', px, pz, sample, .6, 1.05, 54);
+          else if (pick < .58) place(result, 'rock-small', px, pz, sample, .5, .9, 55);
+          else if (pick < .62) place(result, 'moss-stone', px, pz, sample, .45, .8, 56);
+          else if (pick < .64) place(result, 'bush', px, pz, sample, .5, .72, 60);
+        } else if (sample.biome === 'forest') {
+          if (pick < .25) place(result, 'fern', px, pz, sample, .7, 1.1, 57);
+          else if (pick < .35) place(result, 'mushroom-cluster', px, pz, sample, .7, 1.05, 58);
+          else if (pick < .45) place(result, 'grass-tuft', px, pz, sample, .6, 1, 59);
+        }
+      }
+    }
+  }
+
   // Route-edge fences sit just outside the logical corridor. End sections stay
   // open so town squares and junctions remain readable gateways.
-  const locations = new Map(atlas.locations.map(item => [item.id, item]));
   for (const [fromId, toId] of atlas.surfaceConnections) {
     const from = locations.get(fromId)!, to = locations.get(toId)!;
     if (from.kind === 'sea' || to.kind === 'sea') continue;

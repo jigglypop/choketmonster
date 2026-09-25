@@ -12,9 +12,9 @@ import { WORLD_MAX, WORLD_MIN } from './world-space';
  */
 export const GRASS_CELL = 16;
 /** Blades per m² generated for a cell. Budgets draw a uniform prefix of that list. */
-export const GRASS_DENSITY = 40;
+export const GRASS_DENSITY = 20;
 /** Route tall-grass candidates per m² inside a patch; the same prefix rule applies. */
-export const TALL_GRASS_DENSITY = 88;
+export const TALL_GRASS_DENSITY = 50;
 const NODE = 1;
 /** Blocked woodland floor keeps a fading lawn this far past walkable ground, so there is no hard edge. */
 const FRINGE = 9;
@@ -31,13 +31,13 @@ const TAU = Math.PI * 2;
 export type GrassBudget = { radius: number; density: number; maxBlades: number; near: number; far: number; strength: number };
 /** Distance LOD matches gaesup's SFE curve: full density to `near` (camera distance), fading to zero at `far`. */
 export const GRASS_BUDGETS: Readonly<Record<'desktop' | 'mobile', GrassBudget>> = {
-  desktop: { radius: 58, density: GRASS_DENSITY, maxBlades: 60_000, near: 22, far: 60, strength: 1.35 },
-  mobile: { radius: 38, density: 20, maxBlades: 20_000, near: 14, far: 40, strength: 1.35 },
+  desktop: { radius: 58, density: 18, maxBlades: 28_000, near: 22, far: 60, strength: 1.35 },
+  mobile: { radius: 38, density: 9, maxBlades: 10_000, near: 14, far: 40, strength: 1.35 },
 };
 /** Route tall grass reads from further away than the lawn, so it thins later and keeps its own cap. */
 export const TALL_GRASS_BUDGETS: Readonly<Record<'desktop' | 'mobile', GrassBudget>> = {
-  desktop: { radius: 58, density: TALL_GRASS_DENSITY, maxBlades: 30_000, near: 26, far: 64, strength: 1.2 },
-  mobile: { radius: 38, density: 36, maxBlades: 9_000, near: 16, far: 42, strength: 1.2 },
+  desktop: { radius: 58, density: TALL_GRASS_DENSITY, maxBlades: 16_000, near: 26, far: 64, strength: 1.2 },
+  mobile: { radius: 38, density: 24, maxBlades: 6_000, near: 16, far: 42, strength: 1.2 },
 };
 
 /** Blade joints by camera distance to a cell (its nearest point), nearest tier first; the last tier has no limit. */

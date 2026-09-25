@@ -130,11 +130,14 @@ export function createFieldGrassMaterial(colors: { lawn: Color; forest: Color },
   const lawn = uniform(colors.lawn), forest = uniform(colors.forest);
   // Same broad tint wave the terrain bakes into its vertices, so roots vanish into the ground they grow from.
   const terrain = sin(root.x.mul(.19).add(sin(root.z.mul(.11)))).mul(cos(root.z.mul(.17))).mul(.065).add(1);
-  const ground = varying(mix(lawn, forest, woodland).mul(terrain)), shade = varying(tone), breeze = varying(gust);
+  // Broad patches drift between sun-dried and lush green, so a meadow is not one flat colour.
+  const patch = smoothstep(-.55, .55, sin(root.x.mul(.043).add(sin(root.z.mul(.031)).mul(2.1))).mul(cos(root.z.mul(.037).add(root.x.mul(.011)))));
+  const patchTint = mix(vec3(.9, 1.02, .95), vec3(1.1, 1.04, .8), patch);
+  const ground = varying(mix(lawn, forest, woodland).mul(terrain).mul(mix(vec3(1, 1, 1), patchTint, float(1).sub(woodland).mul(.6)))), shade = varying(tone), breeze = varying(gust);
   const lower = mix(ground.mul(vec3(...look.base)), ground.mul(vec3(...look.body)), smoothstep(0, .42, along));
   const blade = mix(lower, ground.mul(mix(vec3(...look.tip), vec3(...look.fresh), shade)), smoothstep(.38, 1, along));
   const rib = float(1).sub(smoothstep(0, .5, abs(uv().x.sub(.5))));
-  material.colorNode = blade.mul(mix(float(.92), float(1.08), shade)).mul(mix(float(.95), float(1.04), rib)).mul(breeze.mul(along).mul(.1).add(1));
+  material.colorNode = blade.mul(mix(float(.84), float(1.13), shade)).mul(mix(float(.95), float(1.04), rib)).mul(breeze.mul(along).mul(.1).add(1));
   material.userData.openWorldNodeEffect = `field-grass:${profile}`;
   return { material, uniforms };
 }
