@@ -6,7 +6,7 @@
   font-size: .75rem;
 }
 
-#game-sound-toggle[aria-pressed="true"] { border-color: #75b99e; background: #dff2e8; color: #173d34; }
+#game-sound-toggle[aria-pressed="true"] { border-color: #8c78b6; background: #e4dff2; color: #261b39; }
 #game-music-feedback {
   position: fixed;
   z-index: 80;
@@ -14,11 +14,11 @@
   right: 14px;
   max-width: min(360px,calc(100vw - 28px));
   padding: 10px 12px;
-  border: 1px solid #8fb7a6;
+  border: 1px solid #9c91b5;
   border-radius: 9px;
-  color: #ecfff6;
-  background: #173d34f2;
-  box-shadow: 0 8px 24px #102c2440;
+  color: #f3f0fb;
+  background: #261b39f2;
+  box-shadow: 0 8px 24px #1b132940;
   font-size: 12px;
   line-height: 1.45;
 }

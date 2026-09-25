@@ -5,7 +5,7 @@
   min-height: 28rem;
   overflow: hidden;
   isolation: isolate;
-  background: linear-gradient(#9dd8d0 0 44%, #71995b 44% 100%);
+  background: linear-gradient(#b4a0d5 0 44%, #625e96 44% 100%);
   border-radius: inherit;
   touch-action: none;
 }
@@ -21,14 +21,14 @@
   min-width: 7.5rem;
   max-width: none;
   padding: .42rem .55rem;
-  color: var(--ui-hud-text, #eff7f2);
+  color: var(--ui-hud-text, #f1eef8);
   font: 400 14px/1.3 var(--ui-font-family, system-ui, sans-serif);
   text-align: center;
   text-shadow: none;
-  background: var(--ui-hud, #1d342cf5);
+  background: var(--ui-hud, #251d34f5);
   border: 1px solid var(--ui-hud-line, #ffffff26);
   border-radius: .7rem;
-  box-shadow: 0 .3rem .8rem rgba(14, 36, 29, .28);
+  box-shadow: 0 .3rem .8rem rgba(22, 16, 34, .28);
   pointer-events: none;
   user-select: none;
   white-space: nowrap;
@@ -46,8 +46,8 @@
   padding: 6px 11px;
   border: 1px solid var(--ui-hud-line, #ffffff26);
   border-radius: 8px;
-  background: var(--ui-hud, #1d342cf5);
-  color: var(--ui-hud-text, #eff7f2);
+  background: var(--ui-hud, #251d34f5);
+  color: var(--ui-hud-text, #f1eef8);
   font: 400 13px/1.4 var(--ui-font-family, system-ui, sans-serif);
   white-space: nowrap;
   overflow: hidden;
@@ -57,7 +57,7 @@
 }
 
 .ow-creature-label span { margin-top: .14rem; font-size: 12px; opacity: .95; }
-.ow-creature-label-selected { border-color: var(--ui-focus, #5aa584); }
+.ow-creature-label-selected { border-color: var(--ui-focus, #725ea1); }
 
 .ow-hp-track {
   height: .28rem;
@@ -83,7 +83,7 @@
   padding: .5rem .7rem;
   color: #f8f2d5;
   font: 700 .72rem/1.2 system-ui, sans-serif;
-  background: rgba(20, 58, 48, .82);
+  background: rgba(35, 25, 53, .82);
   border: 1px solid rgba(241, 226, 157, .48);
   border-radius: .7rem;
   pointer-events: none;
@@ -101,7 +101,7 @@
   padding: .42rem .65rem;
   color: #fff6d7;
   font: 750 .7rem/1.2 system-ui, sans-serif;
-  background: rgba(20, 58, 48, .82);
+  background: rgba(35, 25, 53, .82);
   border: 1px solid rgba(241, 226, 157, .48);
   border-radius: .65rem;
   pointer-events: none;
@@ -125,7 +125,7 @@
   grid-template-columns: repeat(6, 2.25rem) auto;
   gap: .28rem;
   padding: .35rem;
-  background: rgba(20, 58, 48, .82);
+  background: rgba(35, 25, 53, .82);
   border: 1px solid rgba(241, 226, 157, .48);
   border-radius: .75rem;
   backdrop-filter: blur(7px);
@@ -157,18 +157,18 @@
   place-items: center;
   color: #f7efd1;
   font: 800 .9rem system-ui, sans-serif;
-  background: rgba(24, 62, 51, .25);
+  background: rgba(38, 28, 58, .25);
   pointer-events: none;
 }
 
-.ow-render-error { z-index: 8; align-content: center; gap: 1rem; padding: 1.5rem; background: #10251f; text-align: center; pointer-events: auto; }
-.ow-render-error button { min-height: 2.7rem; padding: .6rem 1rem; border: 1px solid #98bea7; border-radius: .5rem; background: #e8f4cf; color: #173c2c; font-weight: 700; cursor: pointer; }
+.ow-render-error { z-index: 8; align-content: center; gap: 1rem; padding: 1.5rem; background: #181124; text-align: center; pointer-events: auto; }
+.ow-render-error button { min-height: 2.7rem; padding: .6rem 1rem; border: 1px solid #a39abc; border-radius: .5rem; background: #cfcff4; color: #241b38; font-weight: 700; cursor: pointer; }
 
-.world-recovery { position: absolute; z-index: 9; top: calc(var(--app-header-height, 76px) + 12px); left: 50%; transform: translateX(-50%); width: min(27rem, calc(100% - 2rem)); padding: .7rem .9rem; border: 1px solid #6e8e7b; border-radius: .8rem; background: #10251ff2; color: #f3f4dc; box-shadow: 0 .3rem 1.2rem #0004; }
+.world-recovery { position: absolute; z-index: 9; top: calc(var(--app-header-height, 76px) + 12px); left: 50%; transform: translateX(-50%); width: min(27rem, calc(100% - 2rem)); padding: .7rem .9rem; border: 1px solid #77708c; border-radius: .8rem; background: #181124f2; color: #f3f4dc; box-shadow: 0 .3rem 1.2rem #0004; }
 .world-recovery[hidden] { display: none; }
 .world-recovery p { margin: 0 0 .5rem; font-size: .8rem; line-height: 1.5; overflow-wrap: anywhere; }
 .world-recovery > div { display: flex; gap: .5rem; flex-wrap: wrap; }
-.world-recovery button { min-height: 2.2rem; padding: .4rem .7rem; border: 1px solid #98bea7; border-radius: .4rem; background: #e8f4cf; color: #173c2c; font-weight: 700; }
+.world-recovery button { min-height: 2.2rem; padding: .4rem .7rem; border: 1px solid #a39abc; border-radius: .4rem; background: #cfcff4; color: #241b38; font-weight: 700; }
 
 @media (max-width: 720px) {
   .world-recovery { top: 40%; }
@@ -208,9 +208,9 @@
   100% { opacity: 0; transform: translate(-50%, -10px); }
 }
 .ow-move-normal { --cue: #d8d2c0; } .ow-move-fire { --cue: #ffac80; } .ow-move-water { --cue: #93cdff; }
-.ow-move-electric { --cue: #ffe070; } .ow-move-grass { --cue: #a9dd90; } .ow-move-ice { --cue: #aeeaf3; }
+.ow-move-electric { --cue: #ffe070; } .ow-move-grass { --cue: #9a94d9; } .ow-move-ice { --cue: #aeeaf3; }
 .ow-move-fighting { --cue: #f29d88; } .ow-move-poison { --cue: #d2a2e4; } .ow-move-ground { --cue: #e3c58e; }
-.ow-move-flying { --cue: #b8cff5; } .ow-move-psychic { --cue: #ffa3cf; } .ow-move-bug { --cue: #cadf8a; }
+.ow-move-flying { --cue: #b8cff5; } .ow-move-psychic { --cue: #ffa3cf; } .ow-move-bug { --cue: #8e90db; }
 .ow-move-rock { --cue: #d6c68e; } .ow-move-ghost { --cue: #b9a8ea; } .ow-move-dragon { --cue: #a9a1f5; }
 .ow-move-dark { --cue: #b3a5ba; } .ow-move-steel { --cue: #c9d2db; } .ow-move-fairy { --cue: #ffbde0; }
 .ow-status {
@@ -229,7 +229,7 @@
 }
 .ow-status-poison { --status: #a35bc4; } .ow-status-burn { --status: #e0663c; } .ow-status-paralysis { --status: #c9a515; }
 .ow-status-sleep { --status: #7d8aa0; } .ow-status-freeze { --status: #4fb0d6; } .ow-status-confusion { --status: #d66fa3; }
-.ow-status-trap { --status: #8a7a5c; } .ow-status-leech-seed { --status: #5aa35a; } .ow-status-infatuation { --status: #f06f9f; }
+.ow-status-trap { --status: #8a7a5c; } .ow-status-leech-seed { --status: #695e9f; } .ow-status-infatuation { --status: #f06f9f; }
 /* The damage a move dealt floats above its name; an item's effect sits beside the nameplate. */
 .ow-cue-damage { position: absolute; left: 50%; bottom: calc(100% + 2px); transform: translateX(-50%); color: #fff; font: 800 19px/1 var(--ui-font-family, system-ui, sans-serif); font-style: normal; letter-spacing: -.02em; text-shadow: 0 1px 0 #6b2412, 0 0 .45rem rgba(107, 36, 18, .85); white-space: nowrap; }
 .ow-item-cue {
@@ -259,13 +259,13 @@
 .ow-creature-label .ow-type-dot:last-of-type { margin-right: 6px; }
 .ow-creature-label.ow-creature-label-legendary { background: linear-gradient(160deg, #6a5320f2, #4a3a17f2); border: 2px solid #e8c45c; box-shadow: 0 0 0 1px #fff3c455 inset, 0 .3rem .9rem rgba(74, 58, 23, .45); }
 .ow-creature-label.ow-creature-label-mythical { background: linear-gradient(160deg, #573474f2, #3a2150f2); border: 2px solid #dfa6ff; box-shadow: 0 0 0 1px #f6e2ff55 inset, 0 .3rem .9rem rgba(58, 33, 80, .45); }
-.ow-creature-label.ow-creature-label-self { border: 2px solid #ffffff; box-shadow: 0 0 0 1px rgba(8, 24, 18, .35), 0 .3rem .8rem rgba(14, 36, 29, .3); }
+.ow-creature-label.ow-creature-label-self { border: 2px solid #ffffff; box-shadow: 0 0 0 1px rgba(14, 10, 22, .35), 0 .3rem .8rem rgba(22, 16, 34, .3); }
 /* Townsfolk speech: a white bubble whose tail points down at the speaker; a tap shows the next line. */
-.ow-npc-bubble { position: relative; display: grid; gap: 3px; width: max-content; max-width: min(240px, 62vw); padding: 9px 13px 10px; border: 2px solid #2f4a40; border-radius: 16px; background: #fffdf5; color: #1f332c; font: 400 13px/1.45 var(--ui-font-family, system-ui, sans-serif); text-align: left; cursor: pointer; box-shadow: 0 .35rem .9rem rgba(14, 36, 29, .28); animation: ow-npc-pop .18s ease-out; }
-.ow-npc-bubble::after { content: ''; position: absolute; left: 50%; bottom: -9px; width: 14px; height: 14px; background: #fffdf5; border-right: 2px solid #2f4a40; border-bottom: 2px solid #2f4a40; transform: translateX(-50%) rotate(45deg); }
-.ow-npc-bubble small { color: #6a7f75; font-size: 11px; font-weight: 700; letter-spacing: .02em; }
+.ow-npc-bubble { position: relative; display: grid; gap: 3px; width: max-content; max-width: min(240px, 62vw); padding: 9px 13px 10px; border: 2px solid #382f4a; border-radius: 16px; background: #fffdf5; color: #261f33; font: 400 13px/1.45 var(--ui-font-family, system-ui, sans-serif); text-align: left; cursor: pointer; box-shadow: 0 .35rem .9rem rgba(22, 16, 34, .28); animation: ow-npc-pop .18s ease-out; }
+.ow-npc-bubble::after { content: ''; position: absolute; left: 50%; bottom: -9px; width: 14px; height: 14px; background: #fffdf5; border-right: 2px solid #382f4a; border-bottom: 2px solid #382f4a; transform: translateX(-50%) rotate(45deg); }
+.ow-npc-bubble small { color: #716b7e; font-size: 11px; font-weight: 700; letter-spacing: .02em; }
 .ow-npc-bubble span { animation: ow-npc-line .22s ease-out; }
-.ow-npc-bubble i { position: absolute; right: 9px; bottom: 5px; color: #9aab9f; font-size: 9px; font-style: normal; animation: ow-npc-more 1.2s ease-in-out infinite; }
+.ow-npc-bubble i { position: absolute; right: 9px; bottom: 5px; color: #9f9baa; font-size: 9px; font-style: normal; animation: ow-npc-more 1.2s ease-in-out infinite; }
 @keyframes ow-npc-pop { from { opacity: 0; transform: translateY(6px) scale(.92); } }
 @keyframes ow-npc-line { from { opacity: 0; } }
 @keyframes ow-npc-more { 50% { opacity: .3; } }

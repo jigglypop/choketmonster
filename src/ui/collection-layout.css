@@ -45,7 +45,7 @@
 .dex-tools button.active{color:#fff;border-color:var(--ui-accent);background:var(--ui-accent)}
 .collection-note{padding:14px 18px;color:var(--ui-text);background:var(--ui-surface-soft)}.collection-note p{color:var(--ui-muted)}
 .dex-grid{grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px}
-.dex-card{min-height:196px;padding:14px;gap:5px}.dex-card:hover{border-color:var(--ui-accent);box-shadow:0 7px 18px rgba(32,53,44,.08);transform:none}
+.dex-card{min-height:196px;padding:14px;gap:5px}.dex-card:hover{border-color:var(--ui-accent);box-shadow:0 7px 18px rgba(39, 32, 53, .08);transform:none}
 .dex-card>span,.dex-card p{color:var(--ui-muted)}.dex-card p{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3}.dex-card small{color:var(--ui-accent)}
 .dex-pagination>span{flex:1 1 160px}
 .shop-grid{grid-template-columns:repeat(auto-fill,minmax(245px,1fr));gap:12px}

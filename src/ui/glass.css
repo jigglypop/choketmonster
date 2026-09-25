@@ -7,16 +7,16 @@
   --glass-edge: rgba(255, 255, 255, .7);
   --glass-edge-dark: rgba(255, 255, 255, .16);
   --glass-shine: inset 0 1px 0 rgba(255, 255, 255, .55);
-  --ui-bg: #eaf2ee;
+  --ui-bg: #f1eef9;
   --ui-surface: rgba(255, 255, 255, .62);
-  --ui-surface-soft: rgba(232, 243, 237, .72);
-  --ui-border: rgba(84, 124, 104, .2);
-  --ui-accent-soft: rgba(210, 236, 222, .8);
-  --ui-hud: rgba(13, 31, 26, .5);
+  --ui-surface-soft: rgba(240, 237, 250, .74);
+  --ui-border: rgba(118, 104, 170, .18);
+  --ui-accent-soft: rgba(229, 223, 252, .82);
+  --ui-hud: rgba(28, 24, 48, .52);
   --ui-hud-line: var(--glass-edge-dark);
   --ui-hud-control: rgba(255, 255, 255, .08);
-  --ui-hud-label: rgba(12, 28, 23, .6);
-  --ui-shadow: 0 10px 30px rgba(22, 58, 44, .08), var(--glass-shine);
+  --ui-hud-label: rgba(28, 24, 48, .6);
+  --ui-shadow: 0 10px 30px rgba(35, 26, 54, .08), var(--glass-shine);
   --ui-radius: 16px;
 }
 
@@ -26,8 +26,8 @@ body { background: transparent; }
 body::before {
   content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
   background:
-    radial-gradient(70vmax 45vmax at 6% -8%, rgba(150, 216, 186, .55), transparent 62%),
-    radial-gradient(60vmax 40vmax at 100% 4%, rgba(164, 204, 238, .5), transparent 58%),
+    radial-gradient(70vmax 45vmax at 6% -8%, rgba(200, 186, 255, .55), transparent 62%),
+    radial-gradient(60vmax 40vmax at 100% 4%, rgba(255, 200, 228, .42), transparent 58%),
     radial-gradient(70vmax 50vmax at 60% 112%, rgba(247, 219, 176, .5), transparent 62%),
     var(--ui-bg);
 }
@@ -43,12 +43,12 @@ body::before {
 .dex-card, .shop-card, .monster-card, .world-trainer-card {
   background: rgba(255, 255, 255, .58);
   border: 1px solid var(--glass-edge);
-  box-shadow: 0 4px 16px rgba(22, 58, 44, .06), var(--glass-shine);
+  box-shadow: 0 4px 16px rgba(35, 26, 54, .06), var(--glass-shine);
 }
 .dex-card:hover, .shop-card:hover, .monster-card:hover { background: rgba(255, 255, 255, .78); }
-.kanto-map-dialog, .world-trainer-dialog { background: rgba(247, 251, 248, .78); }
-:where(dialog)::backdrop { background: rgba(10, 30, 24, .42); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
-.modal-shade { background: rgba(10, 30, 24, .42); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.kanto-map-dialog, .world-trainer-dialog { background: rgba(248, 247, 251, .78); }
+:where(dialog)::backdrop { background: rgba(18, 13, 27, .42); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.modal-shade { background: rgba(18, 13, 27, .42); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
 
 input[type=search], input[type=text], input[type=number], select, textarea { background: rgba(255, 255, 255, .7); border-color: var(--ui-border); }
 
@@ -62,11 +62,11 @@ input[type=search], input[type=text], input[type=number], select, textarea { bac
 .topbar.map-overlay::before { background: var(--ui-hud); -webkit-backdrop-filter: var(--glass-blur-hud); backdrop-filter: var(--glass-blur-hud); }
 .topbar nav { background: rgba(255, 255, 255, .5); border: 1px solid var(--glass-edge); }
 @media (max-width: 900px) {
-  .topbar nav, .topbar.map-overlay nav { background: rgba(250, 253, 251, .82); border: 0; border-top: 1px solid var(--glass-edge); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); }
+  .topbar nav, .topbar.map-overlay nav { background: rgba(251, 250, 253, .82); border: 0; border-top: 1px solid var(--glass-edge); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); }
   .topbar.map-overlay nav button { color: var(--ui-muted); }
 }
 .topbar.map-overlay nav { background: rgba(255, 255, 255, .07); border-color: var(--glass-edge-dark); }
-.topbar nav button.active { background: rgba(255, 255, 255, .9); box-shadow: 0 2px 8px rgba(22, 58, 44, .1); }
+.topbar nav button.active { background: rgba(255, 255, 255, .9); box-shadow: 0 2px 8px rgba(35, 26, 54, .1); }
 .topbar.map-overlay nav button.active { background: rgba(255, 255, 255, .16); box-shadow: none; }
 .topbar.map-overlay .trainer-summary > :is(.quiet, .interface-settings-trigger) { background: rgba(255, 255, 255, .08); border-color: var(--glass-edge-dark); color: var(--ui-hud-text); }
 
@@ -76,24 +76,24 @@ input[type=search], input[type=text], input[type=number], select, textarea { bac
 .world-recovery, .social-player-popover, .world-cave-exits :is(button, select) {
   background: var(--ui-hud);
   border: 1px solid var(--glass-edge-dark);
-  box-shadow: 0 12px 32px rgba(6, 20, 15, .22), inset 0 1px 0 rgba(255, 255, 255, .08);
+  box-shadow: 0 12px 32px rgba(11, 8, 18, .22), inset 0 1px 0 rgba(255, 255, 255, .08);
   -webkit-backdrop-filter: var(--glass-blur-hud);
   backdrop-filter: var(--glass-blur-hud);
 }
-.world-cave-exits button { background: rgba(40, 115, 90, .72); }
+.world-cave-exits button { background: rgba(66, 44, 111, .72); }
 .world-recovery { color: var(--ui-hud-text); }
 .world-recovery button { background: rgba(255, 255, 255, .88); border-color: transparent; }
 .adventure .ow-camera-controls button {
   background: var(--ui-hud); border-color: var(--glass-edge-dark);
   -webkit-backdrop-filter: var(--glass-blur-hud); backdrop-filter: var(--glass-blur-hud);
 }
-.adventure #world-nameplates[aria-pressed=true] { background: rgba(40, 115, 90, .72); border-color: rgba(160, 230, 196, .45); }
+.adventure #world-nameplates[aria-pressed=true] { background: rgba(66, 44, 111, .72); border-color: rgba(182, 163, 227, .45); }
 .adventure .world-explore-panel :is(button, select):not(.world-explore-toggle):not(.world-trainer-open) { background-color: rgba(255, 255, 255, .07); border-color: var(--glass-edge-dark); }
-.adventure .world-trainer-open { background: rgba(52, 132, 99, .78); border-color: rgba(160, 230, 196, .35); }
+.adventure .world-trainer-open { background: rgba(79, 56, 128, .78); border-color: rgba(182, 163, 227, .35); }
 .social-dock #world-chat-form { background: rgba(255, 255, 255, .07); border-color: var(--glass-edge-dark); }
 
 /* World nameplates: compact translucent pills, no blur because they move every frame. */
-.ow-creature-label { min-width: 5.5rem; max-width: none; padding: .45rem .85rem .55rem; background: var(--ui-hud-label); border-color: var(--glass-edge-dark); border-radius: 14px; box-shadow: 0 .25rem .8rem rgba(6, 20, 15, .24); font-size: 13px; line-height: 1.3; }
+.ow-creature-label { min-width: 5.5rem; max-width: none; padding: .45rem .85rem .55rem; background: var(--ui-hud-label); border-color: var(--glass-edge-dark); border-radius: 14px; box-shadow: 0 .25rem .8rem rgba(11, 8, 18, .24); font-size: 13px; line-height: 1.3; }
 .ow-creature-label strong { font-size: 13px; font-weight: 600; letter-spacing: -.01em; }
 .ow-creature-label span { margin-top: .12rem; font-size: 11px; opacity: .85; }
 .ow-creature-label .ow-hp-track { height: 4px; margin-top: .35rem; border-radius: 99px; }
@@ -104,10 +104,10 @@ input[type=search], input[type=text], input[type=number], select, textarea { bac
 .ow-place-label { background: var(--ui-hud-label); border-color: var(--glass-edge-dark); border-radius: 999px; }
 
 /* High contrast keeps opaque surfaces. */
-[data-ui-contrast=high] { --ui-surface: #fff; --ui-hud: #10271d; --ui-hud-label: #10271d; --ui-border: #93af9e; }
+[data-ui-contrast=high] { --ui-surface: #fff; --ui-hud: #181225; --ui-hud-label: #181225; --ui-border: #9b94ae; }
 
 @media (prefers-reduced-transparency: reduce) {
-  :root { --ui-surface: #fbfdfb; --ui-hud: #13291f; --ui-hud-label: #13291f; }
+  :root { --ui-surface: #fbfbfd; --ui-hud: #1a1329; --ui-hud-label: #1a1329; }
   *, *::before, *::after, ::backdrop { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
 }
 
@@ -119,17 +119,17 @@ input[type=search], input[type=text], input[type=number], select, textarea { bac
   border: 1px solid var(--ui-border); border-radius: 12px; background: rgba(255, 255, 255, .72);
 }
 .account-menu > summary::-webkit-details-marker { display: none; }
-.account-menu[open] > summary { background: #fff; box-shadow: 0 0 0 3px rgba(90, 165, 132, .2); }
+.account-menu[open] > summary { background: #fff; box-shadow: 0 0 0 3px rgba(114, 94, 161, .2); }
 .topbar.map-overlay .account-menu > summary { color: var(--ui-hud-text); background: var(--ui-hud-control); border-color: var(--glass-edge-dark); }
-.account-menu-dot { position: absolute; right: 6px; top: 6px; width: 8px; height: 8px; border-radius: 50%; background: #3d9b6e; box-shadow: 0 0 0 2px rgba(255, 255, 255, .85); }
+.account-menu-dot { position: absolute; right: 6px; top: 6px; width: 8px; height: 8px; border-radius: 50%; background: #5b4296; box-shadow: 0 0 0 2px rgba(255, 255, 255, .85); }
 .account-menu:has(#save-state:is([data-state=pending], [data-state=local])) .account-menu-dot { background: #c4943a; }
 .account-menu:has(#save-state[data-state=saving]) .account-menu-dot { background: #4a8294; }
 .account-menu:has(#save-state:is([data-state=error], [data-state=conflict])) .account-menu-dot { background: #c2493f; }
 .account-menu-panel {
   position: absolute; right: 0; top: calc(100% + 8px); z-index: 60;
   display: grid; gap: 8px; width: max-content; min-width: 220px; max-width: calc(100vw - 24px); padding: 12px;
-  color: var(--ui-text); background: rgba(250, 253, 251, .94); border: 1px solid var(--glass-edge); border-radius: 16px;
-  box-shadow: 0 18px 44px rgba(12, 36, 28, .2);
+  color: var(--ui-text); background: rgba(251, 250, 253, .94); border: 1px solid var(--glass-edge); border-radius: 16px;
+  box-shadow: 0 18px 44px rgba(21, 15, 33, .2);
   -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
 }
 .topbar .account-menu-panel :is(#save-state, .account-name) { display: flex !important; max-width: none; padding: 0; background: none; color: var(--ui-text); }

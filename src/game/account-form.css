@@ -1,9 +1,9 @@
 .account-dialog{color:var(--ui-text);border-color:var(--ui-border);background:var(--ui-surface)}
-.account-dialog::backdrop,.save-recovery-dialog::backdrop{background:rgba(29,52,44,.62);backdrop-filter:blur(4px)}
+.account-dialog::backdrop,.save-recovery-dialog::backdrop{background:rgba(37, 29, 52, .62);backdrop-filter:blur(4px)}
 .account-dialog-card{color:var(--ui-text);background:var(--ui-surface);border-color:var(--ui-border);box-shadow:none}
 .account-dialog-card>label,.account-confirm>label{color:var(--ui-text);font-size:calc(12px * var(--ui-font-scale,1));font-weight:800}
 .account-mode{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border-radius:var(--ui-radius);background:var(--ui-surface-soft)}
-.account-mode button{min-height:44px;padding:9px;border:0;border-radius:9px;color:var(--ui-muted);background:transparent;font-weight:800}.account-mode button[aria-pressed=true]{color:var(--ui-text);background:var(--ui-surface);box-shadow:0 2px 8px rgba(32,53,44,.1)}
+.account-mode button{min-height:44px;padding:9px;border:0;border-radius:9px;color:var(--ui-muted);background:transparent;font-weight:800}.account-mode button[aria-pressed=true]{color:var(--ui-text);background:var(--ui-surface);box-shadow:0 2px 8px rgba(39, 32, 53, .1)}
 .account-password-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px}.account-dialog input,.account-password-toggle{min-height:44px;color:var(--ui-text);border:1px solid var(--ui-border);border-radius:10px;background:var(--ui-surface)}
 .account-password-toggle{min-width:64px;font-weight:800}.account-help,.account-field-error{margin-top:-9px;font-size:calc(13px * var(--ui-font-scale,1));line-height:1.45;overflow-wrap:anywhere}.account-help{color:var(--ui-muted)}.account-field-error{color:var(--ui-danger);font-weight:800}
 .account-dialog-card input[aria-invalid=true]{border-color:var(--ui-danger);box-shadow:0 0 0 2px color-mix(in srgb,var(--ui-danger) 16%,transparent)}

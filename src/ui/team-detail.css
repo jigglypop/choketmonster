@@ -26,7 +26,7 @@
 .team-page .detail-body > * { flex-shrink: 0; margin: 0; }
 
 /* Hero: the 3D portrait over a tint of the first type, then name, level and types. */
-.detail-hero { --hero-tint: #e7f1ea; overflow: hidden; border: 1px solid var(--ui-border); border-radius: 16px; background: linear-gradient(180deg, var(--hero-tint), color-mix(in srgb, var(--hero-tint) 35%, var(--ui-surface))); }
+.detail-hero { --hero-tint: #e8e5f3; overflow: hidden; border: 1px solid var(--ui-border); border-radius: 16px; background: linear-gradient(180deg, var(--hero-tint), color-mix(in srgb, var(--hero-tint) 35%, var(--ui-surface))); }
 .detail-hero .detail-portrait, .detail-hero .detail-portrait.has-webgl { height: 230px; min-height: 230px; margin: 0; border: 0; border-radius: 0; background: transparent; }
 .detail-hero .detail-portrait > span { position: absolute; z-index: 2; top: 10px; left: 12px; padding: 3px 9px; border-radius: 999px; background: rgba(255, 255, 255, .78); color: var(--ui-muted); font-size: 11px; font-weight: 700; }
 .detail-hero .detail-title { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 10px; padding: 12px 16px 14px; border: 0; }
@@ -61,7 +61,7 @@
 .stat-bar > span { color: var(--ui-muted); font-weight: 600; }
 .stat-bar > b { font-size: 13px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
 .stat-bar > i { position: relative; height: 8px; border-radius: 999px; background: var(--ui-surface-soft); overflow: hidden; }
-.stat-bar > i::after { content: ''; position: absolute; inset: 0 auto 0 0; width: calc(var(--ratio, 0) * 100%); border-radius: inherit; background: linear-gradient(90deg, #7fc6a4, #3f9a73); }
+.stat-bar > i::after { content: ''; position: absolute; inset: 0 auto 0 0; width: calc(var(--ratio, 0) * 100%); border-radius: inherit; background: linear-gradient(90deg, #cfc4ff, #9d8af2); }
 .stat-bar.stat-hp > i::after { background: linear-gradient(90deg, #6fd18f, #2fa760); }
 .stat-bar.stat-hp.is-mid > i::after { background: linear-gradient(90deg, #f3d36b, #e0a92f); }
 .stat-bar.stat-hp.is-low > i::after { background: linear-gradient(90deg, #f19a8a, #d9534a); }
@@ -78,5 +78,5 @@
 .team-page .compact-move-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .team-page .compact-move-summary > span { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 7px 10px; border-radius: 10px; background: var(--ui-surface-soft); font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .team-page .compact-move-summary > span > i { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; }
-:where(.team-page .compact-move-summary > span > i) { background: #a8b5ad; }
+:where(.team-page .compact-move-summary > span > i) { background: #aca9b4; }
 .team-page .detail-body > .collection-actions { border-color: transparent; background: transparent; padding: 0; }

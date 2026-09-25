@@ -57,7 +57,7 @@
 .adventure .world-explore-panel :is(.world-objective, .world-shop, .world-gym):not([hidden]) { display: block; }
 .adventure .world-explore-toggle small { font-size: calc(11px * var(--ui-font-scale)); color: var(--ui-hud-muted); }
 .adventure .world-tools button, .adventure .world-trainer-open { min-height: 42px; }
-.adventure .world-trainer-open { margin: 0; border: 1px solid var(--ui-hud-line); background: #3b795d; color: white; border-radius: 8px; }
+.adventure .world-trainer-open { margin: 0; border: 1px solid var(--ui-hud-line); background: #4f3e76; color: white; border-radius: 8px; }
 .adventure .world-battle-hud > summary { min-height: 44px; }
 .adventure .world-battle-hud > summary .world-summary-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .adventure .world-battle-hud > summary .world-summary-hp { white-space: nowrap; }

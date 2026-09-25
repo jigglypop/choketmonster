@@ -1,26 +1,26 @@
 /* Shared palette, type, and control dimensions for pages, dialogs, and the HUD. */
 :root {
   --ui-font-scale: 1;
-  --ui-bg: #f3f6f4;
+  --ui-bg: #f6f4fb;
   --ui-surface: #fff;
-  --ui-surface-soft: #eaf1ed;
+  --ui-surface-soft: #f0edf9;
   --ui-tint: var(--ui-surface-soft);
-  --ui-text: #20352c;
-  --ui-muted: #62746b;
-  --ui-border: #d6e1da;
-  --ui-accent: #28735a;
-  --ui-accent-hover: #205e49;
-  --ui-accent-soft: #dfefe6;
-  --ui-focus: #5aa584;
-  --ui-danger: #b44747;
-  --ui-danger-soft: #fff2f1;
-  --ui-hud: #1d342cf5;
-  --ui-hud-text: #eff7f2;
-  --ui-hud-muted: #bed0c5;
+  --ui-text: #2b2744;
+  --ui-muted: #6d6887;
+  --ui-border: #e2ddf1;
+  --ui-accent: #7462d6;
+  --ui-accent-hover: #6351c6;
+  --ui-accent-soft: #ece8fb;
+  --ui-focus: #a898ff;
+  --ui-danger: #c2476a;
+  --ui-danger-soft: #fff0f5;
+  --ui-hud: #231f3af5;
+  --ui-hud-text: #f3f1ff;
+  --ui-hud-muted: #c8c2e6;
   --ui-hud-line: #ffffff26;
   --ui-hud-control: #ffffff0c;
   --ui-radius: 12px;
-  --ui-shadow: 0 6px 24px #183c2910;
+  --ui-shadow: 0 6px 24px #231b3910;
   --app-header-height: 66px;
   --app-nav-height: 0px;
   --forest: var(--ui-text);
@@ -43,7 +43,7 @@ h1, h2, h3, h4 { font-family: inherit; text-wrap: pretty; }
 :where(input, select, textarea) { min-width: 0; }
 :where(p, h1, h2, h3, strong, small, label) { overflow-wrap: anywhere; }
 :where(dialog) { box-sizing: border-box; }
-:where(dialog)::backdrop { background: #11271fc2; }
+:where(dialog)::backdrop { background: #181226c2; }
 :where(dialog) header > div { min-width: 0; }
 :where(dialog) header > button { flex-shrink: 0; }
 :where(button, a, summary, input, select, textarea):focus-visible {
@@ -53,10 +53,10 @@ h1, h2, h3, h4 { font-family: inherit; text-wrap: pretty; }
 ::selection { background: var(--ui-accent-soft); color: var(--ui-text); }
 
 [data-ui-contrast=high] {
-  --ui-hud: #10271d;
-  --ui-hud-line: #759887;
-  --ui-muted: #40574a;
-  --ui-border: #93af9e;
+  --ui-hud: #181225;
+  --ui-hud-line: #807796;
+  --ui-muted: #443b5c;
+  --ui-border: #9b94ae;
 }
 
 @media (max-width: 720px) {

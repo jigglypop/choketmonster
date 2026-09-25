@@ -1,12 +1,12 @@
-.world-trainer-open { width:100%; margin:0 0 10px; background:#294f46; color:#f4faf7; border-color:#294f46; }
-.world-trainer-dialog { width:min(620px,calc(100vw - 28px)); max-height:85dvh; padding:24px; border:1px solid #bfcac2; border-radius:20px; color:#243b32; background:#f6f8f3; box-shadow:0 24px 80px #13271e50; }
-.world-trainer-dialog::backdrop { background:#10231db3; }
+.world-trainer-open { width:100%; margin:0 0 10px; background:#37294f; color:#f6f4fa; border-color:#37294f; }
+.world-trainer-dialog { width:min(620px,calc(100vw - 28px)); max-height:85dvh; padding:24px; border:1px solid #c2c0c9; border-radius:20px; color:#2b243b; background:#f2f2f9; box-shadow:0 24px 80px #19132750; }
+.world-trainer-dialog::backdrop { background:#171023b3; }
 .world-trainer-dialog header { display:flex; align-items:center; justify-content:space-between; gap:16px; }
 .world-trainer-dialog header small { font-size:calc(10px * var(--ui-font-scale, 1)); letter-spacing:.1em; color:var(--ui-muted); }
 .world-trainer-dialog h2 { margin:5px 0; font-size:calc(23px * var(--ui-font-scale, 1)); }
 .world-trainer-dialog > p { color:var(--ui-muted); font-size:calc(13px * var(--ui-font-scale, 1)); line-height:1.7; }
 #world-trainer-list { display:grid; gap:10px; }
-.world-trainer-card { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:16px; border:1px solid #d9e1d8; border-radius:12px; background:#fff; }
+.world-trainer-card { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:16px; border:1px solid #d3cfea; border-radius:12px; background:#fff; }
 .world-trainer-card small { display:block; color:var(--ui-muted); font-size:calc(11px * var(--ui-font-scale, 1)); margin-top:6px; }
 .world-trainer-card p { margin:10px 0; font-size:calc(13px * var(--ui-font-scale, 1)); line-height:1.6; }
 .world-trainer-dialog button { min-height:44px; padding:9px 14px; border:1px solid var(--ui-border); border-radius:9px; color:var(--ui-text); background:var(--ui-surface-soft); }
