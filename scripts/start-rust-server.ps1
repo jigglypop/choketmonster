@@ -26,6 +26,16 @@ $env:CONNECTOME_DIR = Join-Path $projectRoot 'data/local/malecns-neurons166k'
 $env:LISTEN_ADDR = "127.0.0.1:$ApiPort"
 $env:APP_ORIGIN = $AppOrigin
 $env:COOKIE_SECURE = 'false'
+# Realtime chat tickets need a signing secret; keep one per machine outside git.
+if (-not $env:REALTIME_TICKET_SECRET) {
+  $secretFile = Join-Path $projectRoot 'data/local/realtime-ticket-secret.txt'
+  if (-not (Test-Path $secretFile)) {
+    $bytes = New-Object byte[] 36
+    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+    [Convert]::ToBase64String($bytes) | Set-Content -NoNewline -Encoding ascii $secretFile
+  }
+  $env:REALTIME_TICKET_SECRET = (Get-Content -Raw $secretFile).Trim()
+}
 $env:RUST_LOG = 'info'
 $env:RAYON_NUM_THREADS = '4'
 Set-Location $projectRoot
