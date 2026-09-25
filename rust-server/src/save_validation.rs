@@ -1,6 +1,7 @@
 use serde::Deserialize;
 use crate::combat_forms::{
-    combat_form, field_item_exists, held_tool_valid_for_species, mega_model_available,
+    CombatForm, combat_form, field_item_exists, held_tool_valid_for_species,
+    mega_model_available, mega_stone_matches,
 };
 use serde_json::{Map, Value};
 use std::{
@@ -9,6 +10,131 @@ use std::{
 };
 
 const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
+
+// Allow-lists hold every key a released client has written on these objects. The client keeps
+// unknown keys when it loads a save, so keys that older releases wrote are still accepted.
+const SAVE_KEYS: [&str; 8] = [
+    "format", "version", "model", "savedAt", "graph", "game", "view", "tradeEpoch",
+];
+const GAME_KEYS: [&str; 24] = [
+    "schemaVersion", "seed", "rngState", "nextInstanceId", "player", "nursery", "inventory",
+    "dex", "regionId", "defeatedGyms", "defeatedFieldTrainers", "championDefeated", "campaign",
+    "claimedRegionalStarters", "experienceShare", "autoMergeDuplicates", "adventureVersion",
+    "versionCaught", "ballRefillSeconds", "evolutionContext", "technicalMachines", "battle",
+    "captureOffer", "logs",
+];
+const PLAYER_KEYS: [&str; 4] = ["money", "badges", "team", "box"];
+const DEX_KEYS: [&str; 2] = ["seen", "caught"];
+const MONSTER_KEYS: [&str; 23] = [
+    "instanceId", "speciesId", "nickname", "originRegion", "gender", "level", "xp", "hp",
+    "stats", "ivs", "ability", "heldTool", "preferredTransformation", "regionalForm", "moves",
+    "taughtMoves", "moveOrder", "movePpReserve", "status", "statusTurns", "brain",
+    "moveLearning", "evolutionProgress",
+];
+const STAT_KEYS: [&str; 6] = [
+    "hp", "attack", "defense", "specialAttack", "specialDefense", "speed",
+];
+const MOVE_SLOT_KEYS: [&str; 2] = ["moveId", "pp"];
+const MOVE_LEARNING_KEYS: [&str; 4] = ["choices", "executed", "effective", "reward"];
+const EGG_KEYS: [&str; 7] = [
+    "eggId", "speciesId", "parentIds", "steps", "requiredSteps", "brain", "createdAtStep",
+];
+/// Monster and egg brains; `packSave` strips their `graph`.
+const BRAIN_KEYS: [&str; 10] = [
+    "schema", "seed", "inputWeights", "readout", "activity", "previous", "action", "rng",
+    "updates", "sensoryBypass",
+];
+const BATTLE_KEYS: [&str; 17] = [
+    "kind", "regionId", "player", "enemy", "turn", "canRun", "policyRegion", "awaitingSwitch",
+    "gymBadge", "campaignRegion", "trainerId", "statStages", "transformations",
+    "playerMegaUsed", "playerTeraUsed", "choiceLocks", "consumedTools",
+];
+const BATTLE_SIDE_KEYS: [&str; 2] = ["team", "activeIndex"];
+const TRANSFORMATION_KEYS: [&str; 9] = [
+    "speciesId", "stats", "moves", "types", "ability", "kind", "formIdentifier", "hpAdjusted",
+    "teraType",
+];
+const BATTLE_STATS: [&str; 7] = [
+    "attack", "defense", "specialAttack", "specialDefense", "speed", "accuracy", "evasion",
+];
+const VIEW_KEYS: [&str; 10] = [
+    "position", "learning", "learningDefaultsVersion", "rewards", "field", "fieldPreferences",
+    "openWorld", "openWorldPaused", "tradeTransferProvenance",
+    // Written by the trade server for a receiver without a field or world snapshot.
+    "tradeCompanionMemories",
+];
+const OPEN_WORLD_KEYS: [&str; 41] = [
+    "schema", "model", "graphId", "seed", "rng", "tick", "serverFinalizations", "player",
+    "selectedWildId", "autoCapture", "autoHunt", "battleWildId", "worldClockSeconds",
+    "fieldItemPickupStates", "battleElapsed", "pendingCapture", "pendingBall",
+    "lastPlayerReward", "lastEnemyReward", "pendingAction", "manualControlRemaining",
+    "nextBattleTeamIndex", "controlMode", "selectionPinned", "trackingSelected",
+    "visitedTownIds", "visitedTownsByRegion", "rewardLedgers", "regionId", "sceneId",
+    "surfaceReturn", "mapVersion", "densityRemaining", "spawnAnchor", "encounterLayout",
+    "spawnSerial", "nextFoodId", "foods", "respawnQueue", "entities", "companionMemories",
+];
+const WORLD_ENTITY_KEYS: [&str; 15] = [
+    "id", "kind", "speciesId", "level", "x", "z", "heading", "energy", "brain", "observation",
+    "action", "reward", "foods", "collisions", "target",
+];
+const WORLD_RESPAWN_KEYS: [&str; 7] = [
+    "id", "speciesId", "level", "biome", "originX", "originZ", "remainingSeconds",
+];
+const FIELD_KEYS: [&str; 12] = [
+    "schema", "model", "graphId", "seed", "rng", "tick", "recurrentEnabled", "player", "foods",
+    "nextFoodId", "entities", "memories",
+];
+const FIELD_ENTITY_KEYS: [&str; 13] = [
+    "id", "speciesId", "x", "y", "heading", "energy", "brain", "lastObservation", "target",
+    "action", "reward", "foods", "collisions",
+];
+const FIELD_MODEL: &str = "pokemon-field-recurrent-v1";
+const REWARD_MODEL: &str = "kanto-engineered-reward-v1";
+const REWARD_COMPONENTS: [&str; 8] = [
+    "engagement", "damageDealt", "damageReceived", "typeChoice", "moveEffect", "outcome",
+    "growth", "evolution",
+];
+/// Regions of the classic map and the Kanto badges each one needs (`src/game/regions.ts`).
+const MAP_REGIONS: [(&str, i64); 9] = [
+    ("safari-meadow", 0),
+    ("verdant-forest", 1),
+    ("azure-shore", 2),
+    ("silph-city", 3),
+    ("moon-cavern", 4),
+    ("rough-badlands", 5),
+    ("crown-mountain", 6),
+    ("seafoam-depths", 7),
+    ("cerulean-cave", 8),
+];
+
+fn known_keys(object: &Map<String, Value>, allowed: &[&str]) -> bool {
+    object.keys().all(|key| allowed.contains(&key.as_str()))
+}
+
+/// The instance IDs the client allocates. Its loader refuses any other form, and IDs beyond
+/// sixteen digits exceed every `nextInstanceId` a save can hold.
+pub(crate) fn generated_instance_id(id: &str) -> bool {
+    id.strip_prefix("mon-").is_some_and(|digits| {
+        (1..=16).contains(&digits.len())
+            && !digits.starts_with('0')
+            && digits.bytes().all(|byte| byte.is_ascii_digit())
+    })
+}
+
+/// JavaScript `string.length`: the client bounds names in UTF-16 code units.
+fn utf16_length(text: &str) -> usize {
+    text.encode_utf16().count()
+}
+
+fn finite_value(value: Option<&Value>, absolute_maximum: f64) -> bool {
+    value.is_some_and(|value| finite_number(value, absolute_maximum))
+}
+
+fn safe_count(value: Option<&Value>, maximum: i64) -> bool {
+    value
+        .and_then(Value::as_i64)
+        .is_some_and(|number| (0..=maximum).contains(&number))
+}
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct FieldTrainerRecord {
@@ -287,6 +413,108 @@ pub(crate) fn species_available_in_version(version: &str, species_id: i64) -> bo
         .is_some_and(|species| species.contains(&species_id))
 }
 
+pub(crate) fn species_exists(species_id: i64) -> bool {
+    catalog().species.contains_key(&species_id)
+}
+
+/// Species that evolve into `species_id`, indexed once instead of scanning every species.
+fn pre_evolutions(species_id: i64) -> &'static [i64] {
+    static PARENTS: OnceLock<HashMap<i64, Vec<i64>>> = OnceLock::new();
+    PARENTS
+        .get_or_init(|| {
+            let mut parents: HashMap<i64, Vec<i64>> = HashMap::new();
+            for species in catalog().species.values() {
+                for evolution in &species.evolutions {
+                    parents.entry(evolution.target).or_default().push(species.id);
+                }
+            }
+            parents
+        })
+        .get(&species_id)
+        .map_or(&[], Vec::as_slice)
+}
+
+/// The Alolan combat form of each species that has one; the client stores no other regional kind.
+fn alola_form(species_id: i64) -> Option<&'static CombatForm> {
+    static FORMS: OnceLock<HashMap<i64, &'static CombatForm>> = OnceLock::new();
+    FORMS
+        .get_or_init(|| {
+            #[derive(Deserialize)]
+            struct FormHead {
+                identifier: String,
+                kind: String,
+            }
+            #[derive(Deserialize)]
+            struct FormFile {
+                forms: Vec<FormHead>,
+            }
+            let parsed: FormFile = serde_json::from_str(include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/data/pokemon-combat-forms.json"
+            )))
+            .expect("combat form catalog");
+            parsed
+                .forms
+                .iter()
+                .filter(|form| form.kind == "alola")
+                .filter_map(|form| combat_form(&form.identifier))
+                .map(|form| (form.species_id, form))
+                .collect()
+        })
+        .get(&species_id)
+        .copied()
+}
+
+/// Gender ratio per species from the client's generated breeding table (-1 genderless, 0..8 female eighths).
+fn gender_rates() -> &'static HashMap<i64, i64> {
+    static RATES: OnceLock<HashMap<i64, i64>> = OnceLock::new();
+    RATES.get_or_init(|| {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Breeding {
+            gender_rate: i64,
+        }
+        let source = include_str!("../../src/data/breeding.generated.ts");
+        let declaration = source
+            .find("export const BREEDING_SPECIES")
+            .expect("breeding species table");
+        let start = declaration + source[declaration..].find('{').expect("breeding table start");
+        let end = start + source[start..].find("};").expect("breeding table end") + 1;
+        let parsed: HashMap<String, Breeding> =
+            serde_json::from_str(&source[start..end]).expect("breeding table must be JSON");
+        parsed
+            .into_iter()
+            .map(|(id, row)| (id.parse().expect("breeding species id"), row.gender_rate))
+            .collect()
+    })
+}
+
+/// `isValidGender` in `src/game/breeding.ts`.
+fn valid_gender(species_id: i64, gender: &Value) -> bool {
+    let gender = gender.as_str();
+    match gender_rates().get(&species_id) {
+        Some(-1) => gender == Some("genderless"),
+        Some(0) => gender == Some("male"),
+        Some(8) => gender == Some("female"),
+        _ => matches!(gender, Some("male" | "female")),
+    }
+}
+
+/// `tileAt` in `src/game/map.ts`: trees, water and buildings block the classic map.
+fn map_walkable(x: i64, y: i64) -> bool {
+    let tree = x < 1 || y < 1 || x >= 23 || y >= 14;
+    let water = (17..=21).contains(&x) && (9..=12).contains(&y);
+    let building = (3..=6).contains(&x) && (3..=5).contains(&y)
+        || (16..=20).contains(&x) && (2..=4).contains(&y);
+    !tree && !water && !building
+}
+
+fn map_tile(value: &Value, x_key: &str, y_key: &str) -> Option<(i64, i64)> {
+    let x = value.get(x_key)?.as_i64()?;
+    let y = value.get(y_key)?.as_i64()?;
+    (x >= 0 && y >= 0 && map_walkable(x, y)).then_some((x, y))
+}
+
 fn expected_graph() -> &'static Value {
     GRAPH.get_or_init(|| {
         serde_json::from_str(include_str!(concat!(
@@ -396,6 +624,11 @@ fn adjusted_mega_maximum_hp(
 
 fn validate_individual_traits(monster: &Value, species_id: i64) -> Result<[i64; 6], &'static str> {
     match (monster.get("ivs"), monster.get("ability")) {
+        // Regional forms arrived after individual traits, so a legacy trait-less save never has
+        // one; the loader's species fallback ability would not match the form anyway.
+        (None, None) if monster.get("regionalForm").is_some() => {
+            return Err("지역 모습 특성 정보가 올바르지 않습니다.");
+        }
         (None, None) => return Ok([0; 6]),
         (Some(_), None) | (None, Some(_)) => return Err("개체값과 특성은 함께 저장해야 합니다."),
         _ => {}
@@ -619,6 +852,14 @@ fn validate_brain(brain: &Value) -> Result<(), &'static str> {
         .as_array()
         .map(Vec::len)
         .ok_or("서버 커넥톰이 올바르지 않습니다.")?;
+    // packSave intentionally removes every nested `graph`; accepting one here
+    // would let a forged topology enter a client-side brain after restoration.
+    if brain.get("graph").is_some() {
+        return Err("개체 체크포인트에는 별도 그래프를 저장할 수 없습니다.");
+    }
+    if !brain.as_object().is_some_and(|fields| known_keys(fields, &BRAIN_KEYS)) {
+        return Err("저장 파일의 객체 필드가 올바르지 않습니다.");
+    }
     integer(brain.get("schema"), 1, 1)?;
     integer(brain.get("seed"), 0, u32::MAX as i64)?;
     integer(brain.get("rng"), 0, u32::MAX as i64)?;
@@ -633,7 +874,12 @@ fn validate_brain(brain: &Value) -> Result<(), &'static str> {
     if activity.len() != node_count || activity.iter().any(|item| !finite_number(item, 1.0)) {
         return Err("신경 활동 값이 올바르지 않습니다.");
     }
-    if let Some(previous) = brain.get("previous").filter(|item| !item.is_null()) {
+    // Brain.restore needs `previous` present (null between decisions) and the loader
+    // accepts only an explicitly disabled sensory bypass.
+    let previous = brain
+        .get("previous")
+        .ok_or("신경 학습 특징이 올바르지 않습니다.")?;
+    if !previous.is_null() {
         let previous = previous
             .as_array()
             .ok_or("신경 학습 특징이 올바르지 않습니다.")?;
@@ -643,18 +889,215 @@ fn validate_brain(brain: &Value) -> Result<(), &'static str> {
             return Err("신경 학습 특징이 올바르지 않습니다.");
         }
     }
-    if brain
-        .get("sensoryBypass")
-        .is_some_and(|value| value != false)
-    {
+    if brain.get("sensoryBypass") != Some(&Value::Bool(false)) {
         return Err("신경 감각 우회 설정이 올바르지 않습니다.");
     }
-    // packSave intentionally removes every nested `graph`; accepting one here
-    // would let a forged topology enter a client-side brain after restoration.
-    if brain.get("graph").is_some() {
-        return Err("개체 체크포인트에는 별도 그래프를 저장할 수 없습니다.");
-    }
     Ok(())
+}
+
+/// Field and open-world creature brains, checked as `Brain.restore` does after the loader
+/// swaps their `graphId` for the save's graph.
+fn valid_record_brain(brain: Option<&Value>) -> bool {
+    let Some(brain) = brain.and_then(Value::as_object) else {
+        return false;
+    };
+    let Some(node_count) = expected_graph()["nodes"].as_array().map(Vec::len) else {
+        return false;
+    };
+    let vector = |value: Option<&Value>, size: usize| {
+        value.and_then(Value::as_array).is_some_and(|items| {
+            items.len() == size && items.iter().all(|item| finite_number(item, 100.0))
+        })
+    };
+    let matrix = |value: Option<&Value>, rows: usize, columns: usize| {
+        value.and_then(Value::as_array).is_some_and(|items| {
+            items.len() == rows && items.iter().all(|row| vector(Some(row), columns))
+        })
+    };
+    brain.keys().all(|key| key == "graphId" || BRAIN_KEYS.contains(&key.as_str()))
+        && brain.get("graphId") == expected_graph().get("id")
+        && brain.get("sensoryBypass") == Some(&Value::Bool(false))
+        && brain.get("schema").and_then(Value::as_i64) == Some(1)
+        && matrix(brain.get("inputWeights"), node_count, 12)
+        && matrix(brain.get("readout"), 5, node_count + 12)
+        && vector(brain.get("activity"), node_count)
+        && brain
+            .get("previous")
+            .is_some_and(|previous| previous.is_null() || vector(Some(previous), node_count + 12))
+        && safe_count(brain.get("seed"), u32::MAX as i64)
+        && safe_count(brain.get("rng"), u32::MAX as i64)
+        && safe_count(brain.get("action"), 4)
+        && safe_count(brain.get("updates"), MAX_SAFE_INTEGER)
+}
+
+/// One open-world creature (`restore` in `src/openworld/simulation.ts`). Terrain needs the
+/// region atlas, so positions are bounded to the world square only.
+pub(crate) fn valid_world_record(record: &Value) -> bool {
+    let Some(entity) = record.as_object() else {
+        return false;
+    };
+    known_keys(entity, &WORLD_ENTITY_KEYS)
+        && entity
+            .get("id")
+            .and_then(Value::as_str)
+            .is_some_and(|id| !id.is_empty() && id.len() <= 200)
+        && matches!(
+            entity.get("kind").and_then(Value::as_str),
+            Some("wild" | "companion")
+        )
+        && entity
+            .get("speciesId")
+            .and_then(Value::as_i64)
+            .is_some_and(species_exists)
+        && entity
+            .get("level")
+            .and_then(Value::as_i64)
+            .is_some_and(|level| (1..=100).contains(&level))
+        && finite_value(entity.get("x"), 240.0)
+        && finite_value(entity.get("z"), 240.0)
+        && safe_count(entity.get("heading"), 4)
+        && safe_count(entity.get("action"), 4)
+        && entity
+            .get("energy")
+            .and_then(Value::as_f64)
+            .is_some_and(|energy| energy.is_finite() && (0.0..=100.0).contains(&energy))
+        && finite_value(entity.get("reward"), 10.0)
+        && safe_count(entity.get("foods"), MAX_SAFE_INTEGER)
+        && safe_count(entity.get("collisions"), MAX_SAFE_INTEGER)
+        && entity
+            .get("observation")
+            .and_then(Value::as_array)
+            .is_some_and(|items| {
+                items.len() == 12 && items.iter().all(|item| finite_number(item, f64::MAX))
+            })
+        && entity
+            .get("target")
+            .is_none_or(|target| validate_world_point(target).is_ok())
+        && valid_record_brain(entity.get("brain"))
+}
+
+/// One classic-map field creature (`unpack` in `src/game/field.ts`).
+pub(crate) fn valid_field_record(record: &Value) -> bool {
+    let Some(entity) = record.as_object() else {
+        return false;
+    };
+    known_keys(entity, &FIELD_ENTITY_KEYS)
+        && entity
+            .get("id")
+            .and_then(Value::as_str)
+            .is_some_and(|id| !id.is_empty() && id.len() <= 200)
+        && entity
+            .get("speciesId")
+            .and_then(Value::as_i64)
+            .is_some_and(species_exists)
+        && map_tile(record, "x", "y").is_some()
+        && safe_count(entity.get("heading"), 4)
+        && safe_count(entity.get("action"), 4)
+        && entity
+            .get("energy")
+            .and_then(Value::as_f64)
+            .is_some_and(|energy| energy.is_finite() && (0.0..=100.0).contains(&energy))
+        && finite_value(entity.get("reward"), 10.0)
+        && safe_count(entity.get("foods"), MAX_SAFE_INTEGER)
+        && safe_count(entity.get("collisions"), MAX_SAFE_INTEGER)
+        && entity
+            .get("lastObservation")
+            .and_then(Value::as_array)
+            .is_some_and(|items| {
+                items.len() == 12 && items.iter().all(|item| finite_number(item, f64::MAX))
+            })
+        && entity.get("target").is_none_or(|target| {
+            safe_count(target.get("foodId"), MAX_SAFE_INTEGER)
+                && target.get("foodId").and_then(Value::as_i64) != Some(0)
+                && map_tile(target, "x", "y").is_some()
+        })
+        && valid_record_brain(entity.get("brain"))
+}
+
+/// `validateRewardLedger` in `src/game/rewards.ts`, for the ledger stored under `id`.
+/// A missing `moveEffect` is the legacy shape the client fills with zero.
+pub(crate) fn valid_reward_ledger(ledger: &Value, id: &str) -> bool {
+    let Some(fields) = ledger.as_object() else {
+        return false;
+    };
+    let components = |value: Option<&Value>, bound: f64| {
+        value.and_then(Value::as_object).is_some_and(|parts| {
+            known_keys(parts, &REWARD_COMPONENTS)
+                && REWARD_COMPONENTS.iter().all(|component| match parts.get(*component) {
+                    None => *component == "moveEffect",
+                    value => finite_value(value, bound),
+                })
+        })
+    };
+    let Some(lifetime) = fields.get("lifetime").and_then(Value::as_object) else {
+        return false;
+    };
+    let Some(counts) = lifetime.get("eventCounts").and_then(Value::as_object) else {
+        return false;
+    };
+    let counted = |key: &str| {
+        counts
+            .get(key)
+            .and_then(Value::as_i64)
+            .filter(|count| (0..=1_000_000_000).contains(count))
+    };
+    let (Some(engagement), Some(battle)) = (counted("engagement"), counted("battle")) else {
+        return false;
+    };
+    let lifetime_valid = known_keys(
+        lifetime,
+        &["events", "eventCounts", "total", "componentTotals", "componentCounts"],
+    ) && known_keys(counts, &["engagement", "battle"])
+        && lifetime.get("events").and_then(Value::as_i64) == Some(engagement + battle)
+        && safe_count(lifetime.get("events"), 2_000_000_000)
+        && finite_value(lifetime.get("total"), 1e9)
+        && components(lifetime.get("componentTotals"), 1e9)
+        && lifetime
+            .get("componentCounts")
+            .and_then(Value::as_object)
+            .is_some_and(|parts| {
+                known_keys(parts, &REWARD_COMPONENTS)
+                    && REWARD_COMPONENTS.iter().all(|component| match parts.get(*component) {
+                        None => *component == "moveEffect",
+                        value => safe_count(value, 1_000_000_000),
+                    })
+            });
+    let entry_valid = |entry: &Value| {
+        let Some(item) = entry.as_object() else {
+            return false;
+        };
+        let source = item.get("source").and_then(Value::as_str);
+        let learning = item.get("learningEligible").and_then(Value::as_bool);
+        let total = item.get("total").and_then(Value::as_f64);
+        let sum = item.get("breakdown").map(|parts| {
+            REWARD_COMPONENTS
+                .iter()
+                .map(|component| parts.get(*component).and_then(Value::as_f64).unwrap_or(0.0))
+                .sum::<f64>()
+        });
+        known_keys(
+            item,
+            &["event", "tick", "source", "learningEligible", "total", "breakdown"],
+        ) && matches!(
+            item.get("event").and_then(Value::as_str),
+            Some("engagement" | "battle")
+        ) && safe_count(item.get("tick"), MAX_SAFE_INTEGER)
+            && matches!(source, Some("connectome" | "manual" | "fallback"))
+            && learning.is_some_and(|eligible| !eligible || source == Some("connectome"))
+            && finite_value(item.get("total"), 2.0)
+            && components(item.get("breakdown"), 2.0)
+            && matches!((sum, total), (Some(sum), Some(total)) if (sum.clamp(-2.0, 2.0) - total).abs() <= 1e-9)
+    };
+    known_keys(fields, &["rewardModel", "individualId", "latest", "lifetime"])
+        && fields.get("rewardModel").and_then(Value::as_str) == Some(REWARD_MODEL)
+        && fields.get("individualId").and_then(Value::as_str) == Some(id)
+        && !id.is_empty()
+        && utf16_length(id) <= 200
+        && lifetime_valid
+        && fields
+            .get("latest")
+            .and_then(Value::as_array)
+            .is_some_and(|entries| entries.len() <= 32 && entries.iter().all(entry_valid))
 }
 
 fn validate_nursery(game: &Value, ids: &mut HashSet<String>) -> Result<(), &'static str> {
@@ -666,6 +1109,9 @@ fn validate_nursery(game: &Value, ids: &mut HashSet<String>) -> Result<(), &'sta
         .filter(|eggs| eggs.len() <= 6)
         .ok_or("알 보관함이 올바르지 않습니다.")?;
     for egg in eggs {
+        if !egg.as_object().is_some_and(|fields| known_keys(fields, &EGG_KEYS)) {
+            return Err("알 보관함이 올바르지 않습니다.");
+        }
         let egg_id = egg
             .get("eggId")
             .and_then(Value::as_str)
@@ -718,6 +1164,9 @@ fn validate_monster(
     owned_species: &mut HashSet<i64>,
     maximum_hp_override: Option<i64>,
 ) -> Result<(), &'static str> {
+    if !monster.as_object().is_some_and(|fields| known_keys(fields, &MONSTER_KEYS)) {
+        return Err("저장 파일의 객체 필드가 올바르지 않습니다.");
+    }
     validate_evolution_progress(monster)?;
     if let Some(origin) = monster.get("originRegion") {
         let origin = origin
@@ -743,13 +1192,7 @@ fn validate_monster(
         .get("instanceId")
         .and_then(Value::as_str)
         .ok_or("개체 ID가 올바르지 않습니다.")?;
-    if instance_id.is_empty()
-        || instance_id.len() > 120
-        || !instance_id
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b))
-        || !ids.insert(instance_id.to_owned())
-    {
+    if !generated_instance_id(instance_id) || !ids.insert(instance_id.to_owned()) {
         return Err("개체 ID가 없거나 중복되었습니다.");
     }
     let species_id = integer(monster.get("speciesId"), 1, i64::MAX)?;
@@ -759,6 +1202,13 @@ fn validate_monster(
         .ok_or("지원하지 않는 포켓몬 종입니다.")?;
     if owned {
         owned_species.insert(species_id);
+    }
+    // An absent gender is derived on load; a stored one must fit the species ratio.
+    if monster
+        .get("gender")
+        .is_some_and(|gender| !valid_gender(species_id, gender))
+    {
+        return Err("포켓몬 성별 기록이 올바르지 않습니다.");
     }
     if let Some(preferred) = monster.get("preferredTransformation") {
         if !owned {
@@ -812,29 +1262,12 @@ fn validate_monster(
         return Err("장착 도구가 올바르지 않습니다.");
     }
     if let Some(form) = monster.get("regionalForm") {
-        let form = form.as_str().ok_or("지역 모습이 올바르지 않습니다.")?;
-        let expected_species = match form {
-            "rattata-alola" => 19,
-            "raticate-alola" => 20,
-            "raichu-alola" => 26,
-            "sandshrew-alola" => 27,
-            "sandslash-alola" => 28,
-            "vulpix-alola" => 37,
-            "ninetales-alola" => 38,
-            "diglett-alola" => 50,
-            "dugtrio-alola" => 51,
-            "meowth-alola" => 52,
-            "persian-alola" => 53,
-            "geodude-alola" => 74,
-            "graveler-alola" => 75,
-            "golem-alola" => 76,
-            "grimer-alola" => 88,
-            "muk-alola" => 89,
-            "exeggutor-alola" => 103,
-            "marowak-alola" => 105,
-            _ => return Err("지역 모습이 올바르지 않습니다."),
-        };
-        if species_id != expected_species {
+        let form = form
+            .as_str()
+            .and_then(combat_form)
+            .filter(|form| form.kind == "alola")
+            .ok_or("지역 모습이 올바르지 않습니다.")?;
+        if species_id != form.species_id {
             return Err("지역 모습이 원본 종과 맞지 않습니다.");
         }
     }
@@ -842,7 +1275,7 @@ fn validate_monster(
         .get("nickname")
         .and_then(Value::as_str)
         .ok_or("포켓몬 이름이 올바르지 않습니다.")?;
-    if nickname.is_empty() || nickname.chars().count() > 40 {
+    if nickname.is_empty() || utf16_length(nickname) > 40 {
         return Err("포켓몬 이름이 올바르지 않습니다.");
     }
     let level = integer(monster.get("level"), 1, 100)?;
@@ -857,6 +1290,9 @@ fn validate_monster(
         return Err("레벨과 경험치가 일치하지 않습니다.");
     }
     let stats = object(monster, "stats")?;
+    if !known_keys(stats, &STAT_KEYS) {
+        return Err("계산 능력치가 종과 레벨에 맞지 않습니다.");
+    }
     for (field, expected) in [
         "hp",
         "attack",
@@ -894,6 +1330,8 @@ fn validate_monster(
     }
     // Evolution keeps the moves already learned by prior forms. Walk the
     // reverse evolution graph so those legitimate slots survive validation.
+    // An earlier Alolan form's learnset counts too: evolving keeps those moves,
+    // and an Alolan Meowth may even become a Perrserker without a regional form.
     let mut legal = HashSet::new();
     let mut forms = vec![species_id];
     let mut visited = HashSet::new();
@@ -910,18 +1348,18 @@ fn validate_monster(
                     .map(|learned| learned.move_id),
             );
         }
-        forms.extend(
-            catalog()
-                .species
-                .values()
-                .filter(|candidate| {
-                    candidate
-                        .evolutions
-                        .iter()
-                        .any(|evolution| evolution.target == form)
-                })
-                .map(|candidate| candidate.id),
-        );
+        if form != species_id
+            && let Some(regional) = alola_form(form)
+        {
+            legal.extend(
+                regional
+                    .level_up_moves
+                    .iter()
+                    .filter(|learned| learned.level <= level)
+                    .map(|learned| learned.move_id),
+            );
+        }
+        forms.extend_from_slice(pre_evolutions(form));
     }
     if let Some(entry) = catalog().species.get(&species_id) {
         legal.extend(entry.machine_moves.iter().copied());
@@ -947,6 +1385,9 @@ fn validate_monster(
     if let Some(form) = monster.get("regionalForm").and_then(Value::as_str).and_then(combat_form) { legal.extend(form.level_up_moves.iter().filter(|entry| entry.level <= level).map(|entry| entry.move_id)); }
     let mut move_ids = HashSet::new();
     for slot in moves {
+        if !slot.as_object().is_some_and(|fields| known_keys(fields, &MOVE_SLOT_KEYS)) {
+            return Err("저장 파일의 객체 필드가 올바르지 않습니다.");
+        }
         let move_id = integer(slot.get("moveId"), 1, i64::MAX)?;
         let known = catalog()
             .moves
@@ -1007,12 +1448,22 @@ fn validate_monster(
             return Err("기술 학습 기록이 너무 많습니다.");
         }
         for (move_id, record) in learning {
-            let id = move_id
-                .parse::<i64>()
-                .ok()
-                .filter(|id| catalog().moves.contains_key(id))
-                .ok_or("기술 학습 기록의 기술이 올바르지 않습니다.")?;
-            let _ = id;
+            // The loader accepts only decimal digits (`/^\d+$/`); `parse` would also take a sign.
+            if move_id.is_empty()
+                || !move_id.bytes().all(|byte| byte.is_ascii_digit())
+                || move_id
+                    .parse::<i64>()
+                    .ok()
+                    .is_none_or(|id| !catalog().moves.contains_key(&id))
+            {
+                return Err("기술 학습 기록의 기술이 올바르지 않습니다.");
+            }
+            if !record
+                .as_object()
+                .is_some_and(|fields| known_keys(fields, &MOVE_LEARNING_KEYS))
+            {
+                return Err("기술 학습 기록이 올바르지 않습니다.");
+            }
             let choices = integer(record.get("choices"), 0, 1_000_000_000)?;
             let executed = integer(record.get("executed"), 0, choices)?;
             integer(record.get("effective"), 0, executed)?;
@@ -1133,18 +1584,16 @@ fn validate_town_ids(value: &Value) -> Result<(), &'static str> {
     Ok(())
 }
 
-fn validate_open_world(view: Option<&Value>) -> Result<(), &'static str> {
-    let Some(view) = view else {
-        return Ok(());
-    };
-    let view = view
-        .as_object()
-        .ok_or("화면 저장 형식이 올바르지 않습니다.")?;
-    let Some(world) = view.get("openWorld") else {
-        return Ok(());
-    };
+/// The open-world snapshot. Companions belong to `owned` (team and box); reward ledgers may
+/// also belong to battle opponents and the capture offer in `owners`.
+fn validate_open_world(
+    world: &Value,
+    owned: &HashSet<&str>,
+    owners: &HashSet<&str>,
+) -> Result<(), &'static str> {
     let world = world
         .as_object()
+        .filter(|world| known_keys(world, &OPEN_WORLD_KEYS))
         .ok_or("오픈월드 저장 형식이 올바르지 않습니다.")?;
     if world
         .get("regionId")
@@ -1246,17 +1695,44 @@ fn validate_open_world(view: Option<&Value>) -> Result<(), &'static str> {
             return Err("동굴 복귀 장면이 지역과 일치하지 않습니다.");
         }
     }
-    for key in ["entities", "companionMemories", "foods"] {
-        if let Some(items) = world.get(key) {
-            let items = items
-                .as_array()
-                .ok_or("오픈월드 좌표 목록이 올바르지 않습니다.")?;
-            for item in items {
-                validate_world_point(item)?;
-                if let Some(target) = item.get("target") {
-                    validate_world_point(target)?;
-                }
+    if let Some(items) = world.get("foods") {
+        let items = items
+            .as_array()
+            .ok_or("오픈월드 좌표 목록이 올바르지 않습니다.")?;
+        for item in items {
+            validate_world_point(item)?;
+        }
+    }
+    // Creatures are restored with their brains, and the loader wants exactly one active
+    // companion, companion-only memories, unique IDs and companions of owned Pokémon.
+    let mut entity_ids = HashSet::new();
+    for (key, memories) in [("entities", false), ("companionMemories", true)] {
+        let Some(items) = world.get(key) else {
+            continue;
+        };
+        let items = items
+            .as_array()
+            .ok_or("오픈월드 좌표 목록이 올바르지 않습니다.")?;
+        let mut companions = 0;
+        for item in items {
+            if !valid_world_record(item) {
+                return Err("오픈월드 좌표 목록이 올바르지 않습니다.");
             }
+            let id = item.get("id").and_then(Value::as_str).unwrap_or_default();
+            let companion = item.get("kind").and_then(Value::as_str) == Some("companion");
+            if !entity_ids.insert(id)
+                || memories && !companion
+                || companion
+                    && !id
+                        .strip_prefix("companion:")
+                        .is_some_and(|instance| owned.contains(instance))
+            {
+                return Err("오픈월드 좌표 목록이 올바르지 않습니다.");
+            }
+            companions += usize::from(companion);
+        }
+        if !memories && companions != 1 {
+            return Err("오픈월드 좌표 목록이 올바르지 않습니다.");
         }
     }
     if let Some(items) = world.get("respawnQueue") {
@@ -1265,14 +1741,28 @@ fn validate_open_world(view: Option<&Value>) -> Result<(), &'static str> {
             .ok_or("오픈월드 재등장 좌표가 올바르지 않습니다.")?;
         for item in items {
             if !item
-                .get("originX")
-                .is_some_and(|value| finite_number(value, 240.0))
+                .as_object()
+                .is_some_and(|fields| known_keys(fields, &WORLD_RESPAWN_KEYS))
+                || !item
+                    .get("originX")
+                    .is_some_and(|value| finite_number(value, 240.0))
                 || !item
                     .get("originZ")
                     .is_some_and(|value| finite_number(value, 240.0))
             {
                 return Err("오픈월드 재등장 좌표가 올바르지 않습니다.");
             }
+        }
+    }
+    if let Some(ledgers) = world.get("rewardLedgers") {
+        let ledgers = ledgers
+            .as_object()
+            .ok_or("오픈월드 저장 형식이 올바르지 않습니다.")?;
+        if ledgers
+            .iter()
+            .any(|(id, ledger)| !owners.contains(id.as_str()) || !valid_reward_ledger(ledger, id))
+        {
+            return Err("오픈월드 저장 형식이 올바르지 않습니다.");
         }
     }
     if let Some(ids) = world.get("visitedTownIds") {
@@ -1289,6 +1779,184 @@ fn validate_open_world(view: Option<&Value>) -> Result<(), &'static str> {
             }
             validate_town_ids(ids)?;
         }
+    }
+    Ok(())
+}
+
+/// The legacy classic-map field snapshot (`FieldSimulation` in `src/game/field.ts`).
+fn validate_field(field: &Value) -> Result<(), &'static str> {
+    const INVALID: &str = "들판 기억이 올바르지 않습니다.";
+    let snapshot = field
+        .as_object()
+        .filter(|snapshot| known_keys(snapshot, &FIELD_KEYS))
+        .ok_or(INVALID)?;
+    let entities = snapshot
+        .get("entities")
+        .and_then(Value::as_array)
+        .filter(|entities| entities.len() <= 6)
+        .ok_or(INVALID)?;
+    let memories = snapshot
+        .get("memories")
+        .and_then(Value::as_array)
+        .ok_or(INVALID)?;
+    let foods = snapshot
+        .get("foods")
+        .and_then(Value::as_array)
+        .ok_or(INVALID)?;
+    let next_food = snapshot
+        .get("nextFoodId")
+        .and_then(Value::as_i64)
+        .filter(|id| (1..=MAX_SAFE_INTEGER).contains(id))
+        .ok_or(INVALID)?;
+    let player = snapshot
+        .get("player")
+        .filter(|player| player.as_object().is_some_and(|player| known_keys(player, &["x", "y"])))
+        .and_then(|player| map_tile(player, "x", "y"))
+        .ok_or(INVALID)?;
+    if snapshot.get("schema").and_then(Value::as_i64) != Some(1)
+        || snapshot.get("model").and_then(Value::as_str) != Some(FIELD_MODEL)
+        || snapshot.get("graphId") != expected_graph().get("id")
+        || !safe_count(snapshot.get("seed"), u32::MAX as i64)
+        || !safe_count(snapshot.get("rng"), u32::MAX as i64)
+        || !safe_count(snapshot.get("tick"), MAX_SAFE_INTEGER)
+        || !snapshot.get("recurrentEnabled").is_some_and(Value::is_boolean)
+    {
+        return Err(INVALID);
+    }
+    let (mut food_ids, mut food_tiles) = (HashSet::new(), HashSet::new());
+    for food in foods {
+        let id = food
+            .get("id")
+            .and_then(Value::as_i64)
+            .filter(|id| *id >= 1 && *id < next_food);
+        let tile = map_tile(food, "x", "y");
+        if !food.as_object().is_some_and(|food| known_keys(food, &["id", "x", "y"]))
+            || !id.is_some_and(|id| food_ids.insert(id))
+            || !tile.is_some_and(|tile| food_tiles.insert(tile))
+        {
+            return Err(INVALID);
+        }
+    }
+    // Active creatures and the player each hold their own tile; food never sits under them.
+    let (mut ids, mut occupied) = (HashSet::new(), HashSet::from([player]));
+    for (index, record) in entities.iter().chain(memories).enumerate() {
+        if !valid_field_record(record)
+            || !ids.insert(record.get("id").and_then(Value::as_str).unwrap_or_default())
+            || index < entities.len()
+                && !map_tile(record, "x", "y").is_some_and(|tile| occupied.insert(tile))
+        {
+            return Err(INVALID);
+        }
+    }
+    if food_tiles.iter().any(|tile| occupied.contains(tile)) {
+        return Err(INVALID);
+    }
+    Ok(())
+}
+
+/// `ViewState`, checked as `unpackSave` in `src/game/storage.ts` checks it. `owned` holds the
+/// team and box IDs, `owners` also the battle opponents and capture offer.
+fn validate_view(
+    view: Option<&Value>,
+    owned: &HashSet<&str>,
+    owners: &HashSet<&str>,
+) -> Result<(), &'static str> {
+    let view = view
+        .and_then(Value::as_object)
+        .ok_or("화면 저장 형식이 올바르지 않습니다.")?;
+    if !known_keys(view, &VIEW_KEYS)
+        || !view.get("learning").is_some_and(Value::is_boolean)
+        || view
+            .get("learningDefaultsVersion")
+            .is_some_and(|version| version.as_f64() != Some(1.0))
+    {
+        return Err("화면 저장 형식이 올바르지 않습니다.");
+    }
+    let position = view.get("position");
+    if !position.is_some_and(|position| {
+        position
+            .as_object()
+            .is_some_and(|fields| known_keys(fields, &["x", "y", "steps"]))
+            && map_tile(position, "x", "y").is_some()
+            && safe_count(position.get("steps"), MAX_SAFE_INTEGER)
+    }) {
+        return Err("탐험 위치가 올바르지 않습니다.");
+    }
+    if let Some(rewards) = view.get("rewards")
+        && !rewards.as_object().is_some_and(|rewards| {
+            rewards
+                .iter()
+                .all(|(id, reward)| owners.contains(id.as_str()) && finite_number(reward, 100.0))
+        })
+    {
+        return Err("신경 학습의 보상 기록이 올바르지 않습니다.");
+    }
+    if let Some(field) = view.get("field") {
+        validate_field(field)?;
+    }
+    if let Some(preferences) = view.get("fieldPreferences")
+        && !preferences.as_object().is_some_and(|preferences| {
+            known_keys(preferences, &["paused", "learning", "selectedId"])
+                && preferences.get("paused").is_some_and(Value::is_boolean)
+                && preferences.get("learning").is_some_and(Value::is_boolean)
+                && preferences
+                    .get("selectedId")
+                    .and_then(Value::as_str)
+                    .is_some_and(|id| id.len() <= 200)
+        })
+    {
+        return Err("들판 설정이 올바르지 않습니다.");
+    }
+    if view.get("openWorldPaused").is_some_and(|paused| !paused.is_boolean()) {
+        return Err("월드 정지 설정이 올바르지 않습니다.");
+    }
+    if let Some(provenance) = view.get("tradeTransferProvenance")
+        && !provenance.as_object().is_some_and(|records| {
+            records.len() <= 10_000
+                && records.iter().all(|(id, record)| {
+                    generated_instance_id(id)
+                        && record.as_object().is_some_and(|record| {
+                            known_keys(record, &["sourceInstanceId", "tradeId"])
+                                && record
+                                    .get("sourceInstanceId")
+                                    .and_then(Value::as_str)
+                                    .is_some_and(generated_instance_id)
+                                && record.get("tradeId").is_none_or(|trade| {
+                                    trade.as_str().is_some_and(|trade| {
+                                        !trade.is_empty() && utf16_length(trade) <= 100
+                                    })
+                                })
+                        })
+                })
+        })
+    {
+        return Err("거래 개체 출처 기록이 올바르지 않습니다.");
+    }
+    // The client never reads this stash; only its shape is bounded.
+    if let Some(stash) = view.get("tradeCompanionMemories") {
+        let record = |value: Option<&Value>, keys: &[&str]| {
+            value.is_none_or(|value| value.as_object().is_some_and(|value| known_keys(value, keys)))
+        };
+        let valid = stash.as_object().is_some_and(|entries| {
+            entries.iter().all(|(id, entry)| {
+                generated_instance_id(id)
+                    && entry.as_object().is_some_and(|entry| {
+                        known_keys(entry, &["field", "openWorld", "rewardLedger"])
+                            && record(entry.get("field"), &FIELD_ENTITY_KEYS)
+                            && record(entry.get("openWorld"), &WORLD_ENTITY_KEYS)
+                            && record(
+                                entry.get("rewardLedger"),
+                                &["rewardModel", "individualId", "latest", "lifetime"],
+                            )
+                    })
+            })
+        });
+        if !valid {
+            return Err("화면 저장 형식이 올바르지 않습니다.");
+        }
+    }
+    if let Some(world) = view.get("openWorld") {
+        validate_open_world(world, owned, owners)?;
     }
     Ok(())
 }
@@ -1827,9 +2495,14 @@ fn validate_battle_progress(
 }
 
 pub fn validate_save(value: &Value) -> Result<(), &'static str> {
+    // The envelope is rebuilt by packSave on every save, so only its own keys can appear.
     if value.get("format") != Some(&Value::String("choketmon".into()))
         || value.get("version") != Some(&Value::from(2))
         || value.get("model") != Some(&Value::String("pokemon-recurrent-v1".into()))
+        || !value.as_object().is_some_and(|envelope| known_keys(envelope, &SAVE_KEYS))
+        || value
+            .get("savedAt")
+            .is_some_and(|saved| saved.as_str().is_none_or(|saved| saved.len() > 64))
     {
         return Err("저장 파일 형식이 올바르지 않습니다.");
     }
@@ -1837,6 +2510,9 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
         return Err("저장 파일의 커넥톰이 서버 원본과 일치하지 않습니다.");
     }
     let game = value.get("game").ok_or("게임 저장 데이터가 없습니다.")?;
+    if !game.as_object().is_some_and(|game| known_keys(game, &GAME_KEYS)) {
+        return Err("저장 파일의 객체 필드가 올바르지 않습니다.");
+    }
     integer(game.get("schemaVersion"), 2, 2)?;
     let seed = game
         .get("seed")
@@ -1862,8 +2538,20 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
     let player = game
         .get("player")
         .ok_or("플레이어 저장 데이터가 없습니다.")?;
+    if !player.as_object().is_some_and(|player| known_keys(player, &PLAYER_KEYS)) {
+        return Err("저장 파일의 객체 필드가 올바르지 않습니다.");
+    }
     integer(player.get("money"), 0, MAX_SAFE_INTEGER)?;
     let badges = integer(player.get("badges"), 0, 8)?;
+    // The classic map region must exist and be unlocked by the Kanto badges.
+    if !game
+        .get("regionId")
+        .and_then(Value::as_str)
+        .and_then(|region| MAP_REGIONS.iter().find(|(id, _)| *id == region))
+        .is_some_and(|(_, minimum)| *minimum <= badges)
+    {
+        return Err("잠기지 않은 지역 진행이 손상되었습니다.");
+    }
     let team = array(player, "team")?;
     let box_monsters = array(player, "box")?;
     if team.is_empty() || team.len() > 6 || box_monsters.len() > 10_000 {
@@ -1916,15 +2604,10 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
             .ok_or("필드 트레이너 진행이 올바르지 않습니다.")?;
         let mut unique = HashSet::new();
         for trainer in field_trainers {
+            // The loader looks every entry up in the trainer catalog and refuses unknown ones.
             let id = trainer
                 .as_str()
-                .filter(|id| {
-                    (id.starts_with("crystal-") || field_trainer(id).is_some())
-                        && id.len() <= 100
-                        && id
-                            .bytes()
-                            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-                })
+                .filter(|id| field_trainer(id).is_some())
                 .ok_or("필드 트레이너 진행이 올바르지 않습니다.")?;
             if !unique.insert(id) {
                 return Err("필드 트레이너 진행이 중복되었습니다.");
@@ -1996,14 +2679,23 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
             return Err("승리 후 포획 대상이 올바르지 않습니다.");
         }
     }
+    let mut enemy_team: &[Value] = &[];
     if let Some(battle) = battle {
+        if !battle.as_object().is_some_and(|battle| known_keys(battle, &BATTLE_KEYS)) {
+            return Err("저장 파일의 객체 필드가 올바르지 않습니다.");
+        }
         validate_battle_progress(game, battle, badges, campaign.as_ref())?;
         let enemy = battle
             .get("enemy")
             .ok_or("전투 상대가 올바르지 않습니다.")?;
         let enemies = array(enemy, "team")?;
+        enemy_team = enemies.as_slice();
         if enemies.is_empty() || enemies.len() > 6 {
             return Err("전투 상대 팀이 올바르지 않습니다.");
+        }
+        // A wild encounter is always a single opponent.
+        if battle.get("kind").and_then(Value::as_str) == Some("wild") && enemies.len() != 1 {
+            return Err("전투 도주 규칙이 올바르지 않습니다.");
         }
         integer(enemy.get("activeIndex"), 0, enemies.len() as i64 - 1)?;
         for monster in enemies {
@@ -2013,10 +2705,33 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
         let battle_player = battle
             .get("player")
             .ok_or("전투 플레이어가 올바르지 않습니다.")?;
+        if [battle_player, enemy].iter().any(|side| {
+            !side
+                .as_object()
+                .is_some_and(|side| known_keys(side, &BATTLE_SIDE_KEYS))
+        }) {
+            return Err("저장 파일의 객체 필드가 올바르지 않습니다.");
+        }
         if array(battle_player, "team")? != team {
             return Err("전투 팀과 플레이어 팀이 일치하지 않습니다.");
         }
-        integer(battle_player.get("activeIndex"), 0, team.len() as i64 - 1)?;
+        let active_index = integer(battle_player.get("activeIndex"), 0, team.len() as i64 - 1)?;
+        // A fainted lead waits for a forced switch while anyone can still fight, and only then.
+        let awaiting = battle.get("awaitingSwitch");
+        if awaiting.is_some_and(|value| value.as_str() != Some("player")) {
+            return Err("강제 교체 상태가 손상되었습니다.");
+        }
+        let lead_fainted = team[active_index as usize].get("hp").and_then(Value::as_i64) == Some(0);
+        if lead_fainted != awaiting.is_some()
+            && team
+                .iter()
+                .any(|monster| monster.get("hp").and_then(Value::as_i64).is_some_and(|hp| hp > 0))
+        {
+            return Err("강제 교체 대상이 일치하지 않습니다.");
+        }
+        if let Some(stages) = battle.get("statStages") {
+            validate_stat_stages(stages, team.iter().chain(enemies))?;
+        }
         if let Some(locks) = battle.get("choiceLocks") {
             let locks = locks.as_object().ok_or("도구의 기술 고정 기록이 올바르지 않습니다.")?;
             for (id, move_id) in locks {
@@ -2056,14 +2771,19 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
             if transformations.len() > battle_ids.len() {
                 return Err("전투 변신 기록이 올바르지 않습니다.");
             }
+            let mut player_megas = 0;
             for (instance_id, form_value) in transformations {
                 if !battle_ids.contains(instance_id.as_str()) {
                     return Err("전투 변신 개체가 올바르지 않습니다.");
                 }
                 let form = form_value
                     .as_object()
+                    .filter(|form| known_keys(form, &TRANSFORMATION_KEYS))
                     .ok_or("전투 변신 기록이 올바르지 않습니다.")?;
-                integer(form.get("speciesId"), 1, MAX_SAFE_INTEGER)?;
+                // Transform copies a real species; the loader looks it up in the catalog.
+                if !species_exists(integer(form.get("speciesId"), 1, MAX_SAFE_INTEGER)?) {
+                    return Err("전투 변신 기록이 올바르지 않습니다.");
+                }
                 let stats = object(form_value, "stats")?;
                 for key in [
                     "hp",
@@ -2079,15 +2799,17 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
                 if moves.len() > 4 {
                     return Err("전투 변신 기술이 올바르지 않습니다.");
                 }
+                let kind = form.get("kind").and_then(Value::as_str);
                 for slot in moves {
                     let move_id = integer(slot.get("moveId"), 1, MAX_SAFE_INTEGER)?;
                     let known = catalog()
                         .moves
                         .get(&move_id)
                         .ok_or("전투 변신 기술이 올바르지 않습니다.")?;
-                    integer(slot.get("pp"), 0, known.pp)?;
+                    // Transform copies moves with at most five PP each.
+                    let maximum = if matches!(kind, Some("mega" | "tera")) { known.pp } else { known.pp.min(5) };
+                    integer(slot.get("pp"), 0, maximum)?;
                 }
-                let kind = form.get("kind").and_then(Value::as_str);
                 if kind.is_some_and(|kind| !matches!(kind, "transform" | "mega" | "tera")) {
                     return Err("전투 변신 종류가 올바르지 않습니다.");
                 }
@@ -2142,6 +2864,17 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
                                     && mega_model_available(&profile.identifier)
                             })
                             .ok_or("메가진화 모습이 올바르지 않습니다.")?;
+                        // The player's side Mega Evolves once per battle and only while holding the
+                        // matching stone, which stays equipped until the battle ends.
+                        if team.iter().any(|monster| monster.get("instanceId").and_then(Value::as_str) == Some(instance_id.as_str())) {
+                            player_megas += 1;
+                            if player_megas > 1 {
+                                return Err("이 전투에서는 이미 메가진화를 사용했습니다.");
+                            }
+                            if !source.get("heldTool").and_then(Value::as_str).is_some_and(|tool| mega_stone_matches(tool, &profile.identifier)) {
+                                return Err("해당 메가진화석을 장착해야 합니다.");
+                            }
+                        }
                         if form.get("types") != Some(&serde_json::json!(profile.types)) { return Err("메가진화 타입이 올바르지 않습니다."); }
                         if let Some(ability) = profile.abilities.first() {
                             if form_value.pointer("/ability/id").and_then(Value::as_i64) != Some(ability.id)
@@ -2183,6 +2916,9 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
         }
     }
     let dex = game.get("dex").ok_or("도감 저장 데이터가 없습니다.")?;
+    if !dex.as_object().is_some_and(|dex| known_keys(dex, &DEX_KEYS)) {
+        return Err("저장 파일의 객체 필드가 올바르지 않습니다.");
+    }
     let seen = array(dex, "seen")?;
     let caught = array(dex, "caught")?;
     let validate_dex = |items: &Vec<Value>| -> Result<HashSet<i64>, &'static str> {
@@ -2202,10 +2938,10 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
     if !caught.is_subset(&seen) || !owned_species.is_subset(&caught) {
         return Err("발견·포획 도감과 보유 포켓몬이 일치하지 않습니다.");
     }
-    let adventure_version = game
-        .get("adventureVersion")
-        .and_then(Value::as_str)
-        .unwrap_or("red");
+    let adventure_version = match game.get("adventureVersion") {
+        None => "red",
+        Some(version) => version.as_str().ok_or("수집 버전이 올바르지 않습니다.")?,
+    };
     if !catalog().versions.contains_key(adventure_version) {
         return Err("수집 버전이 올바르지 않습니다.");
     }
@@ -2243,30 +2979,83 @@ pub fn validate_save(value: &Value) -> Result<(), &'static str> {
     if logs.len() > 200
         || logs.iter().any(|log| {
             log.as_str()
-                .is_none_or(|message| message.chars().count() > 500)
+                .is_none_or(|message| utf16_length(message) > 500)
         })
     {
         return Err("게임 기록이 올바르지 않습니다.");
     }
+    // A numeric suffix too large for an integer is larger than any `nextInstanceId`.
     let maximum_generated_id = ids
         .iter()
-        .filter_map(|id| {
-            id.strip_prefix("mon-")
-                .or_else(|| id.strip_prefix("egg-"))?
-                .parse::<i64>()
-                .ok()
-        })
+        .filter_map(|id| id.strip_prefix("mon-").or_else(|| id.strip_prefix("egg-")))
+        .filter(|digits| !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit()))
+        .map(|digits| digits.parse::<i64>().unwrap_or(i64::MAX))
         .max()
         .unwrap_or(0);
     if next_instance_id <= maximum_generated_id {
         return Err("다음 개체 ID가 기존 개체보다 커야 합니다.");
     }
-    validate_open_world(value.get("view"))?;
+    fn instance(monster: &Value) -> Option<&str> {
+        monster.get("instanceId").and_then(Value::as_str)
+    }
+    let owned: HashSet<&str> = team.iter().chain(box_monsters).filter_map(instance).collect();
+    let owners: HashSet<&str> = team
+        .iter()
+        .chain(box_monsters)
+        .chain(enemy_team)
+        .chain(game.get("captureOffer"))
+        .filter_map(instance)
+        .collect();
+    validate_view(value.get("view"), &owned, &owners)?;
+    Ok(())
+}
+
+/// `battle.statStages` as the loader reads it through `Object.entries`: falsy or entry-less
+/// values pass, every listed Pokémon must be in the battle with stat stages of -6..6.
+fn validate_stat_stages<'a>(
+    stages: &Value,
+    members: impl Iterator<Item = &'a Value>,
+) -> Result<(), &'static str> {
+    const INVALID: &str = "능력 단계가 손상되었습니다.";
+    let truthy = |value: &Value| match value {
+        Value::Null => false,
+        Value::Bool(value) => *value,
+        Value::Number(number) => number.as_f64().is_some_and(|number| number != 0.0),
+        Value::String(text) => !text.is_empty(),
+        Value::Array(_) | Value::Object(_) => true,
+    };
+    // Arrays and strings list index keys, which neither Pokémon IDs nor stat names match.
+    let entryless = |value: &Value| match value {
+        Value::Array(items) => items.is_empty(),
+        Value::String(text) => text.is_empty(),
+        Value::Object(fields) => fields.is_empty(),
+        _ => true,
+    };
+    let Some(entries) = stages.as_object() else {
+        return if !truthy(stages) || entryless(stages) { Ok(()) } else { Err(INVALID) };
+    };
+    let battle_ids: HashSet<&str> = members
+        .filter_map(|monster| monster.get("instanceId")?.as_str())
+        .collect();
+    for (id, set) in entries {
+        let valid = battle_ids.contains(id.as_str())
+            && truthy(set)
+            && match set.as_object() {
+                Some(stats) => stats.iter().all(|(stat, stage)| {
+                    BATTLE_STATS.contains(&stat.as_str())
+                        && stage.as_i64().is_some_and(|stage| (-6..=6).contains(&stage))
+                }),
+                None => entryless(set),
+            };
+        if !valid {
+            return Err(INVALID);
+        }
+    }
     Ok(())
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     #[test]
@@ -2316,7 +3105,7 @@ mod tests {
         validate_save(&save).unwrap();
     }
 
-    fn valid_monster() -> Value {
+    pub(crate) fn valid_monster() -> Value {
         let species = catalog().species.get(&1).unwrap();
         let stats = expected_stats(species, 5);
         let learned = species.moves.iter().find(|entry| entry.level <= 5).unwrap();
@@ -2329,7 +3118,7 @@ mod tests {
         })
     }
 
-    fn valid_save() -> Value {
+    pub(crate) fn valid_save() -> Value {
         serde_json::json!({
             "format":"choketmon", "version":2, "model":"pokemon-recurrent-v1", "savedAt":"2026-09-13T00:00:00.000Z",
             "graph":expected_graph().clone(),
@@ -2341,7 +3130,7 @@ mod tests {
         })
     }
 
-    fn valid_brain_checkpoint() -> Value {
+    pub(crate) fn valid_brain_checkpoint() -> Value {
         let node_count = expected_graph()["nodes"].as_array().unwrap().len();
         serde_json::json!({
             "schema":1, "seed":7, "rng":9, "updates":0, "action":0,
@@ -2383,7 +3172,7 @@ mod tests {
         });
     }
 
-    fn set_battle(
+    pub(crate) fn set_battle(
         save: &mut Value,
         kind: &str,
         region_id: &str,
@@ -2392,7 +3181,9 @@ mod tests {
         gym_badge: Option<i64>,
     ) {
         let mut enemy = valid_monster();
-        enemy["instanceId"] = Value::String("enemy-1".into());
+        let next = save["game"]["nextInstanceId"].as_i64().unwrap();
+        enemy["instanceId"] = Value::String(format!("mon-{next}"));
+        save["game"]["nextInstanceId"] = Value::from(next + 1);
         let mut battle = serde_json::json!({
             "kind":kind,
             "regionId":region_id,
@@ -2413,7 +3204,7 @@ mod tests {
         save["game"]["battle"] = battle;
     }
 
-    fn monster_for_species(species_id: i64, instance_id: &str, level: i64, hp: i64) -> Value {
+    pub(crate) fn monster_for_species(species_id: i64, instance_id: &str, level: i64, hp: i64) -> Value {
         let species = &catalog().species[&species_id];
         let stats = expected_stats(species, level);
         serde_json::json!({
@@ -2449,7 +3240,8 @@ mod tests {
 
     fn mega_battle_save(species_id: i64, identifier: &str, hp: i64, marker: Option<Value>) -> Value {
         let mut save = valid_save();
-        let monster = monster_for_species(species_id, "mega-player", 100, hp);
+        let mut monster = monster_for_species(species_id, "mon-1", 100, hp);
+        monster["heldTool"] = Value::from(format!("mega-stone:{identifier}"));
         save["game"]["player"]["team"] = serde_json::json!([monster]);
         save["game"]["dex"]["seen"] = serde_json::json!([species_id]);
         save["game"]["dex"]["caught"] = serde_json::json!([species_id]);
@@ -2460,7 +3252,7 @@ mod tests {
             marker,
         );
         save["game"]["battle"]["transformations"] =
-            Value::Object(Map::from_iter([("mega-player".into(), transformation)]));
+            Value::Object(Map::from_iter([("mon-1".into(), transformation)]));
         save["game"]["battle"]["playerMegaUsed"] = Value::Bool(true);
         save
     }
@@ -3124,7 +3916,7 @@ mod tests {
         let base_hp = expected_stats(&catalog().species[&species_id], 100)[0];
         let mut matching_stone = valid_save();
         matching_stone["game"]["player"]["team"][0] =
-            monster_for_species(species_id, "zygarde", 100, base_hp);
+            monster_for_species(species_id, "mon-1", 100, base_hp);
         matching_stone["game"]["player"]["team"][0]["heldTool"] =
             Value::from("mega-stone:zygarde-mega");
         matching_stone["game"]["dex"]["seen"] = serde_json::json!([species_id]);
@@ -3172,17 +3964,17 @@ mod tests {
                 "moves":[]
             })
         };
-        let mut charizard = make_monster(6, "mega-6");
+        let mut charizard = make_monster(6, "mon-6");
         charizard["preferredTransformation"] =
             serde_json::json!({"kind":"mega","formIdentifier":"charizard-mega-x"});
         validate_monster(&charizard, &mut HashSet::new(), true, &mut HashSet::new(), None).unwrap();
 
-        let mut unavailable = make_monster(36, "mega-36");
+        let mut unavailable = make_monster(36, "mon-36");
         unavailable["preferredTransformation"] =
             serde_json::json!({"kind":"mega","formIdentifier":"clefable-mega"});
         assert!(validate_monster(&unavailable, &mut HashSet::new(), true, &mut HashSet::new(), None).is_err());
 
-        let mut encounter = make_monster(25, "enemy-25");
+        let mut encounter = make_monster(25, "mon-25");
         encounter["preferredTransformation"] =
             serde_json::json!({"kind":"tera","teraType":"electric"});
         assert!(validate_monster(&encounter, &mut HashSet::new(), false, &mut HashSet::new(), None).is_err());
@@ -3208,7 +4000,7 @@ mod tests {
         assert!(validate_save(&over_form_hp).is_err());
 
         let mut forged_form_stats = over_form_hp;
-        forged_form_stats["game"]["battle"]["transformations"]["mega-player"]["stats"]["hp"] =
+        forged_form_stats["game"]["battle"]["transformations"]["mon-1"]["stats"]["hp"] =
             Value::from(mega_hp + 1);
         assert!(validate_save(&forged_form_stats).is_err());
     }
@@ -3223,16 +4015,17 @@ mod tests {
             ("transform", Value::Bool(true)),
         ] {
             let mut save = mega_battle_save(718, "zygarde-mega", mega_hp, Some(marker));
-            save["game"]["battle"]["transformations"]["mega-player"]["kind"] =
+            save["game"]["battle"]["transformations"]["mon-1"]["kind"] =
                 Value::String(kind.into());
             assert!(validate_save(&save).is_err(), "kind={kind}");
         }
 
         let mut boxed = valid_save();
-        let boxed_monster = monster_for_species(718, "boxed-mega", 100, mega_hp);
+        let boxed_monster = monster_for_species(718, "mon-2", 100, mega_hp);
         boxed["game"]["player"]["box"] = serde_json::json!([boxed_monster]);
         boxed["game"]["dex"]["seen"] = serde_json::json!([1, 718]);
         boxed["game"]["dex"]["caught"] = serde_json::json!([1, 718]);
+        boxed["game"]["nextInstanceId"] = Value::from(3);
         set_battle(&mut boxed, "wild", "safari-meadow", None, None, None);
         let transformation = mega_transformation(
             &boxed["game"]["player"]["box"][0],
@@ -3240,7 +4033,7 @@ mod tests {
             Some(Value::Bool(true)),
         );
         boxed["game"]["battle"]["transformations"] =
-            Value::Object(Map::from_iter([("boxed-mega".into(), transformation)]));
+            Value::Object(Map::from_iter([("mon-2".into(), transformation)]));
         boxed["game"]["battle"]["playerMegaUsed"] = Value::Bool(true);
         assert!(validate_save(&boxed).is_err());
     }
@@ -3295,7 +4088,7 @@ mod tests {
             let level = 100;
             let stats = expected_stats(species, level);
             let monster = serde_json::json!({
-                "instanceId":format!("species-{}", species.id), "speciesId":species.id,
+                "instanceId":format!("mon-{}", species.id), "speciesId":species.id,
                 "nickname":"test", "level":level, "xp":species.experience[99], "hp":stats[0],
                 "stats":{"hp":stats[0],"attack":stats[1],"defense":stats[2],"specialAttack":stats[3],"specialDefense":stats[4],"speed":stats[5]},
                 "moves":[]
@@ -3553,14 +4346,18 @@ mod tests {
     #[test]
     fn validates_v3_scene_clock_coordinates_and_field_trainer_progress() {
         let mut save = valid_save();
+        add_box_monster(&mut save, "mon-2");
         save["game"]["defeatedFieldTrainers"] = serde_json::json!(["crystal-hiker-daniel"]);
+        let mut companion = world_record("companion:mon-1", "companion", 4.0, 5.0);
+        companion["target"] = serde_json::json!({"kind":"food","id":"1","x":6,"z":7});
         save["view"]["openWorld"] = serde_json::json!({
             "regionId":"johto", "mapVersion":"johto-v3", "sceneId":"cave:johto:union-cave",
             "worldClockSeconds":1199.5, "player":{"x":240,"z":-240,"heading":0},
             "spawnAnchor":{"x":1,"z":2},
             "surfaceReturn":{"sceneId":"surface:johto","x":-200,"z":200},
-            "entities":[{"x":4,"z":5,"target":{"x":6,"z":7}}],
-            "companionMemories":[{"x":8,"z":9}], "foods":[{"x":10,"z":11}],
+            "entities":[companion, world_record("wild-1", "wild", -3.0, 2.0)],
+            "companionMemories":[world_record("companion:mon-2", "companion", 8.0, 9.0)],
+            "foods":[{"id":1,"x":10,"z":11}],
             "respawnQueue":[{"originX":12,"originZ":13}]
         });
         validate_save(&save).unwrap();
@@ -3599,5 +4396,663 @@ mod tests {
         let mut invalid_origin = current;
         invalid_origin["game"]["player"]["team"][0]["originRegion"] = Value::String("moon".into());
         assert!(validate_save(&invalid_origin).is_err());
+    }
+
+    pub(crate) fn add_box_monster(save: &mut Value, instance_id: &str) {
+        let mut monster = valid_monster();
+        monster["instanceId"] = Value::from(instance_id);
+        save["game"]["player"]["box"].as_array_mut().unwrap().push(monster);
+        let number: i64 = instance_id.trim_start_matches("mon-").parse().unwrap();
+        let next = save["game"]["nextInstanceId"].as_i64().unwrap().max(number + 1);
+        save["game"]["nextInstanceId"] = Value::from(next);
+    }
+
+    /// A field or open-world creature brain as the client snapshots it.
+    pub(crate) fn record_brain() -> Value {
+        let mut brain = valid_brain_checkpoint();
+        brain["graphId"] = expected_graph()["id"].clone();
+        brain
+    }
+
+    pub(crate) fn world_record(id: &str, kind: &str, x: f64, z: f64) -> Value {
+        serde_json::json!({
+            "id":id, "kind":kind, "speciesId":1, "level":5, "x":x, "z":z, "heading":4,
+            "energy":100, "brain":record_brain(), "observation":vec![0.0; 12], "action":4,
+            "reward":0, "foods":0, "collisions":0
+        })
+    }
+
+    pub(crate) fn field_record(id: &str, x: i64, y: i64) -> Value {
+        serde_json::json!({
+            "id":id, "speciesId":1, "x":x, "y":y, "heading":4, "energy":100,
+            "brain":record_brain(), "lastObservation":vec![0.0; 12], "action":4, "reward":0,
+            "foods":0, "collisions":0
+        })
+    }
+
+    /// `emptyRewardLedger` in `src/game/rewards.ts`.
+    pub(crate) fn reward_ledger(id: &str) -> Value {
+        let zeros = serde_json::json!({"engagement":0,"damageDealt":0,"damageReceived":0,
+            "typeChoice":0,"moveEffect":0,"outcome":0,"growth":0,"evolution":0});
+        serde_json::json!({"rewardModel":"kanto-engineered-reward-v1","individualId":id,"latest":[],
+            "lifetime":{"events":0,"eventCounts":{"engagement":0,"battle":0},"total":0,
+                "componentTotals":zeros,"componentCounts":zeros}})
+    }
+
+    pub(crate) fn field_snapshot(entities: Vec<Value>, memories: Vec<Value>) -> Value {
+        serde_json::json!({"schema":1,"model":"pokemon-field-recurrent-v1",
+            "graphId":expected_graph()["id"].clone(),"seed":71,"rng":5,"tick":3,
+            "recurrentEnabled":true,"player":{"x":12,"y":10},"foods":[{"id":1,"x":2,"y":7}],
+            "nextFoodId":2,"entities":entities,"memories":memories})
+    }
+
+    fn alolan_monster(identifier: &str, instance_id: &str, level: i64, move_ids: &[i64]) -> Value {
+        let form = combat_form(identifier).unwrap();
+        let species = &catalog().species[&form.species_id];
+        let stats = form_stats(identifier, level, [0; 6]).unwrap();
+        let ability = &form.abilities[0];
+        serde_json::json!({
+            "instanceId":instance_id, "speciesId":form.species_id, "nickname":"alola",
+            "level":level, "xp":experience_at_level(species, level).unwrap(), "hp":stats[0],
+            "stats":{"hp":stats[0],"attack":stats[1],"defense":stats[2],"specialAttack":stats[3],"specialDefense":stats[4],"speed":stats[5]},
+            "ivs":{"hp":0,"attack":0,"defense":0,"specialAttack":0,"specialDefense":0,"speed":0},
+            "ability":{"id":ability.id,"slot":ability.slot,"hidden":ability.hidden,"slug":ability.slug,
+                "name":ability.name,"englishName":ability.english_name,
+                "effect":ability_effect(&ability.slug),"description":"원본 폼 특성"},
+            "regionalForm":identifier,
+            "moves":move_ids.iter().map(|id| serde_json::json!({"moveId":id,"pp":catalog().moves[id].pp})).collect::<Vec<_>>()
+        })
+    }
+
+    fn with_lead(monster: Value) -> Value {
+        let species_id = monster["speciesId"].clone();
+        let mut save = valid_save();
+        save["game"]["player"]["team"] = serde_json::json!([monster]);
+        save["game"]["dex"]["seen"] = serde_json::json!([species_id]);
+        save["game"]["dex"]["caught"] = serde_json::json!([species_id]);
+        save
+    }
+
+    fn with_moves(mut monster: Value, move_ids: &[i64]) -> Value {
+        monster["moves"] = move_ids
+            .iter()
+            .map(|id| serde_json::json!({"moveId":id,"pp":catalog().moves[id].pp}))
+            .collect();
+        monster
+    }
+
+    #[test]
+    fn keeps_moves_learned_as_an_earlier_alolan_form() {
+        for (identifier, moves) in [
+            ("ninetales-alola", [181, 420, 62, 58]),
+            ("ninetales-alola", [54, 694, 573, 181]),
+            ("sandslash-alola", [54, 181, 334, 442]),
+            ("sandslash-alola", [883, 59, 54, 181]),
+        ] {
+            let save = with_lead(alolan_monster(identifier, "mon-1", 100, &moves));
+            validate_save(&save).unwrap_or_else(|error| panic!("{identifier} {moves:?}: {error}"));
+        }
+        // Every regional line: each move an earlier Alolan form learns by level 100 stays legal.
+        let mut checked = 0;
+        for species in catalog().species.values() {
+            let mut earlier = Vec::new();
+            let mut forms = pre_evolutions(species.id).to_vec();
+            while let Some(form) = forms.pop() {
+                if let Some(regional) = alola_form(form) {
+                    earlier.extend(
+                        regional
+                            .level_up_moves
+                            .iter()
+                            .filter(|entry| entry.level <= 100)
+                            .map(|entry| entry.move_id),
+                    );
+                }
+                forms.extend_from_slice(pre_evolutions(form));
+            }
+            earlier.sort_unstable();
+            earlier.dedup();
+            for moves in earlier.chunks(4) {
+                let monster = match alola_form(species.id) {
+                    Some(form) => alolan_monster(&form.identifier, "mon-1", 100, moves),
+                    None => with_moves(monster_for_species(species.id, "mon-1", 100, 1), moves),
+                };
+                validate_save(&with_lead(monster))
+                    .unwrap_or_else(|error| panic!("{} {moves:?}: {error}", species.id));
+                checked += 1;
+            }
+        }
+        assert!(checked >= 10, "regional lines checked: {checked}");
+        // Perrserker has no Alolan form, but an Alolan Meowth can become one.
+        let perrserker = with_moves(monster_for_species(863, "mon-1", 100, 1), &[400]);
+        validate_save(&with_lead(perrserker)).unwrap();
+        // Moves outside every learnset of the line are still refused.
+        let ninetales = alolan_monster("ninetales-alola", "mon-1", 100, &[]);
+        let refused = |id: i64| validate_save(&with_lead(with_moves(ninetales.clone(), &[id])));
+        let foreign = *catalog()
+            .moves
+            .keys()
+            .filter(|id| refused(**id).is_err())
+            .min()
+            .unwrap();
+        assert_eq!(refused(foreign), Err("현재 종과 레벨이 배울 수 없는 기술입니다."));
+    }
+
+    #[test]
+    fn enforces_client_instance_id_gender_nickname_and_move_learning_rules() {
+        for id in ["starter", "mon-0", "mon-01", "mon-", "Mon-1", "mon-1x", "mon-12345678901234567"] {
+            let mut save = valid_save();
+            save["game"]["player"]["team"][0]["instanceId"] = Value::from(id);
+            assert!(validate_save(&save).is_err(), "{id}");
+        }
+        let mut save = valid_save();
+        save["game"]["player"]["team"][0]["instanceId"] = Value::from("mon-7");
+        save["game"]["nextInstanceId"] = Value::from(8);
+        validate_save(&save).unwrap();
+        let mut egg = valid_save();
+        egg["game"]["nursery"] = serde_json::json!([{
+            "eggId":"egg-99999999999999999999", "speciesId":1, "parentIds":["mon-1","mon-2"],
+            "steps":0, "requiredSteps":5376, "createdAtStep":2, "brain":valid_brain_checkpoint()
+        }]);
+        assert!(validate_save(&egg).is_err());
+
+        for (species_id, gender, valid) in [
+            (1, "female", true),
+            (1, "male", true),
+            (1, "genderless", false),
+            (81, "genderless", true),
+            (81, "male", false),
+            (113, "female", true),
+            (113, "male", false),
+            (128, "male", true),
+            (128, "female", false),
+        ] {
+            let mut monster = monster_for_species(species_id, "mon-1", 30, 1);
+            monster["gender"] = Value::from(gender);
+            assert_eq!(validate_save(&with_lead(monster)).is_ok(), valid, "{species_id} {gender}");
+        }
+        let mut null_gender = valid_save();
+        null_gender["game"]["player"]["team"][0]["gender"] = Value::Null;
+        assert!(validate_save(&null_gender).is_err());
+
+        // The client counts UTF-16 code units: twenty emoji fill the forty-unit name.
+        for (nickname, valid) in [
+            ("😀".repeat(20), true),
+            ("😀".repeat(21), false),
+            ("가".repeat(40), true),
+            ("가".repeat(41), false),
+        ] {
+            let mut save = valid_save();
+            save["game"]["player"]["team"][0]["nickname"] = Value::from(nickname.clone());
+            assert_eq!(validate_save(&save).is_ok(), valid, "{nickname}");
+        }
+
+        let move_id = valid_monster()["moves"][0]["moveId"].as_i64().unwrap();
+        let record = serde_json::json!({"choices":2,"executed":1,"effective":1,"reward":0.5});
+        let padded = serde_json::json!({"choices":2,"executed":1,"effective":1,"reward":0.5,"note":"x"});
+        for (key, record, valid) in [
+            (move_id.to_string(), record.clone(), true),
+            (format!("00{move_id}"), record.clone(), true),
+            (format!("+{move_id}"), record.clone(), false),
+            (format!("-{move_id}"), record.clone(), false),
+            (move_id.to_string(), padded, false),
+        ] {
+            let mut save = valid_save();
+            save["game"]["player"]["team"][0]["moveLearning"] =
+                Value::Object(Map::from_iter([(key.clone(), record)]));
+            assert_eq!(validate_save(&save).is_ok(), valid, "{key}");
+        }
+    }
+
+    #[test]
+    fn requires_loadable_brains_and_regional_traits() {
+        let mut save = valid_save();
+        save["game"]["player"]["team"][0]["brain"] = valid_brain_checkpoint();
+        validate_save(&save).unwrap();
+        for key in ["previous", "sensoryBypass"] {
+            let mut edited = save.clone();
+            edited["game"]["player"]["team"][0]["brain"]
+                .as_object_mut()
+                .unwrap()
+                .remove(key);
+            assert!(validate_save(&edited).is_err(), "{key}");
+        }
+        let mut extra = save;
+        extra["game"]["player"]["team"][0]["brain"]["padding"] = Value::from("x");
+        assert!(validate_save(&extra).is_err());
+
+        let alolan = alolan_monster("vulpix-alola", "mon-1", 10, &[]);
+        validate_save(&with_lead(alolan.clone())).unwrap();
+        let mut traitless = alolan;
+        traitless.as_object_mut().unwrap().remove("ivs");
+        traitless.as_object_mut().unwrap().remove("ability");
+        assert!(validate_save(&with_lead(traitless)).is_err());
+    }
+
+    /// A save using every key the client writes on the allow-listed objects.
+    fn complete_save() -> Value {
+        let species = &catalog().species[&1];
+        let source = &abilities()[&1][0];
+        let level = 5;
+        let stats = expected_stats(species, level);
+        let learned: Vec<i64> = species
+            .moves
+            .iter()
+            .filter(|entry| entry.level <= level)
+            .map(|entry| entry.move_id)
+            .collect();
+        let equipped = learned[0];
+        let reserve = *learned.iter().find(|id| **id != equipped).unwrap();
+        let monster = serde_json::json!({
+            "instanceId":"mon-1","speciesId":1,"nickname":"full","originRegion":"kanto","gender":"female",
+            "level":level,"xp":experience_at_level(species, level).unwrap(),"hp":stats[0],
+            "stats":{"hp":stats[0],"attack":stats[1],"defense":stats[2],"specialAttack":stats[3],"specialDefense":stats[4],"speed":stats[5]},
+            "ivs":{"hp":0,"attack":0,"defense":0,"specialAttack":0,"specialDefense":0,"speed":0},
+            "ability":{"id":source.id,"slot":source.slot,"hidden":source.hidden,"slug":source.slug,
+                "name":source.name,"englishName":source.english_name,"effect":ability_effect(&source.slug),"description":"설명"},
+            "heldTool":"leftovers","preferredTransformation":{"kind":"tera","teraType":"grass"},
+            "moves":[{"moveId":equipped,"pp":1}],"taughtMoves":[412],"moveOrder":[equipped],
+            "movePpReserve":{reserve.to_string():1},"status":"poison","statusTurns":2,
+            "brain":valid_brain_checkpoint(),
+            "moveLearning":{equipped.to_string():{"choices":1,"executed":1,"effective":0,"reward":0.25}},
+            "evolutionProgress":{"gender":"female","friendship":70,"beauty":0,"affection":0,"steps":10,
+                "damageTaken":0,"recoilDamage":0,"criticalHits":0,"defeatedBisharp":0,"coins":0,"moveUses":{}}
+        });
+        let mut full = valid_save();
+        full["game"]["player"]["team"] = serde_json::json!([monster]);
+        full["tradeEpoch"] = Value::from(3);
+        set_campaign(&mut full, 0, 0, 0, false);
+        let game = full["game"].as_object_mut().unwrap();
+        for (key, value) in [
+            ("nursery", serde_json::json!([])),
+            ("defeatedFieldTrainers", serde_json::json!([])),
+            ("claimedRegionalStarters", serde_json::json!(["johto"])),
+            ("experienceShare", Value::Bool(true)),
+            ("autoMergeDuplicates", Value::Bool(false)),
+            ("adventureVersion", Value::from("red")),
+            ("versionCaught", serde_json::json!({"red":[1]})),
+            ("ballRefillSeconds", Value::from(0)),
+            ("technicalMachines", serde_json::json!({"412":1})),
+            ("evolutionContext", serde_json::json!({"period":"day","regionId":"kanto","locationId":"pallet","raining":false,"multiplayer":false})),
+        ] {
+            game.insert(key.into(), value);
+        }
+        let mut companion = world_record("companion:mon-1", "companion", 1.0, 2.0);
+        companion["target"] = serde_json::json!({"kind":"player","id":"player","x":3,"z":4});
+        let mut world = serde_json::json!({"schema":1,"model":"pokemon-open-world-recurrent-v1",
+            "graphId":expected_graph()["id"].clone(),"seed":81,"rng":3,"tick":10,"serverFinalizations":[],
+            "player":{"x":0,"z":0,"heading":4},"selectedWildId":"wild-1","autoCapture":true,"autoHunt":false,
+            "battleWildId":"wild-1","worldClockSeconds":10,"fieldItemPickupStates":{},"battleElapsed":0,
+            "pendingCapture":false,"pendingBall":"poke-ball","lastPlayerReward":null,"lastEnemyReward":null,
+            "manualControlRemaining":0,"nextBattleTeamIndex":0,"controlMode":"auto","selectionPinned":false,
+            "trackingSelected":false,"regionId":"kanto","sceneId":"surface:kanto","mapVersion":"kanto-v3",
+            "densityRemaining":0,"encounterLayout":"red-v1","spawnSerial":2,"nextFoodId":1});
+        for (key, value) in [
+            ("pendingAction", serde_json::json!({"type":"wait"})),
+            ("visitedTownIds", serde_json::json!(["pallet"])),
+            ("visitedTownsByRegion", serde_json::json!({"kanto":["pallet"]})),
+            ("rewardLedgers", serde_json::json!({"mon-1":reward_ledger("mon-1")})),
+            ("surfaceReturn", serde_json::json!({"sceneId":"surface:kanto","x":0,"z":0})),
+            ("spawnAnchor", serde_json::json!({"x":0,"z":0,"heading":4})),
+            ("foods", serde_json::json!([])),
+            ("respawnQueue", serde_json::json!([])),
+            ("entities", serde_json::json!([companion, world_record("wild-1", "wild", 5.0, 5.0)])),
+            ("companionMemories", serde_json::json!([])),
+        ] {
+            world[key] = value;
+        }
+        let stash = serde_json::json!({"mon-1":{"field":field_record("mon-1", 5, 8),
+            "openWorld":world_record("companion:mon-1", "companion", 0.0, 0.0),
+            "rewardLedger":reward_ledger("mon-1")}});
+        full["view"] = serde_json::json!({
+            "position":{"x":12,"y":10,"steps":4},"learning":true,"learningDefaultsVersion":1,
+            "rewards":{"mon-1":0.5},"field":field_snapshot(vec![field_record("mon-1", 5, 8)], vec![]),
+            "fieldPreferences":{"paused":false,"learning":true,"selectedId":"mon-1"},
+            "openWorldPaused":false,
+            "tradeTransferProvenance":{"mon-1":{"sourceInstanceId":"mon-9","tradeId":"trade-1"}},
+            "tradeCompanionMemories":stash, "openWorld":world
+        });
+        full
+    }
+
+    #[test]
+    fn allow_lists_keep_every_client_key_and_refuse_padding() {
+        let full = complete_save();
+        validate_save(&full).unwrap();
+        assert_eq!(full.as_object().unwrap().len(), SAVE_KEYS.len());
+        assert_eq!(full["game"].as_object().unwrap().len(), GAME_KEYS.len() - 2);
+        assert_eq!(full["game"]["player"]["team"][0].as_object().unwrap().len(), MONSTER_KEYS.len() - 1);
+        assert_eq!(full["view"].as_object().unwrap().len(), VIEW_KEYS.len());
+        assert_eq!(full["view"]["openWorld"].as_object().unwrap().len(), OPEN_WORLD_KEYS.len());
+
+        let learned = full["game"]["player"]["team"][0]["moves"][0]["moveId"].as_i64().unwrap();
+        for pointer in [
+            String::new(),
+            "/game".into(),
+            "/game/player".into(),
+            "/game/dex".into(),
+            "/game/player/team/0".into(),
+            "/game/player/team/0/stats".into(),
+            "/game/player/team/0/moves/0".into(),
+            format!("/game/player/team/0/moveLearning/{learned}"),
+            "/view".into(),
+            "/view/position".into(),
+            "/view/openWorld".into(),
+            "/view/openWorld/entities/0".into(),
+            "/view/openWorld/entities/0/brain".into(),
+            "/view/openWorld/rewardLedgers/mon-1".into(),
+            "/view/openWorld/rewardLedgers/mon-1/lifetime".into(),
+            "/view/field".into(),
+            "/view/field/entities/0".into(),
+            "/view/tradeCompanionMemories/mon-1".into(),
+            "/view/tradeCompanionMemories/mon-1/openWorld".into(),
+            "/view/tradeTransferProvenance/mon-1".into(),
+        ] {
+            let mut padded = full.clone();
+            padded
+                .pointer_mut(&pointer)
+                .unwrap_or_else(|| panic!("{pointer}"))
+                .as_object_mut()
+                .unwrap()
+                .insert("padding".into(), Value::from("x".repeat(64)));
+            assert!(validate_save(&padded).is_err(), "{pointer}");
+        }
+        let mut long_date = full;
+        long_date["savedAt"] = Value::from("x".repeat(65));
+        assert!(validate_save(&long_date).is_err());
+
+        let mut battle = valid_save();
+        set_battle(&mut battle, "wild", "safari-meadow", None, None, None);
+        validate_save(&battle).unwrap();
+        for pointer in ["/game/battle", "/game/battle/enemy"] {
+            let mut padded = battle.clone();
+            padded
+                .pointer_mut(pointer)
+                .unwrap()
+                .as_object_mut()
+                .unwrap()
+                .insert("padding".into(), Value::from(1));
+            assert!(validate_save(&padded).is_err(), "{pointer}");
+        }
+        let mut egg = valid_save();
+        egg["game"]["nextInstanceId"] = Value::from(3);
+        egg["game"]["nursery"] = serde_json::json!([{
+            "eggId":"egg-2", "speciesId":1, "parentIds":["mon-1","former-parent"], "steps":0,
+            "requiredSteps":5376, "createdAtStep":2, "brain":valid_brain_checkpoint()
+        }]);
+        validate_save(&egg).unwrap();
+        egg["game"]["nursery"][0]["padding"] = Value::from(1);
+        assert!(validate_save(&egg).is_err());
+    }
+
+    #[test]
+    fn validates_classic_map_region_trainers_and_version() {
+        let mut save = valid_save();
+        save["game"]["regionId"] = Value::from("verdant-forest");
+        assert!(validate_save(&save).is_err());
+        set_kanto_badges(&mut save, 1);
+        validate_save(&save).unwrap();
+        for region in [Value::from("pokemon-league"), Value::Null, Value::from(3)] {
+            let mut edited = valid_save();
+            edited["game"]["regionId"] = region;
+            assert!(validate_save(&edited).is_err());
+        }
+        let mut unknown = valid_save();
+        unknown["game"]["defeatedFieldTrainers"] = serde_json::json!(["crystal-nobody-at-all"]);
+        assert!(validate_save(&unknown).is_err());
+        let mut version = valid_save();
+        version["game"]["adventureVersion"] = serde_json::json!(["red"]);
+        assert!(validate_save(&version).is_err());
+    }
+
+    fn two_member_battle(lead_hp: i64) -> Value {
+        let mut save = valid_save();
+        let mut second = valid_monster();
+        second["instanceId"] = Value::from("mon-2");
+        save["game"]["player"]["team"]
+            .as_array_mut()
+            .unwrap()
+            .push(second);
+        save["game"]["player"]["team"][0]["hp"] = Value::from(lead_hp);
+        save["game"]["nextInstanceId"] = Value::from(3);
+        set_battle(&mut save, "wild", "safari-meadow", None, None, None);
+        save
+    }
+
+    #[test]
+    fn validates_battle_stages_forced_switches_and_transformations() {
+        let save = two_member_battle(10);
+        validate_save(&save).unwrap();
+        for (stages, valid) in [
+            (serde_json::json!({"mon-1":{"attack":2,"evasion":-6}}), true),
+            (serde_json::json!({"mon-3":{"speed":6}}), true),
+            (serde_json::json!({"mon-1":true}), true),
+            (serde_json::json!(null), true),
+            (serde_json::json!({"mon-1":{"attack":7}}), false),
+            (serde_json::json!({"mon-1":{"attack":1.5}}), false),
+            (serde_json::json!({"mon-1":{"luck":1}}), false),
+            (serde_json::json!({"mon-1":null}), false),
+            (serde_json::json!({"mon-9":{"attack":1}}), false),
+            (serde_json::json!([{"attack":1}]), false),
+        ] {
+            let mut edited = save.clone();
+            edited["game"]["battle"]["statStages"] = stages.clone();
+            assert_eq!(validate_save(&edited).is_ok(), valid, "{stages}");
+        }
+
+        let mut waiting = save.clone();
+        waiting["game"]["battle"]["awaitingSwitch"] = Value::from("player");
+        assert!(validate_save(&waiting).is_err());
+        let fainted = two_member_battle(0);
+        assert!(validate_save(&fainted).is_err());
+        let mut switching = fainted;
+        switching["game"]["battle"]["awaitingSwitch"] = Value::from("player");
+        validate_save(&switching).unwrap();
+        for value in [Value::from("enemy"), Value::Null] {
+            let mut edited = switching.clone();
+            edited["game"]["battle"]["awaitingSwitch"] = value;
+            assert!(validate_save(&edited).is_err());
+        }
+
+        let enemy = save["game"]["battle"]["enemy"]["team"][0].clone();
+        let move_id = enemy["moves"][0]["moveId"].as_i64().unwrap();
+        let transform = |species: i64, pp: i64| {
+            serde_json::json!({"speciesId":species,"stats":enemy["stats"].clone(),
+                "moves":[{"moveId":move_id,"pp":pp}]})
+        };
+        let mut copied = save.clone();
+        copied["game"]["battle"]["transformations"] = serde_json::json!({"mon-3":transform(25, 5)});
+        validate_save(&copied).unwrap();
+        for (species, pp) in [(99_999, 5), (25, 6)] {
+            let mut edited = save.clone();
+            edited["game"]["battle"]["transformations"] =
+                serde_json::json!({"mon-3":transform(species, pp)});
+            assert!(validate_save(&edited).is_err(), "{species} {pp}");
+        }
+
+        let mut crowded = save;
+        let mut second_enemy = crowded["game"]["battle"]["enemy"]["team"][0].clone();
+        second_enemy["instanceId"] = Value::from("mon-4");
+        crowded["game"]["nextInstanceId"] = Value::from(5);
+        crowded["game"]["battle"]["enemy"]["team"]
+            .as_array_mut()
+            .unwrap()
+            .push(second_enemy);
+        assert!(validate_save(&crowded).is_err());
+    }
+
+    #[test]
+    fn player_mega_evolution_needs_its_stone_and_happens_once() {
+        let mega_hp = form_stats("zygarde-mega", 100, [0; 6]).unwrap()[0];
+        let save = mega_battle_save(718, "zygarde-mega", mega_hp, Some(Value::Bool(true)));
+        validate_save(&save).unwrap();
+        let mut stoneless = save.clone();
+        stoneless["game"]["player"]["team"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("heldTool");
+        stoneless["game"]["battle"]["player"]["team"] = stoneless["game"]["player"]["team"].clone();
+        assert_eq!(
+            validate_save(&stoneless),
+            Err("해당 메가진화석을 장착해야 합니다.")
+        );
+
+        let mut twice = save;
+        let mut second = twice["game"]["player"]["team"][0].clone();
+        second["instanceId"] = Value::from("mon-4");
+        twice["game"]["nextInstanceId"] = Value::from(5);
+        twice["game"]["player"]["team"]
+            .as_array_mut()
+            .unwrap()
+            .push(second);
+        twice["game"]["battle"]["player"]["team"] = twice["game"]["player"]["team"].clone();
+        let transformation = twice["game"]["battle"]["transformations"]["mon-1"].clone();
+        twice["game"]["battle"]["transformations"]["mon-4"] = transformation;
+        assert_eq!(
+            validate_save(&twice),
+            Err("이 전투에서는 이미 메가진화를 사용했습니다.")
+        );
+    }
+
+    #[test]
+    fn validates_view_rewards_provenance_and_settings_like_the_loader() {
+        validate_save(&valid_save()).unwrap();
+        let mut missing = valid_save();
+        missing.as_object_mut().unwrap().remove("view");
+        assert!(validate_save(&missing).is_err());
+        for (key, value, valid) in [
+            ("learning", Value::from(1), false),
+            ("learningDefaultsVersion", Value::from(1), true),
+            ("learningDefaultsVersion", Value::from(2), false),
+            ("position", serde_json::json!({"x":3,"y":3,"steps":0}), false),
+            ("position", serde_json::json!({"x":0,"y":1,"steps":0}), false),
+            ("position", serde_json::json!({"x":22,"y":13,"steps":0}), true),
+            ("position", serde_json::json!({"x":12,"y":10,"steps":-1}), false),
+            ("rewards", serde_json::json!({"mon-1":100}), true),
+            ("rewards", serde_json::json!({"mon-1":100.5}), false),
+            ("rewards", serde_json::json!({"mon-9":1}), false),
+            ("rewards", serde_json::json!([]), false),
+            ("fieldPreferences", serde_json::json!({"paused":true,"learning":false,"selectedId":""}), true),
+            ("fieldPreferences", serde_json::json!({"paused":true,"learning":false}), false),
+            ("openWorldPaused", Value::from("yes"), false),
+            ("tradeTransferProvenance", serde_json::json!({"mon-1":{"sourceInstanceId":"mon-4"}}), true),
+            ("tradeTransferProvenance", serde_json::json!({"mon-1":{"sourceInstanceId":"starter"}}), false),
+            ("tradeTransferProvenance", serde_json::json!({"starter":{"sourceInstanceId":"mon-4"}}), false),
+            ("tradeTransferProvenance", serde_json::json!({"mon-1":{"sourceInstanceId":"mon-4","tradeId":""}}), false),
+            ("tradeTransferProvenance", serde_json::json!({"mon-1":{"sourceInstanceId":"mon-4","tradeId":"t".repeat(101)}}), false),
+            ("tradeCompanionMemories", serde_json::json!({"mon-5":{"rewardLedger":{"individualId":"mon-5"}}}), true),
+            ("tradeCompanionMemories", serde_json::json!({"mon-5":{"brain":{}}}), false),
+            ("tradeCompanionMemories", serde_json::json!({"x":{}}), false),
+        ] {
+            let mut save = valid_save();
+            save["view"]
+                .as_object_mut()
+                .unwrap()
+                .insert(key.into(), value.clone());
+            assert_eq!(validate_save(&save).is_ok(), valid, "{key} {value}");
+        }
+        let mut crowded = valid_save();
+        crowded["view"]["tradeTransferProvenance"] = Value::Object(
+            (1..=10_001)
+                .map(|id| (format!("mon-{id}"), serde_json::json!({"sourceInstanceId":"mon-1"})))
+                .collect(),
+        );
+        assert!(validate_save(&crowded).is_err());
+    }
+
+    #[test]
+    fn validates_legacy_field_snapshots_like_the_loader() {
+        let mut save = valid_save();
+        add_box_monster(&mut save, "mon-2");
+        save["view"]["field"] = field_snapshot(
+            vec![field_record("mon-1", 5, 8)],
+            vec![field_record("mon-2", 5, 8)],
+        );
+        validate_save(&save).unwrap();
+        for (pointer, value) in [
+            ("/view/field/entities/0/brain/graphId", Value::from("other")),
+            ("/view/field/entities/0/x", Value::from(0)),
+            ("/view/field/entities/0/y", Value::from(4)),
+            ("/view/field/entities/0/energy", Value::from(101)),
+            ("/view/field/memories/0/id", Value::from("mon-1")),
+            ("/view/field/foods/0/y", Value::from(8)),
+            ("/view/field/player/x", Value::from(17)),
+            ("/view/field/graphId", Value::from("other")),
+        ] {
+            let mut edited = save.clone();
+            *edited.pointer_mut(pointer).unwrap() = value;
+            if pointer == "/view/field/foods/0/y" {
+                // Food under an active creature.
+                edited["view"]["field"]["foods"][0]["x"] = Value::from(5);
+            }
+            assert!(validate_save(&edited).is_err(), "{pointer}");
+        }
+        let mut crowded = save;
+        crowded["view"]["field"]["entities"] = Value::Array(
+            (0..7)
+                .map(|index| field_record(&format!("mon-{}", index + 10), 1 + index, 1))
+                .collect(),
+        );
+        assert!(validate_save(&crowded).is_err());
+    }
+
+    #[test]
+    fn validates_open_world_creatures_and_reward_ledgers() {
+        let mut save = valid_save();
+        add_box_monster(&mut save, "mon-2");
+        let world = |entities: Vec<Value>, memories: Vec<Value>, ledgers: Value| {
+            serde_json::json!({"regionId":"kanto", "mapVersion":"kanto-v3", "entities":entities,
+                "companionMemories":memories, "rewardLedgers":ledgers})
+        };
+        let companion = world_record("companion:mon-1", "companion", 1.0, 1.0);
+        let memory = world_record("companion:mon-2", "companion", 2.0, 2.0);
+        let wild = world_record("wild-1", "wild", 3.0, 3.0);
+        let mut entry_ledger = reward_ledger("mon-2");
+        entry_ledger["latest"] = serde_json::json!([{"event":"battle","tick":3,"source":"connectome",
+            "learningEligible":true,"total":0.5,"breakdown":{"engagement":0,"damageDealt":0.5,
+            "damageReceived":0,"typeChoice":0,"moveEffect":0,"outcome":0,"growth":0,"evolution":0}}]);
+        entry_ledger["lifetime"]["events"] = Value::from(1);
+        entry_ledger["lifetime"]["eventCounts"]["battle"] = Value::from(1);
+        let mut legacy_ledger = reward_ledger("mon-1");
+        for key in ["componentTotals", "componentCounts"] {
+            legacy_ledger["lifetime"][key]
+                .as_object_mut()
+                .unwrap()
+                .remove("moveEffect");
+        }
+        save["view"]["openWorld"] = world(
+            vec![companion.clone(), wild.clone()],
+            vec![memory.clone()],
+            serde_json::json!({"mon-1":legacy_ledger,"mon-2":entry_ledger.clone()}),
+        );
+        validate_save(&save).unwrap();
+
+        let mut unowned = memory.clone();
+        unowned["id"] = Value::from("companion:mon-9");
+        let mut bypass = memory.clone();
+        bypass["brain"]["sensoryBypass"] = Value::Bool(true);
+        let mut far = memory.clone();
+        far["x"] = Value::from(240.5);
+        let mut mismatched = entry_ledger.clone();
+        mismatched["latest"][0]["total"] = Value::from(0.4);
+        let mut uneven = entry_ledger;
+        uneven["lifetime"]["events"] = Value::from(2);
+        let empty = serde_json::json!({});
+        for (label, candidate) in [
+            ("two companions", world(vec![companion.clone(), memory.clone()], vec![], empty.clone())),
+            ("no companion", world(vec![wild.clone()], vec![], empty.clone())),
+            ("wild memory", world(vec![companion.clone()], vec![wild], empty.clone())),
+            ("unowned", world(vec![companion.clone()], vec![unowned], empty.clone())),
+            ("duplicate", world(vec![companion.clone()], vec![companion.clone()], empty.clone())),
+            ("bypass", world(vec![companion.clone()], vec![bypass], empty.clone())),
+            ("outside", world(vec![companion.clone()], vec![far], empty.clone())),
+            ("ledger owner", world(vec![companion.clone()], vec![], serde_json::json!({"mon-9":reward_ledger("mon-9")}))),
+            ("ledger id", world(vec![companion.clone()], vec![], serde_json::json!({"mon-2":reward_ledger("mon-1")}))),
+            ("ledger total", world(vec![companion.clone()], vec![], serde_json::json!({"mon-2":mismatched}))),
+            ("ledger events", world(vec![companion], vec![], serde_json::json!({"mon-2":uneven}))),
+        ] {
+            let mut edited = save.clone();
+            edited["view"]["openWorld"] = candidate;
+            assert!(validate_save(&edited).is_err(), "{label}");
+        }
     }
 }
