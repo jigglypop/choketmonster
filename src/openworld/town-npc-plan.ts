@@ -9,17 +9,16 @@ import { DUNGEON_PLANS } from './dungeons';
 import type { KantoGym, KantoLocation } from './kanto';
 import { BUILDING_HALF_X, BUILDING_HALF_Z, SIGNBOARD } from './world-details';
 
-/** Big-eyed SD trainers with backpacks, dressed from Styloo's Chibi Characters (CC0). */
-const npcModel = (name: 'youngster' | 'lass' | 'backpacker' | 'picnicker' | 'camper') => `/models/openworld/npc/trainer-${name}.glb`;
+/** Two SD trainers: a fire boy in red and a leaf girl in green. */
+const npcModel = (name: 'red' | 'green') => `/models/openworld/npc/trainer-${name}.glb`;
 
 /** Who stands where: beside the Pokémon Center, the mart, the gym, Pallet's houses and lab, or out on the plaza. */
 export type TownNpcRole = 'clinic' | 'shop' | 'gym' | 'lab' | 'home' | 'plaza';
 export type TownNpc = { id: string; townId: string; role: TownNpcRole; title: string; x: number; z: number; facing: number; model: string };
 
-/** Outfits by post, so the townsfolk of one town look different from each other. */
+/** Posts alternate between the two, so every town shows both. */
 const MODELS: Record<TownNpcRole, readonly string[]> = {
-  clinic: [npcModel('lass'), npcModel('picnicker')], shop: [npcModel('backpacker'), npcModel('youngster')], gym: [npcModel('camper'), npcModel('youngster')],
-  lab: [npcModel('lass')], home: [npcModel('picnicker')], plaza: [npcModel('youngster'), npcModel('camper'), npcModel('backpacker')],
+  clinic: [npcModel('green')], shop: [npcModel('red')], gym: [npcModel('red')], lab: [npcModel('green')], home: [npcModel('red')], plaza: [npcModel('green')],
 };
 const TITLES: Record<TownNpcRole, string> = { clinic: '센터 도우미', shop: '상점 단골', gym: '체육관 안내원', lab: '연구소 조수', home: '이웃 주민', plaza: '소문난 주민' };
 
