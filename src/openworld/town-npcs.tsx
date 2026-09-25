@@ -14,7 +14,7 @@ import { isRegionalLeagueLocation } from './scene-landmarks';
 import { nearbyDungeon, npcLines, planTownNpcs, type NpcTalkContext, type TownNpc } from './town-npc-plan';
 import type { WorldSample } from './types';
 
-/** SD townsfolk stand about as tall as a 0.5 m Pokémon; the models' shared body is 2.3 units tall. */
+/** SD trainers stand about as tall as a 0.5 m Pokémon; the models' shared body is 2.3 units tall. */
 const NPC_HEIGHT = 1.45, CHIBI_BODY_HEIGHT = 2.3;
 /** Townsfolk are drawn in towns this close; the nearest one in talking range speaks. */
 const NPC_DRAW_RANGE = 46, TALK_RANGE = 6.5;

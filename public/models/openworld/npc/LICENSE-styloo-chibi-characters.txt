@@ -2,6 +2,13 @@ Chibi Characters (V1.2) by Styloo — https://styloo.itch.io/chibi
 License: Creative Commons Zero v1.0 Universal (CC0 1.0), as stated on the asset page.
 https://creativecommons.org/publicdomain/zero/1.0/
 
-Files here are the "glb" (metallic-roughness) versions of merchant, student, archer, ninja and knight,
-reduced for the web: textures resized to 256 px and stored as WebP, animations limited to
-idle, idle-alt (was "iddle.001"), walk, jump and flip, resampled, and meshes Draco-compressed.
+The trainer-*.glb files are outfits kept from the pack's all-in-one model ("allinonepr.glb", whose
+parts share one skeleton; the pack's readme says to delete the objects you don't want):
+  youngster  hairone, chemise, ninjasuitshort, shoe, bag
+  lass       hairvariant, shirt, skirt, shoe, bag
+  backpacker hairvariant.001, chemise, pants, bottes, bag
+  picnicker  hairtail, greenoutfit (+belt, necklace), bottesgreen, bag
+  camper     hairtail, shirt, ninjasuitshort, bottes, bag
+each with character_low, eyes, eyelashes and tooth. Reduced for the web: textures resized to 256 px as
+WebP, animations limited to idle, idle-alt (was "iddle.001"), walk, jump and flip, resampled, and
+meshes Draco-compressed.
