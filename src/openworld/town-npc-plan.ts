@@ -10,17 +10,20 @@ import type { KantoGym, KantoLocation } from './kanto';
 import { BUILDING_HALF_X, BUILDING_HALF_Z, SIGNBOARD } from './world-details';
 
 /** SD townsfolk, drawn from the owner's files as they are: a fire boy in red, a leaf girl in green and a doctor. */
-const npcModel = (name: 'red' | 'green' | 'docter') => `/models/trainer/${name}.glb`;
+const npcModel = (name: 'red' | 'green' | 'docter' | 'police') => `/models/trainer/${name}.glb`;
 
 /** Who stands where: beside the Pokémon Center, the mart, the gym, Pallet's houses and lab, or out on the plaza. */
-export type TownNpcRole = 'clinic' | 'shop' | 'gym' | 'lab' | 'home' | 'plaza';
-export type TownNpc = { id: string; townId: string; role: TownNpcRole; title: string; x: number; z: number; facing: number; model: string };
+export type TownNpcRole = 'clinic' | 'shop' | 'gym' | 'lab' | 'home' | 'plaza' | 'police';
+/** A patrolling figure walks this ring (world centre and radius) instead of standing at (x, z). */
+export type TownPatrol = { x: number; z: number; radius: number };
+export type TownNpc = { id: string; townId: string; role: TownNpcRole; title: string; x: number; z: number; facing: number; model: string; patrol?: TownPatrol };
 
 /** The doctor keeps the Pokémon Center and the lab; the red boy the mart and gym; the green girl the plaza and home. */
 const MODELS: Record<TownNpcRole, readonly string[]> = {
   clinic: [npcModel('docter')], shop: [npcModel('red')], gym: [npcModel('red')], lab: [npcModel('docter')], home: [npcModel('green')], plaza: [npcModel('green')],
+  police: [npcModel('police')],
 };
-const TITLES: Record<TownNpcRole, string> = { clinic: '센터 도우미', shop: '상점 단골', gym: '체육관 안내원', lab: '연구소 조수', home: '이웃 주민', plaza: '소문난 주민' };
+const TITLES: Record<TownNpcRole, string> = { clinic: '센터 도우미', shop: '상점 단골', gym: '체육관 안내원', lab: '연구소 조수', home: '이웃 주민', plaza: '소문난 주민', police: '순경' };
 
 function hash(text: string): number {
   let value = 2166136261;
@@ -56,6 +59,23 @@ export function planTownNpcs(atlas: WorldAtlas, town: KantoLocation, hasGym: boo
       // Door-side folk look out over the plaza; the plaza one faces the town centre.
       facing: index !== undefined ? 0 : Math.atan2(-x, -z),
       model: MODELS[role][seed % MODELS[role].length],
+    });
+  }
+  // The officer walks a ring round the square, clear of the buildings and the signboard and passing everyone standing by a
+  // step; the widest ring that fits is walked, down to a small beat round the arrival point.
+  const ring = [7.5, 6.6, 8.3, 5.6, 4.4, 3.4].find(radius => Array.from({ length: 40 }, (_, step) => step / 40 * Math.PI * 2).every(angle => {
+    const x = Math.cos(angle) * radius, z = Math.sin(angle) * radius;
+    return !atlas.sample(town.x + x, town.z + z).blocked
+      && buildings.every(([bx, bz]) => Math.abs(x - bx) > BUILDING_HALF_X + .6 || Math.abs(z - bz) > BUILDING_HALF_Z + .6)
+      && Math.hypot(x - SIGNBOARD.x, z - SIGNBOARD.z) >= 2
+      && placed.every(npc => Math.hypot(npc.x - town.x - x, npc.z - town.z - z) >= 1.4);
+  }));
+  if (ring) {
+    const seed = hash(`${atlas.id}:${town.id}:police`), angle = (seed % 628) / 100;
+    placed.push({
+      id: `${town.id}:police`, townId: town.id, role: 'police', title: TITLES.police,
+      x: town.x + Math.cos(angle) * ring, z: town.z + Math.sin(angle) * ring, facing: Math.atan2(-Math.sin(angle), Math.cos(angle)),
+      model: MODELS.police[0], patrol: { x: town.x, z: town.z, radius: ring },
     });
   }
   return placed;
@@ -127,6 +147,12 @@ export function npcLines(role: TownNpcRole, context: NpcTalkContext): string[] {
     case 'gym': return gymLines(context);
     case 'lab': return ['박사님은 포켓몬 도감을 완성하는 게 꿈이래요.', '풀숲에서 만난 포켓몬은 도감에 바로 기록돼요.'];
     case 'home': return [`${context.regionName} 여행은 여기 ${context.town.name}에서 시작돼요!`, '멀리 가도 가끔은 돌아와서 쉬어 가요.'];
+    case 'police': return [
+      `${context.town.name} 순찰은 저한테 맡겨요!`,
+      ...(context.outbreak ? [`${context.outbreak.placeName}에서 ${particle(context.outbreak.speciesName, '이', '가')} 잔뜩 나왔다는 신고가 들어왔어요.`] : []),
+      '배지가 모자라면 막혀 있는 길도 있으니 체육관부터 들러 봐요.',
+      ...(partner ? [`${particle(partner, '과', '와')} 함께라니 든든하네요.`] : []),
+    ];
     case 'plaza': return [
       ...(context.outbreak ? [`오늘 ${context.outbreak.placeName}에 ${particle(context.outbreak.speciesName, '이', '가')} 잔뜩 나타났대요! 대량발생이에요.`] : []),
       ...(context.nearbyDungeon ? [`${particle(context.nearbyDungeon.name, '을', '를')} 처음 끝까지 돌파하면 ${particle(context.nearbyDungeon.reward, '을', '를')} 준대요.`] : []),

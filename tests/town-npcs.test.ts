@@ -12,9 +12,16 @@ describe('town townsfolk', () => {
       for (const town of atlas.locations.filter(place => place.kind === 'town' && !isRegionalLeagueLocation(region, place.id))) {
         const npcs = planTownNpcs(atlas, town, atlas.gyms.some(gym => gym.locationId === town.id));
         expect(npcs.length, `${region}:${town.id}`).toBeGreaterThan(0);
-        for (const npc of npcs) {
+        const standing = npcs.filter(npc => !npc.patrol);
+        for (const npc of standing) {
           expect(atlas.sample(npc.x, npc.z).blocked, `${region}:${npc.id}`).toBe(false);
-          for (const other of npcs) if (other !== npc) expect(Math.hypot(other.x - npc.x, other.z - npc.z)).toBeGreaterThanOrEqual(3.5);
+          for (const other of standing) if (other !== npc) expect(Math.hypot(other.x - npc.x, other.z - npc.z)).toBeGreaterThanOrEqual(3.5);
+        }
+        // An officer's whole ring is open ground that passes no one standing.
+        for (const officer of npcs.filter(npc => npc.patrol)) for (let step = 0; step < 36; step++) {
+          const angle = step / 36 * Math.PI * 2, x = officer.patrol!.x + Math.cos(angle) * officer.patrol!.radius, z = officer.patrol!.z + Math.sin(angle) * officer.patrol!.radius;
+          expect(atlas.sample(x, z).blocked, `${region}:${officer.id}`).toBe(false);
+          for (const npc of standing) expect(Math.hypot(npc.x - x, npc.z - z)).toBeGreaterThanOrEqual(1.4);
         }
       }
     }
@@ -31,7 +38,7 @@ describe('town townsfolk', () => {
     const plaza = npcLines('plaza', context).join(' ');
     expect(plaza).toContain('피카츄가 잔뜩');
     expect(plaza).toContain('이상해씨와 함께');
-    for (const role of ['clinic', 'shop', 'gym', 'lab', 'home', 'plaza'] as const) expect(npcLines(role, context).length, role).toBeGreaterThan(0);
+    for (const role of ['clinic', 'shop', 'gym', 'lab', 'home', 'plaza', 'police'] as const) expect(npcLines(role, context).length, role).toBeGreaterThan(0);
   });
 
   it('pick Korean particles by the last syllable', () => {

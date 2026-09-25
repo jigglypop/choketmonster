@@ -14,10 +14,12 @@ import { isRegionalLeagueLocation } from './scene-landmarks';
 import { nearbyDungeon, npcLines, planTownNpcs, type NpcTalkContext, type TownNpc } from './town-npc-plan';
 import type { WorldSample } from './types';
 
-/** Trainers stand a little taller than a 1 m Pokémon. */
-const NPC_HEIGHT = 2.3;
+/** Townsfolk stand well above a 1 m Pokémon. */
+const NPC_HEIGHT = 3;
 /** A greeting hop, in milliseconds. */
 const HOP_MS = 420;
+/** A patrolling officer's pace, in units per second. */
+const PATROL_SPEED = 1;
 /** Townsfolk are drawn in towns this close; the nearest one in talking range speaks. */
 const NPC_DRAW_RANGE = 46, TALK_RANGE = 6.5;
 const LINE_MS = 4500;
@@ -34,9 +36,12 @@ function useNpcModel(url: string): GLTF | null {
   return gltf;
 }
 
-function TownNpcFigure({ npc, y, player, lines, talking, quiet }: { npc: TownNpc; y: number; player: { x: number; z: number }; lines: readonly string[]; talking: boolean; quiet: boolean }) {
+function TownNpcFigure({ npc, y, player, lines, talking, quiet, sampleWorld, positions }: {
+  npc: TownNpc; y: number; player: { x: number; z: number }; lines: readonly string[]; talking: boolean; quiet: boolean;
+  sampleWorld: (x: number, z: number) => WorldSample; positions: Map<string, { x: number; z: number }>;
+}) {
   const gltf = useNpcModel(npc.model);
-  const root = useRef<Group>(null);
+  const root = useRef<Group>(null), body = useRef<Group>(null);
   const figure = useMemo(() => {
     if (!gltf) return null;
     const object = cloneSkinned(gltf.scene);
@@ -45,13 +50,17 @@ function TownNpcFigure({ npc, y, player, lines, talking, quiet }: { npc: TownNpc
     return object;
   }, [gltf]);
   const hop = useRef(-1);
-  const mixer = useRef<AnimationMixer | null>(null), stance = useRef<AnimationAction | undefined>(undefined);
+  const mixer = useRef<AnimationMixer | null>(null), stance = useRef<AnimationAction | undefined>(undefined), stride = useRef<AnimationAction | undefined>(undefined);
   const waves = useMemo(() => gltf?.animations.filter(clip => /wave/i.test(clip.name)) ?? [], [gltf]);
   useEffect(() => {
     if (!figure || !gltf) return;
-    const next = new AnimationMixer(figure), idle = gltf.animations.find(clip => /^idle/i.test(clip.name));
+    const next = new AnimationMixer(figure), idle = gltf.animations.find(clip => /^idle/i.test(clip.name)), walk = gltf.animations.find(clip => /^walk/i.test(clip.name));
     mixer.current = next;
-    if (idle) {
+    if (npc.patrol && walk) {
+      // A patrol walks; stopped, the walk's first frame is the officer standing with feet together.
+      const hold = next.clipAction(walk.clone()).play(); hold.paused = true; hold.time = 0; hold.setEffectiveWeight(0); stance.current = hold;
+      stride.current = next.clipAction(walk).setLoop(LoopRepeat, Infinity).play();
+    } else if (idle) {
       // Each figure starts its idle loop at its own point, so neighbours never sway in step.
       const action = next.clipAction(idle).setLoop(LoopRepeat, Infinity).play();
       action.time = (npc.x * 7.3 + npc.z * 3.1) % idle.duration; stance.current = action;
@@ -65,7 +74,7 @@ function TownNpcFigure({ npc, y, player, lines, talking, quiet }: { npc: TownNpc
       const paused = standing.paused; standing.reset().play(); standing.paused = paused; standing.crossFadeFrom(event.action, .3, false);
     };
     next.addEventListener('finished', settle);
-    return () => { next.removeEventListener('finished', settle); next.stopAllAction(); next.uncacheRoot(figure); mixer.current = null; stance.current = undefined; };
+    return () => { next.removeEventListener('finished', settle); next.stopAllAction(); next.uncacheRoot(figure); mixer.current = null; stance.current = undefined; stride.current = undefined; };
   }, [figure, gltf, waves]);
   /** Plays a wave once; a figure without one hops instead. */
   const greet = (clip: AnimationClip | undefined) => {
@@ -82,8 +91,13 @@ function TownNpcFigure({ npc, y, player, lines, talking, quiet }: { npc: TownNpc
     releaseRenderObjects(figure);
   }, [figure]);
   const [line, setLine] = useState(0), [turn, setTurn] = useState(0);
-  // Waves (or hops) when the player walks up.
-  useEffect(() => { if (talking) greet(waves.find(clip => /big/i.test(clip.name)) ?? waves[0]); }, [talking, figure]);
+  // Waves (or hops) when the player walks up; a patrol stops walking to talk and sets off again after.
+  useEffect(() => {
+    if (talking) greet(waves.find(clip => /big/i.test(clip.name)) ?? waves[0]);
+    const walking = stride.current, standing = stance.current;
+    if (!walking || !standing) return;
+    if (talking) walking.crossFadeTo(standing, .25, false); else standing.crossFadeTo(walking, .25, false);
+  }, [talking, figure]);
   useEffect(() => {
     if (!talking || lines.length < 2) return;
     const timer = window.setInterval(() => setLine(value => value + 1), LINE_MS);
@@ -91,10 +105,22 @@ function TownNpcFigure({ npc, y, player, lines, talking, quiet }: { npc: TownNpc
   }, [talking, lines.length, turn]);
   const facing = useRef(npc.facing), target = useRef({ x: player.x, z: player.z });
   target.current = { x: player.x, z: player.z };
+  const where = useRef({ x: npc.x, z: npc.z, angle: npc.patrol ? Math.atan2(npc.z - npc.patrol.z, npc.x - npc.patrol.x) : 0 });
   useFrame((_, delta) => {
-    mixer.current?.update(Math.min(delta, .05));
+    const step = Math.min(delta, .05);
+    mixer.current?.update(step);
     if (!root.current) return;
-    const goal = talking ? Math.atan2(target.current.x - npc.x, target.current.z - npc.z) : npc.facing;
+    const patrol = npc.patrol, here = where.current;
+    let heading = npc.facing;
+    if (patrol) {
+      // Counter-clockwise round the square; the ground height follows the paving.
+      if (!talking) here.angle += PATROL_SPEED / patrol.radius * step;
+      here.x = patrol.x + Math.cos(here.angle) * patrol.radius; here.z = patrol.z + Math.sin(here.angle) * patrol.radius;
+      heading = Math.atan2(-Math.sin(here.angle), Math.cos(here.angle));
+      body.current?.position.set(here.x, terrainSurfaceHeight(sampleWorld, here.x, here.z), here.z);
+      positions.set(npc.id, { x: here.x, z: here.z });
+    }
+    const goal = talking ? Math.atan2(target.current.x - here.x, target.current.z - here.z) : heading;
     const turnBy = Math.atan2(Math.sin(goal - facing.current), Math.cos(goal - facing.current));
     facing.current += turnBy * Math.min(1, delta * 6);
     const hopT = hop.current < 0 ? 1 : (performance.now() - hop.current) / HOP_MS;
@@ -108,12 +134,12 @@ function TownNpcFigure({ npc, y, player, lines, talking, quiet }: { npc: TownNpc
     greet(waves.find(clip => !/big/i.test(clip.name)) ?? waves[0]);
   };
   const text = lines.length ? lines[line % lines.length] : '';
-  return <group position={[npc.x, y, npc.z]} name={`town-npc:${npc.id}`}>
+  return <group ref={body} position={[npc.x, y, npc.z]} name={`town-npc:${npc.id}`}>
     <group ref={root}>{figure && <primitive object={figure} dispose={null} />}</group>
     {/* An invisible column is the click target, so a tap anywhere on the figure talks. */}
     <mesh position={[0, NPC_HEIGHT / 2, 0]} onClick={(event: ThreeEvent<MouseEvent>) => next(event)}
       onPointerOver={event => { event.stopPropagation(); document.body.style.cursor = 'pointer'; }} onPointerOut={() => { document.body.style.cursor = ''; }}>
-      <cylinderGeometry args={[.6, .6, NPC_HEIGHT, 10]} />
+      <cylinderGeometry args={[.75, .75, NPC_HEIGHT, 10]} />
       <meshBasicMaterial transparent opacity={0} depthWrite={false} />
     </mesh>
     {talking && !quiet && text && <Html center position={[0, NPC_HEIGHT + .8, 0]} zIndexRange={[6, 5]} style={{ pointerEvents: 'auto' }}>
@@ -136,6 +162,8 @@ type TownNpcsProps = {
 /** Townsfolk beside each town's buildings who turn to the player and talk: shop, gym and neighbourhood news. */
 export const TownNpcs = memo(function TownNpcs({ atlas, sampleWorld, player, gyms = atlas.gyms, badges, busy, outbreak, partnerName }: TownNpcsProps) {
   const plans = useMemo(() => new Map<string, { npcs: TownNpc[]; dungeon: NpcTalkContext['nearbyDungeon'] }>(), [atlas]);
+  // Where patrolling figures are now; the frame loop writes it and the next render picks the speaker from it.
+  const positions = useMemo(() => new Map<string, { x: number; z: number }>(), [atlas]);
   const towns = atlas.locations.filter(place => place.kind === 'town' && !isRegionalLeagueLocation(atlas.id, place.id)
     && Math.hypot(place.x - player.x, place.z - player.z) <= NPC_DRAW_RANGE);
   const plan = (town: KantoLocation) => {
@@ -148,7 +176,7 @@ export const TownNpcs = memo(function TownNpcs({ atlas, sampleWorld, player, gym
   const drawn = towns.flatMap(town => plan(town).npcs.map(npc => ({ npc, town })));
   let speaker: string | undefined, closest = TALK_RANGE;
   for (const { npc } of drawn) {
-    const distance = Math.hypot(npc.x - player.x, npc.z - player.z);
+    const at = positions.get(npc.id) ?? npc, distance = Math.hypot(at.x - player.x, at.z - player.z);
     if (distance < closest) { closest = distance; speaker = npc.id; }
   }
   return <group name="town-npcs">
@@ -158,7 +186,7 @@ export const TownNpcs = memo(function TownNpcs({ atlas, sampleWorld, player, gym
         gym: gyms.find(gym => gym.locationId === town.id), badges, outbreak: news, partnerName, nearbyDungeon: plan(town).dungeon,
       };
       return <TownNpcFigure key={npc.id} npc={npc} y={terrainSurfaceHeight(sampleWorld, npc.x, npc.z)} player={player}
-        lines={npcLines(npc.role, context)} talking={npc.id === speaker} quiet={busy} />;
+        lines={npcLines(npc.role, context)} talking={npc.id === speaker} quiet={busy} sampleWorld={sampleWorld} positions={positions} />;
     })}
   </group>;
 });
