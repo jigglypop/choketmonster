@@ -17,6 +17,15 @@
   --pastel-blur: blur(26px) saturate(1.7);
   --pastel-shadow: 0 24px 60px rgba(44, 38, 104, .24), inset 0 1px 0 rgba(255, 255, 255, .7);
   --pastel-font: 'Choket Sans', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+  /* The start screen: a quiet night with pastel light. */
+  --night: #0c0c18;
+  --night-text: #f2f0ff;
+  --night-muted: rgba(226, 222, 255, .56);
+  --night-line: rgba(255, 255, 255, .1);
+  --night-field: rgba(255, 255, 255, .055);
+  --night-glow-lilac: #a996ff;
+  --night-glow-blush: #ff9fcf;
+  --night-glow-sky: #8fd8ff;
 }
 
 /* BM DoHyeon (Google Fonts "Do Hyeon", OFL), cut to the title's five glyphs by scripts/subset-title-font.py. */
@@ -26,7 +35,7 @@
   font-display: block;
 }
 
-/* One centred column over the full-bleed art: the title, then the glass card. */
+/* One centred column on a dark field: the title, then the card. */
 .adventure-loading {
   position: fixed;
   inset: 0;
@@ -35,64 +44,75 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: clamp(20px, 4.5vh, 44px);
+  gap: clamp(22px, 4.5vh, 40px);
   box-sizing: border-box;
   padding: max(24px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
   overflow: hidden auto;
   isolation: isolate;
-  background: #3b3f86 url('data:image/webp;base64,UklGRlwBAABXRUJQVlA4IFABAACQBgCdASogABIAPrVInUmnJCKhMAgA4BaJbACdMoR2fxm4EgwinAj4XdEbi3oPg5W9zIenc4MSl4qoteOAAP5NOKrFRCtEgvJTCvTDfBAul+/LAEUmcmWgPlepRXHbqqBsg4JE6HUtCe96e++pF4qxooeh+8C3ysiMlo5dsk+MEZ5XwE+Vgg3liTQzVbREeCiJkDtDQOibrUwiSCcvHVIFQSfYsbCcceOlZp9i2DCxKGZe/tfz5zkVz8MB1cOM43VR8HC+c18EY+KvCNPB6ozHxIXMzA+wgX2H0ucmqyaaSeF4H9QEpiVQMd14iHGk8+LPoNSO5q/yQ+2HOe/LIn55+6VzYgig5pOMwmBbyMiwQUxhSjXoQA6kAvNJ40vEy0aI6vFNwaAoEuo0/bhA4+ipafkd4tS1/KR/P9gmqJWZefFLjZIhOGHFbSW3GJ0QAAA=') 46% 42% / cover;
-  color: var(--pastel-ink);
+  background: var(--night);
+  color: var(--night-text);
   font: 500 15px/1.5 var(--pastel-font);
   letter-spacing: -.01em;
   -webkit-font-smoothing: antialiased;
 }
 .adventure-loading[hidden] { display: none; }
 
+/* Three slow pools of pastel light under a fine dot grid that fades toward the edges. */
 .adventure-loading__scene { position: absolute; inset: 0; z-index: -1; overflow: hidden; }
 .adventure-loading__scene::before {
   content: '';
   position: absolute;
-  inset: -48px;
-  background: url('./art/title-960.webp') 43% 40% / cover;
-  filter: blur(28px) saturate(1.25);
+  inset: -20%;
+  background:
+    radial-gradient(34% 30% at 28% 30%, color-mix(in srgb, var(--night-glow-lilac) 42%, transparent), transparent 70%),
+    radial-gradient(30% 28% at 74% 26%, color-mix(in srgb, var(--night-glow-blush) 30%, transparent), transparent 70%),
+    radial-gradient(36% 32% at 58% 82%, color-mix(in srgb, var(--night-glow-sky) 24%, transparent), transparent 72%);
+  filter: blur(40px);
+  animation: night-drift 26s ease-in-out infinite alternate;
 }
-.adventure-loading__art {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: 46% 42%;
-  transform-origin: 50% 45%;
-  animation: adventure-drift 30s ease-in-out infinite alternate;
-}
-/* A soft pool of dusk behind the centre column keeps the title and card legible over the bright sky. */
 .adventure-loading__scene::after {
   content: '';
   position: absolute;
   inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(ellipse 58% 62% at 50% 52%, rgba(34, 28, 92, .34), rgba(34, 28, 92, .12) 58%, transparent 78%),
-    linear-gradient(180deg, rgba(26, 24, 82, .18), transparent 30%, transparent 70%, rgba(46, 38, 96, .3));
-}
-.adventure-loading__sparkles {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background-image:
-    radial-gradient(circle, #fffaf0 0 1.4px, transparent 3px),
-    radial-gradient(circle, #fff 0 1px, transparent 2.5px);
-  background-size: 210px 250px, 300px 320px;
-  background-position: 20px 40px, 110px 160px;
-  opacity: .55;
-  animation: adventure-sparkle 18s linear infinite;
+  background: radial-gradient(circle, rgba(255, 255, 255, .13) 1px, transparent 1.3px) 0 0 / 22px 22px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 62% at 50% 46%, #000 20%, transparent 78%);
+  mask-image: radial-gradient(ellipse 70% 62% at 50% 46%, #000 20%, transparent 78%);
 }
 
-.adventure-loading__card {
+/* Title: a small ball emblem over the name in a soft pastel sheen. */
+.adventure-loading__title {
+  position: relative;
   flex: none;
-  width: min(380px, 100%);
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  margin: 0;
+  font-family: var(--pastel-font);
+  font-weight: 820;
+  font-size: clamp(44px, 6.4vw, 84px);
+  line-height: 1;
+  letter-spacing: -.045em;
+  white-space: nowrap;
+  color: var(--night-text);
+  background: linear-gradient(115deg, #ffffff 10%, #e2d9ff 42%, #ffd3ea 72%, #ffe9d6 96%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: adventure-title-in .9s cubic-bezier(.2, .8, .2, 1) both;
 }
+.adventure-loading__title::before {
+  content: '';
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 50%, #fff 0 4.5px, var(--night) 5px 8px, transparent 8.5px),
+    linear-gradient(180deg, #c9b8ff 0 46%, var(--night) 46% 54%, #f4f0ff 54%);
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, .22), 0 8px 30px rgba(169, 150, 255, .45);
+  animation: night-emblem 6s ease-in-out infinite;
+}
+
+.adventure-loading__card { flex: none; width: min(360px, 100%); }
 .adventure-loading__body {
   display: flex;
   flex-direction: column;
@@ -100,37 +120,19 @@
   max-height: calc(100svh - 32px);
   overflow: auto;
   padding: 24px;
-  border: 1px solid var(--pastel-edge);
-  border-radius: 28px;
-  background: linear-gradient(160deg, rgba(255, 255, 255, .78), rgba(255, 246, 251, .6));
-  box-shadow: 0 28px 70px rgba(38, 30, 96, .34), inset 0 1px 0 rgba(255, 255, 255, .9);
-  -webkit-backdrop-filter: var(--pastel-blur);
-  backdrop-filter: var(--pastel-blur);
-  animation: adventure-rise .7s cubic-bezier(.2, .8, .2, 1) both;
-}
-/* The title: DoHyeon letters in the moon's cream and gold, no outline, set on a violet lift and a soft glow. */
-.adventure-loading__title {
-  flex: none;
-  margin: 0;
-  font-family: 'Choket Title', var(--pastel-font);
-  font-weight: 400;
-  font-size: clamp(64px, 9.5vw, 142px);
-  line-height: 1.05;
-  letter-spacing: .03em;
-  white-space: nowrap;
-  color: #fff7e2;
-  background: linear-gradient(180deg, #ffffff 8%, #fff3cf 52%, #ffd98a 96%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 .045em 0 #6c55c9) drop-shadow(0 .09em .12em rgba(40, 28, 110, .45)) drop-shadow(0 0 .35em rgba(255, 228, 160, .35));
-  animation: adventure-title-in .9s cubic-bezier(.2, .8, .2, 1) both, adventure-title-float 7s ease-in-out .9s infinite alternate;
+  border: 1px solid var(--night-line);
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(34, 32, 62, .72), rgba(22, 21, 42, .78));
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .06);
+  -webkit-backdrop-filter: blur(20px) saturate(1.3);
+  backdrop-filter: blur(20px) saturate(1.3);
+  animation: adventure-rise .7s cubic-bezier(.2, .8, .2, 1) .1s both;
 }
 
 .adventure-loading__stage { display: grid; gap: 8px; }
 .adventure-loading__label { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; }
 .adventure-loading__label strong { font-weight: 650; }
-.adventure-loading__label span { font-variant-numeric: tabular-nums; color: var(--pastel-muted); }
+.adventure-loading__label span { font-variant-numeric: tabular-nums; color: var(--night-muted); }
 .adventure-loading progress {
   display: block;
   appearance: none;
@@ -139,34 +141,33 @@
   border: 0;
   border-radius: 99px;
   overflow: hidden;
-  background: rgba(255, 255, 255, .45);
-  color: var(--pastel-lilac);
+  background: rgba(255, 255, 255, .08);
+  color: var(--night-glow-lilac);
 }
-.adventure-loading progress::-webkit-progress-bar { background: rgba(255, 255, 255, .45); border-radius: 99px; }
-.adventure-loading progress::-webkit-progress-value { background: linear-gradient(90deg, var(--pastel-lilac), var(--pastel-blush)); border-radius: 99px; transition: width .25s; }
-.adventure-loading progress::-moz-progress-bar { background: linear-gradient(90deg, var(--pastel-lilac), var(--pastel-blush)); border-radius: 99px; }
-.adventure-loading__detail { min-height: 2.8em; margin: 0; font-size: 12px; color: var(--pastel-muted); overflow-wrap: anywhere; }
-.adventure-loading__status { margin: 0; min-height: 1.5em; font-size: 13px; color: var(--pastel-muted); text-align: center; }
+.adventure-loading progress::-webkit-progress-bar { background: rgba(255, 255, 255, .08); border-radius: 99px; }
+.adventure-loading progress::-webkit-progress-value { background: linear-gradient(90deg, #b9a8ff, #ffb8dc); border-radius: 99px; transition: width .25s; }
+.adventure-loading progress::-moz-progress-bar { background: linear-gradient(90deg, #b9a8ff, #ffb8dc); border-radius: 99px; }
+.adventure-loading__detail { min-height: 2.8em; margin: 0; font-size: 12px; color: var(--night-muted); overflow-wrap: anywhere; }
+.adventure-loading__status { margin: 0; min-height: 1.5em; font-size: 13px; color: var(--night-muted); text-align: center; }
 .adventure-loading__status:empty { display: none; }
-.adventure-loading[data-failed=true] .adventure-loading__status { color: #c2476a; }
+.adventure-loading[data-failed=true] .adventure-loading__status { color: #ff9fb8; }
 
 .adventure-loading__retry,
 button.startup-auth__submit {
-  min-height: 50px;
-  border: 1px solid rgba(255, 255, 255, .7);
-  border-radius: 16px;
+  min-height: 48px;
+  border: 0;
+  border-radius: 14px;
   padding: 12px;
-  background: linear-gradient(135deg, #8f7cf2, #e98fc0);
-  box-shadow: 0 10px 24px rgba(120, 96, 214, .38), inset 0 1px 0 rgba(255, 255, 255, .45);
-  color: #fff;
-  text-shadow: 0 1px 1px rgba(60, 40, 120, .35);
+  background: linear-gradient(120deg, #c2b3ff, #f5b8da);
+  box-shadow: 0 10px 30px rgba(169, 150, 255, .28);
+  color: #1c1932;
   font: inherit;
-  font-weight: 700;
+  font-weight: 750;
   cursor: pointer;
   transition: transform .15s, box-shadow .15s, filter .15s;
 }
 .adventure-loading__retry:hover,
-button.startup-auth__submit:hover:not(:disabled) { filter: brightness(1.04) saturate(1.05); box-shadow: 0 14px 30px rgba(128, 112, 214, .34), inset 0 1px 0 rgba(255, 255, 255, .6); }
+button.startup-auth__submit:hover:not(:disabled) { filter: brightness(1.05); box-shadow: 0 14px 36px rgba(169, 150, 255, .4); }
 .adventure-loading__retry:active,
 button.startup-auth__submit:active:not(:disabled) { transform: scale(.985); }
 .adventure-loading__retry[hidden] { display: none; }
@@ -178,78 +179,75 @@ button.startup-auth__submit:active:not(:disabled) { transform: scale(.985); }
 [data-loading-stages][hidden],
 [data-auth-confirm][hidden],
 .startup-auth__error[hidden] { display: none; }
-.startup-auth label { display: grid; gap: 7px; font-size: 12.5px; font-weight: 700; color: #4b4668; }
+.startup-auth label { display: grid; gap: 7px; font-size: 12px; font-weight: 600; color: var(--night-muted); }
 .startup-auth input {
   box-sizing: border-box;
   min-width: 0;
   width: 100%;
-  min-height: 48px;
-  padding: 11px 15px;
-  border: 1px solid rgba(120, 108, 190, .22);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, .92);
-  color: var(--pastel-ink);
+  min-height: 46px;
+  padding: 11px 14px;
+  border: 1px solid var(--night-line);
+  border-radius: 12px;
+  background: var(--night-field);
+  color: var(--night-text);
   font: inherit;
   font-size: 15px;
   transition: border-color .15s, box-shadow .15s, background .15s;
 }
-.startup-auth input:focus { outline: none; background: #fff; border-color: var(--pastel-lilac); box-shadow: 0 0 0 4px rgba(189, 184, 255, .38); }
+.startup-auth input:focus { outline: none; background: rgba(255, 255, 255, .08); border-color: #b9a8ff; box-shadow: 0 0 0 4px rgba(185, 168, 255, .18); }
+.startup-auth input:-webkit-autofill { -webkit-text-fill-color: var(--night-text); -webkit-box-shadow: 0 0 0 40px #26243f inset; caret-color: var(--night-text); }
 .startup-auth__modes {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 4px;
   padding: 4px;
-  border: 1px solid rgba(120, 108, 190, .16);
-  border-radius: 16px;
-  background: rgba(236, 232, 255, .6);
+  border: 1px solid var(--night-line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .03);
 }
 .startup-auth__modes button {
-  min-height: 40px;
+  min-height: 38px;
   border: 0;
-  border-radius: 12px;
+  border-radius: 10px;
   padding: 8px;
   background: transparent;
-  color: var(--pastel-muted);
+  color: var(--night-muted);
   font: inherit;
   font-weight: 600;
   cursor: pointer;
-  transition: background .2s, color .2s, box-shadow .2s;
+  transition: background .2s, color .2s;
 }
-.startup-auth__modes button[aria-pressed=true] { background: #fff; color: var(--pastel-ink); box-shadow: 0 4px 14px rgba(84, 72, 170, .18); }
+.startup-auth__modes button[aria-pressed=true] { background: rgba(255, 255, 255, .1); color: var(--night-text); }
 .startup-auth button:disabled { opacity: .55; cursor: wait; }
-.startup-auth__error { margin: 0; color: #c2476a; font-size: 13px; overflow-wrap: anywhere; }
+.startup-auth__error { margin: 0; color: #ff9fb8; font-size: 13px; overflow-wrap: anywhere; }
 [data-loading-stages] { display: grid; gap: 16px; }
 
-@keyframes adventure-drift {
-  from { transform: scale(1.02); }
-  to { transform: scale(1.08) translate3d(-.6%, .5%, 0); }
+@keyframes night-drift {
+  from { transform: translate3d(-2%, -1%, 0) rotate(0deg); }
+  to { transform: translate3d(2%, 1.5%, 0) rotate(6deg); }
 }
-@keyframes adventure-sparkle {
-  from { background-position: 20px 40px, 110px 160px; }
-  to { background-position: 60px -210px, 80px -160px; }
+@keyframes night-emblem {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-4px) rotate(-8deg); }
 }
 @keyframes adventure-rise {
   from { opacity: 0; transform: translateY(14px); }
 }
 @keyframes adventure-title-in {
-  from { opacity: 0; transform: translateY(-.12em) scale(.94); }
-}
-@keyframes adventure-title-float {
-  to { transform: translateY(-.045em); }
+  from { opacity: 0; transform: translateY(-10px); }
 }
 
 @media (orientation: portrait), (max-width: 700px) {
-  .adventure-loading { justify-content: flex-start; padding-top: max(10vh, env(safe-area-inset-top)); }
-  /* A narrow screen shows the moon and the flying bee above the card instead of an empty strip of sky. */
-  .adventure-loading__art { object-position: 86% 50%; }
-  .adventure-loading__title { font-size: clamp(56px, 16vw, 104px); }
+  .adventure-loading { padding-top: max(14vh, env(safe-area-inset-top)); justify-content: flex-start; }
+  .adventure-loading__title { font-size: clamp(40px, 12vw, 64px); }
   .adventure-loading__card { width: min(400px, 100%); margin-top: auto; }
-  .adventure-loading__body { padding: 20px; gap: 13px; border-radius: 24px; }
+  .adventure-loading__body { padding: 20px; gap: 13px; border-radius: 22px; }
   .adventure-loading__detail { min-height: 0; }
 }
 @media (orientation: landscape) and (max-height: 520px) {
   .adventure-loading { gap: 12px; padding-block: 12px; }
-  .adventure-loading__title { font-size: clamp(44px, 9vw, 92px); }
+  .adventure-loading__title { font-size: clamp(34px, 7vw, 60px); gap: 8px; }
+  .adventure-loading__title::before { width: 24px; height: 24px; }
   .adventure-loading__card { width: min(340px, 100%); }
   .adventure-loading__body { padding: 14px 16px; gap: 10px; max-height: none; }
   .startup-auth { gap: 9px; }
@@ -257,6 +255,6 @@ button.startup-auth__submit:active:not(:disabled) { transform: scale(.985); }
   button.startup-auth__submit, .adventure-loading__retry { min-height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .adventure-loading__art, .adventure-loading__sparkles, .adventure-loading__body, .adventure-loading__title { animation: none; }
+  .adventure-loading__scene::before, .adventure-loading__title::before, .adventure-loading__body, .adventure-loading__title { animation: none; }
   .adventure-loading progress::-webkit-progress-value { transition: none; }
 }

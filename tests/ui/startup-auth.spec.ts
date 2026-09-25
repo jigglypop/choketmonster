@@ -26,7 +26,7 @@ test('requires login before loading the game, restores illustrated loading and r
   await expect(form.locator('[type="submit"]')).toBeEnabled();
   await expect(form.locator('[data-auth-mode="register"]')).toBeEnabled();
   await expect(page.locator('#app')).toBeEmpty();
-  await expect(page.locator('.adventure-loading__art')).toBeVisible();
+  await expect(page.locator('.adventure-loading__title')).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: info.outputPath('login-mobile.png'), fullPage: true });
