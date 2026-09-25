@@ -165,3 +165,6 @@
 @media (max-width: 720px) {
   .adventure .world-radar.world-radar-round { --minimap-base: 104px; padding: 0; }
 }
+/* Today's mass outbreak, named in the explore panel. */
+.adventure .world-outbreak { margin: 6px 0 0; padding: 6px 10px; border: 1px solid #e9c35f88; border-radius: 10px; background: #e9c35f1f; color: var(--ui-hud-text); font-size: calc(12px * var(--ui-font-scale, 1)); }
+.adventure .world-outbreak[hidden] { display: none; }

@@ -58,7 +58,7 @@ import { disposeNormalizedPokemonMaterials } from './pokemon-materials';
 import { createTerrainSurface } from './terrain-surface';
 import { getSpecies } from '../data/pokemon';
 import { getCombatForm } from '../data/pokemon-combat-forms';
-import { isLegendarySpecies } from '../game/legendary';
+import { isLegendarySpecies, isMythicalSpecies } from '../game/legendary';
 import { TYPE_COLORS } from './type-colors';
 import './view.css';
 import { RenderProbe } from './render-probe';
@@ -818,10 +818,10 @@ function CreatureBillboard({ creature, hp, distance, emphasized }: { creature: W
   const remote = creature.remotePlayer;
   // A form keeps its own typing (Alolan Raichu, Mega Charizard X); each type shows as a small dot before the name.
   const types = remote ? [] : (creature.formIdentifier && getCombatForm(creature.formIdentifier)?.types) || getSpecies(creature.speciesId).types;
-  const legendary = !remote && isLegendarySpecies(creature.speciesId), self = creature.id.startsWith('companion:');
+  const legendary = !remote && isLegendarySpecies(creature.speciesId), mythical = !remote && isMythicalSpecies(creature.speciesId), self = creature.id.startsWith('companion:');
   return <group name="creature-nameplate" position={[0, (creature.displayHeight ?? 1.2) + .5, 0]}>
     <Html center zIndexRange={[2, 1]} style={{ pointerEvents: 'none' }}>
-      <div className={`ow-creature-label${emphasized ? ' ow-creature-label-selected' : ''}${legendary ? ' ow-creature-label-legendary' : ''}${self ? ' ow-creature-label-self' : ''}`} data-creature-id={creature.id}>
+      <div className={`ow-creature-label${emphasized ? ' ow-creature-label-selected' : ''}${mythical ? ' ow-creature-label-mythical' : legendary ? ' ow-creature-label-legendary' : ''}${self ? ' ow-creature-label-self' : ''}`} data-creature-id={creature.id}>
         {creature.cue && <b key={creature.cue.key} className={`ow-move-cue ow-move-${creature.cue.moveType}`}>{creature.cue.damage ? <i className="ow-cue-damage">{creature.cue.damage}</i> : null}{creature.cue.text}</b>}
         {creature.note && <b key={creature.note.key} className="ow-item-cue">{creature.note.text}</b>}
         <strong>{types.map(type => <i key={type} className="ow-type-dot" style={{ background: TYPE_COLORS[type] }} />)}{remote ? remote.name : `${creature.name} · Lv.${creature.level}`}{statusLabel(creature.status) && <em className={`ow-status ow-status-${creature.status}`}>{statusLabel(creature.status)}</em>}</strong>

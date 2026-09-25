@@ -22,6 +22,7 @@ import { WORLD_MIN, WORLD_MAX, WORLD_SCALE, migrateSurfaceSnapshotCoordinates, s
 import { CAVE_SCENES, caveLocation, cavePortalAtInterior, cavePortalAtSurface, caveStairsAt, dungeonExits, getCaveScene, nearestCaveWalkable, type CaveScene } from './caves';
 import { claimDungeonClear as claimDungeonReward } from '../game/engine';
 import type { DungeonReward } from '../data/dungeon-rewards';
+import { dailyOutbreak, outbreakDay, type Outbreak } from '../data/outbreaks';
 import { getGymScene, gymSceneId, LEAGUE_LOCATION_IDS, leagueSceneId } from './gym-scenes';
 import { openDungeonExits, portalBadges, reachableLocations } from './dungeon-gates';
 import { regionalItinerary } from './next-destination';
@@ -327,9 +328,24 @@ export class OpenWorldSimulation {
   get worldHour(): number { return this.worldClockSeconds / (20 * 60) * 24; }
   // Legacy encounter clock remains save-compatible; presentation is always daytime.
   get daylightIntensity(): number { return 1; }
+  /** The real UTC day the world clock follows; outbreaks change with it. Unset until the clock is synchronized. */
+  private clockDay?: number;
+  private outbreakCache?: { key: string; outbreak?: Outbreak };
+  /** Today's mass outbreak in this region: one place teeming with one species. */
+  get outbreak(): Outbreak | undefined {
+    if (this.clockDay === undefined) return undefined;
+    const key = `${this.regionId}:${this.clockDay}`;
+    if (this.outbreakCache?.key !== key) {
+      const playable = new Set(getPlayableSpeciesIds());
+      this.outbreakCache = { key, outbreak: dailyOutbreak(this.regionId, this.atlas.locations, this.clockDay, speciesId => playable.has(speciesId) && !isLegendarySpecies(speciesId)) };
+    }
+    return this.outbreakCache.outbreak;
+  }
+
   synchronizeWorldClock(epochMilliseconds: number): void {
     if (!Number.isFinite(epochMilliseconds) || epochMilliseconds < 0) throw new Error('World clock timestamp must be non-negative');
     this.worldClockSeconds = epochMilliseconds / 1000 % (20 * 60);
+    this.clockDay = outbreakDay(epochMilliseconds);
     this.synchronizeEvolutionContext();
   }
   synchronizeEvolutionContext(multiplayer = false): void {
@@ -1224,6 +1240,12 @@ export class OpenWorldSimulation {
 
   private encounterAt(position: { x: number; z: number }): { speciesId: number; level: number } {
     const location = this.locationAt(position.x, position.z), floor = this.encounterFloor, levels = this.levelsAt(position);
+    // An outbreak fills its place: half of what appears there is its species, at the place's levels.
+    const outbreak = this.outbreak;
+    if (outbreak?.locationId === location.id && this.rng.next() < .5) {
+      const min = Math.max(1, levels.minLevel), max = Math.max(min, levels.maxLevel);
+      return { speciesId: outbreak.speciesId, level: min + this.rng.int(max - min + 1) };
+    }
     const encounterRegion = this.regionId === 'johto' ? 'johto' : 'kanto';
     const biome = this.sampleWorld(position.x, position.z).biome;
     const choose = (serial: number) => isExpansionRegion(this.regionId)

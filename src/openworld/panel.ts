@@ -38,7 +38,7 @@ import { gymTeam } from '../game/gym-teams';
 import { technicalMachines, getTechnicalMachine } from '../game/technical-machines';
 import { nextDestinationGuide, regionalItinerary, type DestinationGuide } from './next-destination';
 import { pokemonPresentation, battleTransformationsHtml, combatFormSprite, fieldMegaForm, formDisplayName } from '../ui/pokemon-presentation';
-import { isLegendarySpecies } from '../game/legendary';
+import { isLegendarySpecies, isMythicalSpecies } from '../game/legendary';
 import { TYPE_COLORS } from './type-colors';
 import { getAlolaCombatForm, getCombatForm } from '../data/pokemon-combat-forms';
 import { getPokemonFormModelSource } from '../data/pokemon-form-models';
@@ -194,6 +194,7 @@ export class OpenWorldPanel {
       <section class="world-hud-card" aria-label="탐험">
         <details class="world-explore-panel"><summary class="world-explore-toggle"><div><strong id="world-location-short">성도</strong><small id="world-explore-short">성도</small></div><i>⌄</i></summary><div class="world-explore-scroll">
         <div class="world-tools"><button id="world-trade-open" title="포켓몬 교환 · 게임 머니 거래">교환</button></div>
+        <p id="world-outbreak" class="world-outbreak" hidden></p>
         <details class="world-bag" id="world-bag"><summary aria-label="도구 목록"><span>도구</span><b id="world-bag-count">0</b></summary><div class="world-bag-panel" id="world-bag-content"></div></details>
         <button id="world-trainer-open" class="world-trainer-open">트레이너 배틀</button>
         <fieldset class="world-automation"><legend>자동 설정</legend><label><input id="world-auto-catch" type="checkbox" checked><span>자동 포획</span></label><label title="건강한 팀원 모두 같은 경험치"><input id="world-exp-share" type="checkbox" checked><span>팀 경험치 공유</span></label><label><input id="world-learning" type="checkbox" checked><span id="world-learning-label">기술 학습</span></label></fieldset>
@@ -1294,7 +1295,7 @@ export class OpenWorldPanel {
     const xp = Math.min(100, Math.max(0, (lead.xp - xpStart) / Math.max(1, xpEnd - xpStart) * 100));
     const card = (mon: Monster, label: string) => {
       const info = pokemonPresentation(mon, battle);
-      return `<div class="world-combatant${isLegendarySpecies(mon.speciesId) ? ' is-legendary' : ''}"><img src="${info.sprite}" alt="${escape(info.name)}"><div class="world-combatant-copy"><small>${label} · Lv.${mon.level}</small><strong>${info.types.map(type => `<i class="world-type-dot" style="background:${TYPE_COLORS[type]}"></i>`).join('')}${escape(info.name)}</strong><div class="world-hp-row"><span>HP</span><b>${mon.hp} / ${info.stats.hp}</b>${statusLabel(mon.status) ? `<em>${statusLabel(mon.status)}</em>` : ''}</div><div class="world-hp" role="meter" aria-label="${escape(mon.nickname)} HP" aria-valuemin="0" aria-valuemax="${info.stats.hp}" aria-valuenow="${mon.hp}"><i style="width:${mon.hp / info.stats.hp * 100}%"></i></div><span class="world-combatant-meta">${info.types.map(type => types[type]).join(' · ')} · 스피드 ${info.stats.speed}</span></div></div>`;
+      return `<div class="world-combatant${isLegendarySpecies(mon.speciesId) ? ' is-legendary' : ''}${isMythicalSpecies(mon.speciesId) ? ' is-mythical' : ''}"><img src="${info.sprite}" alt="${escape(info.name)}"><div class="world-combatant-copy"><small>${label} · Lv.${mon.level}</small><strong>${info.types.map(type => `<i class="world-type-dot" style="background:${TYPE_COLORS[type]}"></i>`).join('')}${escape(info.name)}</strong><div class="world-hp-row"><span>HP</span><b>${mon.hp} / ${info.stats.hp}</b>${statusLabel(mon.status) ? `<em>${statusLabel(mon.status)}</em>` : ''}</div><div class="world-hp" role="meter" aria-label="${escape(mon.nickname)} HP" aria-valuemin="0" aria-valuemax="${info.stats.hp}" aria-valuenow="${mon.hp}"><i style="width:${mon.hp / info.stats.hp * 100}%"></i></div><span class="world-combatant-meta">${info.types.map(type => types[type]).join(' · ')} · 스피드 ${info.stats.speed}</span></div></div>`;
     };
     const enemyParty = battle && battle.kind !== 'wild' ? `<ol class="world-enemy-party" aria-label="상대 포켓몬">${battle.enemy.team.map((monster, index) => `<li class="${monster.hp <= 0 ? 'fainted' : ''}${index === battle.enemy.activeIndex ? ' active' : ''}"><img src="${pokemonSpriteUrl(monster.speciesId)}" alt="${escape(monster.nickname)} Lv.${monster.level}" title="${escape(monster.nickname)} Lv.${monster.level}"></li>`).join('')}</ol>` : '';
     this.html('#world-combatants', `${card(lead, '파트너')}${enemy ? card(enemy, battle!.kind === 'wild' ? '야생' : campaignTrainer?.name ?? getCampaignGyms(game, battle!.campaignRegion ?? world.regionId).find(item => item.badge === battle!.gymBadge)?.name ?? '체육관') + enemyParty : `<div class="world-growth"><small>다음 레벨까지 ${Math.max(0, xpEnd - lead.xp)} EXP</small><div class="world-xp"><i style="width:${xp}%"></i></div><span>${species.moves.filter(move => move.level > lead.level).slice(0, 1).map(move => `Lv.${move.level} ${getMove(move.moveId).name} 습득`).join('') || '현재 레벨의 기술을 모두 익혔습니다.'}</span></div>`}`);
@@ -1397,6 +1398,10 @@ export class OpenWorldPanel {
     }
     this.button('#world-run').disabled = !battle?.canRun;
     this.button('#world-quick-run').disabled = !battle?.canRun;
+    const outbreak = world.outbreak, outbreakPlace = outbreak && world.atlas.locations.find(location => location.id === outbreak.locationId);
+    const outbreakText = outbreak && outbreakPlace ? `대량발생 · ${getSpecies(outbreak.speciesId).name} · ${outbreakPlace.name}` : '';
+    this.text('#world-outbreak', outbreakText);
+    this.host!.querySelector<HTMLElement>('#world-outbreak')!.hidden = !outbreakText;
     this.button('#world-heal').disabled = Boolean(battle);
     this.button('#world-trainer-open').disabled = Boolean(battle || offer);
     this.input('#world-auto-catch').checked = world.autoCapture;

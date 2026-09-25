@@ -88,6 +88,8 @@
 /* Legendary cards: a gold frame; the name keeps the normal text colour. */
 .legendary-pokemon { border: 2px solid #d8b24f !important; box-shadow: inset 0 0 0 1px #f3dc9255, 0 4px 14px #b8902f22; }
 .detail-title.legendary-pokemon { padding: 10px; border: 1px solid #c9a64d; border-radius: 10px; }
+/* Mythical Pokémon wear a violet frame instead of the legendary gold. */
+.mythical-pokemon { border-color: #c48be3 !important; box-shadow: inset 0 0 0 1px #f0d6ff66, 0 4px 14px #9a5cc822; }
 
 .team-heading h1{font-size:28px;margin:0}
 .team-rack{position:static}
