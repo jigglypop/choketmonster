@@ -116,13 +116,14 @@ test('a visible terrain gate explains the prerequisite and opens after it is ear
   await expect(label).toBeInViewport({ ratio: 1 });
   await testInfo.attach('hisui-locked-gate-mobile', { body: await page.screenshot({ path: testInfo.outputPath('locked-gate-mobile.png') }), contentType: 'image/png' });
   await page.setViewportSize({ width: 1440, height: 1100 });
+  // Opened, the glass gate is gone, label and all, and stays gone after a reload.
   await importSave(page, fixture(4, point));
-  await expect(label).toHaveAttribute('data-gate-state', 'open');
-  await expect(label).toContainText('관문 개방');
+  await expect(label).toHaveCount(0);
   await clickAccountMenu(page, '#save-now');
   await expect(page.locator('#toast')).toContainText('저장했습니다');
   await page.reload();
-  await expect(label).toHaveAttribute('data-gate-state', 'open', { timeout: 45_000 });
+  await expect(page.locator('#ow-host canvas')).toBeVisible({ timeout: 45_000 });
+  await expect(label).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
