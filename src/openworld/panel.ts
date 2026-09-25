@@ -200,8 +200,8 @@ export class OpenWorldPanel {
         </div></details>
         <button id="world-next-guide" class="world-next-guide" aria-label="다음 목적지 길안내" aria-expanded="false"></button>
       </section>
-      <aside class="world-radar world-radar-round" style="--minimap-scale:${this.minimapScale}"><button id="world-map-open" aria-label="지역 전체 지도 열기"><span class="world-minimap-frame"><canvas id="world-minimap" width="180" height="180" aria-label="카메라 방향으로 회전하는 월드 지도"></canvas><b id="world-minimap-heading" aria-hidden="true">북</b></span></button><button id="world-radar-run" class="world-radar-run" type="button" hidden>도망가기</button></aside>
-      <div class="world-quick-actions"><div class="world-mode-buttons" role="group" aria-label="조작 모드"><button id="world-mode-auto">자동</button><button id="world-mode-manual">수동</button></div><button id="world-heal" class="world-heal">캠프 회복</button><div id="world-cave-exits" class="world-cave-exits" hidden></div></div>
+      <aside class="world-radar world-radar-round" style="--minimap-scale:${this.minimapScale}"><button id="world-map-open" aria-label="지역 전체 지도 열기"><span class="world-minimap-frame"><canvas id="world-minimap" width="180" height="180" aria-label="카메라 방향으로 회전하는 월드 지도"></canvas><b id="world-minimap-heading" aria-hidden="true">북</b></span></button></aside>
+      <div class="world-quick-actions"><div class="world-mode-buttons" role="group" aria-label="조작 모드"><button id="world-mode-auto">자동</button><button id="world-mode-manual">수동</button></div><button id="world-heal" class="world-heal">캠프 회복</button><button id="world-quick-run" class="world-heal world-quick-run" type="button" hidden>도망가기</button><div id="world-cave-exits" class="world-cave-exits" hidden></div></div>
       <button id="world-gym-notice" class="world-gym-notice" hidden></button>
       <div class="world-lower-hud">
       <section class="world-multiplayer social-dock" aria-label="지역 채팅">
@@ -369,7 +369,7 @@ export class OpenWorldPanel {
       this.drawRegionMap(); this.host!.querySelector<HTMLDialogElement>('#world-map-dialog')!.showModal();
     };
     this.bindMinimapZoom(this.host.querySelector<HTMLElement>('.world-radar')!);
-    this.button('#world-radar-run').onclick = () => { if (this.simulation.requestAction({ type: 'run' })) this.options.notify('다음 턴에 도망을 시도합니다.'); };
+    this.button('#world-quick-run').onclick = () => { if (this.simulation.requestAction({ type: 'run' })) this.options.notify('다음 턴에 도망을 시도합니다.'); };
     const bag = this.host.querySelector<HTMLDetailsElement>('#world-bag')!;
     bag.addEventListener('toggle', () => this.renderBag());
     this.host.querySelector('#world-bag-content')!.addEventListener('click', event => {
@@ -1375,7 +1375,9 @@ export class OpenWorldPanel {
       button.title = `HP +${HEALING_ITEM_HP[item]}`;
     }
     this.button('#world-run').disabled = !battle?.canRun;
-    this.button('#world-radar-run').hidden = !battle?.canRun;
+    // In a battle that allows it, run takes the camp heal's place at the bottom of the group, so nothing shifts.
+    this.button('#world-quick-run').hidden = !battle?.canRun;
+    this.button('#world-heal').hidden = Boolean(battle?.canRun);
     this.button('#world-heal').disabled = Boolean(battle);
     this.button('#world-trainer-open').disabled = Boolean(battle || offer);
     this.input('#world-auto-catch').checked = world.autoCapture;
