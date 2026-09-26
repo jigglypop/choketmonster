@@ -25,14 +25,13 @@ function RoadTrainerFigure({ trainer, y, player, busy, onChallenge }: {
     object.scale.setScalar(NPC_HEIGHT / (new Box3().setFromObject(object).getSize(new Vector3()).y || 1));
     return object;
   }, [gltf]);
-  const mixer = useRef<AnimationMixer | null>(null);
   useEffect(() => {
     if (!figure || !gltf) return;
-    // Standing: the walk's first frame, feet together and arms down (the rest pose is a T).
+    // Standing: the walk's first frame, feet together and arms down (the rest pose is a T). The pose never changes, so
+    // it is applied once rather than evaluated every frame.
     const next = new AnimationMixer(figure), walk = gltf.animations.find(clip => /^walk/i.test(clip.name));
-    if (walk) { const hold = next.clipAction(walk.clone()).play(); hold.paused = true; hold.time = 0; }
-    mixer.current = next;
-    return () => { next.stopAllAction(); next.uncacheRoot(figure); mixer.current = null; };
+    if (walk) { const hold = next.clipAction(walk.clone()).play(); hold.paused = true; hold.time = 0; next.update(0); }
+    return () => { next.stopAllAction(); next.uncacheRoot(figure); };
   }, [figure, gltf]);
   useEffect(() => () => {
     if (!figure) return;
@@ -56,7 +55,6 @@ function RoadTrainerFigure({ trainer, y, player, busy, onChallenge }: {
   const facing = useRef(trainer.facing ?? 0), target = useRef(player);
   target.current = player;
   useFrame((state, delta) => {
-    mixer.current?.update(Math.min(delta, .05));
     if (!root.current) return;
     // Looks the road up and down while waiting, and turns to a partner who comes near.
     const near = Math.hypot(target.current.x - trainer.x, target.current.z - trainer.z) < NOTICE;

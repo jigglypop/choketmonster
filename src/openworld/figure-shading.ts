@@ -16,6 +16,9 @@ export function shadeFigure(root: Object3D): void {
       material.roughness = 1; material.roughnessMap = null;
       material.metalness = 0; material.metalnessMap = null;
       matte.set(source, material);
+      // The model cache disposes the source when it evicts the model; the matte copy goes with it.
+      const copy = material;
+      source.addEventListener('dispose', () => { copy.dispose(); matte.delete(source); });
     }
     return material;
   };
