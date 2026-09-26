@@ -25,6 +25,13 @@ export function terrainChunks(player: WorldPoint, visible: VisibilityTest, retai
   return chunks;
 }
 
+let shortTouchScreen: MediaQueryList | undefined;
+/** Phone budgets: a narrow canvas, or a touch screen held sideways (the CSS phone HUD's short touch screen). */
+export function isPhoneCanvas(width: number): boolean {
+  shortTouchScreen ??= typeof matchMedia === 'function' ? matchMedia('(pointer: coarse) and (max-height: 600px)') : undefined;
+  return width <= 720 || !!shortTouchScreen?.matches;
+}
+
 /** Companions and both sides of a battle are always drawn: the battle waits on their models. */
 const alwaysDrawn = (creature: WorldCreature) => creature.id.startsWith('companion:') || !!creature.inBattle;
 

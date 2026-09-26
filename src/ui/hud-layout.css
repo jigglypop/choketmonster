@@ -24,7 +24,7 @@
 .topbar #game-sound-toggle { background: var(--ui-accent-soft); color: var(--ui-accent-hover); border-color: var(--ui-border); }
 /* Cave and hall exits sit at the bottom centre, clear of the location card, chat and partner HUD. */
 .world-cave-exits { position: fixed; z-index: 25; bottom: 28px; left: 50%; transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; max-width: min(300px, calc(100vw - 160px)); }
-@media (max-width: 900px) {
+@media (max-width: 900px), (pointer: coarse) and (max-height: 600px) {
   .world-cave-exits { bottom: calc(var(--app-nav-height) + var(--world-partner-height, 48px) + var(--world-chat-height, 48px) + 36px); max-width: calc(100vw - 24px); }
 }
 .world-cave-exits[hidden] { display: none; }
@@ -83,7 +83,9 @@
 .world-trainer-card { background: var(--ui-surface); border-color: var(--ui-border); }
 .world-trainer-card :is(small, p), .world-trainer-dialog > p { color: var(--ui-muted); }
 
-@media (min-width: 901px) {
+/* Phones are 900px wide or narrower, or a short touch screen at any width (a phone held sideways).
+   Desktop-only placements skip those short touch screens. */
+@media (min-width: 901px) and (pointer: fine), (min-width: 901px) and (min-height: 601px) {
   [data-battle-position=left] .adventure .world-explore-panel { left: auto; right: 20px; }
   [data-battle-position=left] .adventure .world-next-guide { left: 180px; right: 336px; }
   [data-battle-position=left] .adventure .world-radar { left: 20px; right: auto; }
@@ -93,13 +95,15 @@
   [data-battle-position=left] .adventure .social-dock { left: auto; right: 20px; }
   [data-battle-position=left] .adventure .world-lower-hud > .world-target { left: auto; right: 20px; bottom: calc(32px + var(--world-chat-height, 230px)); }
 }
-@media (max-width: 900px) {
+@media (max-width: 900px), (pointer: coarse) and (max-height: 600px) {
   :root { --app-nav-height: calc(62px + env(safe-area-inset-bottom)); }
-  .topbar, .topbar.map-overlay { min-height: 60px; padding: 8px 12px; gap: 6px 10px; }
+  /* The header and tab bar keep clear of a notch or rounded corner on every side. */
+  .topbar, .topbar.map-overlay { min-height: 60px; padding: max(8px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left)); gap: 6px 10px; }
   .topbar .brand { font-size: calc(13px * var(--ui-font-scale)); }
   .topbar .trainer-summary { gap: 5px; }
-  .topbar nav, .topbar.map-overlay nav { position: fixed; inset: auto 0 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); width: 100%; height: var(--app-nav-height); padding: 5px 5px calc(5px + env(safe-area-inset-bottom)); margin: 0; background: var(--ui-surface); color: var(--ui-text); border-radius: 0; border-top: 1px solid var(--ui-border); z-index: 50; }
-  .topbar nav button, .topbar.map-overlay nav button { min-height: 44px; padding: 6px 2px; font-size: calc(12px * var(--ui-font-scale)); color: var(--ui-muted); }
+  .topbar nav, .topbar.map-overlay nav { position: fixed; inset: auto 0 0; display: grid; grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); width: 100%; height: var(--app-nav-height); padding: 5px max(5px, env(safe-area-inset-right)) calc(5px + env(safe-area-inset-bottom)) max(5px, env(safe-area-inset-left)); margin: 0; background: var(--ui-surface); color: var(--ui-text); border-radius: 0; border-top: 1px solid var(--ui-border); z-index: 50; }
+  /* Every tab in one row down to 320px: the type shrinks with the screen, and a long name wraps at a space. */
+  .topbar nav button, .topbar.map-overlay nav button { min-width: 0; min-height: 44px; padding: 4px 1px; font-size: min(calc(12px * var(--ui-font-scale)), 3.6vw); line-height: 1.2; white-space: normal; word-break: keep-all; color: var(--ui-muted); }
   .topbar nav button.active, .topbar.map-overlay nav button.active { background: var(--ui-accent-soft); color: var(--ui-accent); }
   .topbar :is(#badges, #money, #save-state, .account-name), .interface-settings-trigger > span { display: none; }
   .topbar #save-now { display: inline-flex; }
@@ -113,7 +117,7 @@
   .adventure .world-radar :is(span, small) { font-size: calc(10px * var(--ui-font-scale)); }
   .adventure .ow-camera-controls { top: calc(var(--app-header-height) + 20px + var(--world-radar-height, 125px)); right: 12px; left: auto; width: 86px; }
   .adventure .ow-camera-controls button { white-space: normal; min-height: 34px; font-size: calc(11px * var(--ui-font-scale)); }
-  .adventure .world-lower-hud { inset: auto 10px 10px; display: flex; flex-direction: column; gap: 6px; }
+  .adventure .world-lower-hud { inset: auto calc(10px + env(safe-area-inset-right)) 10px calc(10px + env(safe-area-inset-left)); display: flex; flex-direction: column; gap: 6px; }
   .adventure .world-lower-hud > :is(.world-target, .world-battle-hud, .social-dock) { position: relative; inset: auto; width: 100%; max-width: none; transform: none; margin: 0; box-sizing: border-box; }
   .adventure .world-lower-hud > .world-target { order: 0; }
   .adventure .world-lower-hud > .world-battle-hud { order: 1; max-height: none; }
@@ -126,25 +130,25 @@
   .adventure .world-battle-hud > summary .world-summary-hp { font-size: calc(12px * var(--ui-font-scale)); }
   .adventure .world-method { display: none; }
 }
-@media (max-height: 600px) and (min-width: 601px) and (max-width: 900px) {
+@media (max-height: 600px) and (min-width: 601px) and (max-width: 900px), (pointer: coarse) and (max-height: 600px) and (min-width: 601px) {
   .adventure .world-next-guide { width: 245px; right: auto; padding: 8px 10px; }
   .adventure .world-explore-panel { width: 245px; right: auto; }
   .adventure .world-explore-scroll { max-height: max(35px, calc(100dvh - var(--app-header-height) - var(--app-nav-height) - var(--world-guide-height, 80px) - var(--world-explore-toggle-height, 60px) - 34px)); }
   .adventure .world-radar { left: 269px; right: auto; }
   .adventure .ow-camera-controls { left: 269px; right: auto; }
-  .adventure .world-lower-hud { left: 367px; right: 10px; }
+  .adventure .world-lower-hud { left: calc(367px + env(safe-area-inset-left)); right: calc(10px + env(safe-area-inset-right)); }
   .adventure .world-lower-hud > .world-battle-hud[open] .world-battle-deck { max-height: max(65px, calc(100dvh - var(--app-header-height) - var(--app-nav-height) - 125px)); }
 }
 
 /* Guide and exploration cards stop at the measured minimap width at every minimap size. */
 .adventure .world-next-guide { right: calc(36px + var(--world-radar-width, 164px)); }
 [data-battle-position=left] .adventure .world-next-guide { right: 336px; left: calc(36px + var(--world-radar-width, 164px)); }
-@media (max-width: 900px) {
+@media (max-width: 900px), (pointer: coarse) and (max-height: 600px) {
   .adventure .world-next-guide, .adventure .world-explore-panel { right: calc(22px + var(--world-radar-width, 98px)); }
   [data-battle-position=left] .adventure .world-next-guide { left: 12px; }
   .world-bag-panel { max-height: max(160px, calc(100dvh - var(--app-header-height) - var(--app-nav-height) - var(--world-radar-height, 200px) - var(--world-partner-height, 48px) - var(--world-chat-height, 48px) - 48px)); }
 }
-@media (max-height: 600px) and (min-width: 601px) and (max-width: 900px) {
+@media (max-height: 600px) and (min-width: 601px) and (max-width: 900px), (pointer: coarse) and (max-height: 600px) and (min-width: 601px) {
   .adventure .world-next-guide, .adventure .world-explore-panel { right: auto; }
 }
 
@@ -179,7 +183,7 @@
 .adventure .world-gym-notice small { font-size: calc(11.5px * var(--ui-font-scale, 1)); color: rgba(36, 35, 59, .66); }
 .adventure .world-gym-notice:hover { filter: brightness(1.04); transform: translateY(-1px); }
 @keyframes world-gym-notice-in { from { opacity: 0; transform: translateY(-8px); } }
-@media (max-width: 900px) {
+@media (max-width: 900px), (pointer: coarse) and (max-height: 600px) {
   .adventure .world-gym-notice { top: calc(var(--app-header-height) + 20px + var(--world-guide-height, 80px)); left: 12px; right: 110px; max-width: none; }
   .adventure .world-explore-panel { top: calc(var(--app-header-height) + 28px + var(--world-guide-height, 80px) + var(--world-gym-notice-height, 0px)); }
   .adventure:has(.world-explore-panel[open]) .world-gym-notice { display: none; }

@@ -119,36 +119,37 @@
 /* The challenge notice sits at the top centre. */
 .adventure .world-gym-notice { top: calc(var(--app-header-height) + 16px); left: 50%; translate: -50% 0; }
 
-@media (min-width: 901px) {
+@media (min-width: 901px) and (pointer: fine), (min-width: 901px) and (min-height: 601px) {
   [data-battle-position=left] .adventure .world-hud-card { left: auto; right: 20px; }
   [data-battle-position=left] .adventure .world-quick-actions { left: 20px; right: auto; }
 }
-@media (max-width: 900px) {
+/* Phones, and short touch screens at any width. Side anchors add the safe area so a sideways notch never covers them. */
+@media (max-width: 900px), (pointer: coarse) and (max-height: 600px) {
   .adventure .world-hud-card {
     top: calc(var(--app-header-height) + 8px);
-    left: 10px;
-    right: calc(20px + var(--world-radar-width, 86px));
+    left: calc(10px + env(safe-area-inset-left));
+    right: calc(20px + var(--world-radar-width, 86px) + env(safe-area-inset-right));
     width: auto;
     gap: 4px;
     padding: 4px;
   }
   .adventure .world-hud-card .world-explore-scroll { max-height: max(120px, calc(100dvh - var(--app-header-height) - var(--world-hud-card-height, 110px) - var(--app-nav-height) - var(--world-partner-height, 48px) - 40px)); }
   /* Landscape phones used to park the minimap beside a narrow card; it stays at the top right. */
-  .adventure .world-radar { top: calc(var(--app-header-height) + 8px); right: 10px; left: auto; }
-  .adventure .world-quick-actions { top: calc(var(--app-header-height) + 14px + var(--world-radar-height, 130px)); right: 10px; left: auto; gap: 4px; width: max(124px, var(--world-radar-width, 104px)); }
+  .adventure .world-radar { top: calc(var(--app-header-height) + 8px); right: calc(10px + env(safe-area-inset-right)); left: auto; }
+  .adventure .world-quick-actions { top: calc(var(--app-header-height) + 14px + var(--world-radar-height, 130px)); right: calc(10px + env(safe-area-inset-right)); left: auto; gap: 4px; width: max(124px, var(--world-radar-width, 104px)); }
   .adventure .world-quick-actions .world-mode-buttons { gap: 2px; padding: 3px; border-radius: 12px; }
   .adventure .world-quick-actions .world-mode-buttons button { min-height: 32px; padding: 2px; font-size: calc(12px * var(--ui-font-scale, 1)); }
   .adventure .world-heal { min-height: 36px; padding: 4px 6px; font-size: calc(12px * var(--ui-font-scale, 1)); }
   .adventure .world-quick-actions .world-cave-exits :is(button, select) { min-height: 36px; padding: 4px 6px; font-size: calc(12px * var(--ui-font-scale, 1)); }
-  .adventure .ow-camera-controls { inset: calc(var(--app-header-height) + 20px + var(--world-radar-height, 130px) + var(--world-quick-height, 80px)) 10px auto auto; }
-  .adventure .world-gym-notice { top: calc(var(--app-header-height) + 16px + var(--world-hud-card-height, 110px)); left: 10px; translate: none; max-width: calc(100% - 40px - var(--world-radar-width, 86px)); }
+  .adventure .ow-camera-controls { inset: calc(var(--app-header-height) + 20px + var(--world-radar-height, 130px) + var(--world-quick-height, 80px)) calc(10px + env(safe-area-inset-right)) auto auto; }
+  .adventure .world-gym-notice { top: calc(var(--app-header-height) + 16px + var(--world-hud-card-height, 110px)); left: calc(10px + env(safe-area-inset-left)); translate: none; max-width: calc(100% - 40px - var(--world-radar-width, 86px) - env(safe-area-inset-left) - env(safe-area-inset-right)); }
 }
 /* Landscape phones keep the place card to a left column instead of a strip across the top. */
-@media (max-height: 600px) and (min-width: 601px) and (max-width: 900px) {
+@media (max-height: 600px) and (min-width: 601px) and (max-width: 900px), (pointer: coarse) and (max-height: 600px) and (min-width: 601px) {
   .adventure .world-hud-card { right: auto; width: 300px; }
 }
 /* Phone: notices float just above the measured bottom stack (wild card, chat, partner bar) instead of covering it. */
-@media (max-width: 900px) {
+@media (max-width: 900px), (pointer: coarse) and (max-height: 600px) {
   body:has(.adventure) #toast { bottom: calc(var(--app-nav-height, 0px) + 20px + var(--world-lower-height, 104px)); }
 }
 

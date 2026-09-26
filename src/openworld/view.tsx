@@ -51,7 +51,7 @@ import { getWorldAtlas, type WorldAtlas } from './atlas';
 import { hasPokemonModel } from '../game/assets';
 import { clipGroundSpeed, selectPokemonMotionClip } from '../data/model-motion';
 import { acquireModel, modelCacheStats, retryFailedModels } from '../three/model-cache';
-import { creatureLods, terrainChunks, TERRAIN_CHUNK_SIZE, type TerrainChunk, type VisibilityTest } from './lod';
+import { creatureLods, isPhoneCanvas, terrainChunks, TERRAIN_CHUNK_SIZE, type TerrainChunk, type VisibilityTest } from './lod';
 import { initialYaw, movementYaw, turnTowards, walkCycleRate } from './motion';
 import { normalizePokemonModel } from './model-normalization';
 import { disposeNormalizedPokemonMaterials } from './pokemon-materials';
@@ -931,12 +931,13 @@ function Creature({ creature, selected, distance, options, showLabels, model }: 
     root.current.rotation.y = turnTowards(root.current.rotation.y, desiredYaw.current, delta);
   }, -2);
   if (creature.formIdentifier && !creature.formModelUrl) return <PokemonFormUnavailable creature={creature} onStatus={onModelStatus} />;
+  // One tap, never a double tap (unreliable on iOS): the panel inspects, and a tap on the open card's Pokémon engages it.
+  // The tap stops here so the ground behind never walks; a camera drag that ends on the creature is not a tap.
   return (
     <group
       ref={root}
       name={`creature:${creature.id}`}
-      onClick={event => { event.stopPropagation(); if (!creature.remotePlayer) options.onSelect(creature.id); }}
-      onDoubleClick={event => { event.stopPropagation(); if (!creature.remotePlayer) options.onInteract?.(creature.id); }}
+      onClick={event => { event.stopPropagation(); if (!creature.remotePlayer && event.delta <= 5) options.onSelect(creature.id); }}
     >
       {[
         standIn && standInCreature ? <PokemonModel key={standIn.key} creature={standInCreature} url={standIn.url} /> : null,
@@ -1132,7 +1133,7 @@ function PlayerCamera({ snapshot, options, destination, onDestination, commands 
   }, -2); // Follow first; drei updates OrbitControls once at priority -1.
 
   return <OrbitControls ref={controls} makeDefault enablePan={false} enableDamping dampingFactor={.2}
-    rotateSpeed={size.width <= 720 ? .25 : .32} zoomSpeed={.65}
+    rotateSpeed={isPhoneCanvas(size.width) ? .25 : .32} zoomSpeed={.65}
     minDistance={MIN_CAMERA_DISTANCE} maxDistance={MAX_CAMERA_DISTANCE} minPolarAngle={.38} maxPolarAngle={1.18} />;
 }
 
@@ -1177,7 +1178,7 @@ function FoodInstances({ foods, sampleWorld }: { foods: OpenWorldRenderSnapshot[
 
 function useViewWindow() {
   const { camera, size } = useThree();
-  const [windowState, setWindowState] = useState<{ frustum: Frustum | null; mobile: boolean }>({ frustum: null, mobile: size.width <= 720 });
+  const [windowState, setWindowState] = useState<{ frustum: Frustum | null; mobile: boolean }>({ frustum: null, mobile: isPhoneCanvas(size.width) });
   const elapsed = useRef(1);
   const previous = useRef({ px: NaN, py: NaN, pz: NaN, qx: NaN, qy: NaN, qz: NaN, qw: NaN, width: NaN, height: NaN });
   useFrame((_, delta) => {
@@ -1194,7 +1195,7 @@ function useViewWindow() {
       && next.qz === prior.qz && next.qw === prior.qw && next.width === prior.width && next.height === prior.height) return;
     previous.current = next;
     camera.updateMatrixWorld();
-    setWindowState({ frustum: new Frustum().setFromProjectionMatrix(new Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)), mobile: size.width <= 720 });
+    setWindowState({ frustum: new Frustum().setFromProjectionMatrix(new Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)), mobile: isPhoneCanvas(size.width) });
   });
   const visible = useMemo<VisibilityTest>(() => {
     const sphere = new Sphere();

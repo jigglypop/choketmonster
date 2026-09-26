@@ -46,7 +46,7 @@
 .world-bag-panel p b { font-weight: 600; color: var(--ui-hud-muted); }
 .world-bag-panel .bag-empty { color: var(--ui-hud-muted); border: 0; }
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (pointer: coarse) and (max-height: 600px) {
   .adventure .world-bag > summary { min-height: 30px; padding: 3px 6px; }
 }
 

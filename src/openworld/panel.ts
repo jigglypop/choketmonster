@@ -298,9 +298,11 @@ export class OpenWorldPanel {
       onSelect: id => {
         // Only a wild Pokémon is inspected; the partner and a leader's or trainer's Pokémon on show are not.
         if (id !== null && !this.simulation.entities.some(entity => entity.kind === 'wild' && entity.id === id)) return;
+        // A tap on the Pokémon whose card is open does what the card's battle button does.
+        const game = this.options.game;
+        if (id !== null && id === this.simulation.selectedWildId && this.simulation.selectionPinned && !game.battle && !game.captureOffer) { this.encounter(id); return; }
         this.manualIdleSeconds = 0; this.simulation.selectWild(id, true); this.options.changed(); this.refresh();
       },
-      onInteract: id => this.encounter(id),
       onCollectItem: id => { if (this.simulation.collectFieldItem(id)) { this.saveNow(); this.refresh(); this.renderer?.update(); } },
       navigationStep: (from, to) => this.simulation.canStep(from, to),
       onModelStatus: (id, status, speciesId) => {

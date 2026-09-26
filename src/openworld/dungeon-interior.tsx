@@ -9,6 +9,7 @@ import type { DungeonPropKind, DungeonProp } from './dungeon-rooms';
 import type { DungeonStyle } from './dungeons';
 import type { WorldPoint, WorldSample } from './types';
 import { terrainSurfaceHeight } from './grounding';
+import { isPhoneCanvas } from './lod';
 import { interiorSurface, type InteriorPattern, type SurfaceSet } from './interior-textures';
 import { LairChamber } from './lair-chamber';
 import { RoomDressing } from './temple-dressing';
@@ -143,7 +144,7 @@ function roomWallGeometry(length: number, tile: number): BufferGeometry {
 export function DungeonInterior({ scene, onNavigate }: { scene: CaveScene; onNavigate(point: WorldPoint): void }) {
   const look = ROOM_LOOKS[scene.style], room = scene.room!;
   // Same phone threshold as the view: phones keep fewer point lights.
-  const mobile = useThree(state => state.size.width <= 720);
+  const mobile = useThree(state => isPhoneCanvas(state.size.width));
   const floorSet = interiorSurface(FLOOR_SURFACE[look.floorPattern]), wallSet = interiorSurface(WALL_SURFACE[look.wallPattern]);
   const materials = useMemo(() => {
     const metalFloor = look.floorPattern === 'metal', metalWall = look.wallPattern === 'metal';

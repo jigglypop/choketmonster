@@ -129,8 +129,8 @@ export type OpenWorldViewOptions = {
   onMovementEnd?: () => void;
   /** Camera forward heading: north = PI, east = PI/2, south = 0. */
   onCameraHeading?: (radians: number) => void;
+  /** A tap on a creature (inspect, or engage the one whose card is open), or on nothing (null). */
   onSelect: (instanceId: string | null) => void;
-  onInteract?: (instanceId: string) => void;
   onCollectItem?: (pickupId: string) => void;
   onTrainer?: (trainerId: string) => void;
   onPortal?: (portalId: string) => void;

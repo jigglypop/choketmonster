@@ -61,7 +61,7 @@ input[type=search], input[type=text], input[type=number], select, textarea { bac
 .topbar.map-overlay { border-bottom-color: var(--glass-edge-dark); }
 .topbar.map-overlay::before { background: var(--ui-hud); -webkit-backdrop-filter: var(--glass-blur-hud); backdrop-filter: var(--glass-blur-hud); }
 .topbar nav { background: rgba(255, 255, 255, .5); border: 1px solid var(--glass-edge); }
-@media (max-width: 900px) {
+@media (max-width: 900px), (pointer: coarse) and (max-height: 600px) {
   .topbar nav, .topbar.map-overlay nav { background: rgba(251, 250, 253, .82); border: 0; border-top: 1px solid var(--glass-edge); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); }
   .topbar.map-overlay nav button { color: var(--ui-muted); }
 }
