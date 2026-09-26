@@ -1,6 +1,7 @@
 import { LoadingManager } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { holdUnkeyedTracks, prepareRegionalRig } from './johto-rig';
 import { preparePokemonModel } from '../openworld/model-normalization';
 import { preparePokemonNormals } from './pokemon-normals';
@@ -45,5 +46,6 @@ export function createGLTFLoader({ smoothNormals = true, signal }: { smoothNorma
   // A load with its own manager can cancel its download and external images without touching other loads.
   const manager = signal ? new LoadingManager() : undefined;
   if (signal && manager) signal.addEventListener('abort', () => manager.abort(), { once: true });
-  return new PokemonGLTFLoader(smoothNormals, signal, manager).setDRACOLoader(decoder);
+  // Figures ship meshopt-compressed geometry and clips (scripts/optimize-figures.ts).
+  return new PokemonGLTFLoader(smoothNormals, signal, manager).setDRACOLoader(decoder).setMeshoptDecoder(MeshoptDecoder);
 }
