@@ -53,6 +53,8 @@ const escape = (text: unknown) => String(text).replace(/[&<>"']/g, c => ({ '&': 
 const setText = (node: Element | null | undefined, text: string) => { if (node && node.textContent !== text) node.textContent = text; };
 const pokemonDisplayHeight = (speciesId: number) => pokemonWorldDisplayHeight(getSpecies(speciesId).heightMeters);
 const MANUAL_IDLE_SECONDS = .25;
+/** Road trainers are drawn this close to the partner: past it they stand small on screen, and each is a skinned figure with a shadow. */
+const ROAD_TRAINER_RANGE = 40;
 const ROUTE_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowRight', 'ArrowDown', 'ArrowLeft'];
 const CHAT_ICON = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H10l-4.5 3.5V16H4z"/></svg>';
 type Options = { game: GameState; graph: Graph; policy: FieldPolicy; checkpoint?: OpenWorldSnapshot; learning(): boolean; setLearning(value: boolean): void; musicChanged?(): void; editMoves?(instanceId: string): void; trade?(): void; openAccount?(): void; notify(message: string, error?: boolean): void; changed(immediate?: boolean): void | Promise<void> };
@@ -968,7 +970,7 @@ export class OpenWorldPanel {
       sceneId: this.simulation.sceneId,
       outbreak: this.simulation.outbreak,
       trainers: hall || this.simulation.sceneId !== surfaceSceneId(this.simulation.regionId) ? [] : roadTrainers(this.simulation.atlas)
-        .filter(entry => Math.hypot(entry.x - this.simulation.player.x, entry.z - this.simulation.player.z) < 60)
+        .filter(entry => Math.hypot(entry.x - this.simulation.player.x, entry.z - this.simulation.player.z) < ROAD_TRAINER_RANGE)
         .map(entry => ({ id: entry.trainer.id, name: trainerNameLabel(entry.trainer.name), trainerClass: trainerClassLabel(entry.trainer.trainerClass), locationId: entry.trainer.locationId,
           x: entry.x, y: 0, z: entry.z, facing: entry.facing, model: entry.model, defeated: Boolean(game.defeatedFieldTrainers?.includes(entry.trainer.id)) })),
       player: { ...this.simulation.player, heading: this.simulation.player.heading as WorldHeading }, tick: this.simulation.tick, selectedWildId: this.simulation.selectedWildId, badges: getRegionalBadges(game, this.simulation.regionId),

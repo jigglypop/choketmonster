@@ -108,10 +108,11 @@ function TownNpcFigure({ npc, y, player, lines, talking, quiet, sampleWorld, pos
   const [line, setLine] = useState(0), [turn, setTurn] = useState(0);
   // Waves (or hops) when the player walks up.
   useEffect(() => { if (talking) greet(clips.waves.find(clip => /big/i.test(clip.name)) ?? clips.waves[0]); }, [talking, figure]);
-  // A standing figure with no idle loop waves now and then while it waits, so it never stands frozen.
+  // A standing figure waves now and then while it waits: often when it has no idle loop, so it never stands frozen, and
+  // now and then between idle loops.
   useEffect(() => {
-    if (talking || moves || !figure || !clips.waves.length || clips.idle) return;
-    const timer = window.setInterval(() => greet(clips.waves[Math.floor(Math.random() * clips.waves.length)]), 9000 + (Math.abs(npc.x * 131 + npc.z * 71) % 7000));
+    if (talking || moves || !figure || !clips.waves.length) return;
+    const timer = window.setInterval(() => greet(clips.waves[Math.floor(Math.random() * clips.waves.length)]), (clips.idle ? 20000 : 9000) + (Math.abs(npc.x * 131 + npc.z * 71) % 7000));
     return () => window.clearInterval(timer);
   }, [talking, figure, clips]);
   useEffect(() => {
