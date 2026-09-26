@@ -14,7 +14,7 @@ import { BUILDING_HALF_X, BUILDING_HALF_Z, SIGNBOARD } from './world-details';
  * colour maps that browsers fail to decode side by side, so they load from copies in `web/` whose maps alone are halved
  * (colour 4096, normal and metallic-roughness 2048); mesh, rig and clips are untouched.
  */
-const npcModel = (name: 'docter' | 'police' | 'man' | 'mountain' | 'nurse' | 'boy') => `/models/trainer/web/${name}.glb`;
+const npcModel = (name: 'docter' | 'police' | 'police2' | 'man' | 'mountain' | 'nurse' | 'boy' | 'glass') => `/models/trainer/web/${name}.glb`;
 
 /** Who stands where: beside the Pokémon Center, the mart, the gym, Pallet's houses and lab, or out on the plaza. */
 export type TownNpcRole = 'clinic' | 'shop' | 'gym' | 'lab' | 'home' | 'plaza' | 'police';
@@ -26,8 +26,8 @@ export type TownNpc = { id: string; townId: string; role: TownNpcRole; title: st
 
 /** The doctor keeps the Pokémon Center and the lab, the clerk the mart and the plaza, the mountain man the gym and home. */
 const MODELS: Record<TownNpcRole, readonly string[]> = {
-  clinic: [npcModel('nurse')], shop: [npcModel('man')], gym: [npcModel('mountain')], lab: [npcModel('docter')], home: [npcModel('mountain')], plaza: [npcModel('boy')],
-  police: [npcModel('police')],
+  clinic: [npcModel('nurse')], shop: [npcModel('man')], gym: [npcModel('glass')], lab: [npcModel('docter')], home: [npcModel('mountain')], plaza: [npcModel('boy')],
+  police: [npcModel('police'), npcModel('police2')],
 };
 /** Who paces rather than stands: the clerk and the mountain man; the plaza clerk jogs. */
 const GAITS: Partial<Record<TownNpcRole, TownRoute['gait']>> = { shop: 'walk', gym: 'walk', home: 'walk', plaza: 'run' };
@@ -104,14 +104,15 @@ export function planTownNpcs(atlas: WorldAtlas, town: KantoLocation, hasGym: boo
       && Math.hypot(x - SIGNBOARD.x, z - SIGNBOARD.z) >= 2
       && placed.every(npc => Math.hypot(npc.x - town.x - x, npc.z - town.z - z) >= 1.4);
   }));
-  if (ring) {
-    const seed = hash(`${atlas.id}:${town.id}:police`), angle = (seed % 628) / 100;
+  // Two officers walk the ring half a lap apart at the same pace, so they never meet.
+  if (ring) MODELS.police.forEach((model, index) => {
+    const seed = hash(`${atlas.id}:${town.id}:police`), angle = (seed % 628) / 100 + index * Math.PI;
     placed.push({
-      id: `${town.id}:police`, townId: town.id, role: 'police', title: TITLES.police,
-      x: town.x + Math.cos(angle) * ring, z: town.z + Math.sin(angle) * ring, facing: Math.atan2(-Math.sin(angle), Math.cos(angle)),
-      model: MODELS.police[0], patrol: { x: town.x, z: town.z, radius: ring },
+      id: `${town.id}:police${index ? index + 1 : ''}`, townId: town.id, role: 'police', title: TITLES.police,
+      x: town.x + Math.cos(angle) * ring!, z: town.z + Math.sin(angle) * ring!, facing: Math.atan2(-Math.sin(angle), Math.cos(angle)),
+      model, patrol: { x: town.x, z: town.z, radius: ring! },
     });
-  }
+  });
   // Pacing lines last, one by one, each clear of the ring and of the lines already drawn.
   for (const npc of placed) {
     const gait = GAITS[npc.role]; if (!gait || npc.patrol) continue;
