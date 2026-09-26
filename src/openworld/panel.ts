@@ -316,7 +316,8 @@ export class OpenWorldPanel {
       onTrainerChallenge: id => {
         const trainer = getFieldTrainer(id);
         if (!trainer || !this.simulation.challengeRoadTrainer(id)) return;
-        this.options.notify(`${trainerClassLabel(trainer.trainerClass)} ${particle(trainerNameLabel(trainer.name), '이', '가')} 승부를 걸어왔다!`);
+        const who = [trainerClassLabel(trainer.trainerClass), trainerNameLabel(trainer.name)].filter(Boolean).join(' ');
+        this.options.notify(`${particle(who, '이', '가')} 승부를 걸어왔다!`);
         this.manualMovementActive = false; this.options.changed(); this.refresh();
       },
       onCameraHeading: heading => { this.cameraHeading = heading; this.updateMapOrientation(); this.minimap(); },

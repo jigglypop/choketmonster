@@ -3,7 +3,7 @@ import { fieldTrainersAt } from '../src/data/field-trainers';
 import { getWorldAtlas } from '../src/openworld/atlas';
 import { roadTrainers } from '../src/openworld/road-trainers';
 
-const REGIONS = ['kanto', 'johto', 'hoenn', 'sinnoh', 'unova', 'kalos', 'alola'];
+const REGIONS = ['kanto', 'johto', 'hoenn', 'sinnoh', 'unova', 'kalos', 'alola', 'galar'];
 
 describe('road trainers', () => {
   it('stand on open ground of their own route, apart, in more than one figure', { timeout: 60_000 }, () => {
@@ -26,5 +26,9 @@ describe('road trainers', () => {
     expect(models.get('아가씨')).toContain('/nurse.glb');
     expect(models.get('등산가')).toContain('/mountain.glb');
     expect(models.get('낚시꾼')).toContain('/fish.glb');
+    // Galar's two fishermen stand on the shore of the sea route they fish.
+    const galar = roadTrainers(getWorldAtlas('galar')).filter(entry => entry.trainer.trainerClass === '낚시꾼');
+    expect(galar.map(entry => entry.trainer.name).sort()).toEqual(['Harriet', 'Marina']);
+    for (const entry of galar) expect(entry.model).toContain('/fish.glb');
   });
 });
