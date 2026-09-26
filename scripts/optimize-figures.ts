@@ -4,15 +4,17 @@ import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { NodeIO, type Animation, type AnimationSampler, type Document, type Node } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
-import { dedup, meshopt, prune, resample, textureCompress } from '@gltf-transform/functions';
-import { MeshoptDecoder, MeshoptEncoder } from 'meshoptimizer';
+import { dedup, meshopt, prune, resample, simplify, textureCompress, weld } from '@gltf-transform/functions';
+import { MeshoptDecoder, MeshoptEncoder, MeshoptSimplifier } from 'meshoptimizer';
 import sharp from 'sharp';
 import { Object3D, Quaternion, Vector3 } from 'three';
 
 const source = 'assets/trainer-source/web', target = 'public/models/trainer/web';
 /** The only idle the owner's figures came with: green's 14 s Mixamo loop, on the same skeleton names as every figure. */
 const IDLE_SOURCE = 'assets/trainer-source/green.glb', IDLE_CLIP = 'Idle_4';
-await Promise.all([MeshoptDecoder.ready, MeshoptEncoder.ready]);
+await Promise.all([MeshoptDecoder.ready, MeshoptEncoder.ready, MeshoptSimplifier.ready]);
+/** Triangles a figure may carry: a road holds a dozen of them, each drawn again for shadows. */
+const TRIANGLE_BUDGET = 20_000;
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.decoder': MeshoptDecoder, 'meshopt.encoder': MeshoptEncoder });
 const names = process.argv.length > 2 ? process.argv.slice(2) : (await readdir(source)).filter(file => file.endsWith('.glb')).map(file => file.slice(0, -4));
 const megabytes = async (path: string) => ((await stat(path)).size / 1e6).toFixed(2);
@@ -110,10 +112,18 @@ for (const name of names) {
   const input = join(source, `${name}.glb`), output = join(target, `${name}.glb`);
   const document = await io.read(input);
   if (!clipNamed(document, /^idle/i)) addIdle(document, idleSource);
+  // Rest-pose stubs (restpose, Walking.001: two keys in 0.08 s) hold the T pose and are never played.
+  for (const animation of document.getRoot().listAnimations()) {
+    const end = Math.max(...animation.listSamplers().map(sampler => sampler.getInput()!.getMax([])[0]));
+    if (end < .1) animation.dispose();
+  }
+  const triangles = document.getRoot().listMeshes().flatMap(mesh => mesh.listPrimitives()).reduce((sum, primitive) => sum + (primitive.getIndices()?.getCount() ?? 0) / 3, 0);
   // shadeFigure draws every figure fully rough and non-metallic, so its metallic-roughness map never reaches the screen.
   for (const material of document.getRoot().listMaterials()) material.setMetallicRoughnessTexture(null);
   await document.transform(
     dedup(), prune(),
+    // A figure over budget is simplified to it; welding first lets the simplifier collapse across shared positions.
+    ...(triangles > TRIANGLE_BUDGET ? [weld(), simplify({ simplifier: MeshoptSimplifier, ratio: TRIANGLE_BUDGET / triangles, error: .002 })] : []),
     // Drops keys that linear interpolation already reproduces.
     resample(),
     // Relief at half the colour map's size, still lossless: a 1.9 m figure a few metres away shows no finer normal detail.

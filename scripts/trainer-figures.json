@@ -1,0 +1,20 @@
+{
+  "$comment": "Reference sheets live in assets/trainer-source/reference/ (git-ignored). A side view is named for the side of the figure it shows: in a 'left' view the figure faces the image's left edge. Three-quarter turns and repeated sides are left out. 'figure' is the game figure a finished model may replace; figures without one are new.",
+  "figures": [
+    { "id": "teacher", "figure": "teacher", "views": { "front": "11.png", "back": "12.png", "left": "13.png", "right": "14.png" } },
+    { "id": "hiker", "figure": "mountain", "views": { "front": "21.png", "back": "22.png", "left": "23.png", "right": "24.png" } },
+    { "id": "fisher", "figure": "fish", "views": { "front": "AA5.png", "back": "AA6.png", "left": "AA76.png", "right": "AA8.png" } },
+    { "id": "nurse", "figure": "nurse", "views": { "front": "41.png", "back": "44.png", "left": "43.png", "right": "42.png" } },
+    { "id": "clerk", "figure": "man", "views": { "front": "AA!.png", "back": "AA@.png", "left": "AA3.png", "right": "AA4.png" } },
+    { "id": "doctor", "figure": "docter", "views": { "front": "D1.png", "back": "D2.png", "left": "D3.png", "right": "D4.png" } },
+    { "id": "police", "figure": "police", "views": { "front": "E1.png", "back": "E2.png", "left": "E3.png", "right": "E4.png" } },
+    { "id": "police2", "figure": "police2", "views": { "front": "q1.png" } },
+    { "id": "boy", "figure": "boy", "views": { "front": "51.png", "back": "53.png", "left": "54.png", "right": "52.png" } },
+    { "id": "glass", "figure": "glass", "views": { "front": "441.png" } },
+    { "id": "teacher2", "views": { "front": "221.png", "back": "334.png", "left": "222.png", "right": "223.png" } },
+    { "id": "capboy", "views": { "front": "224.png", "back": "331.png", "left": "332.png", "right": "333.png" } },
+    { "id": "leafgirl", "views": { "front": "A.png", "back": "A@.png", "right": "A4.png" } },
+    { "id": "redhead", "views": { "front": "B.png", "back": "B1.png", "right": "B2.png" } },
+    { "id": "bluegirl", "views": { "front": "C2.png", "back": "C4.png" } }
+  ]
+}
