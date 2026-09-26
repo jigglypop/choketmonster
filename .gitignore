@@ -12,6 +12,8 @@ public/pokemon/*.png
 public/pokemon/back/*.png
 assets/blender/pokemon-study.blend*
 assets/source-world/
+# Figure originals; the game loads public/models/trainer/web/
+assets/trainer-source/
 *.blend1
 *.blend2
 .aws/
