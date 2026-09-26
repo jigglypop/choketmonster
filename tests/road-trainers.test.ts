@@ -19,11 +19,12 @@ describe('road trainers', () => {
     }
   });
 
-  it('dress the nurse and the boy by class', () => {
+  it('dress the nurse, the boy and the fisherman by class', () => {
     const models = new Map(roadTrainers(getWorldAtlas('johto')).map(entry => [entry.trainer.trainerClass, entry.model]));
     expect(models.get('반바지 꼬마')).toContain('/boy.glb');
     expect(models.get('곤충채집소년')).toContain('/boy.glb');
     expect(models.get('아가씨')).toContain('/nurse.glb');
     expect(models.get('등산가')).toContain('/mountain.glb');
+    expect(models.get('낚시꾼')).toContain('/fish.glb');
   });
 });

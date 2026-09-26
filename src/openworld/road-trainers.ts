@@ -3,14 +3,15 @@ import type { WorldAtlas } from './atlas';
 import { trailHalfWidth } from './world-details';
 
 /** Road trainers wear the owner's figures, chosen by trainer class. */
-const figure = (name: 'teacher' | 'man' | 'mountain' | 'docter' | 'police' | 'nurse' | 'boy') => `/models/trainer/web/${name}.glb`;
+const figure = (name: 'teacher' | 'man' | 'mountain' | 'docter' | 'police' | 'nurse' | 'boy' | 'fish') => `/models/trainer/web/${name}.glb`;
 /** Matched against the Korean class and the source's class code. */
 const FIGURE_BY_CLASS: ReadonlyArray<readonly [RegExp, string]> = [
   [/경찰|순경|경비|OFFICER|POLICE|GUARD/i, figure('police')],
   [/GRUNT|TEAM_|로켓|조무래기|BURGLAR|도둑|JUGGLER|저글러|GAMBLER|GAMER|갬블러|BIKER|폭주족|ROCKER|로커|GUITARIST|기타|CUE_?BALL|빡빡이|ENGINEER|엔지니어|깡패/i, figure('man')],
   [/간호|NURSE|아가씨|치마|LASS|피크니커|PICNICKER|쌍둥이|TWINS|숙녀|LADY|BEAUTY|미녀|COOLTRAINERF|POKEFANF|무당|MEDIUM|CHANNELER|SKIER|스키어|AROMA|아로마|소녀|TUBER_F|배틀걸|BATTLE_GIRL|CRUSH_GIRL|오컬트|HEX|화가|PAINTER|PARASOL|양산|브리더|BREEDER/i, figure('nurse')],
   [/반바지|YOUNGSTER|곤충|BUG|꼬마|소년|SCHOOL|캠퍼|캠프|CAMPER|TUBER|KID|도련님|RICH_BOY|NINJA/i, figure('boy')],
-  [/등산가|HIKER|낚시|FISHER|선원|뱃사람|SAILOR|탐험|유적|RUIN|조련사|TAMER|BIRD|불놀이꾼|FIREBREATHER|KINDLER|태권|BLACK_?BELT|보더|BOARDER|레인저|RANGER/i, figure('mountain')],
+  [/낚시|FISHER/i, figure('fish')],
+  [/등산가|HIKER|선원|뱃사람|SAILOR|탐험|유적|RUIN|조련사|TAMER|BIRD|불놀이꾼|FIREBREATHER|KINDLER|태권|BLACK_?BELT|보더|BOARDER|레인저|RANGER/i, figure('mountain')],
   [/과학자|SCIENTIST|박사|연구|매니아|마니아|MANIAC|NERD|괴짜|의사|DOCTOR|수집가|COLLECTOR/i, figure('docter')],
   [/선생|TEACHER|신사|GENTLEMAN|엘리트|COOLTRAINER|수행자|SAGE|초능력|PSYCHIC|POKEFAN|애호가|달인|EXPERT/i, figure('teacher')],
 ];
