@@ -8,7 +8,6 @@ export type SceneryAssetId =
   | 'rock-large' | 'rock-moss' | 'rock-small' | 'rock-flat'
   | 'rock-tall' | 'rock-ridge' | 'cliff'
   | 'moss-boulder' | 'moss-stone' | 'fern'
-  | 'grass-tuft' | 'grass-soft'
   | 'flower-red' | 'flower-yellow' | 'flower-purple' | 'bush'
   | 'mushroom-cluster' | 'lily' | 'stump' | 'fence' | 'fallen-log';
 
@@ -42,7 +41,7 @@ export const SCENERY_ASSETS: ReadonlyArray<{ id: SceneryAssetId; url: string; au
   'rock-large', 'rock-moss', 'rock-small', 'rock-flat',
   'rock-tall', 'rock-ridge', 'cliff',
   'moss-boulder', 'moss-stone', 'fern',
-  'grass-tuft', 'grass-soft', 'flower-red', 'flower-yellow', 'flower-purple',
+  'flower-red', 'flower-yellow', 'flower-purple',
   'bush', 'mushroom-cluster', 'lily', 'stump', 'fence', 'fallen-log',
 ].map(name => {
   const id = name as SceneryAssetId, replacement = cozyModels[id];
@@ -54,7 +53,6 @@ const emptyPlacements = (): Record<SceneryAssetId, SceneryPlacement[]> => ({
   'rock-large': [], 'rock-moss': [], 'rock-small': [], 'rock-flat': [],
   'rock-tall': [], 'rock-ridge': [], cliff: [],
   'moss-boulder': [], 'moss-stone': [], fern: [],
-  'grass-tuft': [], 'grass-soft': [],
   'flower-red': [], 'flower-yellow': [], 'flower-purple': [], bush: [],
   'mushroom-cluster': [], lily: [], stump: [], fence: [], 'fallen-log': [],
 });
@@ -145,19 +143,16 @@ export function createSceneryPlacements(sampleWorld: (x: number, z: number) => W
       if (sample.surface === 'snow' || sample.surface === 'desert') { if (selector < .07) place(result, 'rock-small', px, pz, sample, .5, .95, 34); continue; }
       if (sample.surface === 'marsh') {
         if (selector < .22) place(result, 'fern', px, pz, sample, .7, 1.1, 35);
-        else if (selector < .38) place(result, 'grass-soft', px, pz, sample, .7, 1.1, 36);
+        else if (selector < .38) continue;
         else if (selector < .46) place(result, 'mushroom-cluster', px, pz, sample, .7, 1.05, 37);
         else if (selector < .5) place(result, selector < .48 ? 'stump' : 'fallen-log', px, pz, sample, .8, 1.1, 38);
         continue;
       }
       if (sample.biome === 'meadow') {
-        if (selector < .4) {
-          place(result, selector < .2 ? 'grass-tuft' : 'grass-soft', px, pz, sample, .6, 1.12, 13);
-          if (noise(px, pz, 14) < .38) {
-            const gx = px + (noise(px, pz, 15) - .5) * 1.15, gz = pz + (noise(px, pz, 16) - .5) * 1.15;
-            place(result, 'grass-soft', gx, gz, surfaceSample(sampleWorld, gx, gz), .5, .88, 17);
-          }
-        } else if (selector < .56) flowerCluster('flower-yellow', px, pz, 18);
+        // Grass is the lawn's own blades; dark modelled tufts dotted over them read as weeds. Their share stays bare,
+        // so every other prop keeps its place.
+        if (selector < .4) continue;
+        if (selector < .56) flowerCluster('flower-yellow', px, pz, 18);
         else if (selector < .68) flowerCluster('flower-red', px, pz, 19);
         else if (selector < .78) flowerCluster('flower-purple', px, pz, 20);
         else if (selector < .83) place(result, 'moss-stone', px, pz, sample, .5, .85, 21);
@@ -168,19 +163,18 @@ export function createSceneryPlacements(sampleWorld: (x: number, z: number) => W
       } else if (sample.biome === 'forest') {
         if (selector < .12) place(result, 'moss-stone', px, pz, sample, .65, .95, 30);
         else if (selector < .32) place(result, 'fern', px, pz, sample, .72, 1.15, 22);
-        else if (selector < .64) place(result, selector < .48 ? 'grass-tuft' : 'grass-soft', px, pz, sample, .65, 1.12, 23);
+        else if (selector < .64) continue;
         else if (selector < .75) place(result, 'mushroom-cluster', px, pz, sample, .72, 1.15, 24);
         else if (selector > .94) place(result, selector > .975 ? 'fallen-log' : 'stump', px, pz, sample, .85, 1.15, 25);
       } else if (sample.biome === 'rock') {
         if (selector < .36) place(result, 'rock-small', px, pz, sample, .68, 1.25, 26);
         else if (selector < .64) place(result, 'rock-flat', px, pz, sample, .68, 1.28, 27);
-        else if (selector < .72) place(result, 'grass-soft', px, pz, sample, .55, .9, 28);
       }
     }
   }
 
   const locations = new Map(atlas.locations.map(item => [item.id, item]));
-  // Route verges, where the player walks most: wildflowers, tufts and stones beside every land route, ferns and
+  // Route verges, where the player walks most: wildflowers and stones beside every land route, ferns and
   // mushrooms along woodland trails. The trail itself stays clear.
   for (const [fromId, toId] of atlas.surfaceConnections) {
     const from = locations.get(fromId)!, to = locations.get(toId)!;
@@ -198,17 +192,16 @@ export function createSceneryPlacements(sampleWorld: (x: number, z: number) => W
         if (sample.blocked || sample.biome === 'lake' || clearingDistance(px, pz) < scaleWorldDistance(8.75) || atlas.distanceToPath(px, pz) < scaleWorldDistance(1.6)) continue;
         const pick = noise(px, pz, 52 + lane);
         if (sample.surface === 'snow' || sample.surface === 'desert') { if (pick < .06) place(result, 'rock-small', px, pz, sample, .45, .85, 61); continue; }
-        if (sample.surface === 'marsh') { if (pick < .2) place(result, 'fern', px, pz, sample, .65, 1.05, 62); else if (pick < .34) place(result, 'grass-soft', px, pz, sample, .6, 1, 63); continue; }
+        if (sample.surface === 'marsh') { if (pick < .2) place(result, 'fern', px, pz, sample, .65, 1.05, 62); continue; }
         if (sample.biome === 'meadow') {
           if (pick < .3) flowerCluster(pick < .13 ? 'flower-yellow' : pick < .23 ? 'flower-red' : 'flower-purple', px, pz, 53);
-          else if (pick < .52) place(result, pick < .41 ? 'grass-tuft' : 'grass-soft', px, pz, sample, .6, 1.05, 54);
+          else if (pick < .52) continue;
           else if (pick < .58) place(result, 'rock-small', px, pz, sample, .5, .9, 55);
           else if (pick < .62) place(result, 'moss-stone', px, pz, sample, .45, .8, 56);
           else if (pick < .64) place(result, 'bush', px, pz, sample, .5, .72, 60);
         } else if (sample.biome === 'forest') {
           if (pick < .25) place(result, 'fern', px, pz, sample, .7, 1.1, 57);
           else if (pick < .35) place(result, 'mushroom-cluster', px, pz, sample, .7, 1.05, 58);
-          else if (pick < .45) place(result, 'grass-tuft', px, pz, sample, .6, 1, 59);
         }
       }
     }
