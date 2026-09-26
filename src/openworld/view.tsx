@@ -720,7 +720,8 @@ function PokemonModel({ creature, url, onStatus }: { creature: WorldCreature; ur
     skeletons.forEach(skeleton => skeleton.dispose());
   }, [normalized]);
 
-  useEffect(() => {
+  // Layout effects start the mixer and its clip before the first frame draws the model, which would show the bind pose.
+  useLayoutEffect(() => {
     if (!normalized || !gltf?.animations.length) return;
     const nextMixer = new AnimationMixer(normalized.animatedRoot);
     mixer.current = nextMixer;
@@ -732,7 +733,7 @@ function PokemonModel({ creature, url, onStatus }: { creature: WorldCreature; ur
     };
   }, [gltf, normalized]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!mixer.current || !gltf?.animations.length) return;
     // Pace in display heights per second picks the walk loop whose stride fits the ground speed.
     const pace = (creature.movementSpeed ?? 2.4) / Math.max(.3, creature.displayHeight ?? 1.2);

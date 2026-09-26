@@ -440,6 +440,32 @@ function clipStartPose(clip: AnimationClip): PoseValue[] {
   });
 }
 
+/**
+ * The mixer returns a bone that the playing clip leaves unkeyed to its bind pose, often a T pose: a walk without
+ * arm tracks spreads the arms the idle lowered, and a crossfade blends toward that pose. Every playable clip gets a
+ * constant track for each bone another playable clip keys, held at the idle's first pose, else the bind pose.
+ */
+export function holdUnkeyedTracks(root: Object3D, clips: readonly AnimationClip[]): void {
+  const playable = clips.filter(clip => clip.userData?.[STATIC_MOTION_CLIP] !== true);
+  if (playable.length < 2) return;
+  const idle = selectPokemonMotionClip(playable, 'idle').clip;
+  const held = new Map((idle ? clipStartPose(idle) : []).map(pose => [pose.track, pose.value]));
+  const keyed = new Map<string, { node: string; property: PoseValue['property'] }>();
+  for (const clip of playable) for (const track of clip.tracks) {
+    const { nodeName, propertyName, propertyIndex } = PropertyBinding.parseTrackName(track.name);
+    if (propertyIndex === undefined && (propertyName === 'quaternion' || propertyName === 'position' || propertyName === 'scale')) keyed.set(track.name, { node: nodeName, property: propertyName });
+  }
+  for (const clip of playable) {
+    const own = new Set(clip.tracks.map(track => track.name)), duration = Math.max(clip.duration, 1e-3);
+    for (const [name, { node, property }] of keyed) {
+      if (own.has(name)) continue;
+      const value = held.get(name) ?? (PropertyBinding.findNode(root, node) as Object3D | undefined)?.[property].toArray();
+      if (!value) continue;
+      clip.tracks.push(property === 'quaternion' ? new QuaternionKeyframeTrack(name, [0, duration], [...value, ...value]) : new VectorKeyframeTrack(name, [0, duration], [...value, ...value]));
+    }
+  }
+}
+
 function applyPose(root: Object3D, pose: readonly PoseValue[]): () => void {
   const restore: Array<() => void> = [];
   for (const { node, property, value } of pose) {
@@ -479,7 +505,10 @@ function steppingLimbs(model: Object3D, joints: readonly Joint[], plan: BodyPlan
   const reach = (joint: Joint) => { let low = Math.min(joint.start.y, joint.end.y); joint.bone.traverse(bone => { const below = byBone.get(bone as Bone); if (below) low = Math.min(low, below.start.y, below.end.y); }); return low - bounds.min.y; };
   const armChain = (joint: Joint) => joint.role === 'arm' || joint.role === 'armTip';
   const fourFooted = plan !== 'biped' || joints.some(joint => joint.role === 'arm' && reach(joint) < .2 * height);
-  const isLeg = (joint: Joint) => /^(leg|foot|legTip)$/.test(joint.role) || (fourFooted && armChain(joint));
+  // A four-footed plan on a body that stands up (Pichu, Iron Crown) holds its arms at the shoulder: an arm chain
+  // that ends well above the ground stays an arm and is lowered, not stepped from its spread bind pose.
+  const foreleg = (joint: Joint) => plan !== 'quadruped' || reach(joint) < .25 * height;
+  const isLeg = (joint: Joint) => /^(leg|foot|legTip)$/.test(joint.role) || (fourFooted && armChain(joint) && foreleg(joint));
   const legAncestor = (joint: Joint) => { for (let bone = joint.bone.parent; bone; bone = bone.parent) { const parent = byBone.get(bone as Bone); if (parent && isLeg(parent)) return parent; } return undefined; };
   const roots = joints.filter(joint => isLeg(joint) && !legAncestor(joint));
   const sideOf = (joint: Joint) => joint.side || (Math.abs(joint.start.x - center.x) > .03 * width ? Math.sign(joint.start.x - center.x) : 0);
@@ -502,6 +531,38 @@ function steppingLimbs(model: Object3D, joints: readonly Joint[], plan: BodyPlan
   return { limbs, hip: Math.max(.08, Math.min(.7, hips[Math.floor(hips.length / 2)] ?? .35)) };
 }
 
+/**
+ * Direction from each upper arm's joint to the centre of the mesh its chain carries. A skeleton authored for a
+ * static mesh places its arm bones by body proportions, so an arm the mesh holds straight out (Beartic) sits
+ * well above its bone; lowering by the bone's angle would leave that arm half raised.
+ */
+function skinnedArmDirections(model: Object3D, joints: readonly Joint[]): Map<Joint, Vector3> {
+  const chainOf = new Map<Bone, Joint>();
+  for (const joint of joints) if (joint.role === 'arm') joint.bone.traverse(bone => { if (bone instanceof Bone) chainOf.set(bone, joint); });
+  const sums = new Map<Joint, { sum: Vector3; count: number }>(), point = new Vector3();
+  model.traverse(object => {
+    if (!(object instanceof SkinnedMesh)) return;
+    const { position, skinIndex, skinWeight } = object.geometry.attributes;
+    if (!position || !skinIndex || !skinWeight) return;
+    for (let i = 0; i < position.count; i++) {
+      let best = .5, arm: Joint | undefined;
+      for (let slot = 0; slot < 4; slot++) {
+        const weight = skinWeight.getComponent(i, slot);
+        if (weight > best) { best = weight; arm = chainOf.get(object.skeleton.bones[skinIndex.getComponent(i, slot)]); }
+      }
+      if (!arm) continue;
+      const entry = sums.get(arm) ?? { sum: new Vector3(), count: 0 };
+      entry.sum.add(point.fromBufferAttribute(position, i)); entry.count++; sums.set(arm, entry);
+    }
+  });
+  const directions = new Map<Joint, Vector3>();
+  for (const [joint, { sum, count }] of sums) {
+    const direction = sum.divideScalar(count).sub(joint.start);
+    if (count >= 8 && direction.lengthSq() > 1e-10) directions.set(joint, direction.normalize());
+  }
+  return directions;
+}
+
 function authoredClips(model: Object3D, joints: Joint[], id: number, kinds: readonly PokemonMotionKind[] = POKEMON_MOTION_KINDS, basePose: readonly PoseValue[] = []): AnimationClip[] {
   const shape = johtoRigShape(id), plan = pokemonBodyPlan(id, model.userData.pokemonFormIdentifier as string | undefined), size = new Box3().setFromObject(model, true).getSize(new Vector3());
   const roles = new Set(['hips', 'spine', 'neck', 'head', 'tail', 'leg', 'foot', 'legTip', 'arm', 'armTip', 'wing', 'wingTip', 'shell', 'shellTip', 'antenna', 'fin', 'finTip', 'leaf', 'leafTip']);
@@ -513,6 +574,7 @@ function authoredClips(model: Object3D, joints: Joint[], id: number, kinds: read
   const authoredSkeleton = animated.some(joint => joint.bone.name.startsWith(`CM_${id}_`));
   const swing = step && stepping ? Math.max(step.swing * .8, Math.min(authoredSkeleton ? .65 : .75, step.swing * Math.sqrt(.35 / stepping.hip))) : undefined;
   const knee = step ? step.knee * (authoredSkeleton ? .6 : 1) : 0;
+  const armDirections = authoredSkeleton ? skinnedArmDirections(model, animated) : new Map<Joint, Vector3>();
   // Serpents and fish ripple along their body chain: each bone lags the one before it.
   const chainDepth = new Map<Joint, number>();
   if (plan === 'serpent' || plan === 'fish') for (const joint of animated) { let depth = 0; for (let bone = joint.bone.parent; bone instanceof Bone; bone = bone.parent) depth++; chainDepth.set(joint, depth); }
@@ -529,7 +591,7 @@ function authoredClips(model: Object3D, joints: Joint[], id: number, kinds: read
       // Upper arms in many static source rigs are authored in a horizontal bind pose. Rotate
       // around world Z so idle/walk lower them toward the body instead of only swinging the
       // unchanged T pose around world Y. The side sign lowers both left and right arms.
-      const bindDirection = end.clone().sub(start).normalize();
+      const bindDirection = (upperArm && armDirections.get(joint)?.clone()) || end.clone().sub(start).normalize();
       const down = new Vector3(0, -1, 0);
       const loweringAxis = bindDirection.clone().cross(down);
       if (loweringAxis.lengthSq() < 1e-8) loweringAxis.set(0, 0, 1);

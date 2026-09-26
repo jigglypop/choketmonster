@@ -15,6 +15,7 @@ const FROM_SHAPE: Record<PokemonBodyShape, BodyPlan> = {
 /** Models whose 3D pose differs from their Pokédex icon. */
 const POSE_OVERRIDES: Readonly<Record<number, BodyPlan>> = {
   161: 'biped', // Sentret stands up on its tail.
+  614: 'biped', 758: 'biped', 827: 'biped', // Beartic, Salazzle and Nickit stand upright with their arms held out.
   356: 'floater', 385: 'floater', 491: 'floater', 518: 'floater', // Dusclops, Jirachi, Darkrai and Musharna hover.
   480: 'floater', 481: 'floater', 482: 'floater', // The lake guardians hover.
   965: 'floater', 966: 'floater', // Varoom and Revavroom roll on their engine bodies.

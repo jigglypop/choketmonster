@@ -1,7 +1,7 @@
 import { LoadingManager } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-import { prepareRegionalRig } from './johto-rig';
+import { holdUnkeyedTracks, prepareRegionalRig } from './johto-rig';
 import { preparePokemonModel } from '../openworld/model-normalization';
 import { preparePokemonNormals } from './pokemon-normals';
 import { getPokemonFormModelByUrl } from '../data/pokemon-form-models';
@@ -29,6 +29,7 @@ class PokemonGLTFLoader extends GLTFLoader {
       if (this.smoothNormals) preparePokemonNormals(gltf.scene, speciesId);
       check();
       prepareRegionalRig(gltf, speciesId);
+      holdUnkeyedTracks(gltf.scene, gltf.animations);
       check();
       await preparePokemonModel(gltf.scene, gltf.animations, signal);
     }
